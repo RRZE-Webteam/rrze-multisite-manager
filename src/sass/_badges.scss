@@ -1,0 +1,34 @@
+.rrze-msm-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--rrze-msm-badge-border-radius);
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0 6px 6px 0;
+}
+
+.rrze-msm-badge-positive {
+    background: var(--rrze-msm-positive-soft);
+    color: var(--rrze-msm-positive);
+}
+
+.rrze-msm-badge-warning {
+    background: var(--rrze-msm-warning-soft);
+    color: var(--rrze-msm-warning);
+}
+
+.rrze-msm-badge-danger {
+    background: var(--rrze-msm-danger-soft);
+    color: var(--rrze-msm-danger);
+}
+
+.rrze-msm-badge-info {
+    background: var(--rrze-msm-info-soft);
+    color: var(--rrze-msm-info);
+}
+
+.rrze-msm-badge-neutral {
+    background: var(--rrze-msm-neutral-soft);
+    color: var(--rrze-msm-neutral);
+}

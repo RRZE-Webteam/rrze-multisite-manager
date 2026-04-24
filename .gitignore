@@ -54,4 +54,5 @@ wp-config.php
 node_modules
 package-lock.json
 nbproject
+*.map
 

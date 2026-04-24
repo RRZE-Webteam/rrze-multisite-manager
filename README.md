@@ -5,7 +5,7 @@
 
 # RRZE Multisite Manager
 
-## WordPress MU Plugin
+## WordPress Network Plugin
 
 This plugin allows to manage one or more multisite installations
 

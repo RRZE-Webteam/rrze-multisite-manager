@@ -1,0 +1,105 @@
+.rrze-msm-site-overview-table td,
+.rrze-msm-site-overview-table th {
+    white-space: nowrap;
+}
+
+.rrze-msm-site-branding-column,
+.rrze-msm-site-branding-cell {
+    width: 130px;
+    min-width: 130px;
+    text-align: center;
+}
+
+.rrze-msm-site-overview-table td:first-child,
+.rrze-msm-site-overview-table th:first-child,
+.rrze-msm-site-overview-table td:nth-child(2),
+.rrze-msm-site-overview-table th:nth-child(2) {
+    white-space: normal;
+}
+
+.rrze-msm-site-branding-image {
+    display: inline-block;
+    max-width: 120px;
+    max-height: 100px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    vertical-align: middle;
+}
+
+.rrze-msm-site-branding-empty {
+    color: var(--rrze-msm-muted);
+    font-size: 12px;
+}
+
+.rrze-msm-site-meta {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.rrze-msm-meta-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    background: var(--rrze-msm-surface-alt);
+    color: var(--rrze-msm-text);
+    font-size: 12px;
+    line-height: 1.2;
+    text-decoration: none;
+}
+
+.rrze-msm-meta-count .dashicons {
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+    line-height: 14px;
+    color: var(--rrze-msm-muted);
+}
+
+.rrze-msm-meta-count-value {
+    font-weight: 600;
+}
+
+.rrze-msm-meta-count:hover,
+.rrze-msm-meta-count:focus {
+    border-color: var(--rrze-msm-info);
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-storage-usage span {
+    color: var(--rrze-msm-muted);
+}
+
+.rrze-msm-storage-cell-warning {
+    background: color-mix(in srgb, var(--rrze-msm-warning-soft) 78%, var(--rrze-msm-surface) 22%) !important;
+}
+
+.rrze-msm-storage-cell-critical {
+    background: color-mix(in srgb, var(--rrze-msm-danger-soft) 82%, var(--rrze-msm-surface) 18%) !important;
+}
+
+.rrze-msm-site-row-capacity-critical th,
+.rrze-msm-site-row-capacity-critical td,
+.rrze-msm-table.striped > tbody > .rrze-msm-site-row-capacity-critical:nth-child(odd) th,
+.rrze-msm-table.striped > tbody > .rrze-msm-site-row-capacity-critical:nth-child(odd) td,
+.rrze-msm-table.striped > tbody > .rrze-msm-site-row-capacity-critical:nth-child(even) th,
+.rrze-msm-table.striped > tbody > .rrze-msm-site-row-capacity-critical:nth-child(even) td,
+.rrze-msm-table .rrze-msm-site-row-capacity-critical:nth-child(odd) th,
+.rrze-msm-table .rrze-msm-site-row-capacity-critical:nth-child(odd) td,
+.rrze-msm-table .rrze-msm-site-row-capacity-critical:nth-child(even) th,
+.rrze-msm-table .rrze-msm-site-row-capacity-critical:nth-child(even) td {
+    background: color-mix(in srgb, var(--rrze-msm-danger-soft) 74%, var(--rrze-msm-surface) 26%);
+}
+
+.rrze-msm-site-row-capacity-critical .rrze-msm-storage-cell-critical {
+    background: color-mix(in srgb, var(--rrze-msm-danger-soft) 92%, var(--rrze-msm-surface) 8%) !important;
+}
+
+.rrze-msm-site-overview-wrap {
+    overflow-x: auto;
+}

@@ -34,8 +34,8 @@ class Settings {
         $this->options = $this->getOptions();
 
         if (is_admin()) {
-            add_action('network_admin_menu', [$this, 'adminMenu']);
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
+            add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
         }
     }
 
@@ -103,22 +103,6 @@ class Settings {
         return $this->normalizeOptions($merged);
     }
 
-    public function adminMenu(): void {
-        $pageTitle = (string)($this->settingsMenu['page_title'] ?? __('RRZE Multisite Manager', 'rrze-multisite-manager'));
-        $menuTitle = (string)($this->settingsMenu['menu_title'] ?? __('Multisite Manager', 'rrze-multisite-manager'));
-        $capability = (string)($this->settingsMenu['capability'] ?? 'manage_network_options');
-        $menuSlug = (string)($this->settingsMenu['menu_slug'] ?? 'rrze-multisite-manager');
-
-        $this->optionsPage = add_submenu_page(
-            'settings.php',
-            $pageTitle,
-            $menuTitle,
-            $capability,
-            $menuSlug,
-            [$this, 'renderOptionsPage']
-        );
-    }
-
     public function saveNetworkOptions(): void {
         if (!current_user_can('manage_network_options')) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
@@ -130,13 +114,14 @@ class Settings {
         $options = $this->sanitizeOptions($rawOptions);
 
         update_site_option($this->optionName, $options);
+        (new MetricsService($this, $this->config))->clearCache();
 
         $redirectUrl = add_query_arg(
             [
-                'page' => $this->settingsMenu['menu_slug'] ?? 'rrze-multisite-manager',
+                'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
                 'updated' => 'true',
             ],
-            network_admin_url('settings.php')
+            network_admin_url('admin.php')
         );
 
         wp_safe_redirect($redirectUrl);
@@ -148,14 +133,62 @@ class Settings {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
 
-        echo '<div class="wrap">';
+        echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
+        echo '<div class="rrze-msm-page-shell">';
+        echo '<div class="rrze-msm-page-header">';
+        echo '<div>';
         echo '<h1>' . esc_html__('RRZE Multisite Manager', 'rrze-multisite-manager') . '</h1>';
+        echo '<p>' . esc_html__('Zentrale Einstellungen für Dashboard, Übersichten und Cache-Verhalten.', 'rrze-multisite-manager') . '</p>';
+        echo '</div>';
+        echo '<div class="rrze-msm-header-controls">';
+        echo '<button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="' . esc_attr($this->getColorMode() === 'dark' ? 'light' : 'dark') . '">';
+        echo esc_html($this->getColorMode() === 'dark' ? __('Light Mode', 'rrze-multisite-manager') : __('Dark Mode', 'rrze-multisite-manager'));
+        echo '</button>';
+        echo '</div>';
+        echo '</div>';
+
+        if (!empty($_GET['updated'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Die Einstellungen wurden gespeichert.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (!empty($_GET['metrics-refreshed'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Die Kennzahlen wurden neu aufgebaut.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
         echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=' . $this->optionName)) . '">';
         wp_nonce_field($this->optionName . '_save');
         $this->renderFields();
         submit_button();
         echo '</form>';
+        echo '<hr>';
+        echo '<h2>' . esc_html__('Kennzahlen aktualisieren', 'rrze-multisite-manager') . '</h2>';
+        echo '<p>' . esc_html__('Leert den Kennzahlen-Cache. Die Daten werden beim nächsten Aufruf der Übersichten neu berechnet.', 'rrze-multisite-manager') . '</p>';
+        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_refresh_metrics')) . '">';
+        wp_nonce_field('rrze_multisite_manager_refresh_metrics');
+        submit_button(__('Kennzahlen aktualisieren', 'rrze-multisite-manager'), 'secondary', 'submit', false);
+        echo '</form>';
         echo '</div>';
+        echo '</div>';
+    }
+
+    public function refreshMetrics(): void {
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_refresh_metrics');
+        (new MetricsService($this, $this->config))->clearCache();
+
+        $redirectUrl = add_query_arg(
+            [
+                'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
+                'metrics-refreshed' => 'true',
+            ],
+            network_admin_url('admin.php')
+        );
+
+        wp_safe_redirect($redirectUrl);
+        exit;
     }
 
     protected function renderFields(): void {
@@ -217,37 +250,75 @@ class Settings {
             return;
         }
 
+        if ($type === 'number') {
+            echo '<input class="small-text" type="number" id="' . esc_attr($fieldId) . '" name="' . esc_attr($inputName) . '" value="' . esc_attr((string)$value) . '"';
+
+            if (isset($field['min'])) {
+                echo ' min="' . esc_attr((string)$field['min']) . '"';
+            }
+
+            if (isset($field['max'])) {
+                echo ' max="' . esc_attr((string)$field['max']) . '"';
+            }
+
+            echo ' step="1">';
+            return;
+        }
+
         echo '<input class="regular-text" type="text" id="' . esc_attr($fieldId) . '" name="' . esc_attr($inputName) . '" value="' . esc_attr((string)$value) . '">';
     }
 
     protected function normalizeOptions(array $options): array {
-        $key = '';
+        $sectionFields = [];
+        $field = [];
+        $compoundName = '';
+        $value = null;
 
-        foreach ($options as $key => $value) {
-            if ($this->isCheckboxOption($key)) {
-                $options[$key] = $this->sanitizeBoolean($value);
+        foreach ($this->settingsFields as $sectionName => $sectionFields) {
+            foreach ($sectionFields as $field) {
+                $compoundName = $sectionName . '_' . (string)$field['name'];
+                $value = $options[$compoundName] ?? ($field['default'] ?? '');
+                $options[$compoundName] = $this->sanitizeFieldValue($field, $value);
             }
         }
 
         return $options;
     }
 
-    protected function isCheckboxOption(string $key): bool {
-        $sectionFields = [];
-        $field = [];
-        $compoundName = '';
+    protected function sanitizeFieldValue(array $field, mixed $value): mixed {
+        $type = (string)($field['type'] ?? 'text');
+        $default = $field['default'] ?? '';
+        $min = isset($field['min']) ? (int)$field['min'] : null;
+        $max = isset($field['max']) ? (int)$field['max'] : null;
+        $number = 0;
 
-        foreach ($this->settingsFields as $sectionName => $sectionFields) {
-            foreach ($sectionFields as $field) {
-                $compoundName = $sectionName . '_' . (string)$field['name'];
-
-                if ($compoundName === $key) {
-                    return (($field['type'] ?? '') === 'checkbox');
-                }
-            }
+        if ($type === 'checkbox') {
+            return $this->sanitizeBoolean($value);
         }
 
-        return false;
+        if ($type === 'number') {
+            $number = is_numeric($value) ? (int)$value : (int)$default;
+
+            if ($min !== null && $number < $min) {
+                $number = $min;
+            }
+
+            if ($max !== null && $number > $max) {
+                $number = $max;
+            }
+
+            return $number;
+        }
+
+        return sanitize_text_field((string)$value);
+    }
+
+    public function getSettingsSlug(): string {
+        return (string)($this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings');
+    }
+
+    public function setOptionsPage(string $optionsPage): void {
+        $this->optionsPage = $optionsPage;
     }
 
     protected function sanitizeBoolean(mixed $value): bool {
@@ -264,5 +335,10 @@ class Settings {
         }
 
         return false;
+    }
+
+    protected function getColorMode(): string {
+        $mode = isset($_COOKIE['rrze_msm_color_mode']) ? sanitize_key((string)wp_unslash($_COOKIE['rrze_msm_color_mode'])) : 'light';
+        return $mode === 'dark' ? 'dark' : 'light';
     }
 }

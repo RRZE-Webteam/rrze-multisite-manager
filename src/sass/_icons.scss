@@ -1,0 +1,108 @@
+.rrze-msm-widget-controls {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: inline-flex;
+    gap: 6px;
+    z-index: 3;
+}
+
+.rrze-msm-widget-move {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    background: var(--rrze-msm-surface-alt);
+    color: var(--rrze-msm-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    line-height: 1;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+}
+
+.rrze-msm-widget-move:hover,
+.rrze-msm-widget-move:focus {
+    color: var(--rrze-msm-text);
+    border-color: var(--rrze-msm-info);
+}
+
+.rrze-msm-widget-move:disabled,
+.rrze-msm-widget-move[aria-disabled="true"] {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+}
+
+.rrze-msm-site-action.button.button-small,
+.rrze-msm-site-action-state {
+    width: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rrze-msm-site-action.button.button-small {
+    border-color: var(--rrze-msm-border);
+    background: var(--rrze-msm-surface-alt);
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-site-action.button.button-small:hover,
+.rrze-msm-site-action.button.button-small:focus {
+    border-color: var(--rrze-msm-info);
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-site-action-warning.button.button-small {
+    border-color: color-mix(in srgb, var(--rrze-msm-warning) 50%, var(--rrze-msm-border) 50%);
+    background: color-mix(in srgb, var(--rrze-msm-warning-soft) 55%, var(--rrze-msm-surface) 45%);
+    color: color-mix(in srgb, var(--rrze-msm-warning) 80%, #000 20%);
+}
+
+.rrze-msm-site-action-warning.button.button-small:hover,
+.rrze-msm-site-action-warning.button.button-small:focus {
+    border-color: var(--rrze-msm-warning);
+    background: color-mix(in srgb, var(--rrze-msm-warning-soft) 70%, var(--rrze-msm-surface) 30%);
+}
+
+.rrze-msm-site-action-danger.button.button-small {
+    border-color: color-mix(in srgb, var(--rrze-msm-danger) 55%, var(--rrze-msm-border) 45%);
+    background: color-mix(in srgb, var(--rrze-msm-danger-soft) 55%, var(--rrze-msm-surface) 45%);
+    color: color-mix(in srgb, var(--rrze-msm-danger) 82%, #000 18%);
+}
+
+.rrze-msm-site-action-danger.button.button-small:hover,
+.rrze-msm-site-action-danger.button.button-small:focus {
+    border-color: var(--rrze-msm-danger);
+    background: color-mix(in srgb, var(--rrze-msm-danger-soft) 72%, var(--rrze-msm-surface) 28%);
+}
+
+.rrze-msm-site-action-positive.button.button-small {
+    border-color: color-mix(in srgb, var(--rrze-msm-positive) 55%, var(--rrze-msm-border) 45%);
+    background: color-mix(in srgb, var(--rrze-msm-positive-soft) 55%, var(--rrze-msm-surface) 45%);
+    color: color-mix(in srgb, var(--rrze-msm-positive) 82%, #000 18%);
+}
+
+.rrze-msm-site-action-positive.button.button-small:hover,
+.rrze-msm-site-action-positive.button.button-small:focus {
+    border-color: var(--rrze-msm-positive);
+    background: color-mix(in srgb, var(--rrze-msm-positive-soft) 72%, var(--rrze-msm-surface) 28%);
+}
+
+.rrze-msm-site-action .dashicons,
+.rrze-msm-site-action-state .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+}

@@ -1,3 +1,141 @@
-.rrze-multisite-manager {
-    display: block;
+@use "settings";
+@use "icons";
+@use "badges";
+@use "widgets/widgets";
+
+body.rrze-msm-mode-light,
+body.rrze-msm-mode-dark {
+    background-color: var(--rrze-msm-page-bg);
+}
+
+.rrze-multisite-manager-admin {
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-page-shell {
+    background: var(--rrze-msm-page-bg);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    padding: 24px;
+    min-height: calc(100vh - 140px);
+}
+
+.rrze-msm-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    margin: 0 0 24px;
+}
+
+.rrze-msm-page-header h1 {
+    margin: 0 0 8px;
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-page-header p {
+    margin: 0;
+    color: var(--rrze-msm-muted);
+    max-width: 70ch;
+}
+
+.rrze-msm-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.rrze-msm-view-form {
+    margin: 0;
+}
+
+.rrze-msm-view-form select {
+    min-width: 220px;
+}
+
+.rrze-msm-view-caption {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--rrze-msm-surface);
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: 999px;
+    padding: 8px 14px;
+    margin-bottom: 20px;
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-widget-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.rrze-msm-widget-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--rrze-msm-surface);
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    padding: 10px 12px;
+}
+
+.rrze-msm-delete-toggle {
+    margin-left: 16px;
+}
+
+.rrze-multisite-manager-admin .form-table th,
+.rrze-multisite-manager-admin .form-table td,
+.rrze-multisite-manager-admin .form-table label,
+.rrze-multisite-manager-admin .form-table legend,
+.rrze-multisite-manager-admin .form-table p,
+.rrze-multisite-manager-admin .description,
+.rrze-multisite-manager-admin hr,
+.rrze-multisite-manager-admin h2,
+.rrze-multisite-manager-admin .submit {
+    color: var(--rrze-msm-text);
+}
+
+.rrze-multisite-manager-admin .description {
+    color: var(--rrze-msm-muted);
+}
+
+.rrze-multisite-manager-admin input[type="text"],
+.rrze-multisite-manager-admin input[type="number"],
+.rrze-multisite-manager-admin select,
+.rrze-multisite-manager-admin textarea {
+    background: var(--rrze-msm-surface);
+    color: var(--rrze-msm-text);
+    border-color: var(--rrze-msm-border);
+}
+
+.rrze-multisite-manager-admin input[type="text"]:focus,
+.rrze-multisite-manager-admin input[type="number"]:focus,
+.rrze-multisite-manager-admin select:focus,
+.rrze-multisite-manager-admin textarea:focus {
+    border-color: var(--rrze-msm-info);
+    box-shadow: 0 0 0 1px var(--rrze-msm-info);
+}
+
+.rrze-multisite-manager-admin .button-secondary {
+    border-color: var(--rrze-msm-border);
+}
+
+@media (max-width: 960px) {
+    .rrze-msm-page-header {
+        flex-direction: column;
+    }
+
+    .rrze-msm-header-controls {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .rrze-msm-widget-selector {
+        grid-template-columns: 1fr;
+    }
 }

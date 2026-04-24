@@ -1,8 +1,8 @@
 {
   "name": "rrze-multisite-manager",
   "title": "RRZE Multisite Manager",
-  "version": "0.1.0-1",
-  "description": "Multisite-Management fuer WordPress im RRZE-Kontext",
+  "version": "0.1.0-36",
+  "description": "Multisite-Management für WordPress im RRZE-Kontext",
   "main": "rrze-multisite-manager.php",
   "textdomain": "rrze-multisite-manager",
   "textDomain": "rrze-multisite-manager",

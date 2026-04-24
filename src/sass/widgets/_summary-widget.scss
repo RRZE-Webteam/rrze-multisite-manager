@@ -1,0 +1,55 @@
+.rrze-msm-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.rrze-msm-card {
+    background: var(--rrze-msm-surface-alt);
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.rrze-msm-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 6px;
+}
+
+.rrze-msm-card-neutral::before {
+    background: var(--rrze-msm-neutral);
+}
+
+.rrze-msm-card-positive::before {
+    background: var(--rrze-msm-positive);
+}
+
+.rrze-msm-card-warning::before {
+    background: var(--rrze-msm-warning);
+}
+
+.rrze-msm-card-danger::before {
+    background: var(--rrze-msm-danger);
+}
+
+.rrze-msm-card-info::before {
+    background: var(--rrze-msm-info);
+}
+
+.rrze-msm-card-label {
+    display: block;
+    color: var(--rrze-msm-muted);
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.rrze-msm-card-value {
+    display: block;
+    font-size: 34px;
+    line-height: 1;
+    color: var(--rrze-msm-text);
+}
