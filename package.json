@@ -1,0 +1,50 @@
+{
+  "name": "rrze-multisite-manager",
+  "title": "RRZE Multisite Manager",
+  "version": "0.1.0-1",
+  "description": "Multisite-Management fuer WordPress im RRZE-Kontext",
+  "main": "rrze-multisite-manager.php",
+  "textdomain": "rrze-multisite-manager",
+  "textDomain": "rrze-multisite-manager",
+  "private": true,
+  "scripts": {
+    "readme": "node scripts/build-readme.js",
+    "version:dev": "node scripts/build-version.js dev",
+    "version:prod": "node scripts/build-version.js prod",
+    "version:release": "node scripts/build-version.js release",
+    "dev": "node scripts/build-assets.js dev && npm run version:dev && npm run readme",
+    "build": "node scripts/build-assets.js prod && npm run version:prod && npm run readme",
+    "prod": "npm run build",
+    "release": "node scripts/build-assets.js prod && npm run version:release && npm run readme",
+    "watch": "node scripts/build-assets.js dev --watch"
+  },
+  "compatibility": {
+    "wprequires": "6.9.4",
+    "wptestedup": "6.9.4",
+    "phprequires": "8.3"
+  },
+  "supports": {
+    "email": "webmaster@fau.de"
+  },
+  "author": {
+    "name": "RRZE-Webteam <webmaster@fau.de>",
+    "url": "https://www.wp.rrze.fau.de"
+  },
+  "source": {
+    "js": "./src/js/",
+    "css": "./src/sass/"
+  },
+  "target": {
+    "js": "./assets/js/",
+    "css": "./assets/css/"
+  },
+  "license": "GNU General Public License v3",
+  "licenseurl": "http://www.gnu.org/licenses/gpl-3.0.html",
+  "tags": "Plugin, WordPress, Multisite, RRZE, FAU",
+  "devDependencies": {
+    "sass": "^1.94.2"
+  },
+  "dependencies": {
+    "esbuild": "^0.27.3"
+  }
+}

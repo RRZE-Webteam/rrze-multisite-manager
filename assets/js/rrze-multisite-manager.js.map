@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/js/rrze-multisite-manager.js"],
+  "sourcesContent": ["'use strict';\n\nfunction initRrzeMultisiteManager() {\n    return true;\n}\n\ndocument.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);\n"],
+  "mappings": ";;;AAEA,WAAS,2BAA2B;AAChC,WAAO;AAAA,EACX;AAEA,WAAS,iBAAiB,oBAAoB,wBAAwB;",
+  "names": []
+}
