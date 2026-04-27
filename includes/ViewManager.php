@@ -122,6 +122,8 @@ class ViewManager {
                     'blocked_sites',
                     'deleted_sites',
                     'plugin_usage',
+                    'inactive_plugins',
+                    'inactive_themes',
                 ],
                 'system' => true,
             ],
@@ -137,6 +139,9 @@ class ViewManager {
                 'widgets' => [
                     'summary',
                     'theme_usage',
+                    'plugin_usage',
+                    'inactive_plugins',
+                    'inactive_themes',
                     'editor_usage',
                     'theme_overview',
                 ],

@@ -48,6 +48,10 @@ abstract class Widgets {
         return trim($html);
     }
 
+    public function renderActionsForSite(array $site): string {
+        return $this->renderSiteActions($site);
+    }
+
     public function renderSiteTable(array $sites, array $args = []): string {
         $site = [];
         $rowClass = '';
@@ -335,11 +339,11 @@ abstract class Widgets {
 
     protected function getAccentColor(string $accent): string {
         $colors = [
-            'positive' => '#137333',
-            'warning' => '#b26a00',
-            'danger' => '#b42318',
-            'info' => '#175cd3',
-            'neutral' => '#475467',
+            'positive' => 'var(--rrze-msm-positive)',
+            'warning' => 'var(--rrze-msm-warning)',
+            'danger' => 'var(--rrze-msm-danger)',
+            'info' => 'var(--rrze-msm-info)',
+            'neutral' => 'var(--rrze-msm-neutral)',
             'theme-1' => '#175cd3',
             'theme-2' => '#137333',
             'theme-3' => '#b26a00',
@@ -348,7 +352,7 @@ abstract class Widgets {
             'theme-6' => '#087443',
         ];
 
-        return $colors[$accent] ?? '#475467';
+        return $colors[$accent] ?? 'var(--rrze-msm-neutral)';
     }
 
     protected function renderSiteAdminEmail(string $email): string {
@@ -402,7 +406,7 @@ abstract class Widgets {
         if ($isNormal) {
             $actions[] = $this->renderSiteActionLink(
                 $this->getSiteStatusPageUrl($siteId, 'archive'),
-                __('Deaktivieren', 'rrze-multisite-manager'),
+                __('Archivieren', 'rrze-multisite-manager'),
                 'archive'
             );
             $actions[] = $this->renderSiteActionLink(
@@ -422,6 +426,14 @@ abstract class Widgets {
                 $this->getSiteStatusSubmitUrl($siteId, 'delete'),
                 __('Zum Löschen markieren', 'rrze-multisite-manager'),
                 'trash'
+            );
+        }
+
+        if ($isDeleted) {
+            $actions[] = $this->renderSiteActionLink(
+                $this->getSiteStatusSubmitUrl($siteId, 'restore'),
+                __('Wiederherstellen', 'rrze-multisite-manager'),
+                'backup'
             );
         }
 
@@ -575,7 +587,7 @@ abstract class Widgets {
         }
 
         if ($icon === 'lock') {
-            return 'rrze-msm-site-action-danger';
+            return 'rrze-msm-site-action-blocked';
         }
 
         if ($icon === 'trash') {
@@ -586,7 +598,7 @@ abstract class Widgets {
             return 'rrze-msm-site-action-positive';
         }
 
-        return 'rrze-msm-site-action-neutral';
+        return '';
     }
 
     protected function getSiteStatusPageUrl(int $siteId, string $statusAction): string {

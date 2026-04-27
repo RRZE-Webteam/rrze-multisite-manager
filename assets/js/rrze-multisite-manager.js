@@ -20,6 +20,121 @@
     }
     select.addEventListener("change", submitViewForm);
   }
+  function closeDeleteCptModal() {
+    var modal = document.querySelector("#rrze-msm-delete-cpt-modal");
+    if (!modal) {
+      return;
+    }
+    modal.setAttribute("hidden", "hidden");
+  }
+  function updateDeleteCptSubmitState() {
+    var checkbox = document.querySelector("#rrze-msm-delete-cpt-confirm");
+    var submit = document.querySelector("#rrze-msm-delete-cpt-submit");
+    if (!checkbox || !submit) {
+      return;
+    }
+    submit.disabled = !checkbox.checked;
+  }
+  function closePluginDeactivateModal() {
+    var modal = document.querySelector("#rrze-msm-plugin-deactivate-modal");
+    if (!modal) {
+      return;
+    }
+    modal.setAttribute("hidden", "hidden");
+  }
+  function updatePluginDeactivateSubmitState() {
+    var checkbox = document.querySelector("#rrze-msm-plugin-deactivate-confirm");
+    var submit = document.querySelector("#rrze-msm-plugin-deactivate-submit");
+    if (!checkbox || !submit) {
+      return;
+    }
+    if (checkbox.checked) {
+      submit.classList.remove("disabled");
+      submit.removeAttribute("aria-disabled");
+      return;
+    }
+    submit.classList.add("disabled");
+    submit.setAttribute("aria-disabled", "true");
+  }
+  function onDeleteCptButtonClick(event) {
+    var button = event.currentTarget;
+    var modal = document.querySelector("#rrze-msm-delete-cpt-modal");
+    var target = document.querySelector("#rrze-msm-delete-cpt-target");
+    var input = document.querySelector("#rrze-msm-delete-cpt-input");
+    var checkbox = document.querySelector("#rrze-msm-delete-cpt-confirm");
+    if (!button || !modal || !target || !input || !checkbox) {
+      return;
+    }
+    target.textContent = button.getAttribute("data-post-type-label") || button.getAttribute("data-post-type") || "";
+    input.value = button.getAttribute("data-post-type") || "";
+    checkbox.checked = false;
+    updateDeleteCptSubmitState();
+    modal.removeAttribute("hidden");
+  }
+  function onPluginDeactivateButtonClick(event) {
+    var button = event.currentTarget;
+    var modal = document.querySelector("#rrze-msm-plugin-deactivate-modal");
+    var target = document.querySelector("#rrze-msm-plugin-deactivate-target");
+    var submit = document.querySelector("#rrze-msm-plugin-deactivate-submit");
+    var checkbox = document.querySelector("#rrze-msm-plugin-deactivate-confirm");
+    if (!button || !modal || !target || !submit || !checkbox) {
+      return;
+    }
+    target.textContent = button.getAttribute("data-plugin-name") || "";
+    submit.setAttribute("href", button.getAttribute("data-deactivate-url") || "#");
+    checkbox.checked = false;
+    updatePluginDeactivateSubmitState();
+    modal.removeAttribute("hidden");
+  }
+  function onCloseDeleteCptModalClick(event) {
+    event.preventDefault();
+    closeDeleteCptModal();
+  }
+  function onClosePluginDeactivateModalClick(event) {
+    event.preventDefault();
+    closePluginDeactivateModal();
+  }
+  function onPluginDeactivateSubmitClick(event) {
+    var submit = event.currentTarget;
+    if (!submit || submit.getAttribute("aria-disabled") === "true") {
+      event.preventDefault();
+    }
+  }
+  function initDeleteCptModal() {
+    var openButtons = document.querySelectorAll(".rrze-msm-open-delete-cpt-modal");
+    var closeButtons = document.querySelectorAll(".rrze-msm-close-modal");
+    var checkbox = document.querySelector("#rrze-msm-delete-cpt-confirm");
+    var i = 0;
+    for (i = 0; i < openButtons.length; i++) {
+      openButtons[i].addEventListener("click", onDeleteCptButtonClick);
+    }
+    for (i = 0; i < closeButtons.length; i++) {
+      closeButtons[i].addEventListener("click", onCloseDeleteCptModalClick);
+    }
+    if (checkbox) {
+      checkbox.addEventListener("change", updateDeleteCptSubmitState);
+    }
+  }
+  function initPluginDeactivateModal() {
+    var openButtons = document.querySelectorAll(".rrze-msm-open-plugin-deactivate-modal");
+    var closeButtons = document.querySelectorAll(".rrze-msm-close-plugin-modal");
+    var checkbox = document.querySelector("#rrze-msm-plugin-deactivate-confirm");
+    var submit = document.querySelector("#rrze-msm-plugin-deactivate-submit");
+    var i = 0;
+    for (i = 0; i < openButtons.length; i++) {
+      openButtons[i].addEventListener("click", onPluginDeactivateButtonClick);
+    }
+    for (i = 0; i < closeButtons.length; i++) {
+      closeButtons[i].addEventListener("click", onClosePluginDeactivateModalClick);
+    }
+    if (checkbox) {
+      checkbox.addEventListener("change", updatePluginDeactivateSubmitState);
+    }
+    if (submit) {
+      submit.addEventListener("click", onPluginDeactivateSubmitClick);
+      updatePluginDeactivateSubmitState();
+    }
+  }
   function moveWidget(widget, direction) {
     var sibling = null;
     var parent = null;
@@ -211,7 +326,7 @@
     return "desc";
   }
   function getSiteTableSortType(key) {
-    if (key === "registered" || key === "last-updated" || key === "storage") {
+    if (key === "registered" || key === "last-updated" || key === "storage" || key === "active-sites") {
       return "number";
     }
     return "string";
@@ -504,6 +619,8 @@
     initSiteTables();
     initModeToggle();
     initSiteSearch();
+    initDeleteCptModal();
+    initPluginDeactivateModal();
   }
   document.addEventListener("DOMContentLoaded", initRrzeMultisiteManager);
 })();

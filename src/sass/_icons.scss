@@ -63,40 +63,69 @@
     color: var(--rrze-msm-text);
 }
 
+.rrze-msm-site-action-blocked.button.button-small {
+    border-color: var(--rrze-msm-neutral);
+    background: var(--rrze-msm-neutral);
+    color: var(--rrze-msm-neutral-text);
+}
+
+.rrze-msm-site-action-blocked.button.button-small:hover,
+.rrze-msm-site-action-blocked.button.button-small:focus {
+    border-color: var(--rrze-msm-neutral);
+    background: color-mix(in srgb, var(--rrze-msm-neutral) 88%, #000 12%);
+    color: var(--rrze-msm-neutral-text);
+}
+
 .rrze-msm-site-action-warning.button.button-small {
-    border-color: color-mix(in srgb, var(--rrze-msm-warning) 50%, var(--rrze-msm-border) 50%);
-    background: color-mix(in srgb, var(--rrze-msm-warning-soft) 55%, var(--rrze-msm-surface) 45%);
-    color: color-mix(in srgb, var(--rrze-msm-warning) 80%, #000 20%);
+    border-color: var(--rrze-msm-warning);
+    background: var(--rrze-msm-warning);
+    color: var(--rrze-msm-warning-text);
 }
 
 .rrze-msm-site-action-warning.button.button-small:hover,
 .rrze-msm-site-action-warning.button.button-small:focus {
     border-color: var(--rrze-msm-warning);
-    background: color-mix(in srgb, var(--rrze-msm-warning-soft) 70%, var(--rrze-msm-surface) 30%);
+    background: color-mix(in srgb, var(--rrze-msm-warning) 88%, #000 12%);
+    color: var(--rrze-msm-warning-text);
 }
 
 .rrze-msm-site-action-danger.button.button-small {
-    border-color: color-mix(in srgb, var(--rrze-msm-danger) 55%, var(--rrze-msm-border) 45%);
-    background: color-mix(in srgb, var(--rrze-msm-danger-soft) 55%, var(--rrze-msm-surface) 45%);
-    color: color-mix(in srgb, var(--rrze-msm-danger) 82%, #000 18%);
+    border-color: var(--rrze-msm-danger);
+    background: var(--rrze-msm-danger);
+    color: var(--rrze-msm-danger-text);
 }
 
 .rrze-msm-site-action-danger.button.button-small:hover,
 .rrze-msm-site-action-danger.button.button-small:focus {
     border-color: var(--rrze-msm-danger);
-    background: color-mix(in srgb, var(--rrze-msm-danger-soft) 72%, var(--rrze-msm-surface) 28%);
+    background: color-mix(in srgb, var(--rrze-msm-danger) 88%, #000 12%);
+    color: var(--rrze-msm-danger-text);
 }
 
 .rrze-msm-site-action-positive.button.button-small {
-    border-color: color-mix(in srgb, var(--rrze-msm-positive) 55%, var(--rrze-msm-border) 45%);
-    background: color-mix(in srgb, var(--rrze-msm-positive-soft) 55%, var(--rrze-msm-surface) 45%);
-    color: color-mix(in srgb, var(--rrze-msm-positive) 82%, #000 18%);
+    border-color: var(--rrze-msm-positive);
+    background: var(--rrze-msm-positive);
+    color: var(--rrze-msm-positive-text);
 }
 
 .rrze-msm-site-action-positive.button.button-small:hover,
 .rrze-msm-site-action-positive.button.button-small:focus {
     border-color: var(--rrze-msm-positive);
-    background: color-mix(in srgb, var(--rrze-msm-positive-soft) 72%, var(--rrze-msm-surface) 28%);
+    background: color-mix(in srgb, var(--rrze-msm-positive) 88%, #000 12%);
+    color: var(--rrze-msm-positive-text);
+}
+
+.rrze-msm-site-action-info.button.button-small {
+    border-color: var(--rrze-msm-status-info-bg);
+    background: var(--rrze-msm-status-info-bg);
+    color: var(--rrze-msm-status-info-text);
+}
+
+.rrze-msm-site-action-info.button.button-small:hover,
+.rrze-msm-site-action-info.button.button-small:focus {
+    border-color: var(--rrze-msm-status-info-bg);
+    background: color-mix(in srgb, var(--rrze-msm-status-info-bg) 88%, #000 12%);
+    color: var(--rrze-msm-status-info-text);
 }
 
 .rrze-msm-site-action .dashicons,

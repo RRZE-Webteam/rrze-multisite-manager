@@ -1,5 +1,5 @@
 === Plugin Name: RRZE Multisite Manager ===
-Version: 0.1.0-36
+Version: 0.1.0-59
 Plugin URI: 
 GitHub Issue URL: 
 Author: RRZE-Webteam <webmaster@fau.de>
@@ -14,4 +14,4 @@ Tags: Plugin, WordPress, Multisite, RRZE, FAU
 
 == Description ==
 
-Multisite-Management für WordPress im RRZE-Kontext
+Multisite-Management für WordPress

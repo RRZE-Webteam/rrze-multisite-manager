@@ -10,6 +10,8 @@ use RRZE\MultisiteManager\Widgets\DeletedSitesWidget;
 use RRZE\MultisiteManager\Widgets\EditorUsageWidget;
 use RRZE\MultisiteManager\Widgets\GrowthWidget;
 use RRZE\MultisiteManager\Widgets\InactiveSitesWidget;
+use RRZE\MultisiteManager\Widgets\InactivePluginsWidget;
+use RRZE\MultisiteManager\Widgets\InactiveThemesWidget;
 use RRZE\MultisiteManager\Widgets\PluginUsageWidget;
 use RRZE\MultisiteManager\Widgets\RecentSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
@@ -53,6 +55,9 @@ class Dashboard {
         add_action('wp_ajax_rrze_msm_search_sites', [$this, 'ajaxSearchSites']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('network_admin_edit_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
+        add_action('network_admin_edit_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
+        add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
+        add_action('network_admin_edit_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
     }
 
     public function registerMenu(): void {
@@ -237,6 +242,10 @@ class Dashboard {
     public function renderSiteOverviewPage(): void {
         $dashboardData = [];
         $widget = null;
+        $currentTab = isset($_GET['tab']) ? sanitize_key((string)$_GET['tab']) : 'all';
+        $summary = [];
+        $tabs = [];
+        $tabTables = [];
 
         if (!current_user_can('manage_network_options')) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -244,11 +253,141 @@ class Dashboard {
 
         $dashboardData = $this->metrics->getDashboardData();
         $widget = new SiteOverviewWidget($this->plugin, $this->config);
+        $summary = is_array($dashboardData['summary'] ?? null) ? $dashboardData['summary'] : [];
+
+        if (!in_array($currentTab, ['all', 'active', 'archived', 'blocked', 'deleted'], true)) {
+            $currentTab = 'all';
+        }
+
+        $tabs = [
+            [
+                'slug' => 'all',
+                'label' => __('Alle Websites', 'rrze-multisite-manager'),
+                'count' => (int)($summary['total_sites'] ?? 0),
+                'class' => 'rrze-msm-tab-all',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'all',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'active',
+                'label' => __('Aktive Websites', 'rrze-multisite-manager'),
+                'count' => (int)($summary['active_sites'] ?? 0),
+                'class' => 'rrze-msm-tab-positive',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'active',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'archived',
+                'label' => __('Archivierte Websites', 'rrze-multisite-manager'),
+                'count' => (int)($summary['archived_sites'] ?? 0),
+                'class' => 'rrze-msm-tab-warning',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'archived',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'blocked',
+                'label' => __('Gesperrte Websites', 'rrze-multisite-manager'),
+                'count' => (int)($summary['spam_sites'] ?? 0),
+                'class' => 'rrze-msm-tab-gold',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'blocked',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'deleted',
+                'label' => __('Zu löschende Sites', 'rrze-multisite-manager'),
+                'count' => (int)($summary['deleted_sites'] ?? 0),
+                'class' => 'rrze-msm-tab-danger',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'deleted',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+        ];
+
+        $tabTables = [
+            'all' => $widget->renderSiteOverviewTable(
+                $dashboardData['site_overview'] ?? [],
+                [
+                    'table_id' => 'site-overview-page-all',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'registered',
+                    'sort_direction' => 'desc',
+                ]
+            ),
+            'active' => $widget->renderSiteOverviewTable(
+                array_values(
+                    array_filter(
+                        $dashboardData['site_overview'] ?? [],
+                        static function (array $site): bool {
+                            return empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']);
+                        }
+                    )
+                ),
+                [
+                    'table_id' => 'site-overview-page-active',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'registered',
+                    'sort_direction' => 'desc',
+                ]
+            ),
+            'archived' => $widget->renderSiteOverviewTable(
+                $dashboardData['archived_sites'] ?? [],
+                [
+                    'table_id' => 'site-overview-page-archived',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'registered',
+                    'sort_direction' => 'desc',
+                ]
+            ),
+            'blocked' => $widget->renderSiteOverviewTable(
+                $dashboardData['blocked_sites'] ?? [],
+                [
+                    'table_id' => 'site-overview-page-blocked',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'registered',
+                    'sort_direction' => 'desc',
+                ]
+            ),
+            'deleted' => $widget->renderSiteOverviewTable(
+                $dashboardData['deleted_sites'] ?? [],
+                [
+                    'table_id' => 'site-overview-page-deleted',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'registered',
+                    'sort_direction' => 'desc',
+                ]
+            ),
+        ];
 
         echo $this->template->render(
             'site-overview-page',
             [
-                'site_overview_table' => $widget->renderTable($dashboardData),
+                'site_overview_table' => $tabTables[$currentTab] ?? $tabTables['all'],
+                'overview_tabs' => $tabs,
+                'current_tab' => $currentTab,
                 'status_updated' => !empty($_GET['status-updated']),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
@@ -260,9 +399,106 @@ class Dashboard {
     public function renderSiteDetailsPage(): void {
         $siteId = isset($_GET['site_id']) ? absint($_GET['site_id']) : 0;
         $siteDetails = $siteId > 0 ? $this->metrics->getSiteDetails($siteId) : [];
+        $siteWidget = null;
+        $statusSections = [];
+        $optionsOverview = is_array($siteDetails['options_overview'] ?? null) ? $siteDetails['options_overview'] : ['groups' => []];
+        $optionsGroups = is_array($optionsOverview['groups'] ?? null) ? $optionsOverview['groups'] : [];
+        $currentOptionsTab = isset($_GET['options_tab']) ? sanitize_key((string)$_GET['options_tab']) : '';
+        $currentContentTab = isset($_GET['content_tab']) ? sanitize_key((string)$_GET['content_tab']) : 'overview';
+        $currentProcessTab = isset($_GET['process_tab']) ? sanitize_key((string)$_GET['process_tab']) : 'stats';
+        $validOptionTabs = [];
+        $optionsGroup = [];
+        $optionNotices = [];
+        $contentNotices = [];
+        $hasCustomPages = false;
+        $customPostType = [];
+        $customPages = [];
+        $hasBlockTemplateTypes = !empty($siteDetails['block_template_types']) && is_array($siteDetails['block_template_types']);
 
         if (!current_user_can('manage_network_options')) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        $siteWidget = new SiteOverviewWidget($this->plugin, $this->config);
+
+        foreach ($optionsGroups as $optionsGroup) {
+            if (!is_array($optionsGroup) || empty($optionsGroup['slug'])) {
+                continue;
+            }
+
+            $validOptionTabs[] = (string)$optionsGroup['slug'];
+        }
+
+        if (!in_array($currentOptionsTab, $validOptionTabs, true)) {
+            $currentOptionsTab = '';
+        }
+
+        foreach ((array)($siteDetails['custom_post_types'] ?? []) as $customPostType) {
+            if ((string)($customPostType['group'] ?? '') === 'page') {
+                $hasCustomPages = true;
+                $customPages[] = $customPostType;
+            }
+        }
+
+        if (!in_array($currentContentTab, ['overview', 'custom-post-types', 'custom-pages', 'block-templates'], true)) {
+            $currentContentTab = 'overview';
+        }
+
+        if ($currentContentTab === 'custom-pages' && !$hasCustomPages) {
+            $currentContentTab = 'overview';
+        }
+
+        if ($currentContentTab === 'block-templates' && !$hasBlockTemplateTypes) {
+            $currentContentTab = 'overview';
+        }
+
+        if (!in_array($currentProcessTab, ['stats', 'transients', 'scheduler'], true)) {
+            $currentProcessTab = 'stats';
+        }
+
+        if (!empty($siteDetails['is_archived'])) {
+            $statusSections[] = [
+                'title' => __('Archiviert', 'rrze-multisite-manager'),
+                'date_label' => __('Archiviert seit', 'rrze-multisite-manager'),
+                'date_value' => $this->formatStatusDate((string)($siteDetails['archived_at'] ?? '')),
+                'user_label' => __('Archiviert von', 'rrze-multisite-manager'),
+                'user_value' => $this->getStatusUserLabel($siteDetails),
+                'note' => (string)($siteDetails['status_note'] ?? ''),
+            ];
+        }
+
+        if (!empty($siteDetails['is_spam'])) {
+            $statusSections[] = [
+                'title' => __('Gesperrt', 'rrze-multisite-manager'),
+                'date_label' => __('Gesperrt seit', 'rrze-multisite-manager'),
+                'date_value' => $this->formatStatusDate((string)($siteDetails['spam_at'] ?? '')),
+                'user_label' => __('Gesperrt von', 'rrze-multisite-manager'),
+                'user_value' => $this->getStatusUserLabel($siteDetails),
+                'note' => (string)($siteDetails['status_note'] ?? ''),
+            ];
+        }
+
+        if (!empty($_GET['option_deleted'])) {
+            $optionNotices[] = sprintf(
+                __('Option "%s" wurde gelöscht.', 'rrze-multisite-manager'),
+                sanitize_text_field((string)$_GET['option_deleted'])
+            );
+        }
+
+        if (!empty($_GET['option_group_deleted'])) {
+            $optionNotices[] = sprintf(
+                __('%1$d Optionen aus der Gruppe "%2$s" wurden gelöscht.', 'rrze-multisite-manager'),
+                absint($_GET['option_group_deleted_count'] ?? 0),
+                sanitize_text_field((string)$_GET['option_group_deleted'])
+            );
+        }
+
+        if (!empty($_GET['deleted_post_type'])) {
+            $contentNotices[] = sprintf(
+                __('%1$d Einträge des Custom Post Types "%2$s" wurden endgültig gelöscht.', 'rrze-multisite-manager'),
+                absint($_GET['deleted_post_type_count'] ?? 0),
+                sanitize_text_field((string)$_GET['deleted_post_type'])
+            );
         }
 
         echo $this->template->render(
@@ -270,7 +506,14 @@ class Dashboard {
             [
                 'site_id' => $siteId,
                 'site_details' => $siteDetails,
+                'site_actions' => !empty($siteDetails) ? $siteWidget->renderActionsForSite($siteDetails) : '',
+                'site_plugins_url' => $siteId > 0 ? get_admin_url($siteId, 'plugins.php') : '',
+                'site_themes_url' => $siteId > 0 ? get_admin_url($siteId, 'themes.php') : '',
+                'site_customizer_url' => $siteId > 0 ? get_admin_url($siteId, 'customize.php') : '',
+                'site_menus_url' => $siteId > 0 ? get_admin_url($siteId, 'nav-menus.php') : '',
+                'site_editor_url' => $siteId > 0 && !empty($siteDetails['theme']['is_block_theme']) ? get_admin_url($siteId, 'site-editor.php') : '',
                 'site_search_placeholder' => __('Website nach Titel oder URL suchen', 'rrze-multisite-manager'),
+                'site_details_base_url' => $this->getSiteDetailsUrl(),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
                 'status_badges_html' => !empty($siteDetails['status']) && is_array($siteDetails['status'])
@@ -279,6 +522,19 @@ class Dashboard {
                 'status_user_label' => $this->getStatusUserLabel($siteDetails),
                 'archived_at_label' => $this->formatStatusDate((string)($siteDetails['archived_at'] ?? '')),
                 'blocked_at_label' => $this->formatStatusDate((string)($siteDetails['spam_at'] ?? '')),
+                'status_sections' => $statusSections,
+                'site_users_url' => $siteId > 0 ? get_admin_url($siteId, 'users.php') : '',
+                'site_user_edit_base_url' => $siteId > 0 ? get_admin_url($siteId, 'user-edit.php') : '',
+                'site_options_groups' => $optionsGroups,
+                'site_options_current_tab' => $currentOptionsTab,
+                'site_option_delete_action' => network_admin_url('edit.php?action=rrze_multisite_manager_delete_site_option'),
+                'site_option_group_delete_action' => network_admin_url('edit.php?action=rrze_multisite_manager_delete_site_option_group'),
+                'site_options_notice_messages' => $optionNotices,
+                'site_content_current_tab' => $currentContentTab,
+                'site_process_current_tab' => $currentProcessTab,
+                'site_custom_pages' => $customPages,
+                'site_content_notice_messages' => $contentNotices,
+                'site_post_type_delete_action' => network_admin_url('edit.php?action=rrze_multisite_manager_delete_post_type_entries'),
             ],
             $this
         );
@@ -315,7 +571,7 @@ class Dashboard {
                 'site_url' => get_home_url($siteId, '/'),
                 'status_action' => $statusAction,
                 'status_action_label' => $statusAction === 'archive'
-                    ? __('Deaktivieren', 'rrze-multisite-manager')
+                    ? __('Archivieren', 'rrze-multisite-manager')
                     : __('Sperren', 'rrze-multisite-manager'),
                 'status_action_description' => $statusAction === 'archive'
                     ? __('Setzt den Site-Status auf archiviert.', 'rrze-multisite-manager')
@@ -411,6 +667,7 @@ class Dashboard {
         $site = $siteId > 0 ? get_site($siteId) : null;
         $isArchived = false;
         $isSpam = false;
+        $isDeleted = false;
         $redirectUrl = $this->getSiteOverviewUrl();
 
         if (!current_user_can('manage_network_options')) {
@@ -423,6 +680,7 @@ class Dashboard {
 
         $isArchived = ((int)$site->archived === 1);
         $isSpam = ((int)$site->spam === 1);
+        $isDeleted = ((int)$site->deleted === 1);
 
         if (is_main_site($siteId) && in_array($statusAction, ['archive', 'spam', 'delete'], true)) {
             wp_die(esc_html__('Die Hauptsite kann nicht auf diese Weise geändert werden.', 'rrze-multisite-manager'));
@@ -436,8 +694,8 @@ class Dashboard {
             check_admin_referer('rrze_multisite_manager_site_status_' . $statusAction . '_' . $siteId);
             $this->applySiteStatus($siteId, $statusAction, $note);
         } elseif ($statusAction === 'restore') {
-            if (!$isArchived && !$isSpam) {
-                wp_die(esc_html__('Nur archivierte oder gesperrte Sites können wiederhergestellt werden.', 'rrze-multisite-manager'));
+            if (!$isArchived && !$isSpam && !$isDeleted) {
+                wp_die(esc_html__('Nur archivierte, gesperrte oder zum Löschen markierte Sites können wiederhergestellt werden.', 'rrze-multisite-manager'));
             }
 
             check_admin_referer('rrze_multisite_manager_site_status_restore_' . $siteId);
@@ -461,6 +719,117 @@ class Dashboard {
             ],
             network_admin_url('admin.php')
         );
+
+        wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function handleSiteOptionDelete(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        $optionName = isset($_POST['option_name']) ? sanitize_text_field((string)wp_unslash($_POST['option_name'])) : '';
+        $optionsTab = isset($_POST['options_tab']) ? sanitize_key((string)wp_unslash($_POST['options_tab'])) : 'all';
+        $redirectUrl = $this->getSiteDetailsUrl($siteId);
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to delete site options.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_delete_site_option_' . $siteId . '_' . $optionName);
+
+        if ($siteId <= 0 || $optionName === '') {
+            wp_die(esc_html__('Ungültige Option.', 'rrze-multisite-manager'));
+        }
+
+        if ($this->metrics->isWordPressCoreOptionName($optionName)) {
+            wp_die(esc_html__('WordPress-Core-Optionen können hier nicht gelöscht werden.', 'rrze-multisite-manager'));
+        }
+
+        $this->metrics->deleteSiteOption($siteId, $optionName);
+        $this->metrics->clearCache();
+
+        $redirectUrl = add_query_arg(
+            [
+                'site_id' => $siteId,
+                'options_tab' => $optionsTab,
+                'option_deleted' => $optionName,
+            ],
+            $this->getSiteDetailsUrl()
+        ) . '#rrze-msm-site-options';
+
+        wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function handleSiteOptionGroupDelete(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        $groupKey = isset($_POST['group_key']) ? sanitize_key((string)wp_unslash($_POST['group_key'])) : '';
+        $redirectUrl = $this->getSiteDetailsUrl($siteId);
+        $deletedCount = 0;
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to delete site options.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_delete_site_option_group_' . $siteId . '_' . $groupKey);
+
+        if ($siteId <= 0 || $groupKey === '') {
+            wp_die(esc_html__('Ungültige Options-Gruppe.', 'rrze-multisite-manager'));
+        }
+
+        if ($this->metrics->isWordPressCoreOptionGroup($groupKey)) {
+            wp_die(esc_html__('Die WordPress-Core-Gruppe kann hier nicht gelöscht werden.', 'rrze-multisite-manager'));
+        }
+
+        $deletedCount = $this->metrics->deleteSiteOptionGroup($siteId, $groupKey);
+        $this->metrics->clearCache();
+
+        $redirectUrl = add_query_arg(
+            [
+                'site_id' => $siteId,
+                'options_tab' => $groupKey,
+                'option_group_deleted' => $groupKey,
+                'option_group_deleted_count' => $deletedCount,
+            ],
+            $this->getSiteDetailsUrl()
+        ) . '#rrze-msm-site-options';
+
+        wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function handlePostTypeDelete(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        $postType = isset($_POST['post_type']) ? sanitize_key((string)wp_unslash($_POST['post_type'])) : '';
+        $confirmDelete = isset($_POST['confirm_delete']) ? sanitize_text_field((string)wp_unslash($_POST['confirm_delete'])) : '';
+        $deletedCount = 0;
+        $redirectUrl = $this->getSiteDetailsUrl($siteId);
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to delete post type entries.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_delete_post_type_entries_' . $siteId);
+
+        if ($siteId <= 0 || $postType === '') {
+            wp_die(esc_html__('Ungültiger Custom Post Type.', 'rrze-multisite-manager'));
+        }
+
+        if ($confirmDelete !== '1') {
+            wp_die(esc_html__('Die Sicherheitsbestätigung fehlt.', 'rrze-multisite-manager'));
+        }
+
+        $deletedCount = $this->metrics->deletePostTypeEntries($siteId, $postType);
+        $this->metrics->clearCache();
+
+        $redirectUrl = add_query_arg(
+            [
+                'site_id' => $siteId,
+                'content_tab' => 'custom-post-types',
+                'deleted_post_type' => $postType,
+                'deleted_post_type_count' => $deletedCount,
+            ],
+            $this->getSiteDetailsUrl()
+        ) . '#rrze-msm-site-content';
 
         wp_safe_redirect($redirectUrl);
         exit;
@@ -560,6 +929,8 @@ class Dashboard {
             'deleted_sites' => new DeletedSitesWidget($this->plugin, $this->config),
             'theme_overview' => new ThemeOverviewWidget($this->plugin, $this->config),
             'plugin_usage' => new PluginUsageWidget($this->plugin, $this->config),
+            'inactive_plugins' => new InactivePluginsWidget($this->plugin, $this->config),
+            'inactive_themes' => new InactiveThemesWidget($this->plugin, $this->config),
         ];
     }
 

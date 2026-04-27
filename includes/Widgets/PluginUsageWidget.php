@@ -27,10 +27,22 @@ class PluginUsageWidget extends Widgets {
 
     protected function getTemplateData(array $dashboardData): array {
         $pluginUsage = $dashboardData['plugin_usage'] ?? [];
+        $plugins = array_values(
+            array_filter(
+                $pluginUsage['plugins'] ?? [],
+                [$this, 'isActivePlugin']
+            )
+        );
 
         return [
             'summary' => $pluginUsage['summary'] ?? [],
-            'plugins' => $pluginUsage['top_plugins'] ?? [],
+            'plugins' => $plugins,
+            'network_plugins_url' => network_admin_url('plugins.php'),
+            'default_per_page' => 10,
         ];
+    }
+
+    protected function isActivePlugin(array $plugin): bool {
+        return (int)($plugin['site_count'] ?? 0) > 0;
     }
 }

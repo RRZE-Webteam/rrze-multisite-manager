@@ -41,9 +41,9 @@ class SummaryWidget extends Widgets {
                     'accent' => 'positive',
                 ],
                 [
-                    'label' => __('Öffentliche Sites', 'rrze-multisite-manager'),
-                    'value' => $summary['public_sites'] ?? 0,
-                    'accent' => 'positive',
+                    'label' => __('Gesperrt', 'rrze-multisite-manager'),
+                    'value' => $summary['spam_sites'] ?? 0,
+                    'accent' => 'neutral',
                 ],
                 [
                     'label' => __('Archiviert', 'rrze-multisite-manager'),

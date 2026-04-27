@@ -5,7 +5,7 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 class MetricsService {
-    protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v5_';
+    protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v6_';
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected ?Settings $settings;
     protected Config $config;
@@ -36,6 +36,7 @@ class MetricsService {
             'theme_usage' => $this->getThemeUsage(),
             'editor_usage' => $this->getEditorUsage(),
             'plugin_usage' => $this->getPluginUsage(),
+            'inactive_themes' => $this->getInactiveThemes(),
             'recently_updated_sites' => $this->getRecentlyUpdatedSites(),
             'inactive_sites' => $this->getInactiveSites(),
         ];
@@ -51,6 +52,7 @@ class MetricsService {
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v2_' . (string)get_current_network_id());
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v3_' . (string)get_current_network_id());
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v4_' . (string)get_current_network_id());
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v5_' . (string)get_current_network_id());
     }
 
     public function getSiteDetails(int $siteId): array {
@@ -70,6 +72,7 @@ class MetricsService {
 
         $details = $formattedSites[0];
         $details['status_user'] = $this->getStatusUserData((int)($details['status_user_id'] ?? 0));
+        $details = array_merge($details, $this->getSiteDetailMetrics($siteId));
 
         return $details;
     }
@@ -156,24 +159,19 @@ class MetricsService {
                 'accent' => 'positive',
             ],
             [
-                'label' => __('Nicht öffentlich', 'rrze-multisite-manager'),
-                'value' => (int)$siteBuckets['private'],
-                'accent' => 'neutral',
-            ],
-            [
                 'label' => __('Archiviert', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['archived'],
                 'accent' => 'warning',
             ],
             [
+                'label' => __('Gesperrt', 'rrze-multisite-manager'),
+                'value' => (int)$siteBuckets['spam'],
+                'accent' => 'neutral',
+            ],
+            [
                 'label' => __('Zum Löschen markiert', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['deleted'],
                 'accent' => 'danger',
-            ],
-            [
-                'label' => __('Gesperrt', 'rrze-multisite-manager'),
-                'value' => (int)$siteBuckets['spam'],
-                'accent' => 'info',
             ],
         ];
         $index = 0;
@@ -290,39 +288,57 @@ class MetricsService {
         $siteId = 0;
         $activePlugins = [];
         $pluginFile = '';
+        $totalSites = count($siteIds);
+        $sitePluginFiles = [];
+        $pluginData = [];
+
+        foreach ($availablePlugins as $pluginFile => $pluginData) {
+            $pluginStats[$pluginFile] = [
+                'file' => $pluginFile,
+                'site_count' => 0,
+                'name' => (string)($pluginData['Name'] ?? $pluginFile),
+                'version' => (string)($pluginData['Version'] ?? 'n/a'),
+                'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
+                'author' => $this->getPluginAuthorLabel($pluginData),
+                'network_active' => isset($networkActivePlugins[$pluginFile]),
+                'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginData),
+                'details_url' => $this->getPluginDetailsUrl($pluginData),
+                'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
+            ];
+        }
 
         foreach ($siteIds as $siteId) {
             $activePlugins = get_blog_option((int)$siteId, 'active_plugins', []);
 
             if (!is_array($activePlugins)) {
-                continue;
+                $activePlugins = [];
             }
 
-            foreach ($activePlugins as $pluginFile) {
+            $sitePluginFiles = array_unique(
+                array_merge(
+                    array_keys($networkActivePlugins),
+                    array_values(array_filter($activePlugins, 'is_string'))
+                )
+            );
+
+            foreach ($sitePluginFiles as $pluginFile) {
                 if (!isset($pluginStats[$pluginFile])) {
                     $pluginStats[$pluginFile] = [
                         'file' => $pluginFile,
                         'site_count' => 0,
+                        'name' => $pluginFile,
+                        'version' => 'n/a',
+                        'description' => '',
+                        'author' => '',
+                        'network_active' => isset($networkActivePlugins[$pluginFile]),
+                        'settings_url' => '',
+                        'details_url' => '',
+                        'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
                     ];
                 }
 
                 $pluginStats[$pluginFile]['site_count']++;
             }
-        }
-
-        foreach ($networkActivePlugins as $pluginFile => $timestamp) {
-            if (!isset($pluginStats[$pluginFile])) {
-                $pluginStats[$pluginFile] = [
-                    'file' => $pluginFile,
-                    'site_count' => 0,
-                ];
-            }
-        }
-
-        foreach ($pluginStats as $pluginFile => $pluginData) {
-            $pluginStats[$pluginFile]['name'] = $availablePlugins[$pluginFile]['Name'] ?? $pluginFile;
-            $pluginStats[$pluginFile]['version'] = $availablePlugins[$pluginFile]['Version'] ?? 'n/a';
-            $pluginStats[$pluginFile]['network_active'] = isset($networkActivePlugins[$pluginFile]);
         }
 
         uasort($pluginStats, [self::class, 'comparePluginUsage']);
@@ -332,8 +348,16 @@ class MetricsService {
                 'available_plugins' => count($availablePlugins),
                 'network_active_plugins' => count($networkActivePlugins),
                 'locally_used_plugins' => $this->countLocallyUsedPlugins($pluginStats),
+                'total_sites' => $totalSites,
             ],
-            'top_plugins' => array_slice(array_values($pluginStats), 0, 8),
+            'plugins' => array_values($pluginStats),
+            'distribution' => $this->buildPluginUsageDistribution($pluginStats),
+            'inactive_plugins' => array_values(
+                array_filter(
+                    $pluginStats,
+                    [self::class, 'isUnusedPlugin']
+                )
+            ),
         ];
     }
 
@@ -350,6 +374,7 @@ class MetricsService {
                 'stylesheet' => $stylesheet,
                 'name' => $theme->get('Name') ?: $stylesheet,
                 'version' => $theme->get('Version') ?: 'n/a',
+                'description' => wp_strip_all_tags((string)$theme->get('Description')),
                 'site_count' => (int)($siteCounts[$stylesheet] ?? 0),
                 'network_enabled' => isset($allowedThemes[$stylesheet]),
             ];
@@ -361,35 +386,89 @@ class MetricsService {
     }
 
     protected function getThemeUsage(): array {
-        $siteCounts = $this->getThemeSiteCounts();
-        $themes = wp_get_themes();
-        $results = [];
-        $index = 0;
-        $total = array_sum($siteCounts);
-        $stylesheet = '';
-        $value = 0;
+        $themes = $this->getThemes();
+        return $this->buildThemeUsageDistribution($themes);
+    }
 
-        if ($total === 0) {
-            return [];
-        }
+    protected function getInactiveThemes(): array {
+        $themes = $this->getThemes();
 
-        arsort($siteCounts);
+        return array_values(
+            array_filter(
+                $themes,
+                [self::class, 'isUnusedTheme']
+            )
+        );
+    }
 
-        foreach ($siteCounts as $stylesheet => $value) {
-            if ($value <= 0) {
+    protected function buildThemeUsageDistribution(array $themes): array {
+        $totalSites = count(get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+        ]));
+        $items = [];
+        $theme = [];
+
+        foreach ($themes as $theme) {
+            if ((int)($theme['site_count'] ?? 0) <= 0) {
                 continue;
             }
 
-            $index++;
-            $results[] = [
-                'label' => isset($themes[$stylesheet]) ? ($themes[$stylesheet]->get('Name') ?: $stylesheet) : $stylesheet,
-                'value' => (int)$value,
-                'percent' => (int)round((((int)$value) / $total) * 100),
-                'accent' => 'theme-' . (($index - 1) % 6 + 1),
+            $items[] = [
+                'label' => (string)($theme['name'] ?? ''),
+                'value' => (int)($theme['site_count'] ?? 0),
             ];
         }
 
-        return array_slice($results, 0, 6);
+        usort($items, [self::class, 'compareUsageDistributionRows']);
+
+        return $this->finalizeUsageDistribution($items, $totalSites);
+    }
+
+    protected function buildPluginUsageDistribution(array $pluginStats): array {
+        $items = [];
+        $plugin = [];
+        $totalUsage = 0;
+
+        foreach ($pluginStats as $plugin) {
+            if ((int)($plugin['site_count'] ?? 0) <= 0) {
+                continue;
+            }
+
+            $items[] = [
+                'label' => (string)($plugin['name'] ?? $plugin['file'] ?? ''),
+                'value' => (int)($plugin['site_count'] ?? 0),
+            ];
+            $totalUsage += (int)($plugin['site_count'] ?? 0);
+        }
+
+        usort($items, [self::class, 'compareUsageDistributionRows']);
+
+        return $this->finalizeUsageDistribution($items, $totalUsage);
+    }
+
+    protected function finalizeUsageDistribution(array $items, int $totalSites): array {
+        $results = [];
+        $index = 0;
+        $item = [];
+        $value = 0;
+
+        if ($totalSites <= 0) {
+            return [];
+        }
+
+        foreach ($items as $item) {
+            $value = (int)($item['value'] ?? 0);
+            $results[] = [
+                'label' => (string)($item['label'] ?? ''),
+                'value' => $value,
+                'percent' => (int)round(($value / $totalSites) * 100),
+                'accent' => 'theme-' . (($index % 6) + 1),
+            ];
+            $index++;
+        }
+
+        return $results;
     }
 
     protected function getEditorUsage(): array {
@@ -663,6 +742,582 @@ class MetricsService {
         ];
     }
 
+    protected function getSiteDetailMetrics(int $siteId): array {
+        $theme = [
+            'name' => '',
+            'version' => '',
+            'description' => '',
+            'screenshot' => '',
+        ];
+        $plugins = [];
+        $users = [];
+        $contentTypes = [];
+        $optionsOverview = [];
+        $customPostTypes = [];
+        $blockTemplateTypes = [];
+        $transients = [];
+        $cronEvents = [];
+
+        switch_to_blog($siteId);
+        $theme = $this->getCurrentThemeDetails();
+        $plugins = $this->getCurrentSiteActivePlugins();
+        $users = $this->getCurrentSiteUsers();
+        $contentTypes = $this->getCurrentSiteContentTypeCounts();
+        $customPostTypes = $this->getCurrentSiteCustomPostTypes();
+        $blockTemplateTypes = $this->getCurrentSiteBlockTemplateTypes();
+        $optionsOverview = $this->getCurrentSiteOptionsOverview();
+        $transients = $this->getCurrentSiteTransients();
+        $cronEvents = $this->getCurrentSiteCronEvents();
+        restore_current_blog();
+
+        return [
+            'theme' => $theme,
+            'plugins' => $plugins,
+            'users' => $users,
+            'content_types' => $contentTypes,
+            'custom_post_types' => $customPostTypes,
+            'block_template_types' => $blockTemplateTypes,
+            'options_overview' => $optionsOverview,
+            'transients' => $transients,
+            'cron_events' => $cronEvents,
+        ];
+    }
+
+    protected function getCurrentThemeDetails(): array {
+        $theme = wp_get_theme();
+        $screenshot = $theme instanceof \WP_Theme ? $theme->get_screenshot() : '';
+        $description = '';
+
+        if ($theme instanceof \WP_Theme) {
+            $description = (string)$theme->get('Description');
+        }
+
+        return [
+            'name' => $theme instanceof \WP_Theme ? ((string)$theme->get('Name') ?: (string)$theme->get_stylesheet()) : '',
+            'version' => $theme instanceof \WP_Theme ? ((string)$theme->get('Version') ?: '') : '',
+            'description' => wp_strip_all_tags($description),
+            'screenshot' => is_string($screenshot) ? $screenshot : '',
+            'is_block_theme' => $theme instanceof \WP_Theme && method_exists($theme, 'is_block_theme') ? (bool)$theme->is_block_theme() : false,
+        ];
+    }
+
+    protected function getCurrentSiteActivePlugins(): array {
+        $networkActivePlugins = get_site_option('active_sitewide_plugins', []);
+        $localActivePlugins = get_option('active_plugins', []);
+        $pluginFiles = [];
+        $results = [];
+        $pluginFile = '';
+        $pluginHeaders = [];
+        $siteId = get_current_blog_id();
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        if (!is_array($networkActivePlugins)) {
+            $networkActivePlugins = [];
+        }
+
+        if (!is_array($localActivePlugins)) {
+            $localActivePlugins = [];
+        }
+
+        $pluginFiles = array_keys($networkActivePlugins);
+
+        foreach ($localActivePlugins as $pluginFile) {
+            if (!is_string($pluginFile) || $pluginFile === '' || in_array($pluginFile, $pluginFiles, true)) {
+                continue;
+            }
+
+            $pluginFiles[] = $pluginFile;
+        }
+
+        foreach ($pluginFiles as $pluginFile) {
+            $pluginHeaders = get_plugin_data(WP_PLUGIN_DIR . '/' . $pluginFile, false, false);
+            $results[] = [
+                'file' => $pluginFile,
+                'name' => (string)($pluginHeaders['Name'] ?? $pluginFile),
+                'version' => (string)($pluginHeaders['Version'] ?? ''),
+                'description' => wp_strip_all_tags((string)($pluginHeaders['Description'] ?? '')),
+                'author' => $this->getPluginAuthorLabel($pluginHeaders),
+                'network_active' => isset($networkActivePlugins[$pluginFile]),
+                'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginHeaders),
+                'details_url' => $this->getPluginDetailsUrl($pluginHeaders),
+                'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? '' : $this->getSitePluginDeactivateUrl($siteId, $pluginFile),
+            ];
+        }
+
+        usort($results, [self::class, 'compareDetailedPlugins']);
+
+        return $results;
+    }
+
+    protected function getPluginAuthorLabel(array $pluginData): string {
+        if (!empty($pluginData['AuthorName']) && is_string($pluginData['AuthorName'])) {
+            return trim((string)$pluginData['AuthorName']);
+        }
+
+        if (!empty($pluginData['Author']) && is_string($pluginData['Author'])) {
+            return trim(wp_strip_all_tags((string)$pluginData['Author']));
+        }
+
+        return '';
+    }
+
+    protected function getPluginSettingsUrl(string $pluginFile, array $pluginData): string {
+        $actions = apply_filters('network_admin_plugin_action_links_' . $pluginFile, [], $pluginData, 'all');
+        $url = $this->extractFirstActionUrl($actions, ['settings']);
+
+        if ($url !== '') {
+            return $url;
+        }
+
+        $actions = apply_filters('plugin_action_links_' . $pluginFile, [], $pluginData, 'all');
+        return $this->extractFirstActionUrl($actions, ['settings']);
+    }
+
+    protected function getPluginDetailsUrl(array $pluginData): string {
+        if (!empty($pluginData['PluginURI']) && is_string($pluginData['PluginURI'])) {
+            return (string)$pluginData['PluginURI'];
+        }
+
+        return '';
+    }
+
+    protected function getNetworkPluginDeactivateUrl(string $pluginFile): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'deactivate',
+                    'plugin' => $pluginFile,
+                ],
+                network_admin_url('plugins.php')
+            ),
+            'deactivate-plugin_' . $pluginFile
+        );
+    }
+
+    protected function getSitePluginDeactivateUrl(int $siteId, string $pluginFile): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'deactivate',
+                    'plugin' => $pluginFile,
+                ],
+                get_admin_url($siteId, 'plugins.php')
+            ),
+            'deactivate-plugin_' . $pluginFile
+        );
+    }
+
+    protected function extractFirstActionUrl(array $actions, array $preferredKeys): string {
+        $preferredKey = '';
+        $action = '';
+        $url = '';
+
+        foreach ($preferredKeys as $preferredKey) {
+            if (!empty($actions[$preferredKey]) && is_string($actions[$preferredKey])) {
+                $url = $this->extractHrefFromHtml($actions[$preferredKey]);
+
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+        }
+
+        foreach ($actions as $action) {
+            if (!is_string($action)) {
+                continue;
+            }
+
+            $url = $this->extractHrefFromHtml($action);
+
+            if ($url !== '') {
+                return $url;
+            }
+        }
+
+        return '';
+    }
+
+    protected function extractHrefFromHtml(string $html): string {
+        $matches = [];
+
+        if (preg_match('/href=[\'"]([^\'"]+)[\'"]/i', $html, $matches) === 1 && !empty($matches[1])) {
+            return html_entity_decode((string)$matches[1], ENT_QUOTES, 'UTF-8');
+        }
+
+        return '';
+    }
+
+    protected function getCurrentSiteUsers(): array {
+        $users = get_users([
+            'blog_id' => get_current_blog_id(),
+            'orderby' => 'display_name',
+            'order' => 'ASC',
+        ]);
+        $results = [];
+        $user = null;
+        $roles = [];
+
+        foreach ($users as $user) {
+            if (!$user instanceof \WP_User) {
+                continue;
+            }
+
+            $roles = is_array($user->roles) ? $user->roles : [];
+            $results[] = [
+                'id' => (int)$user->ID,
+                'username' => (string)$user->user_login,
+                'name' => trim((string)$user->display_name),
+                'email' => (string)$user->user_email,
+                'role_key' => $this->getPrimaryUserRole($roles),
+                'role_label' => $this->getPrimaryUserRoleLabel($roles),
+            ];
+        }
+
+        usort($results, [self::class, 'compareDetailedUsers']);
+
+        return $results;
+    }
+
+    protected function getCurrentSiteContentTypeCounts(): array {
+        $postTypes = get_post_types([], 'objects');
+        $postTypeCounts = $this->getDistinctPostTypeCounts();
+        $results = [];
+        $grouped = [
+            'post' => [],
+            'page' => [],
+            'attachment' => [],
+            'other' => [],
+        ];
+        $postType = null;
+        $total = 0;
+        $slug = '';
+        $label = '';
+        $attachmentCounts = [];
+        $group = '';
+        $excludedTypes = [
+            'revision',
+            'nav_menu_item',
+            'custom_css',
+            'customize_changeset',
+            'oembed_cache',
+            'user_request',
+            'wp_block',
+            'wp_template',
+            'wp_template_part',
+            'wp_global_styles',
+            'wp_navigation',
+            'wp_font_family',
+            'wp_font_face',
+            'wp_pattern_category',
+        ];
+
+        if (isset($postTypes['post'])) {
+            $grouped['post'][] = [
+                'slug' => 'post',
+                'label' => $postTypes['post']->labels->name ?: 'post',
+                'count' => (int)($postTypeCounts['post'] ?? 0),
+                'level' => 0,
+            ];
+        }
+
+        if (isset($postTypes['page'])) {
+            $grouped['page'][] = [
+                'slug' => 'page',
+                'label' => $postTypes['page']->labels->name ?: 'page',
+                'count' => (int)($postTypeCounts['page'] ?? 0),
+                'level' => 0,
+            ];
+        }
+
+        if (isset($postTypes['attachment'])) {
+            $grouped['attachment'][] = [
+                'slug' => 'attachment',
+                'label' => $postTypes['attachment']->labels->name ?: 'attachment',
+                'count' => (int)($postTypeCounts['attachment'] ?? 0),
+                'level' => 0,
+            ];
+        }
+
+        foreach ($postTypeCounts as $slug => $total) {
+            if (in_array($slug, $excludedTypes, true) || in_array($slug, ['post', 'page', 'attachment'], true)) {
+                continue;
+            }
+
+            if ($total <= 0) {
+                continue;
+            }
+
+            $postType = isset($postTypes[$slug]) && $postTypes[$slug] instanceof \WP_Post_Type ? $postTypes[$slug] : null;
+            $label = $postType instanceof \WP_Post_Type ? ($postType->labels->name ?: $slug) : $slug;
+            $group = $postType instanceof \WP_Post_Type ? $this->getPostTypeCapabilityGroup($postType) : 'post';
+
+            if ($group === 'post') {
+                $grouped['post'][] = [
+                    'slug' => $slug,
+                    'label' => $label,
+                    'count' => $total,
+                    'level' => 1,
+                    'registered' => $postType instanceof \WP_Post_Type,
+                ];
+                continue;
+            }
+
+            if ($group === 'page') {
+                $grouped['page'][] = [
+                    'slug' => $slug,
+                    'label' => $label,
+                    'count' => $total,
+                    'level' => 1,
+                    'registered' => $postType instanceof \WP_Post_Type,
+                ];
+                continue;
+            }
+
+            $grouped[$group][] = [
+                'slug' => $slug,
+                'label' => $label,
+                'count' => $total,
+                'level' => 0,
+                'registered' => $postType instanceof \WP_Post_Type,
+            ];
+        }
+
+        $attachmentCounts = $this->getAttachmentTypeCounts();
+
+        foreach ($attachmentCounts as $slug => $count) {
+            if ($count <= 0) {
+                continue;
+            }
+
+            $grouped['attachment'][] = [
+                'slug' => $slug,
+                'label' => $this->getAttachmentTypeLabel($slug),
+                'count' => $count,
+                'level' => 1,
+            ];
+        }
+
+        usort($grouped['post'], [self::class, 'compareDetailedContentTypes']);
+        usort($grouped['page'], [self::class, 'compareDetailedContentTypes']);
+        usort($grouped['other'], [self::class, 'compareDetailedContentTypes']);
+
+        if (!empty($grouped['post'])) {
+            $results = array_merge($results, $grouped['post']);
+        }
+
+        if (!empty($grouped['page'])) {
+            $results = array_merge($results, $grouped['page']);
+        }
+
+        if (!empty($grouped['attachment'])) {
+            $results = array_merge($results, $grouped['attachment']);
+        }
+
+        if (!empty($grouped['other'])) {
+            $results = array_merge($results, $grouped['other']);
+        }
+
+        return $results;
+    }
+
+    protected function getCurrentSiteCustomPostTypes(): array {
+        $postTypes = get_post_types([], 'objects');
+        $postTypeCounts = $this->getDistinctPostTypeCounts();
+        $results = [];
+        $slug = '';
+        $count = 0;
+        $postType = null;
+        $excludedTypes = [
+            'post',
+            'page',
+            'attachment',
+            'revision',
+            'nav_menu_item',
+            'custom_css',
+            'customize_changeset',
+            'oembed_cache',
+            'user_request',
+            'wp_block',
+            'wp_template',
+            'wp_template_part',
+            'wp_global_styles',
+            'wp_navigation',
+            'wp_font_family',
+            'wp_font_face',
+            'wp_pattern_category',
+        ];
+
+        foreach ($postTypeCounts as $slug => $count) {
+            if (in_array($slug, $excludedTypes, true) || $count <= 0) {
+                continue;
+            }
+
+            $postType = isset($postTypes[$slug]) && $postTypes[$slug] instanceof \WP_Post_Type ? $postTypes[$slug] : null;
+            $results[] = [
+                'slug' => $slug,
+                'label' => $postType instanceof \WP_Post_Type ? ($postType->labels->name ?: $slug) : $slug,
+                'count' => $count,
+                'registered' => $postType instanceof \WP_Post_Type,
+                'group' => $postType instanceof \WP_Post_Type ? $this->getPostTypeCapabilityGroup($postType) : 'post',
+            ];
+        }
+
+        usort($results, [self::class, 'compareDetailedContentTypes']);
+
+        return $results;
+    }
+
+    protected function getCurrentSiteBlockTemplateTypes(): array {
+        $postTypeCounts = $this->getDistinctPostTypeCounts();
+        $results = [];
+        $map = [
+            'wp_template' => __('Block Templates', 'rrze-multisite-manager'),
+            'wp_template_part' => __('Template Parts', 'rrze-multisite-manager'),
+        ];
+        $slug = '';
+
+        foreach ($map as $slug => $label) {
+            if (empty($postTypeCounts[$slug])) {
+                continue;
+            }
+
+            $results[] = [
+                'slug' => $slug,
+                'label' => $label,
+                'count' => (int)$postTypeCounts[$slug],
+            ];
+        }
+
+        return $results;
+    }
+
+    protected function getPostTypeCapabilityGroup(\WP_Post_Type $postType): string {
+        if ($postType->name === 'attachment') {
+            return 'attachment';
+        }
+
+        if (!empty($postType->hierarchical)) {
+            return 'page';
+        }
+
+        return 'post';
+    }
+
+    protected function getAttachmentTypeCounts(): array {
+        global $wpdb;
+
+        $rows = [];
+        $counts = [
+            'attachment-image' => 0,
+            'attachment-audio' => 0,
+            'attachment-video' => 0,
+            'attachment-document' => 0,
+        ];
+        $row = null;
+        $mime = '';
+        $count = 0;
+
+        $rows = $wpdb->get_results(
+            "SELECT post_mime_type, COUNT(ID) AS total
+            FROM {$wpdb->posts}
+            WHERE post_type = 'attachment'
+            AND post_status <> 'trash'
+            GROUP BY post_mime_type"
+        );
+
+        foreach ($rows as $row) {
+            $mime = (string)($row->post_mime_type ?? '');
+            $count = (int)($row->total ?? 0);
+
+            if (str_starts_with($mime, 'image/')) {
+                $counts['attachment-image'] += $count;
+                continue;
+            }
+
+            if (str_starts_with($mime, 'audio/')) {
+                $counts['attachment-audio'] += $count;
+                continue;
+            }
+
+            if (str_starts_with($mime, 'video/')) {
+                $counts['attachment-video'] += $count;
+                continue;
+            }
+
+            $counts['attachment-document'] += $count;
+        }
+
+        return $counts;
+    }
+
+    protected function getAttachmentTypeLabel(string $slug): string {
+        if ($slug === 'attachment-image') {
+            return __('Bilder', 'rrze-multisite-manager');
+        }
+
+        if ($slug === 'attachment-audio') {
+            return __('Audio', 'rrze-multisite-manager');
+        }
+
+        if ($slug === 'attachment-video') {
+            return __('Video', 'rrze-multisite-manager');
+        }
+
+        return __('Dokumente', 'rrze-multisite-manager');
+    }
+
+    protected function getPrimaryUserRole(array $roles): string {
+        if (in_array('administrator', $roles, true)) {
+            return 'administrator';
+        }
+
+        if (in_array('editor', $roles, true)) {
+            return 'editor';
+        }
+
+        if (!empty($roles[0]) && is_string($roles[0])) {
+            return $roles[0];
+        }
+
+        return '';
+    }
+
+    protected function getPrimaryUserRoleLabel(array $roles): string {
+        $roleKey = $this->getPrimaryUserRole($roles);
+        $wpRoles = wp_roles();
+
+        if ($roleKey === '') {
+            return __('Unbekannt', 'rrze-multisite-manager');
+        }
+
+        if ($wpRoles instanceof \WP_Roles && isset($wpRoles->role_names[$roleKey])) {
+            return translate_user_role((string)$wpRoles->role_names[$roleKey]);
+        }
+
+        return $roleKey;
+    }
+
+    protected function sumPostCounts(\stdClass $counts): int {
+        $total = 0;
+        $status = '';
+        $count = 0;
+
+        foreach ((array)$counts as $status => $count) {
+            if (in_array($status, ['trash', 'auto-draft', 'inherit'], true)) {
+                continue;
+            }
+
+            $total += (int)$count;
+        }
+
+        if ($total === 0 && isset($counts->inherit)) {
+            $total += (int)$counts->inherit;
+        }
+
+        return $total;
+    }
+
     protected function getSiteBranding(): array {
         $customLogoId = (int)get_theme_mod('custom_logo');
         $customLogoUrl = $customLogoId > 0 ? wp_get_attachment_image_url($customLogoId, 'medium') : '';
@@ -731,6 +1386,54 @@ class MetricsService {
         return $total;
     }
 
+    protected function countPostsForType(string $postType): int {
+        global $wpdb;
+
+        $count = 0;
+
+        if ($postType === '') {
+            return 0;
+        }
+
+        $count = (int)$wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(ID)
+                FROM {$wpdb->posts}
+                WHERE post_type = %s
+                AND post_status NOT IN ('trash', 'auto-draft')",
+                $postType
+            )
+        );
+
+        return max(0, $count);
+    }
+
+    protected function getDistinctPostTypeCounts(): array {
+        global $wpdb;
+
+        $rows = $wpdb->get_results(
+            "SELECT post_type, COUNT(ID) AS total
+            FROM {$wpdb->posts}
+            WHERE post_status NOT IN ('trash', 'auto-draft')
+            GROUP BY post_type"
+        );
+        $results = [];
+        $row = null;
+        $postType = '';
+
+        foreach ($rows as $row) {
+            $postType = (string)($row->post_type ?? '');
+
+            if ($postType === '') {
+                continue;
+            }
+
+            $results[$postType] = (int)($row->total ?? 0);
+        }
+
+        return $results;
+    }
+
     protected function getSiteStorageUsage(): array {
         $megabytes = function_exists('get_space_used') ? (int)get_space_used() : 0;
         $siteLimit = (int)get_option('blog_upload_space');
@@ -762,6 +1465,527 @@ class MetricsService {
             'percent' => $percent,
             'warn_level' => $warnLevel,
         ];
+    }
+
+    protected function getCurrentSiteOptionsOverview(): array {
+        global $wpdb;
+
+        $rows = $wpdb->get_results(
+            "SELECT option_name, option_value, autoload
+            FROM {$wpdb->options}
+            ORDER BY option_name ASC"
+        );
+        $groups = [
+            'all' => [
+                'slug' => 'all',
+                'label' => __('Alle Optionen', 'rrze-multisite-manager'),
+                'count' => 0,
+                'options' => [],
+            ],
+        ];
+        $row = null;
+        $optionName = '';
+        $groupKey = '';
+        $optionEntry = [];
+
+        foreach ($rows as $row) {
+            $optionName = (string)($row->option_name ?? '');
+
+            if ($optionName === '') {
+                continue;
+            }
+
+            $groupKey = $this->getOptionGroupKey($optionName);
+            $optionEntry = [
+                'name' => $optionName,
+                'value' => $this->formatOptionValue((string)($row->option_value ?? '')),
+                'autoload' => (string)($row->autoload ?? ''),
+                'is_core' => $this->isWordPressCoreOption($optionName),
+            ];
+
+            if (!isset($groups[$groupKey])) {
+                $groups[$groupKey] = [
+                    'slug' => $groupKey,
+                    'label' => $this->getOptionGroupLabel($groupKey, $optionName),
+                    'count' => 0,
+                    'options' => [],
+                ];
+            }
+
+            $groups['all']['options'][] = $optionEntry;
+            $groups['all']['count']++;
+            $groups[$groupKey]['options'][] = $optionEntry;
+            $groups[$groupKey]['count']++;
+        }
+
+        uasort($groups, [self::class, 'compareOptionGroups']);
+
+        return [
+            'groups' => array_values($groups),
+        ];
+    }
+
+    protected function getCurrentSiteTransients(): array {
+        global $wpdb;
+
+        $rows = $wpdb->get_results(
+            "SELECT option_name, option_value
+            FROM {$wpdb->options}
+            WHERE option_name LIKE '\\_transient\\_%'
+            OR option_name LIKE '\\_transient\\_timeout\\_%'
+            ORDER BY option_name ASC"
+        );
+        $timeouts = [];
+        $transients = [];
+        $row = null;
+        $optionName = '';
+        $transientName = '';
+        $timestamp = 0;
+
+        foreach ($rows as $row) {
+            $optionName = (string)($row->option_name ?? '');
+
+            if (str_starts_with($optionName, '_transient_timeout_')) {
+                $transientName = substr($optionName, strlen('_transient_timeout_'));
+                $timeouts[$transientName] = (int)($row->option_value ?? 0);
+            }
+        }
+
+        foreach ($rows as $row) {
+            $optionName = (string)($row->option_name ?? '');
+
+            if (!str_starts_with($optionName, '_transient_') || str_starts_with($optionName, '_transient_timeout_')) {
+                continue;
+            }
+
+            $transientName = substr($optionName, strlen('_transient_'));
+            $timestamp = (int)($timeouts[$transientName] ?? 0);
+
+            $transients[] = [
+                'name' => $transientName,
+                'expires_at' => $timestamp > 0 ? $this->formatTimestamp($timestamp) : __('Kein Ablauf gesetzt', 'rrze-multisite-manager'),
+            ];
+        }
+
+        return $transients;
+    }
+
+    protected function getCurrentSiteCronEvents(): array {
+        $cronArray = _get_cron_array();
+        $results = [];
+        $timestamp = 0;
+        $hooks = [];
+        $hook = '';
+        $events = [];
+        $event = [];
+
+        if (!is_array($cronArray)) {
+            return [];
+        }
+
+        foreach ($cronArray as $timestamp => $hooks) {
+            if (!is_array($hooks)) {
+                continue;
+            }
+
+            foreach ($hooks as $hook => $events) {
+                if (!is_array($events)) {
+                    continue;
+                }
+
+                foreach ($events as $event) {
+                    if (!is_array($event)) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'hook' => (string)$hook,
+                        'next_run' => $this->formatTimestamp((int)$timestamp),
+                        'next_run_timestamp' => (int)$timestamp,
+                        'schedule' => !empty($event['schedule']) ? (string)$event['schedule'] : __('einmalig', 'rrze-multisite-manager'),
+                    ];
+                }
+            }
+        }
+
+        usort($results, [self::class, 'compareCronEvents']);
+
+        return $results;
+    }
+
+    public function deleteSiteOption(int $siteId, string $optionName): bool {
+        $deleted = false;
+
+        if ($siteId <= 0 || trim($optionName) === '') {
+            return false;
+        }
+
+        switch_to_blog($siteId);
+        $deleted = delete_option($optionName);
+        restore_current_blog();
+
+        return (bool)$deleted;
+    }
+
+    public function deletePostTypeEntries(int $siteId, string $postType): int {
+        global $wpdb;
+
+        $deleted = 0;
+        $rows = [];
+        $row = null;
+        $postId = 0;
+        $protectedTypes = [
+            'post',
+            'page',
+            'attachment',
+            'revision',
+            'nav_menu_item',
+            'custom_css',
+            'customize_changeset',
+            'oembed_cache',
+            'user_request',
+            'wp_block',
+            'wp_template',
+            'wp_template_part',
+            'wp_global_styles',
+            'wp_navigation',
+            'wp_font_family',
+            'wp_font_face',
+            'wp_pattern_category',
+        ];
+
+        if ($siteId <= 0 || $postType === '' || in_array($postType, $protectedTypes, true)) {
+            return 0;
+        }
+
+        switch_to_blog($siteId);
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT ID
+                FROM {$wpdb->posts}
+                WHERE post_type = %s",
+                $postType
+            )
+        );
+
+        foreach ($rows as $row) {
+            $postId = (int)($row->ID ?? 0);
+
+            if ($postId <= 0) {
+                continue;
+            }
+
+            if (wp_delete_post($postId, true)) {
+                $deleted++;
+            }
+        }
+
+        restore_current_blog();
+
+        return $deleted;
+    }
+
+    public function deleteSiteOptionGroup(int $siteId, string $groupKey): int {
+        global $wpdb;
+
+        $deleted = 0;
+        $rows = [];
+        $row = null;
+        $optionName = '';
+
+        if ($siteId <= 0 || trim($groupKey) === '') {
+            return 0;
+        }
+
+        switch_to_blog($siteId);
+        $rows = $wpdb->get_results(
+            "SELECT option_name
+            FROM {$wpdb->options}
+            ORDER BY option_name ASC"
+        );
+
+        foreach ($rows as $row) {
+            $optionName = (string)($row->option_name ?? '');
+
+            if ($optionName === '' || $this->getOptionGroupKey($optionName) !== $groupKey) {
+                continue;
+            }
+
+            if (delete_option($optionName)) {
+                $deleted++;
+            }
+        }
+
+        restore_current_blog();
+
+        return $deleted;
+    }
+
+    public function isWordPressCoreOptionName(string $optionName): bool {
+        return $this->isWordPressCoreOption($optionName);
+    }
+
+    public function isWordPressCoreOptionGroup(string $groupKey): bool {
+        return $groupKey === 'wordpress-core';
+    }
+
+    protected function getOptionGroupKey(string $optionName): string {
+        $normalized = ltrim($optionName, '_');
+        $segments = [];
+        $firstSegment = '';
+
+        if ($this->isWordPressCoreOption($optionName)) {
+            return 'wordpress-core';
+        }
+
+        if (str_starts_with($optionName, 'theme_mods_')) {
+            return 'theme_mods';
+        }
+
+        if (str_starts_with($optionName, 'widget_') || str_starts_with($optionName, 'sidebars_')) {
+            return 'widgets';
+        }
+
+        $segments = preg_split('/[_-]+/', $normalized);
+        $firstSegment = is_array($segments) && !empty($segments[0]) ? (string)$segments[0] : '';
+
+        if ($firstSegment === '') {
+            return 'misc';
+        }
+
+        return sanitize_key($firstSegment);
+    }
+
+    protected function getOptionGroupLabel(string $groupKey, string $optionName = ''): string {
+        if ($groupKey === 'wordpress-core') {
+            return __('WordPress Core', 'rrze-multisite-manager');
+        }
+
+        if ($groupKey === 'fau') {
+            return 'FAU';
+        }
+
+        if ($groupKey === 'rrze') {
+            return 'RRZE';
+        }
+
+        if ($groupKey === 'theme_mods') {
+            return __('Theme Mods', 'rrze-multisite-manager');
+        }
+
+        if ($groupKey === 'widgets') {
+            return __('Widgets', 'rrze-multisite-manager');
+        }
+
+        if ($groupKey === 'misc') {
+            return __('Sonstiges', 'rrze-multisite-manager');
+        }
+
+        if ($optionName !== '') {
+            return $this->getOriginalOptionPrefix($optionName);
+        }
+
+        return $groupKey;
+    }
+
+    protected function getOriginalOptionPrefix(string $optionName): string {
+        $normalized = ltrim($optionName, '_');
+        $segments = [];
+        $firstSegment = '';
+
+        $segments = preg_split('/[_-]+/', $normalized);
+        $firstSegment = is_array($segments) && !empty($segments[0]) ? (string)$segments[0] : '';
+
+        if ($firstSegment === '') {
+            return $optionName;
+        }
+
+        return $firstSegment;
+    }
+
+    protected function isWordPressCoreOption(string $optionName): bool {
+        $coreOptions = $this->getWordPressCoreOptionNames();
+        $corePrefixes = [
+            'dashboard_widget_options',
+        ];
+        $prefix = '';
+
+        if (isset($coreOptions[$optionName])) {
+            return true;
+        }
+
+        foreach ($corePrefixes as $prefix) {
+            if (str_starts_with($optionName, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function getWordPressCoreOptionNames(): array {
+        $options = [
+            'siteurl',
+            'home',
+            'blogname',
+            'blogdescription',
+            'users_can_register',
+            'admin_email',
+            'start_of_week',
+            'use_balanceTags',
+            'use_smilies',
+            'require_name_email',
+            'comments_notify',
+            'posts_per_rss',
+            'rss_use_excerpt',
+            'mailserver_url',
+            'mailserver_login',
+            'mailserver_pass',
+            'mailserver_port',
+            'default_category',
+            'default_comment_status',
+            'default_ping_status',
+            'default_pingback_flag',
+            'posts_per_page',
+            'date_format',
+            'time_format',
+            'links_updated_date_format',
+            'comment_moderation',
+            'moderation_notify',
+            'permalink_structure',
+            'rewrite_rules',
+            'hack_file',
+            'blog_charset',
+            'moderation_keys',
+            'active_plugins',
+            'category_base',
+            'ping_sites',
+            'comment_max_links',
+            'gmt_offset',
+            'default_email_category',
+            'recently_edited',
+            'template',
+            'stylesheet',
+            'comment_registration',
+            'html_type',
+            'use_trackback',
+            'default_role',
+            'db_version',
+            'uploads_use_yearmonth_folders',
+            'upload_path',
+            'blog_public',
+            'default_link_category',
+            'show_on_front',
+            'tag_base',
+            'show_avatars',
+            'avatar_rating',
+            'upload_url_path',
+            'thumbnail_size_w',
+            'thumbnail_size_h',
+            'thumbnail_crop',
+            'medium_size_w',
+            'medium_size_h',
+            'avatar_default',
+            'large_size_w',
+            'large_size_h',
+            'image_default_link_type',
+            'image_default_size',
+            'image_default_align',
+            'close_comments_for_old_posts',
+            'close_comments_days_old',
+            'thread_comments',
+            'thread_comments_depth',
+            'page_comments',
+            'comments_per_page',
+            'default_comments_page',
+            'comment_order',
+            'sticky_posts',
+            'widget_categories',
+            'widget_text',
+            'widget_rss',
+            'uninstall_plugins',
+            'timezone_string',
+            'page_for_posts',
+            'page_on_front',
+            'default_post_format',
+            'link_manager_enabled',
+            'finished_splitting_shared_terms',
+            'site_icon',
+            'medium_large_size_w',
+            'medium_large_size_h',
+            'wp_page_for_privacy_policy',
+            'show_comments_cookies_opt_in',
+            'admin_email_lifespan',
+            'disallowed_keys',
+            'comment_previously_approved',
+            'auto_plugin_theme_update_emails',
+            'auto_update_core_dev',
+            'auto_update_core_minor',
+            'auto_update_core_major',
+            'wp_force_deactivated_plugins',
+            'wp_attachment_pages_enabled',
+            'wp_notes_notify',
+            'initial_db_version',
+            'sidebars_widgets',
+            'widget_archives',
+            'widget_block',
+            'widget_calendar',
+            'widget_categories',
+            'widget_custom_html',
+            'widget_media_audio',
+            'widget_media_gallery',
+            'widget_media_image',
+            'widget_media_video',
+            'widget_meta',
+            'widget_nav_menu',
+            'widget_pages',
+            'widget_recent-comments',
+            'widget_recent-posts',
+            'widget_search',
+            'widget_tag_cloud',
+            'widget_text',
+            'cron',
+            'can_compress_scripts',
+            'page_uris',
+            'update_core',
+            'update_plugins',
+            'update_themes',
+            'doing_cron',
+            'random_seed',
+            'wp_user_roles',
+            'alloptions',
+            'notoptions',
+        ];
+
+        return array_fill_keys($options, true);
+    }
+
+    protected function formatOptionValue(string $rawValue): string {
+        $value = maybe_unserialize($rawValue);
+        $formatted = '';
+
+        if (is_array($value) || is_object($value)) {
+            $formatted = wp_json_encode(
+                $value,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            );
+        } elseif (is_bool($value)) {
+            $formatted = $value ? 'true' : 'false';
+        } elseif ($value === null) {
+            $formatted = 'null';
+        } else {
+            $formatted = (string)$value;
+        }
+
+        if (!is_string($formatted) || $formatted === '') {
+            return __('(leer)', 'rrze-multisite-manager');
+        }
+
+        if (mb_strlen($formatted) > 4000) {
+            return mb_substr($formatted, 0, 4000) . "\n…";
+        }
+
+        return $formatted;
     }
 
     protected function getSiteStatus(int $siteId, \WP_Site $site): array {
@@ -818,7 +2042,6 @@ class MetricsService {
         ]);
         $buckets = [
             'active' => 0,
-            'private' => 0,
             'archived' => 0,
             'deleted' => 0,
             'spam' => 0,
@@ -842,11 +2065,6 @@ class MetricsService {
 
             if ((int)$site->archived === 1) {
                 $buckets['archived']++;
-                continue;
-            }
-
-            if ((int)$site->public === 0) {
-                $buckets['private']++;
                 continue;
             }
 
@@ -879,11 +2097,14 @@ class MetricsService {
         $stylesheet = '';
 
         foreach ($siteIds as $siteId) {
-            $stylesheet = (string)get_blog_option((int)$siteId, 'stylesheet', '');
+            switch_to_blog((int)$siteId);
+            $stylesheet = (string)get_option('stylesheet', '');
 
             if ($stylesheet === '') {
-                $stylesheet = (string)get_blog_option((int)$siteId, 'template', '');
+                $stylesheet = (string)get_option('template', '');
             }
+
+            restore_current_blog();
 
             if ($stylesheet === '') {
                 continue;
@@ -931,6 +2152,99 @@ class MetricsService {
         }
 
         return (int)$right['last_updated_timestamp'] <=> (int)$left['last_updated_timestamp'];
+    }
+
+    protected static function compareDetailedPlugins(array $left, array $right): int {
+        if (!empty($left['network_active']) && empty($right['network_active'])) {
+            return -1;
+        }
+
+        if (empty($left['network_active']) && !empty($right['network_active'])) {
+            return 1;
+        }
+
+        return strcmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
+    }
+
+    protected static function compareDetailedUsers(array $left, array $right): int {
+        $priority = [
+            'administrator' => 1,
+            'editor' => 2,
+        ];
+        $leftRole = (string)($left['role_key'] ?? '');
+        $rightRole = (string)($right['role_key'] ?? '');
+        $leftPriority = $priority[$leftRole] ?? 3;
+        $rightPriority = $priority[$rightRole] ?? 3;
+
+        if ($leftPriority !== $rightPriority) {
+            return $leftPriority <=> $rightPriority;
+        }
+
+        return strcmp((string)($left['name'] ?? $left['username'] ?? ''), (string)($right['name'] ?? $right['username'] ?? ''));
+    }
+
+    protected static function compareDetailedContentTypes(array $left, array $right): int {
+        $priority = [
+            'post' => 1,
+            'page' => 2,
+            'attachment' => 3,
+        ];
+        $leftSlug = (string)($left['slug'] ?? '');
+        $rightSlug = (string)($right['slug'] ?? '');
+        $leftPriority = $priority[$leftSlug] ?? 10;
+        $rightPriority = $priority[$rightSlug] ?? 10;
+
+        if ($leftPriority !== $rightPriority) {
+            return $leftPriority <=> $rightPriority;
+        }
+
+        return strcmp((string)($left['label'] ?? ''), (string)($right['label'] ?? ''));
+    }
+
+    protected static function compareOptionGroups(array $left, array $right): int {
+        $priority = [
+            'wordpress-core' => 1,
+            'fau' => 2,
+            'rrze' => 3,
+            'all' => 4,
+        ];
+        $leftSlug = (string)($left['slug'] ?? '');
+        $rightSlug = (string)($right['slug'] ?? '');
+        $leftPriority = $priority[$leftSlug] ?? 100;
+        $rightPriority = $priority[$rightSlug] ?? 100;
+
+        if ($leftPriority !== $rightPriority) {
+            return $leftPriority <=> $rightPriority;
+        }
+
+        return strcmp((string)($left['label'] ?? ''), (string)($right['label'] ?? ''));
+    }
+
+    protected static function compareCronEvents(array $left, array $right): int {
+        if ((int)($left['next_run_timestamp'] ?? 0) === (int)($right['next_run_timestamp'] ?? 0)) {
+            return strcmp((string)($left['hook'] ?? ''), (string)($right['hook'] ?? ''));
+        }
+
+        return (int)($left['next_run_timestamp'] ?? 0) <=> (int)($right['next_run_timestamp'] ?? 0);
+    }
+
+    protected static function compareUsageDistributionRows(array $left, array $right): int {
+        $leftValue = (int)($left['value'] ?? 0);
+        $rightValue = (int)($right['value'] ?? 0);
+
+        if ($leftValue === $rightValue) {
+            return strcmp((string)($left['label'] ?? ''), (string)($right['label'] ?? ''));
+        }
+
+        return $rightValue <=> $leftValue;
+    }
+
+    protected static function isUnusedPlugin(array $plugin): bool {
+        return (int)($plugin['site_count'] ?? 0) === 0;
+    }
+
+    protected static function isUnusedTheme(array $theme): bool {
+        return (int)($theme['site_count'] ?? 0) === 0;
     }
 
     protected function isCompleteDashboardData(array $data): bool {
