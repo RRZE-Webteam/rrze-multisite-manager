@@ -31,7 +31,6 @@ class MetricsService {
             'archived_sites' => $this->getSitesByFlag('archived', 1),
             'blocked_sites' => $this->getSitesByFlag('spam', 1),
             'deleted_sites' => $this->getSitesByFlag('deleted', 1),
-            'monthly_growth' => $this->getMonthlyGrowth(),
             'themes' => $this->getThemes(),
             'theme_usage' => $this->getThemeUsage(),
             'editor_usage' => $this->getEditorUsage(),
@@ -291,19 +290,35 @@ class MetricsService {
         $totalSites = count($siteIds);
         $sitePluginFiles = [];
         $pluginData = [];
+        $pluginUpdates = get_site_transient('update_plugins');
+        $updateItem = null;
 
         foreach ($availablePlugins as $pluginFile => $pluginData) {
+            $updateItem = is_object($pluginUpdates) && !empty($pluginUpdates->response[$pluginFile]) && is_object($pluginUpdates->response[$pluginFile])
+                ? $pluginUpdates->response[$pluginFile]
+                : null;
             $pluginStats[$pluginFile] = [
                 'file' => $pluginFile,
                 'site_count' => 0,
+                'active_sites' => [],
                 'name' => (string)($pluginData['Name'] ?? $pluginFile),
                 'version' => (string)($pluginData['Version'] ?? 'n/a'),
                 'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
                 'author' => $this->getPluginAuthorLabel($pluginData),
+                'author_url' => $this->getPluginAuthorUrl($pluginData),
                 'network_active' => isset($networkActivePlugins[$pluginFile]),
                 'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginData),
                 'details_url' => $this->getPluginDetailsUrl($pluginData),
                 'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
+                'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
+                'plugin_uri' => $this->getPluginDetailsUrl($pluginData),
+                'text_domain' => !empty($pluginData['TextDomain']) && is_string($pluginData['TextDomain']) ? (string)$pluginData['TextDomain'] : '',
+                'requires_php' => !empty($pluginData['RequiresPHP']) && is_string($pluginData['RequiresPHP']) ? (string)$pluginData['RequiresPHP'] : '',
+                'requires_wp' => !empty($pluginData['RequiresWP']) && is_string($pluginData['RequiresWP']) ? (string)$pluginData['RequiresWP'] : '',
+                'update_available' => $updateItem !== null,
+                'update_version' => $updateItem !== null ? (string)($updateItem->new_version ?? '') : '',
+                'update_details_url' => $this->getPluginUpdateDetailsUrl($pluginData, $updateItem),
+                'update_url' => $updateItem !== null ? $this->getNetworkPluginUpdateUrl($pluginFile) : '',
             ];
         }
 
@@ -326,19 +341,39 @@ class MetricsService {
                     $pluginStats[$pluginFile] = [
                         'file' => $pluginFile,
                         'site_count' => 0,
+                        'active_sites' => [],
                         'name' => $pluginFile,
                         'version' => 'n/a',
                         'description' => '',
                         'author' => '',
+                        'author_url' => '',
                         'network_active' => isset($networkActivePlugins[$pluginFile]),
                         'settings_url' => '',
                         'details_url' => '',
                         'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
+                        'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
+                        'plugin_uri' => '',
+                        'text_domain' => '',
+                        'requires_php' => '',
+                        'requires_wp' => '',
+                        'update_available' => false,
+                        'update_version' => '',
+                        'update_details_url' => '',
+                        'update_url' => '',
                     ];
                 }
 
                 $pluginStats[$pluginFile]['site_count']++;
+                $pluginStats[$pluginFile]['active_sites'][] = [
+                    'id' => (int)$siteId,
+                    'name' => $this->getSiteNameById((int)$siteId),
+                    'url' => get_home_url((int)$siteId, '/'),
+                ];
             }
+        }
+
+        foreach ($pluginStats as $pluginFile => $pluginData) {
+            $pluginStats[$pluginFile]['active_sites'] = $this->sortPluginActiveSites((array)($pluginData['active_sites'] ?? []));
         }
 
         uasort($pluginStats, [self::class, 'comparePluginUsage']);
@@ -862,6 +897,14 @@ class MetricsService {
         return '';
     }
 
+    protected function getPluginAuthorUrl(array $pluginData): string {
+        if (!empty($pluginData['AuthorURI']) && is_string($pluginData['AuthorURI'])) {
+            return (string)$pluginData['AuthorURI'];
+        }
+
+        return '';
+    }
+
     protected function getPluginSettingsUrl(string $pluginFile, array $pluginData): string {
         $actions = apply_filters('network_admin_plugin_action_links_' . $pluginFile, [], $pluginData, 'all');
         $url = $this->extractFirstActionUrl($actions, ['settings']);
@@ -882,6 +925,14 @@ class MetricsService {
         return '';
     }
 
+    protected function getPluginUpdateDetailsUrl(array $pluginData, ?object $updateItem): string {
+        if ($updateItem !== null && !empty($updateItem->url) && is_string($updateItem->url)) {
+            return (string)$updateItem->url;
+        }
+
+        return $this->getPluginDetailsUrl($pluginData);
+    }
+
     protected function getNetworkPluginDeactivateUrl(string $pluginFile): string {
         return wp_nonce_url(
             add_query_arg(
@@ -893,6 +944,42 @@ class MetricsService {
             ),
             'deactivate-plugin_' . $pluginFile
         );
+    }
+
+    protected function getNetworkPluginUpdateUrl(string $pluginFile): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'upgrade-plugin',
+                    'plugin' => $pluginFile,
+                ],
+                network_admin_url('update.php')
+            ),
+            'upgrade-plugin_' . $pluginFile
+        );
+    }
+
+    protected function getNetworkPluginDeleteUrl(string $pluginFile): string {
+        return wp_nonce_url(
+            'plugins.php?action=delete-selected&verify-delete=1&checked[]=' . rawurlencode($pluginFile),
+            'bulk-plugins'
+        );
+    }
+
+    protected function getSiteNameById(int $siteId): string {
+        $site = get_site($siteId);
+
+        if (!$site instanceof \WP_Site) {
+            return (string)$siteId;
+        }
+
+        return $this->getSiteName($site);
+    }
+
+    protected function sortPluginActiveSites(array $sites): array {
+        usort($sites, [self::class, 'comparePluginActiveSites']);
+
+        return $sites;
     }
 
     protected function getSitePluginDeactivateUrl(int $siteId, string $pluginFile): string {
@@ -2183,6 +2270,10 @@ class MetricsService {
         return strcmp((string)($left['name'] ?? $left['username'] ?? ''), (string)($right['name'] ?? $right['username'] ?? ''));
     }
 
+    protected static function comparePluginActiveSites(array $left, array $right): int {
+        return strcmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
+    }
+
     protected static function compareDetailedContentTypes(array $left, array $right): int {
         $priority = [
             'post' => 1,
@@ -2257,7 +2348,6 @@ class MetricsService {
             'archived_sites',
             'blocked_sites',
             'deleted_sites',
-            'monthly_growth',
             'themes',
             'theme_usage',
             'editor_usage',

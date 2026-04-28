@@ -23,6 +23,7 @@ class Config {
                 'parent_slug' => 'rrze-multisite-manager-dashboard',
                 'dashboard_slug' => 'rrze-multisite-manager-dashboard',
                 'site_overview_slug' => 'rrze-multisite-manager-site-overview',
+                'plugin_overview_slug' => 'rrze-multisite-manager-plugin-overview',
                 'site_details_slug' => 'rrze-multisite-manager-site-details',
                 'site_status_slug' => 'rrze-multisite-manager-site-status',
                 'views_slug' => 'rrze-multisite-manager-views',

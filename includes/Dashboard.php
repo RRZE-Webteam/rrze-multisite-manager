@@ -8,7 +8,6 @@ use RRZE\MultisiteManager\Widgets\ArchivedSitesWidget;
 use RRZE\MultisiteManager\Widgets\BlockedSitesWidget;
 use RRZE\MultisiteManager\Widgets\DeletedSitesWidget;
 use RRZE\MultisiteManager\Widgets\EditorUsageWidget;
-use RRZE\MultisiteManager\Widgets\GrowthWidget;
 use RRZE\MultisiteManager\Widgets\InactiveSitesWidget;
 use RRZE\MultisiteManager\Widgets\InactivePluginsWidget;
 use RRZE\MultisiteManager\Widgets\InactiveThemesWidget;
@@ -68,6 +67,7 @@ class Dashboard {
         $parentSlug = (string)($menuSettings['parent_slug'] ?? 'rrze-multisite-manager-dashboard');
         $dashboardSlug = (string)($menuSettings['dashboard_slug'] ?? 'rrze-multisite-manager-dashboard');
         $siteOverviewSlug = (string)($menuSettings['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview');
+        $pluginOverviewSlug = (string)($menuSettings['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview');
         $siteDetailsSlug = (string)($menuSettings['site_details_slug'] ?? 'rrze-multisite-manager-site-details');
         $siteStatusSlug = (string)($menuSettings['site_status_slug'] ?? 'rrze-multisite-manager-site-status');
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
@@ -99,6 +99,15 @@ class Dashboard {
             $capability,
             $siteOverviewSlug,
             [$this, 'renderSiteOverviewPage']
+        );
+
+        $this->pageHooks[] = add_submenu_page(
+            $parentSlug,
+            __('Plugin-Übersicht', 'rrze-multisite-manager'),
+            __('Plugin-Übersicht', 'rrze-multisite-manager'),
+            $capability,
+            $pluginOverviewSlug,
+            [$this, 'renderPluginOverviewPage']
         );
 
         $this->pageHooks[] = add_submenu_page(
@@ -540,6 +549,184 @@ class Dashboard {
         );
     }
 
+    public function renderPluginOverviewPage(): void {
+        $dashboardData = [];
+        $widget = null;
+        $pluginUsage = [];
+        $allPlugins = [];
+        $currentTab = isset($_GET['tab']) ? sanitize_key((string)$_GET['tab']) : 'all';
+        $tabs = [];
+        $tables = [];
+        $networkPlugins = [];
+        $activePlugins = [];
+        $inactivePlugins = [];
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        $dashboardData = $this->metrics->getDashboardData();
+        $pluginUsage = is_array($dashboardData['plugin_usage'] ?? null) ? $dashboardData['plugin_usage'] : [];
+        $allPlugins = is_array($pluginUsage['plugins'] ?? null) ? $pluginUsage['plugins'] : [];
+        $widget = new PluginUsageWidget($this->plugin, $this->config);
+        $networkPlugins = array_values(
+            array_filter(
+                $allPlugins,
+                [$this, 'isNetworkPlugin']
+            )
+        );
+        $activePlugins = array_values(
+            array_filter(
+                $allPlugins,
+                [$this, 'isLocallyActivePlugin']
+            )
+        );
+        $inactivePlugins = array_values(
+            array_filter(
+                $allPlugins,
+                [$this, 'isInactivePlugin']
+            )
+        );
+
+        if (!in_array($currentTab, ['all', 'network', 'active', 'inactive'], true)) {
+            $currentTab = 'all';
+        }
+
+        $tabs = [
+            [
+                'slug' => 'all',
+                'label' => __('Alle Plugins', 'rrze-multisite-manager'),
+                'count' => count($allPlugins),
+                'class' => 'rrze-msm-tab-all',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview'),
+                        'tab' => 'all',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'network',
+                'label' => __('Netzwerkplugins', 'rrze-multisite-manager'),
+                'count' => count($networkPlugins),
+                'class' => 'rrze-msm-tab-info',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview'),
+                        'tab' => 'network',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'active',
+                'label' => __('Aktivierte Plugins', 'rrze-multisite-manager'),
+                'count' => count($activePlugins),
+                'class' => 'rrze-msm-tab-positive',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview'),
+                        'tab' => 'active',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'inactive',
+                'label' => __('Nicht aktivierte Plugins', 'rrze-multisite-manager'),
+                'count' => count($inactivePlugins),
+                'class' => 'rrze-msm-tab-gold',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview'),
+                        'tab' => 'inactive',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+        ];
+
+        $tables = [
+            'all' => $widget->renderTable(
+                $allPlugins,
+                [
+                    'table_id' => 'plugin-overview-all',
+                    'default_per_page' => 30,
+                    'sort_key' => 'active-sites',
+                    'sort_direction' => 'desc',
+                    'show_active_sites' => true,
+                    'show_active_site_list' => true,
+                    'show_network_button' => true,
+                    'highlight_network_plugins' => true,
+                ]
+            ),
+            'network' => $widget->renderTable(
+                $networkPlugins,
+                [
+                    'table_id' => 'plugin-overview-network',
+                    'default_per_page' => 30,
+                    'sort_key' => 'active-sites',
+                    'sort_direction' => 'desc',
+                    'show_active_sites' => true,
+                    'show_active_site_list' => false,
+                    'show_network_button' => true,
+                    'highlight_network_plugins' => false,
+                ]
+            ),
+            'active' => $widget->renderTable(
+                $activePlugins,
+                [
+                    'table_id' => 'plugin-overview-active',
+                    'default_per_page' => 30,
+                    'sort_key' => 'active-sites',
+                    'sort_direction' => 'desc',
+                    'show_active_sites' => true,
+                    'show_active_site_list' => true,
+                    'show_network_button' => true,
+                    'highlight_network_plugins' => false,
+                ]
+            ),
+            'inactive' => $widget->renderTable(
+                $inactivePlugins,
+                [
+                    'table_id' => 'plugin-overview-inactive',
+                    'default_per_page' => 30,
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
+                    'show_active_sites' => false,
+                    'show_active_site_list' => false,
+                    'show_network_button' => true,
+                    'highlight_network_plugins' => false,
+                ]
+            ),
+        ];
+
+        echo $this->template->render(
+            'plugin-overview-page',
+            [
+                'plugin_overview_tabs' => $tabs,
+                'current_tab' => $currentTab,
+                'plugin_overview_table' => $tables[$currentTab] ?? $tables['all'],
+                'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
+                'mode_toggle_label' => $this->getModeToggleLabel(),
+            ],
+            $this
+        );
+    }
+
+    protected function isNetworkPlugin(array $plugin): bool {
+        return !empty($plugin['network_active']);
+    }
+
+    protected function isLocallyActivePlugin(array $plugin): bool {
+        return (int)($plugin['site_count'] ?? 0) > 0 && empty($plugin['network_active']);
+    }
+
+    protected function isInactivePlugin(array $plugin): bool {
+        return (int)($plugin['site_count'] ?? 0) <= 0;
+    }
+
     public function renderSiteStatusPage(): void {
         $siteId = isset($_GET['site_id']) ? absint($_GET['site_id']) : 0;
         $statusAction = isset($_GET['status_action']) ? sanitize_key((string)$_GET['status_action']) : '';
@@ -917,7 +1104,6 @@ class Dashboard {
         return [
             'summary' => new SummaryWidget($this->plugin, $this->config),
             'status' => new StatusWidget($this->plugin, $this->config),
-            'growth' => new GrowthWidget($this->plugin, $this->config),
             'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),
             'editor_usage' => new EditorUsageWidget($this->plugin, $this->config),
             'recent_sites' => new RecentSitesWidget($this->plugin, $this->config),

@@ -435,6 +435,7 @@ abstract class Widgets {
                 __('Wiederherstellen', 'rrze-multisite-manager'),
                 'backup'
             );
+            $actions[] = $this->renderPermanentDeleteSiteAction($site);
         }
 
         return '<div class="rrze-msm-site-actions">' . implode('', $actions) . '</div>';
@@ -449,6 +450,19 @@ abstract class Widgets {
 
     protected function renderSiteActionState(string $label, string $icon): string {
         return '<span class="rrze-msm-site-action-state" title="' . esc_attr($label) . '"><span class="dashicons dashicons-' . esc_attr($icon) . '" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html($label) . '</span></span>';
+    }
+
+    protected function renderPermanentDeleteSiteAction(array $site): string {
+        $siteId = (int)($site['id'] ?? 0);
+        $siteName = (string)($site['name'] ?? '');
+        $url = $this->getSitePermanentDeleteUrl($siteId);
+        $label = __('Site endgültig löschen', 'rrze-multisite-manager');
+
+        if ($siteId <= 0 || $url === '') {
+            return '';
+        }
+
+        return '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-open-site-delete-modal" data-site-name="' . esc_attr($siteName) . '" data-delete-url="' . esc_url($url) . '" title="' . esc_attr($label) . '" aria-label="' . esc_attr($label) . '"><span class="dashicons dashicons-warning" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html($label) . '</span></button>';
     }
 
     protected function renderRoleCounts(int $siteId, array $roleCounts): string {
@@ -633,6 +647,17 @@ abstract class Widgets {
                 'site_id' => $siteId,
             ],
             network_admin_url('admin.php')
+        );
+    }
+
+    protected function getSitePermanentDeleteUrl(int $siteId): string {
+        if ($siteId <= 0) {
+            return '';
+        }
+
+        return wp_nonce_url(
+            network_admin_url('sites.php?action=confirm&action2=deleteblog&id=' . $siteId),
+            'deleteblog_' . $siteId
         );
     }
 

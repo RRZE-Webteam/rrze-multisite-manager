@@ -75,6 +75,34 @@ function updatePluginDeactivateSubmitState() {
     submit.setAttribute('aria-disabled', 'true');
 }
 
+function closeSiteDeleteModal() {
+    var modal = document.querySelector('#rrze-msm-site-delete-modal');
+
+    if (!modal) {
+        return;
+    }
+
+    modal.setAttribute('hidden', 'hidden');
+}
+
+function updateSiteDeleteSubmitState() {
+    var checkbox = document.querySelector('#rrze-msm-site-delete-confirm');
+    var submit = document.querySelector('#rrze-msm-site-delete-submit');
+
+    if (!checkbox || !submit) {
+        return;
+    }
+
+    if (checkbox.checked) {
+        submit.classList.remove('disabled');
+        submit.removeAttribute('aria-disabled');
+        return;
+    }
+
+    submit.classList.add('disabled');
+    submit.setAttribute('aria-disabled', 'true');
+}
+
 function onDeleteCptButtonClick(event) {
     var button = event.currentTarget;
     var modal = document.querySelector('#rrze-msm-delete-cpt-modal');
@@ -111,6 +139,24 @@ function onPluginDeactivateButtonClick(event) {
     modal.removeAttribute('hidden');
 }
 
+function onSiteDeleteButtonClick(event) {
+    var button = event.currentTarget;
+    var modal = document.querySelector('#rrze-msm-site-delete-modal');
+    var target = document.querySelector('#rrze-msm-site-delete-target');
+    var submit = document.querySelector('#rrze-msm-site-delete-submit');
+    var checkbox = document.querySelector('#rrze-msm-site-delete-confirm');
+
+    if (!button || !modal || !target || !submit || !checkbox) {
+        return;
+    }
+
+    target.textContent = button.getAttribute('data-site-name') || '';
+    submit.setAttribute('href', button.getAttribute('data-delete-url') || '#');
+    checkbox.checked = false;
+    updateSiteDeleteSubmitState();
+    modal.removeAttribute('hidden');
+}
+
 function onCloseDeleteCptModalClick(event) {
     event.preventDefault();
     closeDeleteCptModal();
@@ -122,6 +168,19 @@ function onClosePluginDeactivateModalClick(event) {
 }
 
 function onPluginDeactivateSubmitClick(event) {
+    var submit = event.currentTarget;
+
+    if (!submit || submit.getAttribute('aria-disabled') === 'true') {
+        event.preventDefault();
+    }
+}
+
+function onCloseSiteDeleteModalClick(event) {
+    event.preventDefault();
+    closeSiteDeleteModal();
+}
+
+function onSiteDeleteSubmitClick(event) {
     var submit = event.currentTarget;
 
     if (!submit || submit.getAttribute('aria-disabled') === 'true') {
@@ -170,6 +229,31 @@ function initPluginDeactivateModal() {
     if (submit) {
         submit.addEventListener('click', onPluginDeactivateSubmitClick);
         updatePluginDeactivateSubmitState();
+    }
+}
+
+function initSiteDeleteModal() {
+    var openButtons = document.querySelectorAll('.rrze-msm-open-site-delete-modal');
+    var closeButtons = document.querySelectorAll('.rrze-msm-close-site-delete-modal');
+    var checkbox = document.querySelector('#rrze-msm-site-delete-confirm');
+    var submit = document.querySelector('#rrze-msm-site-delete-submit');
+    var i = 0;
+
+    for (i = 0; i < openButtons.length; i++) {
+        openButtons[i].addEventListener('click', onSiteDeleteButtonClick);
+    }
+
+    for (i = 0; i < closeButtons.length; i++) {
+        closeButtons[i].addEventListener('click', onCloseSiteDeleteModalClick);
+    }
+
+    if (checkbox) {
+        checkbox.addEventListener('change', updateSiteDeleteSubmitState);
+    }
+
+    if (submit) {
+        submit.addEventListener('click', onSiteDeleteSubmitClick);
+        updateSiteDeleteSubmitState();
     }
 }
 
@@ -376,6 +460,37 @@ function getSiteTableRows(wrapper) {
     return Array.prototype.slice.call(wrapper.querySelectorAll('tbody tr'));
 }
 
+function getSiteTableSearchQuery(wrapper) {
+    var input = wrapper.querySelector('.rrze-msm-site-table-search');
+
+    if (!input) {
+        return '';
+    }
+
+    return String(input.value || '').trim().toLowerCase();
+}
+
+function filterSiteTableRows(wrapper, rows) {
+    var query = getSiteTableSearchQuery(wrapper);
+    var filteredRows = [];
+    var i = 0;
+    var sortName = '';
+
+    if (query === '') {
+        return rows;
+    }
+
+    for (i = 0; i < rows.length; i++) {
+        sortName = String(getSiteTableSortValue(rows[i], 'name') || '').toLowerCase();
+
+        if (sortName.indexOf(query) !== -1) {
+            filteredRows.push(rows[i]);
+        }
+    }
+
+    return filteredRows;
+}
+
 function getSiteTablePerPage(wrapper) {
     var select = wrapper.querySelector('.rrze-msm-site-table-per-page');
     var perPage = 0;
@@ -520,6 +635,7 @@ function renderSiteTablePagination(wrapper, totalRows, perPage, currentPage) {
 
 function renderSiteTable(wrapper) {
     var rows = [];
+    var filteredRows = [];
     var perPage = 0;
     var currentPage = 0;
     var totalPages = 0;
@@ -534,14 +650,15 @@ function renderSiteTable(wrapper) {
     rows = getSiteTableRows(wrapper);
     perPage = getSiteTablePerPage(wrapper);
     currentPage = getSiteTableCurrentPage(wrapper);
-    totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+
+    sortSiteTableRows(wrapper, rows);
+    filteredRows = filterSiteTableRows(wrapper, rows);
+    totalPages = Math.max(1, Math.ceil(filteredRows.length / perPage));
 
     if (currentPage > totalPages) {
         currentPage = totalPages;
         wrapper.setAttribute('data-current-page', String(currentPage));
     }
-
-    sortSiteTableRows(wrapper, rows);
 
     for (i = 0; i < rows.length; i++) {
         rows[i].parentNode.appendChild(rows[i]);
@@ -551,11 +668,15 @@ function renderSiteTable(wrapper) {
     endIndex = startIndex + perPage;
 
     for (i = 0; i < rows.length; i++) {
-        rows[i].style.display = (i >= startIndex && i < endIndex) ? '' : 'none';
+        rows[i].style.display = 'none';
+    }
+
+    for (i = 0; i < filteredRows.length; i++) {
+        filteredRows[i].style.display = (i >= startIndex && i < endIndex) ? '' : 'none';
     }
 
     updateSiteTableSortButtons(wrapper);
-    renderSiteTablePagination(wrapper, rows.length, perPage, currentPage);
+    renderSiteTablePagination(wrapper, filteredRows.length, perPage, currentPage);
 }
 
 function onSiteTableClick(event) {
@@ -596,15 +717,33 @@ function onSiteTablePerPageChange(event) {
     renderSiteTable(wrapper);
 }
 
+function onSiteTableSearchInput(event) {
+    var wrapper = event.currentTarget.closest('.rrze-msm-site-table-wrap');
+
+    if (!wrapper) {
+        return;
+    }
+
+    wrapper.setAttribute('data-current-page', '1');
+    renderSiteTable(wrapper);
+}
+
 function initSiteTables() {
     var wrappers = document.querySelectorAll('.rrze-msm-site-table-wrap');
     var i = 0;
+    var searchInput = null;
 
     for (i = 0; i < wrappers.length; i++) {
         wrappers[i].addEventListener('click', onSiteTableClick);
 
         if (wrappers[i].querySelector('.rrze-msm-site-table-per-page')) {
             wrappers[i].querySelector('.rrze-msm-site-table-per-page').addEventListener('change', onSiteTablePerPageChange);
+        }
+
+        searchInput = wrappers[i].querySelector('.rrze-msm-site-table-search');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', onSiteTableSearchInput);
         }
 
         renderSiteTable(wrappers[i]);
@@ -782,6 +921,150 @@ function initSiteSearch() {
     input.addEventListener('input', onSiteSearchInput);
 }
 
+function updatePluginSitesTextToggle(container, expanded) {
+    var buttons = [];
+    var i = 0;
+    var details = null;
+    var collapsed = null;
+
+    if (!container) {
+        return;
+    }
+
+    buttons = container.querySelectorAll('.rrze-msm-plugin-sites-toggle-text');
+    details = container.querySelector('.rrze-msm-plugin-sites-details');
+    collapsed = container.querySelector('.rrze-msm-plugin-sites-collapsed');
+
+    for (i = 0; i < buttons.length; i++) {
+        buttons[i].setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        buttons[i].textContent = i === 0 && expanded ? '▼ Websites anzeigen' : (i === 0 ? '▼ Websites anzeigen' : '▲ Websites verbergen');
+    }
+
+    if (collapsed) {
+        collapsed.hidden = expanded;
+    }
+
+    if (details) {
+        details.hidden = !expanded;
+    }
+}
+
+function onPluginSitesTextToggleClick(event) {
+    var button = event.currentTarget;
+    var toggleId = button.getAttribute('data-plugin-sites-id') || '';
+    var container = null;
+    var expanded = false;
+
+    if (toggleId === '') {
+        return;
+    }
+
+    container = document.querySelector('.rrze-msm-plugin-sites-inline[data-plugin-sites-id="' + toggleId + '"]');
+
+    if (!container) {
+        return;
+    }
+
+    expanded = button.getAttribute('aria-expanded') !== 'true';
+    updatePluginSitesTextToggle(container, expanded);
+}
+
+function initPluginSitesTextToggles() {
+    var buttons = document.querySelectorAll('.rrze-msm-plugin-sites-toggle-text');
+    var i = 0;
+
+    for (i = 0; i < buttons.length; i++) {
+        buttons[i].addEventListener('click', onPluginSitesTextToggleClick);
+    }
+}
+
+function updatePluginSitesPager(container) {
+    var currentPage = parseInt(container.getAttribute('data-current-page') || '1', 10);
+    var totalPages = parseInt(container.getAttribute('data-total-pages') || '1', 10);
+    var prevButton = container.querySelector('.rrze-msm-plugin-sites-page[data-direction="prev"]');
+    var nextButton = container.querySelector('.rrze-msm-plugin-sites-page[data-direction="next"]');
+    var label = container.querySelector('.rrze-msm-plugin-sites-page-label');
+    var items = [];
+    var i = 0;
+
+    if (isNaN(currentPage) || currentPage < 1) {
+        currentPage = 1;
+    }
+
+    if (isNaN(totalPages) || totalPages < 1) {
+        totalPages = 1;
+    }
+
+    items = container.parentNode.querySelectorAll('.rrze-msm-plugin-sites-list li');
+
+    for (i = 0; i < items.length; i++) {
+        items[i].hidden = String(items[i].getAttribute('data-page') || '1') !== String(currentPage);
+    }
+
+    if (prevButton) {
+        prevButton.disabled = currentPage <= 1;
+        prevButton.setAttribute('aria-disabled', currentPage <= 1 ? 'true' : 'false');
+    }
+
+    if (nextButton) {
+        nextButton.disabled = currentPage >= totalPages;
+        nextButton.setAttribute('aria-disabled', currentPage >= totalPages ? 'true' : 'false');
+    }
+
+    if (label) {
+        label.textContent = 'Seite ' + String(currentPage) + ' von ' + String(totalPages);
+    }
+}
+
+function onPluginSitesPageClick(event) {
+    var button = event.currentTarget;
+    var container = button.closest('.rrze-msm-plugin-sites-pagination');
+    var currentPage = 1;
+    var totalPages = 1;
+    var direction = '';
+
+    if (!container || button.disabled) {
+        return;
+    }
+
+    currentPage = parseInt(container.getAttribute('data-current-page') || '1', 10);
+    totalPages = parseInt(container.getAttribute('data-total-pages') || '1', 10);
+    direction = button.getAttribute('data-direction') || '';
+
+    if (isNaN(currentPage) || currentPage < 1) {
+        currentPage = 1;
+    }
+
+    if (isNaN(totalPages) || totalPages < 1) {
+        totalPages = 1;
+    }
+
+    if (direction === 'prev' && currentPage > 1) {
+        currentPage--;
+    }
+
+    if (direction === 'next' && currentPage < totalPages) {
+        currentPage++;
+    }
+
+    container.setAttribute('data-current-page', String(currentPage));
+    updatePluginSitesPager(container);
+}
+
+function initPluginSitesPagers() {
+    var containers = document.querySelectorAll('.rrze-msm-plugin-sites-pagination');
+    var buttons = document.querySelectorAll('.rrze-msm-plugin-sites-page');
+    var i = 0;
+
+    for (i = 0; i < containers.length; i++) {
+        updatePluginSitesPager(containers[i]);
+    }
+
+    for (i = 0; i < buttons.length; i++) {
+        buttons[i].addEventListener('click', onPluginSitesPageClick);
+    }
+}
+
 function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = '';
@@ -802,6 +1085,9 @@ function initRrzeMultisiteManager() {
     initSiteSearch();
     initDeleteCptModal();
     initPluginDeactivateModal();
+    initSiteDeleteModal();
+    initPluginSitesTextToggles();
+    initPluginSitesPagers();
 }
 
 document.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);

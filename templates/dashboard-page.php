@@ -33,4 +33,23 @@
             <?php foreach ($widget_markup as $markup) { echo $markup; } ?>
         </div>
     </div>
+    <div class="rrze-msm-modal" id="rrze-msm-site-delete-modal" hidden>
+        <div class="rrze-msm-modal-backdrop rrze-msm-close-site-delete-modal"></div>
+        <div class="rrze-msm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rrze-msm-site-delete-title">
+            <h3 id="rrze-msm-site-delete-title"><?php echo esc_html__('Site endgültig löschen', 'rrze-multisite-manager'); ?></h3>
+            <p class="rrze-msm-modal-text"><?php echo esc_html__('Diese Aktion löscht die Site endgültig über die normale Netzwerkfunktion von WordPress. Für große Websites solltest du das nicht im Browser tun. Halte den Browser offen, bis der Vorgang abgeschlossen ist.', 'rrze-multisite-manager'); ?></p>
+            <p class="rrze-msm-modal-target">
+                <strong><?php echo esc_html__('Ausgewählte Site:', 'rrze-multisite-manager'); ?></strong>
+                <span id="rrze-msm-site-delete-target"></span>
+            </p>
+            <label class="rrze-msm-modal-checkbox">
+                <input type="checkbox" id="rrze-msm-site-delete-confirm">
+                <span><?php echo esc_html__('Ja, ich bin sicher. Diese Site soll endgültig gelöscht werden und ich lasse den Browser dafür offen.', 'rrze-multisite-manager'); ?></span>
+            </label>
+            <div class="rrze-msm-modal-actions">
+                <button type="button" class="button button-secondary rrze-msm-close-site-delete-modal"><?php echo esc_html__('Abbrechen', 'rrze-multisite-manager'); ?></button>
+                <a href="#" class="button button-secondary rrze-msm-button-danger" id="rrze-msm-site-delete-submit" aria-disabled="true"><?php echo esc_html__('Zur endgültigen Löschung', 'rrze-multisite-manager'); ?></a>
+            </div>
+        </div>
+    </div>
 </div>
