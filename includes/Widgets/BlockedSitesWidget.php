@@ -21,6 +21,10 @@ class BlockedSitesWidget extends Widgets {
         return 8;
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-wide';
+    }
+
     protected function getTemplateName(): string {
         return 'blocked-sites-widget';
     }

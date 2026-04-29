@@ -65,16 +65,16 @@
 }
 
 .rrze-msm-site-action-blocked.button.button-small {
-    border-color: var(--rrze-msm-neutral);
-    background: transparent;
-    color: var(--rrze-msm-neutral);
+    border-color: var(--rrze-msm-danger);
+    background: var(--rrze-msm-danger);
+    color: var(--rrze-msm-danger-text);
 }
 
 .rrze-msm-site-action-blocked.button.button-small:hover,
 .rrze-msm-site-action-blocked.button.button-small:focus {
-    border-color: var(--rrze-msm-neutral);
-    background: color-mix(in srgb, var(--rrze-msm-neutral) 10%, transparent 90%);
-    color: var(--rrze-msm-neutral);
+    border-color: var(--rrze-msm-danger);
+    background: color-mix(in srgb, var(--rrze-msm-danger) 88%, #000 12%);
+    color: var(--rrze-msm-danger-text);
 }
 
 .rrze-msm-site-action-warning.button.button-small {

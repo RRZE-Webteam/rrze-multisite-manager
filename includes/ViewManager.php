@@ -31,7 +31,10 @@ class ViewManager {
                     continue;
                 }
 
-                $views[$slug]['widgets'] = $this->sanitizeWidgets($view['widgets'] ?? $defaults[$slug]['widgets'], $availableWidgetIds);
+                $views[$slug]['widgets'] = $this->mergeSystemWidgets(
+                    $this->sanitizeWidgets($view['widgets'] ?? $defaults[$slug]['widgets'], $availableWidgetIds),
+                    $this->sanitizeWidgets($defaults[$slug]['widgets'], $availableWidgetIds)
+                );
                 continue;
             }
 
@@ -112,17 +115,48 @@ class ViewManager {
                 'label' => __('Default', 'rrze-multisite-manager'),
                 'widgets' => [
                     'summary',
+                    'status',
+                    'network_storage_usage',
+                    'theme_usage',
+                    'editor_usage',
+                    'site_overview',
+                    'blocked_sites',
+                ],
+                'system' => true,
+            ],
+            'plugins' => [
+                'slug' => 'plugins',
+                'label' => __('Plugins', 'rrze-multisite-manager'),
+                'widgets' => [
+                    'plugin_usage',
+                    'inactive_plugins',
+                ],
+                'system' => true,
+            ],
+            'themes' => [
+                'slug' => 'themes',
+                'label' => __('Themes', 'rrze-multisite-manager'),
+                'widgets' => [
+                    'theme_usage',
+                    'inactive_themes',
+                    'theme_overview',
+                ],
+                'system' => true,
+            ],
+            'websites' => [
+                'slug' => 'websites',
+                'label' => __('Websites', 'rrze-multisite-manager'),
+                'widgets' => [
+                    'summary',
                     'site_overview',
                     'status',
+                    'network_storage_usage',
                     'recent_sites',
                     'recently_updated_sites',
                     'inactive_sites',
                     'archived_sites',
                     'blocked_sites',
                     'deleted_sites',
-                    'plugin_usage',
-                    'inactive_plugins',
-                    'inactive_themes',
                 ],
                 'system' => true,
             ],
@@ -130,36 +164,6 @@ class ViewManager {
                 'slug' => 'all_widgets',
                 'label' => __('Alle Widgets', 'rrze-multisite-manager'),
                 'widgets' => $availableWidgetIds,
-                'system' => true,
-            ],
-            'themes_editor' => [
-                'slug' => 'themes_editor',
-                'label' => __('Themes und Editor', 'rrze-multisite-manager'),
-                'widgets' => [
-                    'summary',
-                    'theme_usage',
-                    'plugin_usage',
-                    'inactive_plugins',
-                    'inactive_themes',
-                    'editor_usage',
-                    'theme_overview',
-                ],
-                'system' => true,
-            ],
-            'sites_overview' => [
-                'slug' => 'sites_overview',
-                'label' => __('Instanzen und Übersicht', 'rrze-multisite-manager'),
-                'widgets' => [
-                    'summary',
-                    'site_overview',
-                    'status',
-                    'recent_sites',
-                    'recently_updated_sites',
-                    'inactive_sites',
-                    'archived_sites',
-                    'blocked_sites',
-                    'deleted_sites',
-                ],
                 'system' => true,
             ],
         ];
@@ -187,6 +191,19 @@ class ViewManager {
     protected function sanitizeViewLabel(string $label): string {
         $label = sanitize_text_field($label);
         return $label === '' ? __('Neue Ansicht', 'rrze-multisite-manager') : $label;
+    }
+
+    protected function mergeSystemWidgets(array $storedWidgets, array $defaultWidgets): array {
+        $widgets = $storedWidgets;
+        $widgetId = '';
+
+        foreach ($defaultWidgets as $widgetId) {
+            if (!in_array($widgetId, $widgets, true)) {
+                $widgets[] = $widgetId;
+            }
+        }
+
+        return $widgets;
     }
 
     protected function generateUniqueSlug(string $label, array $views): string {

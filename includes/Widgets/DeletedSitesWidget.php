@@ -17,6 +17,10 @@ class DeletedSitesWidget extends Widgets {
         return __('Diese Instanzen sind bereits als gelöscht markiert.', 'rrze-multisite-manager');
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-wide';
+    }
+
     protected function getTemplateName(): string {
         return 'deleted-sites-widget';
     }

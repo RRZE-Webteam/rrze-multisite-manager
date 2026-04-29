@@ -21,6 +21,10 @@ class PluginUsageWidget extends Widgets {
         return 8;
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-wide';
+    }
+
     public function renderTable(array $plugins, array $args = []): string {
         $tableId = sanitize_key((string)($args['table_id'] ?? 'plugin-usage'));
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
@@ -93,7 +97,7 @@ class PluginUsageWidget extends Widgets {
             echo ' data-sort-name="' . esc_attr(strtolower((string)($plugin['name'] ?? ''))) . '"';
             echo ' data-sort-author="' . esc_attr(strtolower((string)($plugin['author'] ?? ''))) . '"';
             echo ' data-sort-active-sites="' . esc_attr((string)((int)($plugin['site_count'] ?? 0))) . '"';
-            echo '><td><strong>' . esc_html((string)($plugin['name'] ?? '')) . '</strong>';
+            echo '><td><strong><a href="' . esc_url($this->getPluginDetailsPageUrl((string)($plugin['file'] ?? ''))) . '">' . esc_html((string)($plugin['name'] ?? '')) . '</a></strong>';
 
             if (!empty($plugin['description'])) {
                 echo '<br><span class="description">' . esc_html((string)$plugin['description']) . '</span>';
@@ -293,14 +297,17 @@ class PluginUsageWidget extends Widgets {
             $siteId = (int)($site['id'] ?? 0);
             $siteDetailsUrl = $siteId > 0 ? $this->getSiteDetailsPageUrl($siteId) : '';
             echo '<li data-page="' . esc_attr((string)$page) . '"' . ($page > 1 ? ' hidden' : '') . '>';
-            echo '<strong>' . esc_html((string)($site['name'] ?? '')) . '</strong>';
-            echo ' <span class="rrze-msm-plugin-site-sep">|</span> ';
-            echo '<a href="' . esc_url((string)($site['url'] ?? '')) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)($site['url'] ?? '')) . '</a>';
+            echo '<strong>';
 
             if ($siteDetailsUrl !== '') {
-                echo ' <span class="rrze-msm-plugin-site-sep">|</span> ';
-                echo '<a href="' . esc_url($siteDetailsUrl) . '">' . esc_html__('Details', 'rrze-multisite-manager') . '</a>';
+                echo '<a href="' . esc_url($siteDetailsUrl) . '">' . esc_html((string)($site['name'] ?? '')) . '</a>';
+            } else {
+                echo esc_html((string)($site['name'] ?? ''));
             }
+
+            echo '</strong>';
+            echo ' <span class="rrze-msm-plugin-site-sep">|</span> ';
+            echo '<a href="' . esc_url((string)($site['url'] ?? '')) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)($site['url'] ?? '')) . '</a>';
 
             echo '</li>';
             $index++;

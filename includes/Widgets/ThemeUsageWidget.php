@@ -17,6 +17,10 @@ class ThemeUsageWidget extends Widgets {
         return __('Verteilung der aktuell auf Sites genutzten Themes.', 'rrze-multisite-manager');
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-chart';
+    }
+
     protected function getTemplateName(): string {
         return 'theme-usage-widget';
     }

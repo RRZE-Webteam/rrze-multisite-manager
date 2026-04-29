@@ -4,6 +4,23 @@ namespace RRZE\MultisiteManager;
 
 defined('ABSPATH') || exit;
 
+use RRZE\MultisiteManager\Widgets\ArchivedSitesWidget;
+use RRZE\MultisiteManager\Widgets\BlockedSitesWidget;
+use RRZE\MultisiteManager\Widgets\DeletedSitesWidget;
+use RRZE\MultisiteManager\Widgets\EditorUsageWidget;
+use RRZE\MultisiteManager\Widgets\InactivePluginsWidget;
+use RRZE\MultisiteManager\Widgets\InactiveSitesWidget;
+use RRZE\MultisiteManager\Widgets\InactiveThemesWidget;
+use RRZE\MultisiteManager\Widgets\NetworkStorageUsageWidget;
+use RRZE\MultisiteManager\Widgets\PluginUsageWidget;
+use RRZE\MultisiteManager\Widgets\RecentSitesWidget;
+use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
+use RRZE\MultisiteManager\Widgets\SiteOverviewWidget;
+use RRZE\MultisiteManager\Widgets\StatusWidget;
+use RRZE\MultisiteManager\Widgets\SummaryWidget;
+use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
+use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
+
 class Settings {
     protected Plugin $plugin;
     protected string $optionName = '';
@@ -129,6 +146,8 @@ class Settings {
     }
 
     public function renderOptionsPage(): void {
+        $currentTab = $this->getSettingsTab();
+
         if (!current_user_can('manage_network_options')) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
@@ -155,18 +174,18 @@ class Settings {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Die Kennzahlen wurden neu aufgebaut.', 'rrze-multisite-manager') . '</p></div>';
         }
 
-        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=' . $this->optionName)) . '">';
-        wp_nonce_field($this->optionName . '_save');
-        $this->renderFields();
-        submit_button();
-        echo '</form>';
-        echo '<hr>';
-        echo '<h2>' . esc_html__('Kennzahlen aktualisieren', 'rrze-multisite-manager') . '</h2>';
-        echo '<p>' . esc_html__('Leert den Kennzahlen-Cache. Die Daten werden beim nächsten Aufruf der Übersichten neu berechnet.', 'rrze-multisite-manager') . '</p>';
-        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_refresh_metrics')) . '">';
-        wp_nonce_field('rrze_multisite_manager_refresh_metrics');
-        submit_button(__('Kennzahlen aktualisieren', 'rrze-multisite-manager'), 'secondary', 'submit', false);
-        echo '</form>';
+        if (!empty($_GET['views-updated'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Die Ansichten wurden gespeichert.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        $this->renderSettingsTabs($currentTab);
+
+        if ($currentTab === 'views') {
+            $this->renderViewsTab();
+        } else {
+            $this->renderGeneralTab();
+        }
+
         echo '</div>';
         echo '</div>';
     }
@@ -340,5 +359,144 @@ class Settings {
     protected function getColorMode(): string {
         $mode = isset($_COOKIE['rrze_msm_color_mode']) ? sanitize_key((string)wp_unslash($_COOKIE['rrze_msm_color_mode'])) : 'light';
         return $mode === 'dark' ? 'dark' : 'light';
+    }
+
+    protected function getSettingsTab(): string {
+        $tab = isset($_GET['tab']) ? sanitize_key((string)$_GET['tab']) : 'general';
+
+        if (!in_array($tab, ['general', 'views'], true)) {
+            return 'general';
+        }
+
+        return $tab;
+    }
+
+    protected function renderSettingsTabs(string $currentTab): void {
+        $baseUrl = add_query_arg(
+            [
+                'page' => $this->getSettingsSlug(),
+            ],
+            network_admin_url('admin.php')
+        );
+
+        echo '<nav class="nav-tab-wrapper">';
+        echo '<a class="nav-tab' . ($currentTab === 'general' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['tab' => 'general'], $baseUrl)) . '">' . esc_html__('Allgemeines', 'rrze-multisite-manager') . '</a>';
+        echo '<a class="nav-tab' . ($currentTab === 'views' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['tab' => 'views'], $baseUrl)) . '">' . esc_html__('Ansichten', 'rrze-multisite-manager') . '</a>';
+        echo '</nav>';
+    }
+
+    protected function renderGeneralTab(): void {
+        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=' . $this->optionName)) . '">';
+        wp_nonce_field($this->optionName . '_save');
+        $this->renderFields();
+        submit_button();
+        echo '</form>';
+        echo '<hr>';
+        echo '<h2>' . esc_html__('Kennzahlen aktualisieren', 'rrze-multisite-manager') . '</h2>';
+        echo '<p>' . esc_html__('Leert den Kennzahlen-Cache. Die Daten werden beim nächsten Aufruf der Übersichten neu berechnet.', 'rrze-multisite-manager') . '</p>';
+        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_refresh_metrics')) . '">';
+        wp_nonce_field('rrze_multisite_manager_refresh_metrics');
+        submit_button(__('Kennzahlen aktualisieren', 'rrze-multisite-manager'), 'secondary', 'submit', false);
+        echo '</form>';
+    }
+
+    protected function renderViewsTab(): void {
+        $viewManager = new ViewManager();
+        $widgets = $this->getWidgetInstances();
+        $views = $viewManager->getViews(array_keys($widgets));
+        $widgetOptions = $this->getWidgetOptions($widgets);
+        $view = [];
+        $widgetOption = [];
+
+        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_save_views')) . '" class="rrze-msm-views-form">';
+        wp_nonce_field('rrze_multisite_manager_save_views');
+        echo '<input type="hidden" name="settings_tab" value="views">';
+
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
+        echo '<header class="rrze-msm-widget-header">';
+        echo '<h2>' . esc_html__('Neue Ansicht anlegen', 'rrze-multisite-manager') . '</h2>';
+        echo '<p>' . esc_html__('Neue Ansichten starten mit allen Widgets. Danach kannst du die Auswahl direkt darunter einschränken.', 'rrze-multisite-manager') . '</p>';
+        echo '</header>';
+        echo '<input type="text" class="regular-text" name="new_view_name" value="" placeholder="' . esc_attr__('Name der neuen Ansicht', 'rrze-multisite-manager') . '">';
+        echo '</section>';
+
+        foreach ($views as $view) {
+            echo '<section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-view-editor">';
+            echo '<header class="rrze-msm-widget-header">';
+            echo '<h2>' . esc_html((string)$view['label']) . '</h2>';
+            echo '<p><code>' . esc_html((string)$view['slug']) . '</code></p>';
+            echo '</header>';
+
+            if (!empty($view['system'])) {
+                echo '<input type="hidden" name="views[' . esc_attr((string)$view['slug']) . '][label]" value="' . esc_attr((string)$view['label']) . '">';
+
+                if ((string)$view['slug'] === 'all_widgets') {
+                    echo '<p class="description">' . esc_html__('System-Ansicht: enthält immer alle verfügbaren Widgets und ist nicht bearbeitbar.', 'rrze-multisite-manager') . '</p>';
+                } else {
+                    echo '<p class="description">' . esc_html__('System-Ansicht: Name fest, Widget-Zuordnung anpassbar.', 'rrze-multisite-manager') . '</p>';
+                }
+            } else {
+                echo '<p>';
+                echo '<label>';
+                echo '<span class="screen-reader-text">' . esc_html__('Name', 'rrze-multisite-manager') . '</span>';
+                echo '<input type="text" class="regular-text" name="views[' . esc_attr((string)$view['slug']) . '][label]" value="' . esc_attr((string)$view['label']) . '">';
+                echo '</label> ';
+                echo '<label class="rrze-msm-delete-toggle">';
+                echo '<input type="checkbox" name="views[' . esc_attr((string)$view['slug']) . '][delete]" value="1"> ';
+                echo esc_html__('Ansicht löschen', 'rrze-multisite-manager');
+                echo '</label>';
+                echo '</p>';
+            }
+
+            echo '<div class="rrze-msm-widget-selector">';
+
+            foreach ($widgetOptions as $widgetOption) {
+                echo '<label class="rrze-msm-widget-check">';
+                echo '<input type="checkbox" name="views[' . esc_attr((string)$view['slug']) . '][widgets][]" value="' . esc_attr((string)$widgetOption['id']) . '" ' . checked(in_array((string)$widgetOption['id'], $view['widgets'], true), true, false) . ' ' . disabled((string)$view['slug'] === 'all_widgets', true, false) . '>';
+                echo '<span>' . esc_html((string)$widgetOption['label']) . '</span>';
+                echo '</label>';
+            }
+
+            echo '</div>';
+            echo '</section>';
+        }
+
+        submit_button(__('Ansichten speichern', 'rrze-multisite-manager'));
+        echo '</form>';
+    }
+
+    protected function getWidgetInstances(): array {
+        return [
+            'summary' => new SummaryWidget($this->plugin, $this->config),
+            'status' => new StatusWidget($this->plugin, $this->config),
+            'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
+            'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),
+            'editor_usage' => new EditorUsageWidget($this->plugin, $this->config),
+            'recent_sites' => new RecentSitesWidget($this->plugin, $this->config),
+            'recently_updated_sites' => new RecentlyUpdatedSitesWidget($this->plugin, $this->config),
+            'inactive_sites' => new InactiveSitesWidget($this->plugin, $this->config),
+            'site_overview' => new SiteOverviewWidget($this->plugin, $this->config),
+            'archived_sites' => new ArchivedSitesWidget($this->plugin, $this->config),
+            'blocked_sites' => new BlockedSitesWidget($this->plugin, $this->config),
+            'deleted_sites' => new DeletedSitesWidget($this->plugin, $this->config),
+            'theme_overview' => new ThemeOverviewWidget($this->plugin, $this->config),
+            'plugin_usage' => new PluginUsageWidget($this->plugin, $this->config),
+            'inactive_plugins' => new InactivePluginsWidget($this->plugin, $this->config),
+            'inactive_themes' => new InactiveThemesWidget($this->plugin, $this->config),
+        ];
+    }
+
+    protected function getWidgetOptions(array $widgets): array {
+        $options = [];
+        $widgetId = '';
+
+        foreach ($widgets as $widgetId => $widget) {
+            $options[] = [
+                'id' => $widgetId,
+                'label' => $widget->getTitle(),
+            ];
+        }
+
+        return $options;
     }
 }

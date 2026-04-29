@@ -17,6 +17,10 @@ class InactivePluginsWidget extends Widgets {
         return __('Installierte Plugins, die auf keiner Website des Netzwerks aktiv genutzt werden.', 'rrze-multisite-manager');
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-medium';
+    }
+
     protected function getTemplateName(): string {
         return 'inactive-plugins-widget';
     }

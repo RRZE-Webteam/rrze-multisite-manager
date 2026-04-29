@@ -10,7 +10,7 @@ class ArchivedSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Deaktiviere Sites (Status Archiv)', 'rrze-multisite-manager');
+        return __('Websites mit Status Archiv', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
@@ -19,6 +19,10 @@ class ArchivedSitesWidget extends Widgets {
 
     public function getWidth(): int {
         return 8;
+    }
+
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-wide';
     }
 
     protected function getTemplateName(): string {

@@ -11,6 +11,7 @@ use RRZE\MultisiteManager\Widgets\EditorUsageWidget;
 use RRZE\MultisiteManager\Widgets\InactiveSitesWidget;
 use RRZE\MultisiteManager\Widgets\InactivePluginsWidget;
 use RRZE\MultisiteManager\Widgets\InactiveThemesWidget;
+use RRZE\MultisiteManager\Widgets\NetworkStorageUsageWidget;
 use RRZE\MultisiteManager\Widgets\PluginUsageWidget;
 use RRZE\MultisiteManager\Widgets\RecentSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
@@ -49,9 +50,12 @@ class Dashboard {
 
         add_action('network_admin_menu', [$this, 'registerMenu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
+        add_action('admin_bar_menu', [$this, 'addAdminBarMenu'], 90);
         add_filter('admin_body_class', [$this, 'filterAdminBodyClass']);
         add_action('wp_ajax_rrze_msm_save_widget_order', [$this, 'ajaxSaveWidgetOrder']);
         add_action('wp_ajax_rrze_msm_search_sites', [$this, 'ajaxSearchSites']);
+        add_action('wp_ajax_rrze_msm_search_plugins', [$this, 'ajaxSearchPlugins']);
+        add_action('wp_ajax_rrze_msm_search_themes', [$this, 'ajaxSearchThemes']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('network_admin_edit_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
@@ -68,6 +72,9 @@ class Dashboard {
         $dashboardSlug = (string)($menuSettings['dashboard_slug'] ?? 'rrze-multisite-manager-dashboard');
         $siteOverviewSlug = (string)($menuSettings['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview');
         $pluginOverviewSlug = (string)($menuSettings['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview');
+        $pluginDetailsSlug = (string)($menuSettings['plugin_details_slug'] ?? 'rrze-multisite-manager-plugin-details');
+        $themeOverviewSlug = (string)($menuSettings['theme_overview_slug'] ?? 'rrze-multisite-manager-theme-overview');
+        $themeDetailsSlug = (string)($menuSettings['theme_details_slug'] ?? 'rrze-multisite-manager-theme-details');
         $siteDetailsSlug = (string)($menuSettings['site_details_slug'] ?? 'rrze-multisite-manager-site-details');
         $siteStatusSlug = (string)($menuSettings['site_status_slug'] ?? 'rrze-multisite-manager-site-status');
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
@@ -112,6 +119,33 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
+            __('Plugin-Details', 'rrze-multisite-manager'),
+            __('Plugin-Details', 'rrze-multisite-manager'),
+            $capability,
+            $pluginDetailsSlug,
+            [$this, 'renderPluginDetailsPage']
+        );
+
+        $this->pageHooks[] = add_submenu_page(
+            $parentSlug,
+            __('Theme-Übersicht', 'rrze-multisite-manager'),
+            __('Theme-Übersicht', 'rrze-multisite-manager'),
+            $capability,
+            $themeOverviewSlug,
+            [$this, 'renderThemeOverviewPage']
+        );
+
+        $this->pageHooks[] = add_submenu_page(
+            $parentSlug,
+            __('Theme-Details', 'rrze-multisite-manager'),
+            __('Theme-Details', 'rrze-multisite-manager'),
+            $capability,
+            $themeDetailsSlug,
+            [$this, 'renderThemeDetailsPage']
+        );
+
+        $this->pageHooks[] = add_submenu_page(
+            $parentSlug,
             __('Website-Details', 'rrze-multisite-manager'),
             __('Website-Details', 'rrze-multisite-manager'),
             $capability,
@@ -128,15 +162,6 @@ class Dashboard {
             [$this, 'renderSiteStatusPage']
         );
 
-        $this->pageHooks[] = add_submenu_page(
-            $parentSlug,
-            __('Ansichten', 'rrze-multisite-manager'),
-            __('Ansichten', 'rrze-multisite-manager'),
-            $capability,
-            $viewsSlug,
-            [$this, 'renderViewsPage']
-        );
-
         $settingsPage = add_submenu_page(
             $parentSlug,
             __('Settings', 'rrze-multisite-manager'),
@@ -148,6 +173,35 @@ class Dashboard {
 
         $this->pageHooks[] = $settingsPage;
         $this->settings->setOptionsPage((string)$settingsPage);
+    }
+
+    public function addAdminBarMenu(\WP_Admin_Bar $adminBar): void {
+        $menuSettings = $this->config->getMenuSettings();
+        $dashboardSlug = (string)($menuSettings['dashboard_slug'] ?? 'rrze-multisite-manager-dashboard');
+        $menuTitle = (string)($menuSettings['menu_title'] ?? __('Multisite Manager', 'rrze-multisite-manager'));
+
+        if (!is_multisite() || !is_admin_bar_showing() || !current_user_can('manage_network_options')) {
+            return;
+        }
+
+        if ($adminBar->get_node('network-admin') === null) {
+            return;
+        }
+
+        $adminBar->add_node([
+            'id' => 'rrze-multisite-manager',
+            'parent' => 'network-admin',
+            'title' => $menuTitle,
+            'href' => add_query_arg(
+                [
+                    'page' => $dashboardSlug,
+                ],
+                network_admin_url('admin.php')
+            ),
+            'meta' => [
+                'title' => $menuTitle,
+            ],
+        ]);
     }
 
     public function enqueueAssets(string $hookSuffix): void {
@@ -177,13 +231,21 @@ class Dashboard {
                 'ajaxUrl' => admin_url('admin-ajax.php'),
                 'orderNonce' => wp_create_nonce('rrze-msm-save-widget-order'),
                 'siteSearchNonce' => wp_create_nonce('rrze-msm-search-sites'),
+                'pluginSearchNonce' => wp_create_nonce('rrze-msm-search-plugins'),
                 'currentView' => $this->getCurrentViewSlug(),
                 'currentMode' => $this->getColorMode(),
                 'lightModeLabel' => __('Light Mode', 'rrze-multisite-manager'),
                 'darkModeLabel' => __('Dark Mode', 'rrze-multisite-manager'),
                 'siteDetailsBaseUrl' => $this->getSiteDetailsUrl(),
+                'pluginDetailsBaseUrl' => $this->getPluginDetailsUrl(),
+                'themeDetailsBaseUrl' => $this->getThemeDetailsUrl(),
                 'siteSearchMinLength' => 2,
                 'siteSearchNoResults' => __('Keine Websites gefunden.', 'rrze-multisite-manager'),
+                'pluginSearchMinLength' => 2,
+                'pluginSearchNoResults' => __('Keine Plugins gefunden.', 'rrze-multisite-manager'),
+                'themeSearchNonce' => wp_create_nonce('rrze-msm-search-themes'),
+                'themeSearchMinLength' => 2,
+                'themeSearchNoResults' => __('Keine Themes gefunden.', 'rrze-multisite-manager'),
             ]
         );
     }
@@ -218,7 +280,7 @@ class Dashboard {
                 'views' => $views,
                 'current_view_slug' => (string)$currentView['slug'],
                 'current_view_label' => (string)$currentView['label'],
-                'views_url' => network_admin_url('admin.php?page=' . $this->viewManager->getViewsSlug()),
+                'views_url' => network_admin_url('admin.php?page=' . $this->settings->getSettingsSlug() . '&tab=views'),
                 'widget_markup' => $widgetMarkup,
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
@@ -715,6 +777,89 @@ class Dashboard {
         );
     }
 
+    public function renderPluginDetailsPage(): void {
+        $pluginFile = isset($_GET['plugin']) ? sanitize_text_field((string)wp_unslash($_GET['plugin'])) : '';
+        $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile) : [];
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        echo $this->template->render(
+            'plugin-details-page',
+            [
+                'plugin_file' => $pluginFile,
+                'plugin_details' => $pluginDetails,
+                'plugin_search_placeholder' => __('Plugin nach Name suchen', 'rrze-multisite-manager'),
+                'plugin_details_base_url' => $this->getPluginDetailsUrl(),
+                'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
+                'mode_toggle_label' => $this->getModeToggleLabel(),
+                'plugin_status_badges_html' => !empty($pluginDetails['status']) && is_array($pluginDetails['status'])
+                    ? $this->renderStatusBadgesHtml($pluginDetails['status'])
+                    : '',
+                'plugin_status_update_html' => !empty($pluginDetails) ? $this->renderPluginStatusUpdateHtml($pluginDetails) : '',
+                'plugin_actions_html' => !empty($pluginDetails) ? $this->renderPluginActionsHtml($pluginDetails) : '',
+                'plugin_readme_html' => !empty($pluginDetails['readme_markdown'])
+                    ? $this->renderSimpleMarkdown((string)$pluginDetails['readme_markdown'])
+                    : '',
+            ],
+            $this
+        );
+    }
+
+    public function renderThemeOverviewPage(): void {
+        $dashboardData = [];
+        $themeWidget = null;
+        $themes = [];
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        $dashboardData = $this->metrics->getDashboardData();
+        $themeWidget = new ThemeOverviewWidget($this->plugin, $this->config);
+        $themes = is_array($dashboardData['themes'] ?? null) ? $dashboardData['themes'] : [];
+
+        echo $this->template->render(
+            'theme-overview-page',
+            [
+                'themes' => $themes,
+                'theme_widget' => $themeWidget,
+                'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
+                'mode_toggle_label' => $this->getModeToggleLabel(),
+            ],
+            $this
+        );
+    }
+
+    public function renderThemeDetailsPage(): void {
+        $stylesheet = isset($_GET['theme']) ? sanitize_text_field((string)wp_unslash($_GET['theme'])) : '';
+        $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet) : [];
+        $themeWidget = new ThemeOverviewWidget($this->plugin, $this->config);
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        echo $this->template->render(
+            'theme-details-page',
+            [
+                'theme_stylesheet' => $stylesheet,
+                'theme_details' => $themeDetails,
+                'theme_widget' => $themeWidget,
+                'theme_search_placeholder' => __('Theme nach Name suchen', 'rrze-multisite-manager'),
+                'theme_details_base_url' => $this->getThemeDetailsUrl(),
+                'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
+                'mode_toggle_label' => $this->getModeToggleLabel(),
+                'theme_actions_html' => !empty($themeDetails) ? $this->renderThemeActionsHtml($themeDetails) : '',
+                'theme_readme_html' => !empty($themeDetails['readme_markdown'])
+                    ? $this->renderSimpleMarkdown((string)$themeDetails['readme_markdown'])
+                    : '',
+            ],
+            $this
+        );
+    }
+
     protected function isNetworkPlugin(array $plugin): bool {
         return !empty($plugin['network_active']);
     }
@@ -788,8 +933,9 @@ class Dashboard {
 
         $redirectUrl = add_query_arg(
             [
-                'page' => $this->viewManager->getViewsSlug(),
-                'updated' => 'true',
+                'page' => $this->settings->getSettingsSlug(),
+                'tab' => isset($_POST['settings_tab']) ? sanitize_key((string)$_POST['settings_tab']) : 'views',
+                'views-updated' => 'true',
             ],
             network_admin_url('admin.php')
         );
@@ -843,6 +989,38 @@ class Dashboard {
         wp_send_json_success(
             [
                 'results' => $this->metrics->searchSites($searchTerm, 20),
+            ]
+        );
+    }
+
+    public function ajaxSearchPlugins(): void {
+        $searchTerm = isset($_GET['q']) ? sanitize_text_field((string)wp_unslash($_GET['q'])) : '';
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-search-plugins', 'nonce');
+
+        wp_send_json_success(
+            [
+                'results' => $this->metrics->searchPlugins($searchTerm, 20),
+            ]
+        );
+    }
+
+    public function ajaxSearchThemes(): void {
+        $searchTerm = isset($_GET['q']) ? sanitize_text_field((string)wp_unslash($_GET['q'])) : '';
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-search-themes', 'nonce');
+
+        wp_send_json_success(
+            [
+                'results' => $this->metrics->searchThemes($searchTerm, 20),
             ]
         );
     }
@@ -1100,10 +1278,44 @@ class Dashboard {
         return add_query_arg($args, network_admin_url('admin.php'));
     }
 
+    public function getPluginDetailsUrl(string $pluginFile = ''): string {
+        $args = [
+            'page' => (string)($this->config->getMenuSettings()['plugin_details_slug'] ?? 'rrze-multisite-manager-plugin-details'),
+        ];
+
+        if (trim($pluginFile) !== '') {
+            $args['plugin'] = $pluginFile;
+        }
+
+        return add_query_arg($args, network_admin_url('admin.php'));
+    }
+
+    public function getThemeOverviewUrl(): string {
+        return add_query_arg(
+            [
+                'page' => (string)($this->config->getMenuSettings()['theme_overview_slug'] ?? 'rrze-multisite-manager-theme-overview'),
+            ],
+            network_admin_url('admin.php')
+        );
+    }
+
+    public function getThemeDetailsUrl(string $stylesheet = ''): string {
+        $args = [
+            'page' => (string)($this->config->getMenuSettings()['theme_details_slug'] ?? 'rrze-multisite-manager-theme-details'),
+        ];
+
+        if (trim($stylesheet) !== '') {
+            $args['theme'] = $stylesheet;
+        }
+
+        return add_query_arg($args, network_admin_url('admin.php'));
+    }
+
     protected function getWidgetInstances(): array {
         return [
             'summary' => new SummaryWidget($this->plugin, $this->config),
             'status' => new StatusWidget($this->plugin, $this->config),
+            'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
             'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),
             'editor_usage' => new EditorUsageWidget($this->plugin, $this->config),
             'recent_sites' => new RecentSitesWidget($this->plugin, $this->config),
@@ -1223,6 +1435,168 @@ class Dashboard {
         return trim($html);
     }
 
+    protected function renderPluginActionsHtml(array $pluginDetails): string {
+        $html = '<div class="rrze-msm-site-actions">';
+        $pluginCheckUrl = $this->getPluginCheckUrl($pluginDetails);
+
+        if (!empty($pluginDetails['deactivate_url'])) {
+            if (!empty($pluginDetails['network_active'])) {
+                $html .= '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-open-plugin-deactivate-modal" data-plugin-name="' . esc_attr((string)($pluginDetails['name'] ?? '')) . '" data-deactivate-url="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-minus" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '</span></button>';
+            } else {
+                $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Deaktivieren', 'rrze-multisite-manager') . '</span></a>';
+            }
+        }
+
+        if (!empty($pluginDetails['settings_url'])) {
+            $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url((string)$pluginDetails['settings_url']) . '" title="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-admin-tools" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Einstellungen', 'rrze-multisite-manager') . '</span></a>';
+        }
+
+        if ($pluginCheckUrl !== '') {
+            $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url($pluginCheckUrl) . '" title="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-plugins-checked" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Plugin prüfen', 'rrze-multisite-manager') . '</span></a>';
+        }
+
+        if (!empty($pluginDetails['update_url'])) {
+            $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url((string)$pluginDetails['update_url']) . '" title="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-update" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</span></a>';
+        }
+
+        if (!empty($pluginDetails['delete_url'])) {
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="' . esc_url((string)$pluginDetails['delete_url']) . '" title="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-trash" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Löschen', 'rrze-multisite-manager') . '</span></a>';
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderPluginStatusUpdateHtml(array $pluginDetails): string {
+        $html = '';
+
+        if (empty($pluginDetails['update_available']) || empty($pluginDetails['update_version'])) {
+            return '';
+        }
+
+        $html .= '<p class="rrze-msm-plugin-status-update">';
+        $html .= '<strong>' . esc_html(sprintf(__('Neue Version %s verfügbar.', 'rrze-multisite-manager'), (string)$pluginDetails['update_version'])) . '</strong>';
+
+        if (!empty($pluginDetails['update_details_url']) || !empty($pluginDetails['update_url'])) {
+            $html .= ' ';
+        }
+
+        if (!empty($pluginDetails['update_details_url'])) {
+            $html .= '<a href="' . esc_url((string)$pluginDetails['update_details_url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Details', 'rrze-multisite-manager') . '</a>';
+        }
+
+        if (!empty($pluginDetails['update_details_url']) && !empty($pluginDetails['update_url'])) {
+            $html .= ' | ';
+        }
+
+        if (!empty($pluginDetails['update_url'])) {
+            $html .= '<a href="' . esc_url((string)$pluginDetails['update_url']) . '">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</a>';
+        }
+
+        $html .= '</p>';
+
+        return $html;
+    }
+
+    protected function renderThemeActionsHtml(array $themeDetails): string {
+        $stylesheet = (string)($themeDetails['stylesheet'] ?? '');
+        $html = '<div class="rrze-msm-site-actions">';
+        $networkThemesUrl = network_admin_url('themes.php');
+        $siteCount = (int)($themeDetails['site_count'] ?? 0);
+
+        $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url($networkThemesUrl) . '" title="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-admin-appearance" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '</span></a>';
+
+        if ($stylesheet === '') {
+            $html .= '</div>';
+            return $html;
+        }
+
+        if (!empty($themeDetails['network_enabled'])) {
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-warning" href="' . esc_url($this->getThemeNetworkDisableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-no" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '</span></a>';
+        } else {
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-positive" href="' . esc_url($this->getThemeNetworkEnableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-yes" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '</span></a>';
+        }
+
+        if (empty($themeDetails['network_enabled']) && $siteCount === 0) {
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="' . esc_url($this->getThemeDeleteUrl($stylesheet)) . '" title="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-trash" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Theme löschen', 'rrze-multisite-manager') . '</span></a>';
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function getThemeNetworkEnableUrl(string $stylesheet): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'enable',
+                    'theme' => $stylesheet,
+                ],
+                network_admin_url('themes.php')
+            ),
+            'enable-theme_' . $stylesheet
+        );
+    }
+
+    protected function getThemeNetworkDisableUrl(string $stylesheet): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'disable',
+                    'theme' => $stylesheet,
+                ],
+                network_admin_url('themes.php')
+            ),
+            'disable-theme_' . $stylesheet
+        );
+    }
+
+    protected function getThemeDeleteUrl(string $stylesheet): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'delete-selected',
+                    'checked[]' => $stylesheet,
+                    'theme_status' => 'all',
+                ],
+                network_admin_url('themes.php')
+            ),
+            'bulk-themes'
+        );
+    }
+
+    protected function getPluginCheckUrl(array $pluginDetails): string {
+        $pluginFile = (string)($pluginDetails['file'] ?? '');
+        $activeSites = is_array($pluginDetails['active_sites'] ?? null) ? $pluginDetails['active_sites'] : [];
+        $firstSite = [];
+        $siteId = 0;
+
+        if ($pluginFile === '' || !$this->isPluginCheckAvailable() || empty($activeSites)) {
+            return '';
+        }
+
+        $firstSite = (array)reset($activeSites);
+        $siteId = (int)($firstSite['id'] ?? 0);
+
+        if ($siteId <= 0) {
+            return '';
+        }
+
+        return (string)add_query_arg(
+            [
+                'page' => 'plugin-check',
+                'plugin' => $pluginFile,
+            ],
+            get_admin_url($siteId, 'tools.php')
+        );
+    }
+
+    protected function isPluginCheckAvailable(): bool {
+        return defined('WP_PLUGIN_DIR') && is_file(WP_PLUGIN_DIR . '/plugin-check/plugin.php');
+    }
+
     protected function getStatusUserLabel(array $siteDetails): string {
         $statusUser = (array)($siteDetails['status_user'] ?? []);
         $displayName = trim((string)($statusUser['display_name'] ?? ''));
@@ -1254,5 +1628,158 @@ class Dashboard {
         }
 
         return get_date_from_gmt($dateValue, get_option('date_format') . ' ' . get_option('time_format'));
+    }
+
+    protected function renderSimpleMarkdown(string $markdown): string {
+        $lines = explode("\n", str_replace("\r", '', $markdown));
+        $html = '';
+        $paragraph = [];
+        $listItems = [];
+        $inCodeBlock = false;
+        $codeLines = [];
+        $line = '';
+        $trimmed = '';
+        $ordered = false;
+        $headingLevel = 0;
+        $headingText = '';
+
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+
+            if (str_starts_with($trimmed, '```')) {
+                if ($inCodeBlock) {
+                    $html .= '<pre class="rrze-msm-readme-code"><code>' . esc_html(implode("\n", $codeLines)) . '</code></pre>';
+                    $codeLines = [];
+                    $inCodeBlock = false;
+                } else {
+                    $html .= $this->flushMarkdownParagraph($paragraph);
+                    $html .= $this->flushMarkdownList($listItems, $ordered);
+                    $inCodeBlock = true;
+                }
+
+                continue;
+            }
+
+            if ($inCodeBlock) {
+                $codeLines[] = $line;
+                continue;
+            }
+
+            if ($trimmed === '') {
+                $html .= $this->flushMarkdownParagraph($paragraph);
+                $html .= $this->flushMarkdownList($listItems, $ordered);
+                continue;
+            }
+
+            $headingLevel = $this->getMarkdownHeadingLevel($trimmed);
+
+            if ($headingLevel > 0) {
+                $html .= $this->flushMarkdownParagraph($paragraph);
+                $html .= $this->flushMarkdownList($listItems, $ordered);
+                $headingText = trim(substr($trimmed, $headingLevel));
+                $html .= '<h' . $headingLevel . '>' . $this->formatInlineMarkdown($headingText) . '</h' . $headingLevel . '>';
+                continue;
+            }
+
+            if ($this->isMarkdownListItem($trimmed, $ordered)) {
+                $html .= $this->flushMarkdownParagraph($paragraph);
+                $listItems[] = $this->stripMarkdownListMarker($trimmed);
+                continue;
+            }
+
+            $html .= $this->flushMarkdownList($listItems, $ordered);
+            $paragraph[] = $trimmed;
+        }
+
+        if ($inCodeBlock) {
+            $html .= '<pre class="rrze-msm-readme-code"><code>' . esc_html(implode("\n", $codeLines)) . '</code></pre>';
+        }
+
+        $html .= $this->flushMarkdownParagraph($paragraph);
+        $html .= $this->flushMarkdownList($listItems, $ordered);
+
+        return $html;
+    }
+
+    protected function flushMarkdownParagraph(array &$paragraph): string {
+        $content = trim(implode(' ', $paragraph));
+
+        $paragraph = [];
+
+        if ($content === '') {
+            return '';
+        }
+
+        return '<p>' . $this->formatInlineMarkdown($content) . '</p>';
+    }
+
+    protected function flushMarkdownList(array &$listItems, bool &$ordered): string {
+        $html = '';
+        $item = '';
+
+        if (empty($listItems)) {
+            $ordered = false;
+            return '';
+        }
+
+        $html .= $ordered ? '<ol>' : '<ul>';
+
+        foreach ($listItems as $item) {
+            $html .= '<li>' . $this->formatInlineMarkdown($item) . '</li>';
+        }
+
+        $html .= $ordered ? '</ol>' : '</ul>';
+        $listItems = [];
+        $ordered = false;
+
+        return $html;
+    }
+
+    protected function getMarkdownHeadingLevel(string $line): int {
+        $level = 0;
+
+        if (!preg_match('/^(#{1,6})\s+.+$/', $line, $matches)) {
+            return 0;
+        }
+
+        $level = strlen((string)($matches[1] ?? ''));
+
+        return max(1, min(6, $level));
+    }
+
+    protected function isMarkdownListItem(string $line, bool &$ordered): bool {
+        if (preg_match('/^[-*+]\s+.+$/', $line)) {
+            $ordered = false;
+            return true;
+        }
+
+        if (preg_match('/^\d+\.\s+.+$/', $line)) {
+            $ordered = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function stripMarkdownListMarker(string $line): string {
+        if (preg_match('/^[-*+]\s+(.+)$/', $line, $matches)) {
+            return trim((string)($matches[1] ?? ''));
+        }
+
+        if (preg_match('/^\d+\.\s+(.+)$/', $line, $matches)) {
+            return trim((string)($matches[1] ?? ''));
+        }
+
+        return $line;
+    }
+
+    protected function formatInlineMarkdown(string $text): string {
+        $text = esc_html($text);
+        $text = preg_replace('/`([^`]+)`/', '<code>$1</code>', $text);
+        $text = preg_replace('/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $text);
+        $text = preg_replace('/\*([^*]+)\*/', '<em>$1</em>', $text);
+        $text = preg_replace('/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/', '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>', $text);
+
+        return (string)$text;
     }
 }

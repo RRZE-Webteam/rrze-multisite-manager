@@ -7,13 +7,11 @@
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
-    <?php if (empty($themes)) { ?>
-        <p><?php echo esc_html__('Keine Theme-Daten vorhanden.', 'rrze-multisite-manager'); ?></p>
-    <?php } else { ?>
-        <div class="rrze-msm-theme-card-list">
-            <?php foreach ($themes as $theme) { ?>
-                <?php echo $this->renderThemeCard((array)$theme); ?>
-            <?php } ?>
-        </div>
+    <?php if ($summary_label !== '') { ?>
+        <p><strong><?php echo esc_html($summary_label); ?></strong></p>
     <?php } ?>
+    <?php if ($mode_note !== '') { ?>
+        <p><?php echo esc_html($mode_note); ?></p>
+    <?php } ?>
+    <?php echo $this->renderPieChart($items, $empty_message, ['center_title' => $center_title ?? '', 'center_value' => $center_value ?? '']); ?>
 </section>

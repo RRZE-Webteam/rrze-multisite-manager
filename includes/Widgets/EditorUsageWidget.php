@@ -17,6 +17,10 @@ class EditorUsageWidget extends Widgets {
         return __('Schaetzung auf Basis der Aktivierung des Plugins Classic Editor pro Site oder netzwerkweit.', 'rrze-multisite-manager');
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-chart';
+    }
+
     protected function getTemplateName(): string {
         return 'editor-usage-widget';
     }

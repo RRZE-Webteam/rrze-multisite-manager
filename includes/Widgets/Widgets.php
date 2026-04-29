@@ -25,7 +25,7 @@ abstract class Widgets {
                     'widget_id' => $this->getId(),
                     'widget_title' => $this->getTitle(),
                     'widget_description' => $this->getDescription(),
-                    'widget_classes' => 'rrze-msm-widget-span-' . $this->getWidth(),
+                    'widget_classes' => $this->getLayoutClass(),
                 ],
                 $this->getTemplateData($dashboardData)
             ),
@@ -35,6 +35,10 @@ abstract class Widgets {
 
     public function getWidth(): int {
         return 4;
+    }
+
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-span-' . $this->getWidth();
     }
 
     public function getStatusBadgesHtml(array $statusItems): string {
@@ -50,6 +54,74 @@ abstract class Widgets {
 
     public function renderActionsForSite(array $site): string {
         return $this->renderSiteActions($site);
+    }
+
+    public function renderThemeCard(array $theme, array $args = []): string {
+        $linkTitle = !isset($args['link_title']) || !empty($args['link_title']);
+        $showSites = !isset($args['show_sites']) || !empty($args['show_sites']);
+        $title = (string)($theme['name'] ?? '');
+        $detailUrl = $linkTitle ? $this->getThemeDetailsPageUrl((string)($theme['stylesheet'] ?? '')) : '';
+        $themeUrl = (string)($theme['theme_uri'] ?? '');
+        $author = (string)($theme['author'] ?? '');
+        $authorUrl = (string)($theme['author_url'] ?? '');
+        $siteCount = (int)($theme['site_count'] ?? 0);
+        $html = '';
+
+        $html .= '<div class="rrze-msm-site-theme-card">';
+        $html .= '<div class="rrze-msm-site-theme-screenshot">';
+
+        if (!empty($theme['screenshot'])) {
+            $html .= '<img src="' . esc_url((string)$theme['screenshot']) . '" alt="' . esc_attr($title) . '">';
+        } else {
+            $html .= '<span class="rrze-msm-site-branding-empty">' . esc_html__('Kein Screenshot verfügbar', 'rrze-multisite-manager') . '</span>';
+        }
+
+        $html .= '</div>';
+        $html .= '<div class="rrze-msm-site-theme-details">';
+
+        if ($detailUrl !== '') {
+            $html .= '<h3><a href="' . esc_url($detailUrl) . '">' . esc_html($title) . '</a></h3>';
+        } else {
+            $html .= '<h3>' . esc_html($title) . '</h3>';
+        }
+
+        if (!empty($theme['version'])) {
+            $html .= '<p><strong>' . esc_html__('Version:', 'rrze-multisite-manager') . '</strong> ' . esc_html((string)$theme['version']) . '</p>';
+        }
+
+        if (!empty($theme['description'])) {
+            $html .= '<p>' . esc_html((string)$theme['description']) . '</p>';
+        }
+
+        if (!empty($theme['status']) && is_array($theme['status'])) {
+            $html .= '<div class="rrze-msm-theme-badges">' . $this->getStatusBadgesHtml((array)$theme['status']) . '</div>';
+        }
+
+        if ($author !== '') {
+            $html .= '<p><strong>' . esc_html__('Autor:', 'rrze-multisite-manager') . '</strong> ';
+
+            if ($authorUrl !== '') {
+                $html .= '<a href="' . esc_url($authorUrl) . '" target="_blank" rel="noopener noreferrer">' . esc_html($author) . '</a>';
+            } else {
+                $html .= esc_html($author);
+            }
+
+            $html .= '</p>';
+        }
+
+        if ($themeUrl !== '') {
+            $html .= '<p><strong>' . esc_html__('Theme-URL:', 'rrze-multisite-manager') . '</strong> <a href="' . esc_url($themeUrl) . '" target="_blank" rel="noopener noreferrer">' . esc_html($themeUrl) . '</a></p>';
+        }
+
+        if ($showSites && $siteCount > 0) {
+            $html .= '<p><strong>' . esc_html(sprintf(_n('%d Website nutzt dieses Theme.', '%d Websites nutzen dieses Theme.', $siteCount, 'rrze-multisite-manager'), $siteCount)) . '</strong></p>';
+            $html .= $this->renderThemeSitesHtml($theme);
+        }
+
+        $html .= '</div>';
+        $html .= '</div>';
+
+        return $html;
     }
 
     public function renderSiteTable(array $sites, array $args = []): string {
@@ -105,7 +177,7 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)($site['last_updated_timestamp'] ?? 0)) . '"';
             echo ' data-sort-admin-email="' . esc_attr((string)($site['admin_email_sort'] ?? strtolower((string)($site['admin_email'] ?? '')))) . '"';
             echo '>';
-            echo '<td><strong>' . esc_html((string)$site['name']) . '</strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
+            echo '<td><strong><a href="' . esc_url($this->getSiteDetailsPageUrl((int)($site['id'] ?? 0))) . '">' . esc_html((string)$site['name']) . '</a></strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
             echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
             echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unbekannt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
@@ -180,7 +252,7 @@ abstract class Widgets {
             echo ' data-sort-storage="' . esc_attr((string)($site['storage']['used_bytes'] ?? 0)) . '"';
             echo '>';
             echo '<td class="rrze-msm-site-branding-cell">' . $this->renderSiteBranding((array)($site['branding'] ?? []), (string)$site['name']) . '</td>';
-            echo '<td><strong>' . esc_html((string)$site['name']) . '</strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
+            echo '<td><strong><a href="' . esc_url($this->getSiteDetailsPageUrl((int)($site['id'] ?? 0))) . '">' . esc_html((string)$site['name']) . '</a></strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
             echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
             echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unbekannt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
@@ -256,7 +328,7 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site[$statusMetaKey] ?? ''))) . '"';
             echo ' data-sort-admin-email=""';
             echo '>';
-            echo '<td><strong>' . esc_html((string)$site['name']) . '</strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
+            echo '<td><strong><a href="' . esc_url($this->getSiteDetailsPageUrl((int)($site['id'] ?? 0))) . '">' . esc_html((string)$site['name']) . '</a></strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site[$statusMetaKey] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusUser((int)($site['status_user_id'] ?? 0)) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['status_note'] ?? '')) . '</td>';
@@ -273,17 +345,43 @@ abstract class Widgets {
         return (string)ob_get_clean();
     }
 
-    public function renderPieChart(array $items, string $emptyMessage): string {
+    public function renderPieChart(array $items, string $emptyMessage, array $args = []): string {
         $gradient = $this->getPieGradient($items);
+        $centerTitle = trim((string)($args['center_title'] ?? ''));
+        $centerValue = trim((string)($args['center_value'] ?? ''));
         $item = [];
+        $label = [];
+        $sliceLabels = [];
 
         if (empty($items)) {
             return '<p>' . esc_html($emptyMessage) . '</p>';
         }
 
+        $sliceLabels = $this->getPieSliceLabels($items);
+
         ob_start();
         echo '<div class="rrze-msm-pie-layout">';
-        echo '<div class="rrze-msm-pie-chart" style="background: ' . esc_attr($gradient) . ';"></div>';
+        echo '<div class="rrze-msm-pie-chart" style="background: ' . esc_attr($gradient) . ';">';
+
+        foreach ($sliceLabels as $label) {
+            echo '<span class="rrze-msm-pie-slice-label" style="left:' . esc_attr((string)$label['x']) . '%; top:' . esc_attr((string)$label['y']) . '%;" title="' . esc_attr((string)$label['title']) . '">' . esc_html((string)$label['text']) . '</span>';
+        }
+
+        if ($centerTitle !== '' || $centerValue !== '') {
+            echo '<span class="rrze-msm-pie-center">';
+
+            if ($centerTitle !== '') {
+                echo '<span class="rrze-msm-pie-center-title">' . esc_html($centerTitle) . '</span>';
+            }
+
+            if ($centerValue !== '') {
+                echo '<strong class="rrze-msm-pie-center-value">' . esc_html($centerValue) . '</strong>';
+            }
+
+            echo '</span>';
+        }
+
+        echo '</div>';
         echo '<div class="rrze-msm-pie-legend">';
 
         foreach ($items as $item) {
@@ -291,7 +389,7 @@ abstract class Widgets {
             echo '<span class="rrze-msm-pie-swatch rrze-msm-swatch-' . esc_attr((string)$item['accent']) . '"></span>';
             echo '<div>';
             echo '<strong>' . esc_html((string)$item['label']) . '</strong><br>';
-            echo '<span>' . esc_html(number_format_i18n((int)$item['value'])) . ' (' . esc_html((string)$item['percent']) . '%)</span>';
+            echo '<span>' . esc_html((string)($item['value_label'] ?? number_format_i18n((int)$item['value']))) . ' (' . esc_html((string)$item['percent']) . '%)</span>';
             echo '</div>';
             echo '</div>';
         }
@@ -355,6 +453,47 @@ abstract class Widgets {
         return $colors[$accent] ?? 'var(--rrze-msm-neutral)';
     }
 
+    protected function getPieSliceLabels(array $items): array {
+        $labels = [];
+        $position = 0.0;
+        $item = [];
+        $percent = 0.0;
+        $midpoint = 0.0;
+        $angle = 0.0;
+        $radius = 34.0;
+        $x = 0.0;
+        $y = 0.0;
+
+        foreach ($items as $item) {
+            if ((int)($item['value'] ?? 0) <= 0) {
+                continue;
+            }
+
+            $percent = (float)($item['percent'] ?? 0);
+
+            if ($percent < 8) {
+                $position += $percent;
+                continue;
+            }
+
+            $midpoint = $position + ($percent / 2);
+            $angle = deg2rad(($midpoint * 3.6) - 90);
+            $x = 50 + ($radius * cos($angle));
+            $y = 50 + ($radius * sin($angle));
+
+            $labels[] = [
+                'text' => (string)((int)round($percent)) . '%',
+                'title' => (string)($item['label'] ?? ''),
+                'x' => round($x, 2),
+                'y' => round($y, 2),
+            ];
+
+            $position += $percent;
+        }
+
+        return $labels;
+    }
+
     protected function renderSiteAdminEmail(string $email): string {
         if ($email === '') {
             return esc_html__('Unbekannt', 'rrze-multisite-manager');
@@ -392,11 +531,6 @@ abstract class Widgets {
             __('Aufrufen', 'rrze-multisite-manager'),
             'visibility',
             true
-        );
-        $actions[] = $this->renderSiteActionLink(
-            $this->getSiteDetailsPageUrl($siteId),
-            __('Details', 'rrze-multisite-manager'),
-            'search'
         );
 
         if ($isMainSite) {
@@ -648,6 +782,87 @@ abstract class Widgets {
             ],
             network_admin_url('admin.php')
         );
+    }
+
+    protected function getPluginDetailsPageUrl(string $pluginFile): string {
+        $args = [
+            'page' => (string)($this->config->getMenuSettings()['plugin_details_slug'] ?? 'rrze-multisite-manager-plugin-details'),
+        ];
+
+        if (trim($pluginFile) !== '') {
+            $args['plugin'] = $pluginFile;
+        }
+
+        return add_query_arg($args, network_admin_url('admin.php'));
+    }
+
+    protected function getThemeDetailsPageUrl(string $stylesheet): string {
+        $args = [
+            'page' => (string)($this->config->getMenuSettings()['theme_details_slug'] ?? 'rrze-multisite-manager-theme-details'),
+        ];
+
+        if (trim($stylesheet) !== '') {
+            $args['theme'] = $stylesheet;
+        }
+
+        return add_query_arg($args, network_admin_url('admin.php'));
+    }
+
+    protected function renderThemeSitesHtml(array $theme): string {
+        $activeSites = is_array($theme['active_sites'] ?? null) ? $theme['active_sites'] : [];
+        $site = [];
+        $perPage = 20;
+        $totalPages = (int)ceil(count($activeSites) / $perPage);
+        $index = 0;
+        $page = 1;
+        $siteId = 0;
+        $siteDetailsUrl = '';
+        $toggleId = 'rrze-msm-theme-sites-' . sanitize_html_class(md5((string)($theme['stylesheet'] ?? (string)($theme['name'] ?? 'theme'))));
+
+        if (empty($activeSites)) {
+            return '';
+        }
+
+        ob_start();
+        echo '<div class="rrze-msm-plugin-sites-inline" data-plugin-sites-id="' . esc_attr($toggleId) . '">';
+        echo '<p class="rrze-msm-plugin-sites-collapsed"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="false">▼ ' . esc_html__('Websites anzeigen', 'rrze-multisite-manager') . '</button></p>';
+        echo '<div class="rrze-msm-plugin-sites-details" hidden>';
+        echo '<p class="rrze-msm-plugin-sites-toggle-row"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="true">▲ ' . esc_html__('Websites verbergen', 'rrze-multisite-manager') . '</button></p>';
+        echo '<ul class="rrze-msm-plugin-sites-list">';
+
+        foreach ($activeSites as $site) {
+            $page = (int)floor($index / $perPage) + 1;
+            $siteId = (int)($site['id'] ?? 0);
+            $siteDetailsUrl = $siteId > 0 ? $this->getSiteDetailsPageUrl($siteId) : '';
+            echo '<li data-page="' . esc_attr((string)$page) . '"' . ($page > 1 ? ' hidden' : '') . '>';
+            echo '<strong>';
+
+            if ($siteDetailsUrl !== '') {
+                echo '<a href="' . esc_url($siteDetailsUrl) . '">' . esc_html((string)($site['name'] ?? '')) . '</a>';
+            } else {
+                echo esc_html((string)($site['name'] ?? ''));
+            }
+
+            echo '</strong> <span class="rrze-msm-plugin-site-sep">|</span> ';
+            echo '<a href="' . esc_url((string)($site['url'] ?? '')) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)($site['url'] ?? '')) . '</a>';
+            echo '</li>';
+            $index++;
+        }
+
+        echo '</ul>';
+
+        if ($totalPages > 1) {
+            echo '<div class="rrze-msm-plugin-sites-pagination" data-current-page="1" data-total-pages="' . esc_attr((string)$totalPages) . '">';
+            echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="prev" disabled aria-disabled="true"><span aria-hidden="true">‹</span><span class="screen-reader-text">' . esc_html__('Vorherige Seite', 'rrze-multisite-manager') . '</span></button>';
+            echo '<span class="rrze-msm-plugin-sites-page-label">' . esc_html(sprintf(__('Seite %1$d von %2$d', 'rrze-multisite-manager'), 1, $totalPages)) . '</span>';
+            echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="next"><span aria-hidden="true">›</span><span class="screen-reader-text">' . esc_html__('Nächste Seite', 'rrze-multisite-manager') . '</span></button>';
+            echo '</div>';
+        }
+
+        echo '</div>';
+        echo '</div>';
+
+        return (string)ob_get_clean();
     }
 
     protected function getSitePermanentDeleteUrl(int $siteId): string {

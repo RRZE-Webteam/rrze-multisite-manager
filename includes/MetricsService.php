@@ -5,7 +5,7 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 class MetricsService {
-    protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v6_';
+    protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v7_';
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected ?Settings $settings;
     protected Config $config;
@@ -17,20 +17,24 @@ class MetricsService {
 
     public function getDashboardData(): array {
         $cached = get_site_transient($this->getCacheKey());
+        $siteOverview = [];
 
         if (is_array($cached) && $this->isCompleteDashboardData($cached)) {
             return $cached;
         }
 
+        $siteOverview = $this->getSiteOverview();
+
         $data = [
             'summary' => $this->getSummary(),
             'site_table_default_limit' => $this->getActivitySiteLimit(),
             'status_distribution' => $this->getStatusDistribution(),
+            'network_storage_usage' => $this->getNetworkStorageUsage(),
             'recent_sites' => $this->getRecentSites(),
-            'site_overview' => $this->getSiteOverview(),
-            'archived_sites' => $this->getSitesByFlag('archived', 1),
-            'blocked_sites' => $this->getSitesByFlag('spam', 1),
-            'deleted_sites' => $this->getSitesByFlag('deleted', 1),
+            'site_overview' => $siteOverview,
+            'archived_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_archived'),
+            'blocked_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_spam'),
+            'deleted_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_deleted'),
             'themes' => $this->getThemes(),
             'theme_usage' => $this->getThemeUsage(),
             'editor_usage' => $this->getEditorUsage(),
@@ -52,6 +56,7 @@ class MetricsService {
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v3_' . (string)get_current_network_id());
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v4_' . (string)get_current_network_id());
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v5_' . (string)get_current_network_id());
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v6_' . (string)get_current_network_id());
     }
 
     public function getSiteDetails(int $siteId): array {
@@ -122,6 +127,241 @@ class MetricsService {
         }
 
         return $results;
+    }
+
+    public function searchPlugins(string $searchTerm, int $limit = 20): array {
+        $availablePlugins = [];
+        $results = [];
+        $pluginFile = '';
+        $pluginData = [];
+        $searchNeedle = trim(mb_strtolower($searchTerm));
+        $haystack = '';
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
+            return [];
+        }
+
+        $availablePlugins = get_plugins();
+
+        foreach ($availablePlugins as $pluginFile => $pluginData) {
+            $haystack = mb_strtolower(
+                (string)($pluginData['Name'] ?? '') . ' ' .
+                (string)($pluginData['Description'] ?? '') . ' ' .
+                $pluginFile
+            );
+
+            if (mb_strpos($haystack, $searchNeedle) === false) {
+                continue;
+            }
+
+            $results[] = [
+                'id' => $pluginFile,
+                'name' => (string)($pluginData['Name'] ?? $pluginFile),
+                'version' => (string)($pluginData['Version'] ?? ''),
+                'file' => $pluginFile,
+            ];
+
+            if (count($results) >= $limit) {
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    public function searchThemes(string $searchTerm, int $limit = 20): array {
+        $themes = wp_get_themes();
+        $results = [];
+        $stylesheet = '';
+        $theme = null;
+        $searchNeedle = trim(mb_strtolower($searchTerm));
+        $haystack = '';
+
+        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
+            return [];
+        }
+
+        foreach ($themes as $stylesheet => $theme) {
+            if (!$theme instanceof \WP_Theme) {
+                continue;
+            }
+
+            $haystack = mb_strtolower(
+                (string)$theme->get('Name') . ' ' .
+                (string)$theme->get('Description') . ' ' .
+                $stylesheet
+            );
+
+            if (mb_strpos($haystack, $searchNeedle) === false) {
+                continue;
+            }
+
+            $results[] = [
+                'id' => $stylesheet,
+                'name' => (string)$theme->get('Name'),
+                'version' => (string)$theme->get('Version'),
+                'stylesheet' => $stylesheet,
+            ];
+
+            if (count($results) >= $limit) {
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    public function getPluginDetails(string $pluginFile): array {
+        $availablePlugins = [];
+        $pluginData = [];
+        $dashboardData = [];
+        $pluginUsage = [];
+        $pluginUsageItem = [];
+        $updateItem = null;
+        $analysis = [];
+        $status = [];
+        $supplementary = [];
+        $installTimestamp = 0;
+        $modifiedTimestamp = 0;
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $availablePlugins = get_plugins();
+
+        if (!isset($availablePlugins[$pluginFile]) || !is_array($availablePlugins[$pluginFile])) {
+            return [];
+        }
+
+        $pluginData = $availablePlugins[$pluginFile];
+        $dashboardData = $this->getDashboardData();
+        $pluginUsage = is_array($dashboardData['plugin_usage']['plugins'] ?? null) ? $dashboardData['plugin_usage']['plugins'] : [];
+        $pluginUsageItem = $this->findPluginUsageItem($pluginUsage, $pluginFile);
+        $updateItem = $this->getPluginUpdateItem($pluginFile);
+        $analysis = $this->analyzePluginCode($pluginFile);
+        $supplementary = $this->getPluginSupplementaryData($pluginFile);
+        $installTimestamp = $this->getPluginInstallTimestamp($pluginFile);
+        $modifiedTimestamp = $this->getPluginModifiedTimestamp($pluginFile);
+        $status = $this->getPluginStatus($pluginUsageItem);
+
+        if (empty($pluginUsageItem)) {
+            $pluginUsageItem = [
+                'file' => $pluginFile,
+                'site_count' => 0,
+                'active_sites' => [],
+                'name' => (string)($pluginData['Name'] ?? $pluginFile),
+                'version' => (string)($pluginData['Version'] ?? 'n/a'),
+                'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
+                'author' => $this->getPluginAuthorLabel($pluginData),
+                'author_url' => $this->getPluginAuthorUrl($pluginData),
+                'network_active' => false,
+                'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginData),
+                'details_url' => $this->getPluginDetailsUrl($pluginData),
+                'deactivate_url' => '',
+                'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
+                'plugin_uri' => $this->getPluginDetailsUrl($pluginData),
+                'text_domain' => !empty($pluginData['TextDomain']) && is_string($pluginData['TextDomain']) ? (string)$pluginData['TextDomain'] : '',
+                'requires_php' => !empty($pluginData['RequiresPHP']) && is_string($pluginData['RequiresPHP']) ? (string)$pluginData['RequiresPHP'] : '',
+                'requires_wp' => !empty($pluginData['RequiresWP']) && is_string($pluginData['RequiresWP']) ? (string)$pluginData['RequiresWP'] : '',
+                'update_available' => $updateItem !== null,
+                'update_version' => $updateItem !== null ? (string)($updateItem->new_version ?? '') : '',
+                'update_details_url' => $this->getPluginUpdateDetailsUrl($pluginData, $updateItem),
+                'update_url' => $updateItem !== null ? $this->getNetworkPluginUpdateUrl($pluginFile) : '',
+            ];
+            $status = $this->getPluginStatus($pluginUsageItem);
+        }
+
+        if ((string)($pluginUsageItem['author'] ?? '') === '' && !empty($supplementary['author']['name'])) {
+            $pluginUsageItem['author'] = (string)$supplementary['author']['name'];
+        }
+
+        if ((string)($pluginUsageItem['author_url'] ?? '') === '' && !empty($supplementary['author']['url'])) {
+            $pluginUsageItem['author_url'] = (string)$supplementary['author']['url'];
+        }
+
+        if ((string)($pluginUsageItem['description'] ?? '') === '' && !empty($supplementary['description'])) {
+            $pluginUsageItem['description'] = (string)$supplementary['description'];
+        }
+
+        return array_merge(
+            $pluginUsageItem,
+            [
+                'status' => $status,
+                'author_email' => (string)($supplementary['author']['email'] ?? ''),
+                'compatibility' => (array)($supplementary['compatibility'] ?? []),
+                'supports' => (array)($supplementary['supports'] ?? []),
+                'license' => (array)($supplementary['license'] ?? []),
+                'tags' => (array)($supplementary['tags'] ?? []),
+                'repository' => (array)($supplementary['repository'] ?? []),
+                'extended_description' => (string)($supplementary['description'] ?? ''),
+                'metadata_sources' => (array)($supplementary['sources'] ?? []),
+                'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
+                'shortcodes' => $analysis['shortcodes'],
+                'blocks' => $analysis['blocks'],
+                'block_patterns' => $analysis['block_patterns'],
+                'provided_hooks' => $analysis['provided_hooks'],
+                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
+                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
+                'main_file_path' => $this->getPluginAbsolutePath($pluginFile),
+            ]
+        );
+    }
+
+    public function getThemeDetails(string $stylesheet): array {
+        $themes = $this->getThemes();
+        $themeItem = [];
+        $supplementary = [];
+        $analysis = [];
+        $installTimestamp = 0;
+        $modifiedTimestamp = 0;
+
+        foreach ($themes as $themeItem) {
+            if ((string)($themeItem['stylesheet'] ?? '') === $stylesheet) {
+                break;
+            }
+        }
+
+        if (empty($themeItem) || (string)($themeItem['stylesheet'] ?? '') !== $stylesheet) {
+            return [];
+        }
+
+        $supplementary = $this->getThemeSupplementaryData($stylesheet);
+        $analysis = $this->analyzeThemeCode($stylesheet);
+        $installTimestamp = $this->getThemeInstallTimestamp($stylesheet);
+        $modifiedTimestamp = $this->getThemeModifiedTimestamp($stylesheet);
+
+        if ((string)($themeItem['author'] ?? '') === '' && !empty($supplementary['author']['name'])) {
+            $themeItem['author'] = (string)$supplementary['author']['name'];
+        }
+
+        if ((string)($themeItem['author_url'] ?? '') === '' && !empty($supplementary['author']['url'])) {
+            $themeItem['author_url'] = (string)$supplementary['author']['url'];
+        }
+
+        if ((string)($themeItem['description'] ?? '') === '' && !empty($supplementary['description'])) {
+            $themeItem['description'] = (string)$supplementary['description'];
+        }
+
+        return array_merge(
+            $themeItem,
+            [
+                'author_email' => (string)($supplementary['author']['email'] ?? ''),
+                'compatibility' => (array)($supplementary['compatibility'] ?? []),
+                'supports' => (array)($supplementary['supports'] ?? []),
+                'license' => (array)($supplementary['license'] ?? []),
+                'repository' => (array)($supplementary['repository'] ?? []),
+                'metadata_sources' => (array)($supplementary['sources'] ?? []),
+                'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
+                'shortcodes' => (array)($analysis['shortcodes'] ?? []),
+                'blocks' => (array)($analysis['blocks'] ?? []),
+                'block_patterns' => (array)($analysis['block_patterns'] ?? []),
+                'provided_hooks' => (array)($analysis['provided_hooks'] ?? []),
+                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
+                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
+                'main_file_path' => $this->getThemeMainFilePath($stylesheet),
+            ]
+        );
     }
 
     protected function getSummary(): array {
@@ -211,6 +451,25 @@ class MetricsService {
         ]);
 
         return $this->formatSites($sites, true);
+    }
+
+    protected function filterFormattedSitesByFlag(array $sites, string $flagKey): array {
+        $results = [];
+        $site = [];
+
+        foreach ($sites as $site) {
+            if (!is_array($site)) {
+                continue;
+            }
+
+            if (empty($site[$flagKey])) {
+                continue;
+            }
+
+            $results[] = $site;
+        }
+
+        return array_slice($results, 0, $this->getSiteTableMaxRows());
     }
 
     protected function getRecentlyUpdatedSites(): array {
@@ -396,23 +655,1136 @@ class MetricsService {
         ];
     }
 
+    protected function findPluginUsageItem(array $plugins, string $pluginFile): array {
+        $plugin = [];
+
+        foreach ($plugins as $plugin) {
+            if ((string)($plugin['file'] ?? '') === $pluginFile) {
+                return $plugin;
+            }
+        }
+
+        return [];
+    }
+
+    protected function getPluginUpdateItem(string $pluginFile): ?object {
+        $pluginUpdates = get_site_transient('update_plugins');
+
+        if (!is_object($pluginUpdates) || empty($pluginUpdates->response[$pluginFile]) || !is_object($pluginUpdates->response[$pluginFile])) {
+            return null;
+        }
+
+        return $pluginUpdates->response[$pluginFile];
+    }
+
+    protected function getPluginStatus(array $plugin): array {
+        $items = [];
+
+        if (!empty($plugin['network_active'])) {
+            $items[] = [
+                'label' => __('Netzwerkweit aktiv', 'rrze-multisite-manager'),
+                'accent' => 'info',
+            ];
+        } elseif ((int)($plugin['site_count'] ?? 0) > 0) {
+            $items[] = [
+                'label' => __('Auf Websites aktiv', 'rrze-multisite-manager'),
+                'accent' => 'active',
+            ];
+        } else {
+            $items[] = [
+                'label' => __('Nicht aktiviert', 'rrze-multisite-manager'),
+                'accent' => 'archive',
+            ];
+        }
+
+        if (!empty($plugin['update_available']) && !empty($plugin['update_version'])) {
+            $items[] = [
+                'label' => sprintf(__('Update %s verfügbar', 'rrze-multisite-manager'), (string)$plugin['update_version']),
+                'accent' => 'info',
+            ];
+        }
+
+        return $items;
+    }
+
+    protected function analyzePluginCode(string $pluginFile): array {
+        $files = $this->getPluginAnalysisFiles($pluginFile);
+        $shortcodes = [];
+        $blocks = [];
+        $patterns = [];
+        $hooks = [];
+        $filePath = '';
+        $source = '';
+        $extension = '';
+
+        foreach ($files as $filePath) {
+            if (!is_readable($filePath)) {
+                continue;
+            }
+
+            $source = (string)file_get_contents($filePath);
+
+            if ($source === '') {
+                continue;
+            }
+
+            $extension = strtolower((string)pathinfo($filePath, PATHINFO_EXTENSION));
+
+            if (in_array($extension, ['php', 'js'], true)) {
+                $shortcodes = $this->mergeStringList($shortcodes, $this->extractShortcodesFromSource($source));
+                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromSource($source));
+                $patterns = $this->mergeStringList($patterns, $this->extractBlockPatternsFromSource($source));
+                $hooks = $this->mergeKeyedRows($hooks, $this->extractProvidedHooksFromSource($source));
+            }
+
+            if (strtolower((string)basename($filePath)) === 'block.json') {
+                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromMetadataFile($filePath));
+            }
+        }
+
+        sort($shortcodes, SORT_NATURAL | SORT_FLAG_CASE);
+        usort($blocks, [self::class, 'comparePluginNamedRows']);
+        sort($patterns, SORT_NATURAL | SORT_FLAG_CASE);
+        usort($hooks, [self::class, 'comparePluginNamedRows']);
+
+        return [
+            'shortcodes' => $shortcodes,
+            'blocks' => $blocks,
+            'block_patterns' => $patterns,
+            'provided_hooks' => $hooks,
+        ];
+    }
+
+    protected function analyzeThemeCode(string $stylesheet): array {
+        $files = $this->getThemeAnalysisFiles($stylesheet);
+        $shortcodes = [];
+        $blocks = [];
+        $patterns = [];
+        $hooks = [];
+        $filePath = '';
+        $source = '';
+        $extension = '';
+
+        foreach ($files as $filePath) {
+            if (!is_readable($filePath)) {
+                continue;
+            }
+
+            $source = (string)file_get_contents($filePath);
+
+            if ($source === '') {
+                continue;
+            }
+
+            $extension = strtolower((string)pathinfo($filePath, PATHINFO_EXTENSION));
+
+            if (in_array($extension, ['php', 'js'], true)) {
+                $shortcodes = $this->mergeStringList($shortcodes, $this->extractShortcodesFromSource($source));
+                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromSource($source));
+                $patterns = $this->mergeStringList($patterns, $this->extractBlockPatternsFromSource($source));
+                $hooks = $this->mergeKeyedRows($hooks, $this->extractProvidedHooksFromSource($source));
+            }
+
+            if (strtolower((string)basename($filePath)) === 'block.json') {
+                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromMetadataFile($filePath));
+            }
+        }
+
+        sort($shortcodes, SORT_NATURAL | SORT_FLAG_CASE);
+        usort($blocks, [self::class, 'comparePluginNamedRows']);
+        sort($patterns, SORT_NATURAL | SORT_FLAG_CASE);
+        usort($hooks, [self::class, 'comparePluginNamedRows']);
+
+        return [
+            'shortcodes' => $shortcodes,
+            'blocks' => $blocks,
+            'block_patterns' => $patterns,
+            'provided_hooks' => $hooks,
+        ];
+    }
+
+    protected function getPluginAnalysisFiles(string $pluginFile): array {
+        $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
+        $baseDir = is_file($mainFilePath) ? dirname($mainFilePath) : '';
+        $results = [];
+        $iterator = null;
+        $current = null;
+        $pathname = '';
+
+        if ($mainFilePath === '' || !file_exists($mainFilePath)) {
+            return [];
+        }
+
+        $results[] = $mainFilePath;
+
+        if ($baseDir === '' || !is_dir($baseDir)) {
+            return $results;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(
+                $baseDir,
+                \FilesystemIterator::SKIP_DOTS
+            )
+        );
+
+        foreach ($iterator as $current) {
+            if (!$current instanceof \SplFileInfo || !$current->isFile()) {
+                continue;
+            }
+
+            $pathname = (string)$current->getPathname();
+
+            if ($pathname === $mainFilePath || !$this->isPluginAnalysisFile($pathname)) {
+                continue;
+            }
+
+            $results[] = $pathname;
+        }
+
+        sort($results, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return array_values(array_unique($results));
+    }
+
+    protected function isPluginAnalysisFile(string $filePath): bool {
+        $extension = strtolower((string)pathinfo($filePath, PATHINFO_EXTENSION));
+
+        return in_array($extension, ['php', 'js', 'json'], true);
+    }
+
+    protected function getPluginAbsolutePath(string $pluginFile): string {
+        $pluginFile = ltrim($pluginFile, '/');
+
+        if ($pluginFile === '') {
+            return '';
+        }
+
+        return trailingslashit(WP_PLUGIN_DIR) . $pluginFile;
+    }
+
+    protected function extractOptionsFromSource(string $source): array {
+        $results = [];
+        $patterns = [
+            'site' => '/\b(update_option|add_option|delete_option)\s*\(\s*[\'"]([^\'"]+)[\'"]/m',
+            'network' => '/\b(update_site_option|add_site_option|delete_site_option)\s*\(\s*[\'"]([^\'"]+)[\'"]/m',
+        ];
+        $scope = '';
+        $matches = [];
+        $index = 0;
+        $name = '';
+        $functionName = '';
+        $key = '';
+
+        foreach ($patterns as $scope => $pattern) {
+            $matches = [];
+
+            if (!preg_match_all($pattern, $source, $matches, PREG_SET_ORDER)) {
+                continue;
+            }
+
+            for ($index = 0; $index < count($matches); $index++) {
+                $functionName = (string)($matches[$index][1] ?? '');
+                $name = (string)($matches[$index][2] ?? '');
+
+                if ($name === '') {
+                    continue;
+                }
+
+                $key = $scope . ':' . $name;
+
+                if (!isset($results[$key])) {
+                    $results[$key] = [
+                        'name' => $name,
+                        'scope' => $scope,
+                        'functions' => [],
+                    ];
+                }
+
+                if (!in_array($functionName, $results[$key]['functions'], true)) {
+                    $results[$key]['functions'][] = $functionName;
+                }
+            }
+        }
+
+        return array_values($results);
+    }
+
+    protected function extractShortcodesFromSource(string $source): array {
+        $matches = [];
+        $results = [];
+        $index = 0;
+        $name = '';
+
+        if (!preg_match_all('/\badd_shortcode\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
+            return [];
+        }
+
+        for ($index = 0; $index < count($matches); $index++) {
+            $name = (string)($matches[$index][1] ?? '');
+
+            if ($name !== '') {
+                $results[] = $name;
+            }
+        }
+
+        return $results;
+    }
+
+    protected function getThemeAnalysisFiles(string $stylesheet): array {
+        $baseDir = $this->getThemeAbsolutePath($stylesheet);
+        $results = [];
+        $iterator = null;
+        $current = null;
+        $pathname = '';
+
+        if ($baseDir === '' || !is_dir($baseDir)) {
+            return [];
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(
+                $baseDir,
+                \FilesystemIterator::SKIP_DOTS
+            )
+        );
+
+        foreach ($iterator as $current) {
+            if (!$current instanceof \SplFileInfo || !$current->isFile()) {
+                continue;
+            }
+
+            $pathname = (string)$current->getPathname();
+
+            if (!$this->isPluginAnalysisFile($pathname)) {
+                continue;
+            }
+
+            $results[] = $pathname;
+        }
+
+        return $results;
+    }
+
+    protected function getThemeAbsolutePath(string $stylesheet): string {
+        $theme = wp_get_theme($stylesheet);
+
+        if (!$theme instanceof \WP_Theme || !$theme->exists()) {
+            return '';
+        }
+
+        return (string)$theme->get_stylesheet_directory();
+    }
+
+    protected function getThemeMainFilePath(string $stylesheet): string {
+        $themePath = $this->getThemeAbsolutePath($stylesheet);
+        $stylePath = $themePath !== '' ? trailingslashit($themePath) . 'style.css' : '';
+
+        if ($stylePath !== '' && file_exists($stylePath)) {
+            return $stylePath;
+        }
+
+        return $themePath;
+    }
+
+    protected function getThemeInstallTimestamp(string $stylesheet): int {
+        $mainPath = $this->getThemeMainFilePath($stylesheet);
+        $themePath = $this->getThemeAbsolutePath($stylesheet);
+        $targetPath = $themePath !== '' && file_exists($themePath) ? $themePath : $mainPath;
+
+        if ($targetPath === '' || !file_exists($targetPath)) {
+            return 0;
+        }
+
+        return (int)filectime($targetPath);
+    }
+
+    protected function getThemeModifiedTimestamp(string $stylesheet): int {
+        $mainPath = $this->getThemeMainFilePath($stylesheet);
+
+        if ($mainPath === '' || !file_exists($mainPath)) {
+            return 0;
+        }
+
+        return (int)filemtime($mainPath);
+    }
+
+    protected function getThemeSupplementaryData(string $stylesheet): array {
+        $themePath = $this->getThemeAbsolutePath($stylesheet);
+        $packagePath = $themePath !== '' ? $this->getFirstExistingPath([trailingslashit($themePath) . 'package.json']) : '';
+        $readmeTxtPath = $themePath !== '' ? $this->getFirstExistingPath([trailingslashit($themePath) . 'readme.txt']) : '';
+        $readmeMarkdownPath = $themePath !== '' ? $this->getFirstExistingPath([
+            trailingslashit($themePath) . 'README.md',
+            trailingslashit($themePath) . 'readme.md',
+            trailingslashit($themePath) . 'README.pm',
+            trailingslashit($themePath) . 'readme.pm',
+        ]) : '';
+        $packageData = $packagePath !== '' ? $this->parsePluginPackageJson($packagePath) : [];
+        $readmeData = $readmeTxtPath !== '' ? $this->parsePluginReadmeTxt($readmeTxtPath) : [];
+        $readmeMarkdown = '';
+        $sources = [];
+
+        if ($packagePath !== '') {
+            $sources[] = 'package.json';
+        }
+
+        if ($readmeTxtPath !== '') {
+            $sources[] = 'readme.txt';
+        }
+
+        if ($readmeMarkdownPath !== '' && is_readable($readmeMarkdownPath)) {
+            $readmeMarkdown = (string)file_get_contents($readmeMarkdownPath);
+            $sources[] = basename($readmeMarkdownPath);
+        }
+
+        return [
+            'author' => $this->mergePluginAuthorData(
+                (array)($packageData['author'] ?? []),
+                (array)($readmeData['author'] ?? [])
+            ),
+            'compatibility' => $this->mergePluginCompatibility(
+                (array)($packageData['compatibility'] ?? []),
+                (array)($readmeData['compatibility'] ?? [])
+            ),
+            'supports' => $this->mergeStringList(
+                (array)($packageData['supports'] ?? []),
+                (array)($readmeData['supports'] ?? [])
+            ),
+            'license' => $this->mergePluginLicenseData(
+                (array)($packageData['license'] ?? []),
+                (array)($readmeData['license'] ?? [])
+            ),
+            'repository' => $this->mergePluginRepositoryData(
+                (array)($packageData['repository'] ?? []),
+                (array)($readmeData['repository'] ?? [])
+            ),
+            'description' => $this->pickFirstNonEmptyString([
+                (string)($packageData['description'] ?? ''),
+                (string)($readmeData['description'] ?? ''),
+            ]),
+            'sources' => $sources,
+            'readme_markdown' => $readmeMarkdown,
+        ];
+    }
+
+    protected function extractBlocksFromSource(string $source): array {
+        $matches = [];
+        $results = [];
+        $index = 0;
+        $name = '';
+
+        if (preg_match_all('/\bregister_block_type(?:_from_metadata)?\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $name = (string)($matches[$index][1] ?? '');
+
+                if ($name !== '' && str_contains($name, '/')) {
+                    $results[$name] = [
+                        'name' => $name,
+                        'source' => 'php',
+                    ];
+                }
+            }
+        }
+
+        if (preg_match_all('/\bregisterBlockType\s*\(\s*[\'"]([^\'"]+)[\'"]/mi', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $name = (string)($matches[$index][1] ?? '');
+
+                if ($name !== '') {
+                    $results[$name] = [
+                        'name' => $name,
+                        'source' => 'js',
+                    ];
+                }
+            }
+        }
+
+        return array_values($results);
+    }
+
+    protected function extractBlocksFromMetadataFile(string $filePath): array {
+        $json = (string)file_get_contents($filePath);
+        $data = [];
+        $name = '';
+        $title = '';
+        $description = '';
+        $category = '';
+        $icon = '';
+        $keywords = [];
+
+        if ($json === '') {
+            return [];
+        }
+
+        $data = json_decode($json, true);
+
+        if (!is_array($data) || empty($data['name']) || !is_string($data['name'])) {
+            return [];
+        }
+
+        $name = (string)$data['name'];
+        $title = !empty($data['title']) && is_string($data['title']) ? (string)$data['title'] : '';
+        $description = !empty($data['description']) && is_string($data['description']) ? (string)$data['description'] : '';
+        $category = !empty($data['category']) && is_string($data['category']) ? (string)$data['category'] : '';
+        $icon = is_string($data['icon'] ?? null) ? (string)$data['icon'] : '';
+        $keywords = is_array($data['keywords'] ?? null) ? $this->normalizeStringList((array)$data['keywords']) : [];
+
+        return [
+            [
+                'name' => $name,
+                'source' => 'block.json',
+                'title' => $title,
+                'description' => $description,
+                'category' => $category,
+                'icon' => $icon,
+                'keywords' => $keywords,
+            ],
+        ];
+    }
+
+    protected function extractBlockPatternsFromSource(string $source): array {
+        $matches = [];
+        $results = [];
+        $index = 0;
+        $name = '';
+
+        if (!preg_match_all('/\bregister_block_pattern\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
+            return [];
+        }
+
+        for ($index = 0; $index < count($matches); $index++) {
+            $name = (string)($matches[$index][1] ?? '');
+
+            if ($name !== '') {
+                $results[] = $name;
+            }
+        }
+
+        return $results;
+    }
+
+    protected function extractProvidedHooksFromSource(string $source): array {
+        $matches = [];
+        $results = [];
+        $index = 0;
+        $type = '';
+        $name = '';
+
+        if (!preg_match_all('/\b(do_action|do_action_ref_array|apply_filters|apply_filters_ref_array)\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
+            return [];
+        }
+
+        for ($index = 0; $index < count($matches); $index++) {
+            $type = str_starts_with((string)($matches[$index][1] ?? ''), 'apply_filters') ? 'filter' : 'action';
+            $name = (string)($matches[$index][2] ?? '');
+
+            if ($name === '') {
+                continue;
+            }
+
+            $results[$type . ':' . $name] = [
+                'name' => $name,
+                'type' => $type,
+            ];
+        }
+
+        return array_values($results);
+    }
+
+    protected function extractCustomPostTypesFromSource(string $source): array {
+        $matches = [];
+        $results = [];
+        $index = 0;
+        $slug = '';
+        $context = '';
+        $label = '';
+        $type = '';
+
+        if (!preg_match_all('/register_post_type\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_OFFSET_CAPTURE)) {
+            return [];
+        }
+
+        for ($index = 0; $index < count($matches[1]); $index++) {
+            $slug = (string)($matches[1][$index][0] ?? '');
+
+            if ($slug === '') {
+                continue;
+            }
+
+            $context = substr($source, (int)($matches[1][$index][1] ?? 0), 1200);
+            $label = $this->extractCustomPostTypeLabel($context, $slug);
+            $type = $this->extractCustomPostTypeDisplayType($context);
+            $results[$slug] = [
+                'slug' => $slug,
+                'label' => $label,
+                'type' => $type,
+            ];
+        }
+
+        return array_values($results);
+    }
+
+    protected function extractCustomPostTypeLabel(string $context, string $fallback): string {
+        $matches = [];
+
+        if (preg_match('/[\'"]name[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
+            return (string)($matches[1] ?? $fallback);
+        }
+
+        if (preg_match('/[\'"]label[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
+            return (string)($matches[1] ?? $fallback);
+        }
+
+        return $fallback;
+    }
+
+    protected function extractCustomPostTypeDisplayType(string $context): string {
+        if (preg_match('/[\'"]hierarchical[\'"]\s*=>\s*true/i', $context)) {
+            return 'page';
+        }
+
+        return 'post';
+    }
+
+    protected function mergeDiscoveredOptions(array $current, array $additional): array {
+        $result = [];
+        $item = [];
+        $key = '';
+
+        foreach ($current as $item) {
+            $key = (string)($item['scope'] ?? '') . ':' . (string)($item['name'] ?? '');
+            $result[$key] = $item;
+        }
+
+        foreach ($additional as $item) {
+            $key = (string)($item['scope'] ?? '') . ':' . (string)($item['name'] ?? '');
+
+            if (!isset($result[$key])) {
+                $result[$key] = $item;
+                continue;
+            }
+
+            $result[$key]['functions'] = $this->mergeStringList(
+                (array)($result[$key]['functions'] ?? []),
+                (array)($item['functions'] ?? [])
+            );
+        }
+
+        return array_values($result);
+    }
+
+    protected function mergeStringList(array $current, array $additional): array {
+        $value = '';
+
+        foreach ($additional as $value) {
+            if (!is_string($value) || $value === '' || in_array($value, $current, true)) {
+                continue;
+            }
+
+            $current[] = $value;
+        }
+
+        return $current;
+    }
+
+    protected function mergeKeyedRows(array $current, array $additional): array {
+        $result = [];
+        $item = [];
+        $key = '';
+
+        foreach ($current as $item) {
+            $key = (string)($item['name'] ?? '');
+
+            if ($key !== '') {
+                $result[$key] = $item;
+            }
+        }
+
+        foreach ($additional as $item) {
+            $key = (string)($item['name'] ?? '');
+
+            if ($key !== '') {
+                if (isset($result[$key]) && is_array($result[$key])) {
+                    $result[$key] = array_merge($result[$key], $item);
+                } else {
+                    $result[$key] = $item;
+                }
+            }
+        }
+
+        return array_values($result);
+    }
+
+    protected function mergePostTypeRows(array $current, array $additional): array {
+        $result = [];
+        $item = [];
+        $key = '';
+
+        foreach ($current as $item) {
+            $key = (string)($item['slug'] ?? '');
+
+            if ($key !== '') {
+                $result[$key] = $item;
+            }
+        }
+
+        foreach ($additional as $item) {
+            $key = (string)($item['slug'] ?? '');
+
+            if ($key !== '') {
+                $result[$key] = $item;
+            }
+        }
+
+        return array_values($result);
+    }
+
+    protected function getPluginReleaseDateLabel(?object $updateItem): string {
+        if ($updateItem !== null && !empty($updateItem->last_updated) && is_string($updateItem->last_updated)) {
+            return $this->formatDate((string)$updateItem->last_updated);
+        }
+
+        return __('Nicht verfügbar.', 'rrze-multisite-manager');
+    }
+
+    protected function getPluginSupplementaryData(string $pluginFile): array {
+        $pluginDir = $this->getPluginDirectoryPath($pluginFile);
+        $packageJsonPath = $pluginDir !== '' ? $pluginDir . '/package.json' : '';
+        $readmeTxtPath = $pluginDir !== '' ? $pluginDir . '/readme.txt' : '';
+        $readmeMarkdownPath = $this->getFirstExistingPath([
+            $pluginDir !== '' ? $pluginDir . '/README.md' : '',
+            $pluginDir !== '' ? $pluginDir . '/readme.md' : '',
+        ]);
+        $packageData = is_readable($packageJsonPath) ? $this->parsePluginPackageJson($packageJsonPath) : [];
+        $readmeData = is_readable($readmeTxtPath) ? $this->parsePluginReadmeTxt($readmeTxtPath) : [];
+        $readmeMarkdown = is_readable($readmeMarkdownPath) ? (string)file_get_contents($readmeMarkdownPath) : '';
+        $sources = [];
+
+        if ($packageData !== []) {
+            $sources[] = 'package.json';
+        }
+
+        if ($readmeData !== []) {
+            $sources[] = 'readme.txt';
+        }
+
+        if (trim($readmeMarkdown) !== '') {
+            $sources[] = basename($readmeMarkdownPath);
+        }
+
+        return [
+            'compatibility' => $this->mergePluginCompatibility(
+                (array)($packageData['compatibility'] ?? []),
+                (array)($readmeData['compatibility'] ?? [])
+            ),
+            'supports' => $this->mergeStringList(
+                (array)($packageData['supports'] ?? []),
+                (array)($readmeData['supports'] ?? [])
+            ),
+            'author' => $this->mergePluginAuthorData(
+                (array)($packageData['author'] ?? []),
+                (array)($readmeData['author'] ?? [])
+            ),
+            'license' => $this->mergePluginLicenseData(
+                (array)($packageData['license'] ?? []),
+                (array)($readmeData['license'] ?? [])
+            ),
+            'tags' => $this->mergeStringList(
+                (array)($packageData['tags'] ?? []),
+                (array)($readmeData['tags'] ?? [])
+            ),
+            'description' => $this->pickFirstNonEmptyString([
+                (string)($packageData['description'] ?? ''),
+                (string)($readmeData['description'] ?? ''),
+            ]),
+            'repository' => $this->mergePluginRepositoryData(
+                (array)($packageData['repository'] ?? []),
+                (array)($readmeData['repository'] ?? [])
+            ),
+            'readme_markdown' => $readmeMarkdown,
+            'sources' => $sources,
+        ];
+    }
+
+    protected function getPluginDirectoryPath(string $pluginFile): string {
+        $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
+
+        if ($mainFilePath === '' || !file_exists($mainFilePath)) {
+            return '';
+        }
+
+        return dirname($mainFilePath);
+    }
+
+    protected function getPluginInstallTimestamp(string $pluginFile): int {
+        $pluginDir = $this->getPluginDirectoryPath($pluginFile);
+        $target = $pluginDir !== '' && is_dir($pluginDir) ? $pluginDir : $this->getPluginAbsolutePath($pluginFile);
+
+        if ($target === '' || !file_exists($target)) {
+            return 0;
+        }
+
+        return max(0, (int)@filectime($target));
+    }
+
+    protected function getPluginModifiedTimestamp(string $pluginFile): int {
+        $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
+
+        if ($mainFilePath === '' || !file_exists($mainFilePath)) {
+            return 0;
+        }
+
+        return max(0, (int)@filemtime($mainFilePath));
+    }
+
+    protected function parsePluginPackageJson(string $path): array {
+        $content = (string)file_get_contents($path);
+        $data = [];
+        $repository = [];
+        $compatibility = [];
+        $author = [];
+        $license = [];
+
+        if ($content === '') {
+            return [];
+        }
+
+        $data = json_decode($content, true);
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        $compatibility = is_array($data['compatibility'] ?? null) ? (array)$data['compatibility'] : [];
+        $repository = $this->normalizePluginRepository($data['repository'] ?? []);
+        $author = $this->normalizePluginAuthor($data['author'] ?? []);
+        $license = $this->normalizePluginLicense($data['license'] ?? ($data['licence'] ?? []), $data['license_url'] ?? ($data['licence_url'] ?? ''));
+
+        return [
+            'compatibility' => [
+                'wp_requires' => $this->pickFirstNonEmptyString([
+                    (string)($compatibility['wprequires'] ?? ''),
+                    (string)($compatibility['wprequires'] ?? ''),
+                    (string)($compatibility['requires_wp'] ?? ''),
+                ]),
+                'wp_tested_up_to' => $this->pickFirstNonEmptyString([
+                    (string)($compatibility['wptestedup'] ?? ''),
+                    (string)($compatibility['wptestetup'] ?? ''),
+                    (string)($compatibility['tested_up_to'] ?? ''),
+                ]),
+                'php_requires' => $this->pickFirstNonEmptyString([
+                    (string)($compatibility['phprequires'] ?? ''),
+                    (string)($compatibility['requires_php'] ?? ''),
+                ]),
+            ],
+            'supports' => $this->normalizeStringList($data['supports'] ?? []),
+            'author' => $author,
+            'license' => $license,
+            'tags' => $this->normalizeStringList($data['tags'] ?? []),
+            'description' => is_string($data['description'] ?? null) ? trim((string)$data['description']) : '',
+            'repository' => $repository,
+        ];
+    }
+
+    protected function parsePluginReadmeTxt(string $path): array {
+        $content = (string)file_get_contents($path);
+        $compatibility = [
+            'wp_requires' => '',
+            'wp_tested_up_to' => '',
+            'php_requires' => '',
+        ];
+        $tags = [];
+        $license = [
+            'name' => '',
+            'url' => '',
+        ];
+        $description = '';
+        $lines = [];
+        $line = '';
+
+        if ($content === '') {
+            return [];
+        }
+
+        $compatibility['wp_requires'] = $this->extractReadmeHeaderValue($content, 'Requires at least');
+        $compatibility['wp_tested_up_to'] = $this->extractReadmeHeaderValue($content, 'Tested up to');
+        $compatibility['php_requires'] = $this->extractReadmeHeaderValue($content, 'Requires PHP');
+        $license['name'] = $this->extractReadmeHeaderValue($content, 'License');
+        $license['url'] = $this->extractReadmeHeaderValue($content, 'License URI');
+        $description = $this->extractReadmeDescription($content);
+        $lines = explode("\n", str_replace("\r", '', $content));
+
+        foreach ($lines as $line) {
+            if (!str_starts_with(strtolower($line), 'tags:')) {
+                continue;
+            }
+
+            $tags = $this->normalizeStringList(explode(',', trim(substr($line, 5))));
+            break;
+        }
+
+        return [
+            'compatibility' => $compatibility,
+            'supports' => [],
+            'author' => [],
+            'license' => $license,
+            'tags' => $tags,
+            'description' => $description,
+            'repository' => [],
+        ];
+    }
+
+    protected function extractReadmeHeaderValue(string $content, string $label): string {
+        $matches = [];
+
+        if (!preg_match('/^' . preg_quote($label, '/') . ':\s*(.+)$/mi', $content, $matches)) {
+            return '';
+        }
+
+        return trim((string)($matches[1] ?? ''));
+    }
+
+    protected function extractReadmeDescription(string $content): string {
+        $parts = preg_split('/==\s*Description\s*==/i', $content);
+        $section = '';
+        $sectionParts = [];
+
+        if (!is_array($parts) || empty($parts[1])) {
+            return '';
+        }
+
+        $section = (string)$parts[1];
+        $sectionParts = preg_split('/\n==[^=]+==\n/', $section, 2);
+
+        if (!is_array($sectionParts) || empty($sectionParts[0])) {
+            return '';
+        }
+
+        return trim(wp_strip_all_tags((string)$sectionParts[0]));
+    }
+
+    protected function normalizePluginRepository(mixed $repositoryValue): array {
+        $repository = [
+            'type' => '',
+            'url' => '',
+            'issues' => '',
+            'clone' => '',
+        ];
+
+        if (is_string($repositoryValue) && trim($repositoryValue) !== '') {
+            $repository['url'] = trim($repositoryValue);
+            return $repository;
+        }
+
+        if (!is_array($repositoryValue)) {
+            return $repository;
+        }
+
+        $repository['type'] = is_string($repositoryValue['type'] ?? null) ? trim((string)$repositoryValue['type']) : '';
+        $repository['url'] = is_string($repositoryValue['url'] ?? null) ? trim((string)$repositoryValue['url']) : '';
+        $repository['clone'] = is_string($repositoryValue['clone'] ?? null) ? trim((string)$repositoryValue['clone']) : '';
+
+        if (is_string($repositoryValue['issues'] ?? null)) {
+            $repository['issues'] = trim((string)$repositoryValue['issues']);
+        } elseif (is_array($repositoryValue['issues'] ?? null) && is_string($repositoryValue['issues']['url'] ?? null)) {
+            $repository['issues'] = trim((string)$repositoryValue['issues']['url']);
+        }
+
+        return $repository;
+    }
+
+    protected function normalizePluginAuthor(mixed $authorValue): array {
+        if (is_string($authorValue) && trim($authorValue) !== '') {
+            return [
+                'name' => trim($authorValue),
+                'email' => '',
+                'url' => '',
+            ];
+        }
+
+        if (!is_array($authorValue)) {
+            return [
+                'name' => '',
+                'email' => '',
+                'url' => '',
+            ];
+        }
+
+        return [
+            'name' => is_string($authorValue['name'] ?? null) ? trim((string)$authorValue['name']) : '',
+            'email' => is_string($authorValue['email'] ?? null) ? trim((string)$authorValue['email']) : '',
+            'url' => is_string($authorValue['url'] ?? null) ? trim((string)$authorValue['url']) : '',
+        ];
+    }
+
+    protected function normalizePluginLicense(mixed $licenseValue, mixed $licenseUrl = ''): array {
+        return [
+            'name' => is_string($licenseValue) ? trim($licenseValue) : '',
+            'url' => is_string($licenseUrl) ? trim($licenseUrl) : '',
+        ];
+    }
+
+    protected function normalizeStringList(mixed $values): array {
+        $result = [];
+        $value = '';
+
+        if (is_string($values)) {
+            $values = preg_split('/[,\\n]+/', $values);
+        }
+
+        if (!is_array($values)) {
+            return [];
+        }
+
+        foreach ($values as $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+
+            $value = trim($value);
+
+            if ($value === '' || in_array($value, $result, true)) {
+                continue;
+            }
+
+            $result[] = $value;
+        }
+
+        return $result;
+    }
+
+    protected function mergePluginCompatibility(array $packageCompatibility, array $readmeCompatibility): array {
+        return [
+            'wp_requires' => $this->pickFirstNonEmptyString([
+                (string)($packageCompatibility['wp_requires'] ?? ''),
+                (string)($readmeCompatibility['wp_requires'] ?? ''),
+            ]),
+            'wp_tested_up_to' => $this->pickFirstNonEmptyString([
+                (string)($packageCompatibility['wp_tested_up_to'] ?? ''),
+                (string)($readmeCompatibility['wp_tested_up_to'] ?? ''),
+            ]),
+            'php_requires' => $this->pickFirstNonEmptyString([
+                (string)($packageCompatibility['php_requires'] ?? ''),
+                (string)($readmeCompatibility['php_requires'] ?? ''),
+            ]),
+        ];
+    }
+
+    protected function mergePluginAuthorData(array $packageAuthor, array $readmeAuthor): array {
+        return [
+            'name' => $this->pickFirstNonEmptyString([
+                (string)($packageAuthor['name'] ?? ''),
+                (string)($readmeAuthor['name'] ?? ''),
+            ]),
+            'email' => $this->pickFirstNonEmptyString([
+                (string)($packageAuthor['email'] ?? ''),
+                (string)($readmeAuthor['email'] ?? ''),
+            ]),
+            'url' => $this->pickFirstNonEmptyString([
+                (string)($packageAuthor['url'] ?? ''),
+                (string)($readmeAuthor['url'] ?? ''),
+            ]),
+        ];
+    }
+
+    protected function mergePluginLicenseData(array $packageLicense, array $readmeLicense): array {
+        return [
+            'name' => $this->pickFirstNonEmptyString([
+                (string)($packageLicense['name'] ?? ''),
+                (string)($readmeLicense['name'] ?? ''),
+            ]),
+            'url' => $this->pickFirstNonEmptyString([
+                (string)($packageLicense['url'] ?? ''),
+                (string)($readmeLicense['url'] ?? ''),
+            ]),
+        ];
+    }
+
+    protected function mergePluginRepositoryData(array $packageRepository, array $readmeRepository): array {
+        return [
+            'type' => $this->pickFirstNonEmptyString([
+                (string)($packageRepository['type'] ?? ''),
+                (string)($readmeRepository['type'] ?? ''),
+            ]),
+            'url' => $this->pickFirstNonEmptyString([
+                (string)($packageRepository['url'] ?? ''),
+                (string)($readmeRepository['url'] ?? ''),
+            ]),
+            'issues' => $this->pickFirstNonEmptyString([
+                (string)($packageRepository['issues'] ?? ''),
+                (string)($readmeRepository['issues'] ?? ''),
+            ]),
+            'clone' => $this->pickFirstNonEmptyString([
+                (string)($packageRepository['clone'] ?? ''),
+                (string)($readmeRepository['clone'] ?? ''),
+            ]),
+        ];
+    }
+
+    protected function pickFirstNonEmptyString(array $values): string {
+        $value = '';
+
+        foreach ($values as $value) {
+            if (trim((string)$value) !== '') {
+                return trim((string)$value);
+            }
+        }
+
+        return '';
+    }
+
+    protected function getFirstExistingPath(array $paths): string {
+        $path = '';
+
+        foreach ($paths as $path) {
+            if ($path !== '' && file_exists($path)) {
+                return $path;
+            }
+        }
+
+        return '';
+    }
+
     protected function getThemes(): array {
         $themes = wp_get_themes();
         $allowedThemes = $this->getAllowedThemes();
         $siteCounts = $this->getThemeSiteCounts();
+        $siteUsageMap = $this->getThemeSiteUsageMap();
         $results = [];
         $stylesheet = '';
         $theme = null;
+        $themeData = [];
+        $description = '';
+        $screenshot = '';
+        $tags = [];
 
         foreach ($themes as $stylesheet => $theme) {
-            $results[] = [
+            if (!$theme instanceof \WP_Theme) {
+                continue;
+            }
+
+            $description = (string)$theme->get('Description');
+            $screenshot = $theme->get_screenshot();
+            $tags = $theme->get('Tags');
+            $themeData = [
                 'stylesheet' => $stylesheet,
                 'name' => $theme->get('Name') ?: $stylesheet,
                 'version' => $theme->get('Version') ?: 'n/a',
-                'description' => wp_strip_all_tags((string)$theme->get('Description')),
+                'description' => wp_strip_all_tags($description),
                 'site_count' => (int)($siteCounts[$stylesheet] ?? 0),
                 'network_enabled' => isset($allowedThemes[$stylesheet]),
+                'active_sites' => (array)($siteUsageMap[$stylesheet] ?? []),
+                'author' => (string)$theme->get('Author'),
+                'author_url' => (string)$theme->get('AuthorURI'),
+                'theme_uri' => (string)$theme->get('ThemeURI'),
+                'text_domain' => (string)$theme->get('TextDomain'),
+                'template' => (string)$theme->get_template(),
+                'screenshot' => is_string($screenshot) ? $screenshot : '',
+                'is_block_theme' => method_exists($theme, 'is_block_theme') ? (bool)$theme->is_block_theme() : false,
+                'tags' => is_array($tags) ? $this->normalizeStringList($tags) : [],
             ];
+            $themeData['status'] = $this->getThemeStatus($themeData);
+            $results[] = $themeData;
         }
 
         usort($results, [self::class, 'compareThemeUsage']);
@@ -822,17 +2194,24 @@ class MetricsService {
         $theme = wp_get_theme();
         $screenshot = $theme instanceof \WP_Theme ? $theme->get_screenshot() : '';
         $description = '';
+        $tags = [];
 
         if ($theme instanceof \WP_Theme) {
             $description = (string)$theme->get('Description');
+            $tags = $theme->get('Tags');
         }
 
         return [
             'name' => $theme instanceof \WP_Theme ? ((string)$theme->get('Name') ?: (string)$theme->get_stylesheet()) : '',
+            'stylesheet' => $theme instanceof \WP_Theme ? (string)$theme->get_stylesheet() : '',
             'version' => $theme instanceof \WP_Theme ? ((string)$theme->get('Version') ?: '') : '',
             'description' => wp_strip_all_tags($description),
             'screenshot' => is_string($screenshot) ? $screenshot : '',
             'is_block_theme' => $theme instanceof \WP_Theme && method_exists($theme, 'is_block_theme') ? (bool)$theme->is_block_theme() : false,
+            'theme_uri' => $theme instanceof \WP_Theme ? (string)$theme->get('ThemeURI') : '',
+            'author' => $theme instanceof \WP_Theme ? (string)$theme->get('Author') : '',
+            'author_url' => $theme instanceof \WP_Theme ? (string)$theme->get('AuthorURI') : '',
+            'tags' => is_array($tags) ? $this->normalizeStringList($tags) : [],
         ];
     }
 
@@ -1548,9 +2927,100 @@ class MetricsService {
         return [
             'used_bytes' => max(0, $megabytes) * MB_IN_BYTES,
             'used_label' => size_format(max(0, $megabytes) * MB_IN_BYTES),
+            'max_bytes' => $maxMegabytes > 0 ? $maxMegabytes * MB_IN_BYTES : 0,
             'max_label' => $maxMegabytes > 0 ? size_format($maxMegabytes * MB_IN_BYTES) : '',
             'percent' => $percent,
             'warn_level' => $warnLevel,
+            'is_unlimited' => $maxMegabytes <= 0,
+        ];
+    }
+
+    protected function getNetworkStorageUsage(): array {
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+        ]);
+        $items = [];
+        $siteId = 0;
+        $storage = [];
+        $usedBytes = 0;
+        $maxBytes = 0;
+        $hasUnlimitedSite = false;
+        $totalUsedBytes = 0;
+        $totalMaxBytes = 0;
+        $freeBytes = 0;
+        $item = [];
+        $index = 0;
+        $percentBase = 0;
+        $mode = 'capacity';
+
+        foreach ($siteIds as $siteId) {
+            switch_to_blog((int)$siteId);
+            $storage = $this->getSiteStorageUsage();
+            restore_current_blog();
+
+            $usedBytes = (int)($storage['used_bytes'] ?? 0);
+            $maxBytes = (int)($storage['max_bytes'] ?? 0);
+
+            if (!empty($storage['is_unlimited'])) {
+                $hasUnlimitedSite = true;
+            }
+
+            $totalUsedBytes += max(0, $usedBytes);
+            $totalMaxBytes += max(0, $maxBytes);
+
+            if ($usedBytes <= 0) {
+                continue;
+            }
+
+            $items[] = [
+                'label' => $this->getSiteNameById((int)$siteId),
+                'value' => $usedBytes,
+                'value_label' => size_format($usedBytes),
+                'site_id' => (int)$siteId,
+            ];
+        }
+
+        usort($items, [self::class, 'compareUsageDistributionRows']);
+
+        if ($hasUnlimitedSite) {
+            $mode = 'usage';
+            $percentBase = $totalUsedBytes;
+        } else {
+            $freeBytes = max(0, $totalMaxBytes - $totalUsedBytes);
+            $percentBase = $totalMaxBytes;
+
+            if ($freeBytes > 0) {
+                $items[] = [
+                    'label' => __('Freier Speicher', 'rrze-multisite-manager'),
+                    'value' => $freeBytes,
+                    'value_label' => size_format($freeBytes),
+                    'accent' => 'neutral',
+                ];
+            }
+        }
+
+        foreach ($items as $index => $item) {
+            $items[$index]['percent'] = $percentBase > 0
+                ? (int)round((((int)$item['value']) / $percentBase) * 100)
+                : 0;
+
+            if (!isset($items[$index]['accent'])) {
+                $items[$index]['accent'] = 'theme-' . (($index % 6) + 1);
+            }
+        }
+
+        return [
+            'mode' => $mode,
+            'items' => $items,
+            'total_used_bytes' => $totalUsedBytes,
+            'total_used_label' => size_format($totalUsedBytes),
+            'total_max_bytes' => $totalMaxBytes,
+            'total_max_label' => $totalMaxBytes > 0 ? size_format($totalMaxBytes) : '',
+            'percent' => (!$hasUnlimitedSite && $totalMaxBytes > 0)
+                ? (int)round(($totalUsedBytes / $totalMaxBytes) * 100)
+                : null,
+            'has_unlimited_site' => $hasUnlimitedSite,
         ];
     }
 
@@ -2207,6 +3677,55 @@ class MetricsService {
         return $counts;
     }
 
+    protected function getThemeSiteUsageMap(): array {
+        $sites = get_sites([
+            'number' => 0,
+            'orderby' => 'domain',
+            'order' => 'ASC',
+        ]);
+        $results = [];
+        $site = null;
+        $siteId = 0;
+        $stylesheet = '';
+        $siteName = '';
+        $siteUrl = '';
+
+        foreach ($sites as $site) {
+            if (!$site instanceof \WP_Site) {
+                continue;
+            }
+
+            $siteId = (int)$site->blog_id;
+            $siteName = $this->getSiteName($site);
+            $siteUrl = get_home_url($siteId, '/');
+
+            switch_to_blog($siteId);
+            $stylesheet = (string)get_option('stylesheet', '');
+
+            if ($stylesheet === '') {
+                $stylesheet = (string)get_option('template', '');
+            }
+
+            restore_current_blog();
+
+            if ($stylesheet === '') {
+                continue;
+            }
+
+            if (!isset($results[$stylesheet])) {
+                $results[$stylesheet] = [];
+            }
+
+            $results[$stylesheet][] = [
+                'id' => $siteId,
+                'name' => $siteName,
+                'url' => $siteUrl,
+            ];
+        }
+
+        return $results;
+    }
+
     protected function getAllowedThemes(): array {
         $allowedThemes = get_site_option('allowedthemes', []);
 
@@ -2215,6 +3734,50 @@ class MetricsService {
         }
 
         return $allowedThemes;
+    }
+
+    protected function getThemeStatus(array $theme): array {
+        $status = [];
+        $tag = '';
+
+        if (!empty($theme['network_enabled'])) {
+            $status[] = [
+                'label' => __('Netzwerkweit verfügbar', 'rrze-multisite-manager'),
+                'accent' => 'info',
+            ];
+        }
+
+        if ((int)($theme['site_count'] ?? 0) > 0) {
+            $status[] = [
+                'label' => __('Auf Websites aktiv', 'rrze-multisite-manager'),
+                'accent' => 'active',
+            ];
+        } else {
+            $status[] = [
+                'label' => __('Nicht genutzt', 'rrze-multisite-manager'),
+                'accent' => 'archive',
+            ];
+        }
+
+        if (!empty($theme['is_block_theme'])) {
+            $status[] = [
+                'label' => __('Block Theme', 'rrze-multisite-manager'),
+                'accent' => 'positive',
+            ];
+        }
+
+        foreach ((array)($theme['tags'] ?? []) as $tag) {
+            if (!is_string($tag) || $tag === '') {
+                continue;
+            }
+
+            $status[] = [
+                'label' => $tag,
+                'accent' => 'neutral',
+            ];
+        }
+
+        return $status;
     }
 
     protected static function comparePluginUsage(array $left, array $right): int {
@@ -2311,6 +3874,26 @@ class MetricsService {
         return strcmp((string)($left['label'] ?? ''), (string)($right['label'] ?? ''));
     }
 
+    protected static function comparePluginOptions(array $left, array $right): int {
+        if ((string)($left['scope'] ?? '') === (string)($right['scope'] ?? '')) {
+            return strcmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
+        }
+
+        return strcmp((string)($left['scope'] ?? ''), (string)($right['scope'] ?? ''));
+    }
+
+    protected static function comparePluginNamedRows(array $left, array $right): int {
+        return strcmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
+    }
+
+    protected static function comparePluginPostTypeRows(array $left, array $right): int {
+        if ((string)($left['type'] ?? '') === (string)($right['type'] ?? '')) {
+            return strcmp((string)($left['label'] ?? $left['slug'] ?? ''), (string)($right['label'] ?? $right['slug'] ?? ''));
+        }
+
+        return strcmp((string)($left['type'] ?? ''), (string)($right['type'] ?? ''));
+    }
+
     protected static function compareCronEvents(array $left, array $right): int {
         if ((int)($left['next_run_timestamp'] ?? 0) === (int)($right['next_run_timestamp'] ?? 0)) {
             return strcmp((string)($left['hook'] ?? ''), (string)($right['hook'] ?? ''));
@@ -2343,6 +3926,7 @@ class MetricsService {
             'summary',
             'site_table_default_limit',
             'status_distribution',
+            'network_storage_usage',
             'recent_sites',
             'site_overview',
             'archived_sites',

@@ -325,7 +325,7 @@
                             <?php } ?>
                         </div>
                         <div class="rrze-msm-site-theme-details">
-                            <h3><?php echo esc_html((string)($site_details['theme']['name'] ?? '')); ?></h3>
+                            <h3><a href="<?php echo esc_url($this->getThemeDetailsUrl((string)($site_details['theme']['stylesheet'] ?? ''))); ?>"><?php echo esc_html((string)($site_details['theme']['name'] ?? '')); ?></a></h3>
                             <?php if (!empty($site_details['theme']['version'])) { ?>
                                 <p><strong><?php echo esc_html__('Version:', 'rrze-multisite-manager'); ?></strong> <?php echo esc_html((string)$site_details['theme']['version']); ?></p>
                             <?php } ?>
@@ -333,7 +333,8 @@
                                 <p><?php echo esc_html((string)$site_details['theme']['description']); ?></p>
                             <?php } ?>
                             <div class="rrze-msm-site-theme-links">
-                                <a class="button button-secondary" href="<?php echo esc_url($site_themes_url); ?>"><?php echo esc_html__('Theme-Übersicht', 'rrze-multisite-manager'); ?></a>
+                                <a class="button button-secondary" href="<?php echo esc_url($this->getThemeOverviewUrl()); ?>"><?php echo esc_html__('Theme-Übersicht', 'rrze-multisite-manager'); ?></a>
+                                <a class="button button-secondary" href="<?php echo esc_url($site_themes_url); ?>"><?php echo esc_html__('Themes der Site', 'rrze-multisite-manager'); ?></a>
                                 <a class="button button-secondary" href="<?php echo esc_url($site_customizer_url); ?>"><?php echo esc_html__('Customizer', 'rrze-multisite-manager'); ?></a>
                                 <?php if (!empty($site_editor_url)) { ?>
                                     <a class="button button-secondary" href="<?php echo esc_url($site_editor_url); ?>"><?php echo esc_html__('Site-Editor', 'rrze-multisite-manager'); ?></a>
@@ -364,14 +365,18 @@
                             </thead>
                             <tbody>
                                 <?php foreach ($site_details['plugins'] as $plugin) { ?>
-                                    <tr<?php echo !empty($plugin['network_active']) ? ' class="rrze-msm-detail-row-network-plugin"' : ''; ?>>
-                                        <td><?php echo esc_html((string)$plugin['name']); ?></td>
+                                    <tr>
+                                        <td><a href="<?php echo esc_url($this->getPluginDetailsUrl((string)($plugin['file'] ?? ''))); ?>"><?php echo esc_html((string)$plugin['name']); ?></a></td>
                                         <td><?php echo esc_html((string)$plugin['version']); ?></td>
                                         <td><?php echo esc_html((string)($plugin['author'] ?? '')); ?></td>
                                         <td><?php echo esc_html((string)$plugin['description']); ?></td>
                                         <td>
                                             <?php if (!empty($plugin['network_active'])) { ?>
-                                                <?php echo esc_html__('Netzwerkweit aktiv', 'rrze-multisite-manager'); ?>
+                                                <span class="rrze-msm-badge rrze-msm-badge-info"><?php echo esc_html__('Netzwerkweit aktiv', 'rrze-multisite-manager'); ?></span>
+                                            <?php } elseif ((int)($plugin['site_count'] ?? 0) > 0) { ?>
+                                                <span class="rrze-msm-badge rrze-msm-badge-active"><?php echo esc_html__('Auf Websites aktiv', 'rrze-multisite-manager'); ?></span>
+                                            <?php } else { ?>
+                                                <span class="rrze-msm-badge rrze-msm-badge-archive"><?php echo esc_html__('Nicht aktiviert', 'rrze-multisite-manager'); ?></span>
                                             <?php } ?>
                                         </td>
                                         <td>

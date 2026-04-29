@@ -17,6 +17,10 @@ class StatusWidget extends Widgets {
         return __('Verteilung der Site-Zustände innerhalb dieses Netzwerks.', 'rrze-multisite-manager');
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-chart';
+    }
+
     protected function getTemplateName(): string {
         return 'status-widget';
     }

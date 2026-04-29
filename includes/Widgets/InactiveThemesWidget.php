@@ -17,6 +17,10 @@ class InactiveThemesWidget extends Widgets {
         return __('Installierte Themes, die auf keiner Website des Netzwerks verwendet werden.', 'rrze-multisite-manager');
     }
 
+    public function getLayoutClass(): string {
+        return 'rrze-msm-widget-size-fluid-medium';
+    }
+
     protected function getTemplateName(): string {
         return 'inactive-themes-widget';
     }
