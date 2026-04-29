@@ -2252,6 +2252,7 @@ class MetricsService {
                 'version' => (string)($pluginHeaders['Version'] ?? ''),
                 'description' => wp_strip_all_tags((string)($pluginHeaders['Description'] ?? '')),
                 'author' => $this->getPluginAuthorLabel($pluginHeaders),
+                'site_count' => 1,
                 'network_active' => isset($networkActivePlugins[$pluginFile]),
                 'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginHeaders),
                 'details_url' => $this->getPluginDetailsUrl($pluginHeaders),
