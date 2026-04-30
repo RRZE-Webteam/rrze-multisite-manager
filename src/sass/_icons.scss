@@ -8,8 +8,10 @@
 }
 
 .rrze-msm-widget-move {
-    width: 28px;
-    height: 28px;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
     border: 1px solid var(--rrze-msm-border);
     border-radius: var(--rrze-msm-widget-border-radius);
     background: var(--rrze-msm-surface-alt);
@@ -18,7 +20,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 14px;
     line-height: 1;
     appearance: none;
     -webkit-appearance: none;
@@ -42,13 +44,26 @@
 
 .rrze-msm-site-action.button.button-small,
 .rrze-msm-site-action-state {
-    width: 30px;
-    min-width: 30px;
-    min-height: 30px;
-    padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+.rrze-msm-site-action-icon.button.button-small,
+.rrze-msm-site-action-state {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    padding: 0;
+}
+
+.rrze-msm-site-action-text.button.button-small {
+    min-height: 42px;
+    min-width: 0;
+    width: auto;
+    padding: 0 14px;
+    text-align: center;
 }
 
 .rrze-msm-site-action.button.button-small {
@@ -79,21 +94,21 @@
 
 .rrze-msm-site-action-warning.button.button-small {
     border-color: var(--rrze-msm-warning);
-    background: transparent;
-    color: var(--rrze-msm-warning);
+    background: var(--rrze-msm-warning);
+    color: var(--rrze-msm-warning-text);
 }
 
 .rrze-msm-site-action-warning.button.button-small:hover,
 .rrze-msm-site-action-warning.button.button-small:focus {
     border-color: var(--rrze-msm-warning);
-    background: color-mix(in srgb, var(--rrze-msm-warning) 14%, transparent 86%);
-    color: var(--rrze-msm-warning);
+    background: color-mix(in srgb, var(--rrze-msm-warning) 88%, #000 12%);
+    color: var(--rrze-msm-warning-text);
 }
 
 .rrze-msm-site-action-warning.button.button-small .dashicons,
 .rrze-msm-site-action-warning.button.button-small:hover .dashicons,
 .rrze-msm-site-action-warning.button.button-small:focus .dashicons {
-    color: var(--rrze-msm-warning);
+    color: var(--rrze-msm-warning-text);
 }
 
 .rrze-msm-site-action-danger.button.button-small {
@@ -111,15 +126,15 @@
 
 .rrze-msm-site-action-positive.button.button-small {
     border-color: var(--rrze-msm-positive);
-    background: transparent;
-    color: var(--rrze-msm-positive);
+    background: var(--rrze-msm-positive);
+    color: var(--rrze-msm-positive-text);
 }
 
 .rrze-msm-site-action-positive.button.button-small:hover,
 .rrze-msm-site-action-positive.button.button-small:focus {
     border-color: var(--rrze-msm-positive);
-    background: color-mix(in srgb, var(--rrze-msm-positive) 10%, transparent 90%);
-    color: var(--rrze-msm-positive);
+    background: color-mix(in srgb, var(--rrze-msm-positive) 88%, #000 12%);
+    color: var(--rrze-msm-positive-text);
 }
 
 .rrze-msm-site-action-info.button.button-small {
@@ -141,4 +156,10 @@
     width: 16px;
     height: 16px;
     line-height: 16px;
+}
+
+.rrze-msm-site-action-label {
+    display: inline-block;
+    line-height: 1.2;
+    white-space: nowrap;
 }

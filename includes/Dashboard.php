@@ -70,6 +70,7 @@ class Dashboard {
         $capability = (string)($menuSettings['capability'] ?? 'manage_network_options');
         $parentSlug = (string)($menuSettings['parent_slug'] ?? 'rrze-multisite-manager-dashboard');
         $dashboardSlug = (string)($menuSettings['dashboard_slug'] ?? 'rrze-multisite-manager-dashboard');
+        $environmentOverviewSlug = (string)($menuSettings['environment_overview_slug'] ?? 'rrze-multisite-manager-environment-overview');
         $siteOverviewSlug = (string)($menuSettings['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview');
         $pluginOverviewSlug = (string)($menuSettings['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview');
         $pluginDetailsSlug = (string)($menuSettings['plugin_details_slug'] ?? 'rrze-multisite-manager-plugin-details');
@@ -97,6 +98,15 @@ class Dashboard {
             $capability,
             $dashboardSlug,
             [$this, 'renderDashboardPage']
+        );
+
+        $this->pageHooks[] = add_submenu_page(
+            $parentSlug,
+            __('Umgebung', 'rrze-multisite-manager'),
+            __('Umgebung', 'rrze-multisite-manager'),
+            $capability,
+            $environmentOverviewSlug,
+            [$this, 'renderEnvironmentOverviewPage']
         );
 
         $this->pageHooks[] = add_submenu_page(
@@ -406,6 +416,7 @@ class Dashboard {
                     'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
                     'sort_key' => 'registered',
                     'sort_direction' => 'desc',
+                    'action_mode' => 'text',
                 ]
             ),
             'active' => $widget->renderSiteOverviewTable(
@@ -422,6 +433,7 @@ class Dashboard {
                     'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
                     'sort_key' => 'registered',
                     'sort_direction' => 'desc',
+                    'action_mode' => 'text',
                 ]
             ),
             'archived' => $widget->renderSiteOverviewTable(
@@ -431,6 +443,7 @@ class Dashboard {
                     'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
                     'sort_key' => 'registered',
                     'sort_direction' => 'desc',
+                    'action_mode' => 'text',
                 ]
             ),
             'blocked' => $widget->renderSiteOverviewTable(
@@ -440,6 +453,7 @@ class Dashboard {
                     'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
                     'sort_key' => 'registered',
                     'sort_direction' => 'desc',
+                    'action_mode' => 'text',
                 ]
             ),
             'deleted' => $widget->renderSiteOverviewTable(
@@ -449,6 +463,7 @@ class Dashboard {
                     'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
                     'sort_key' => 'registered',
                     'sort_direction' => 'desc',
+                    'action_mode' => 'text',
                 ]
             ),
         ];
@@ -460,6 +475,26 @@ class Dashboard {
                 'overview_tabs' => $tabs,
                 'current_tab' => $currentTab,
                 'status_updated' => !empty($_GET['status-updated']),
+                'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
+                'mode_toggle_label' => $this->getModeToggleLabel(),
+            ],
+            $this
+        );
+    }
+
+    public function renderEnvironmentOverviewPage(): void {
+        $environmentOverview = [];
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        $environmentOverview = $this->metrics->getEnvironmentOverview();
+
+        echo $this->template->render(
+            'environment-overview-page',
+            [
+                'environment_overview' => $environmentOverview,
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
             ],
@@ -577,7 +612,7 @@ class Dashboard {
             [
                 'site_id' => $siteId,
                 'site_details' => $siteDetails,
-                'site_actions' => !empty($siteDetails) ? $siteWidget->renderActionsForSite($siteDetails) : '',
+                'site_actions' => !empty($siteDetails) ? $siteWidget->renderActionsForSite($siteDetails, 'text') : '',
                 'site_plugins_url' => $siteId > 0 ? get_admin_url($siteId, 'plugins.php') : '',
                 'site_themes_url' => $siteId > 0 ? get_admin_url($siteId, 'themes.php') : '',
                 'site_customizer_url' => $siteId > 0 ? get_admin_url($siteId, 'customize.php') : '',
@@ -721,6 +756,7 @@ class Dashboard {
                     'show_active_site_list' => true,
                     'show_network_button' => true,
                     'highlight_network_plugins' => true,
+                    'action_mode' => 'text',
                 ]
             ),
             'network' => $widget->renderTable(
@@ -734,6 +770,7 @@ class Dashboard {
                     'show_active_site_list' => false,
                     'show_network_button' => true,
                     'highlight_network_plugins' => false,
+                    'action_mode' => 'text',
                 ]
             ),
             'active' => $widget->renderTable(
@@ -747,6 +784,7 @@ class Dashboard {
                     'show_active_site_list' => true,
                     'show_network_button' => true,
                     'highlight_network_plugins' => false,
+                    'action_mode' => 'text',
                 ]
             ),
             'inactive' => $widget->renderTable(
@@ -760,6 +798,7 @@ class Dashboard {
                     'show_active_site_list' => false,
                     'show_network_button' => true,
                     'highlight_network_plugins' => false,
+                    'action_mode' => 'text',
                 ]
             ),
         ];
@@ -1266,6 +1305,15 @@ class Dashboard {
         );
     }
 
+    public function getEnvironmentOverviewUrl(): string {
+        return add_query_arg(
+            [
+                'page' => (string)($this->config->getMenuSettings()['environment_overview_slug'] ?? 'rrze-multisite-manager-environment-overview'),
+            ],
+            network_admin_url('admin.php')
+        );
+    }
+
     public function getSiteDetailsUrl(int $siteId = 0): string {
         $args = [
             'page' => (string)($this->config->getMenuSettings()['site_details_slug'] ?? 'rrze-multisite-manager-site-details'),
@@ -1441,26 +1489,26 @@ class Dashboard {
 
         if (!empty($pluginDetails['deactivate_url'])) {
             if (!empty($pluginDetails['network_active'])) {
-                $html .= '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-open-plugin-deactivate-modal" data-plugin-name="' . esc_attr((string)($pluginDetails['name'] ?? '')) . '" data-deactivate-url="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-minus" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '</span></button>';
+                $html .= '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-site-action-text rrze-msm-open-plugin-deactivate-modal" data-plugin-name="' . esc_attr((string)($pluginDetails['name'] ?? '')) . '" data-deactivate-url="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Netzwerkweit deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit deaktivieren', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Netzwerkweit deaktivieren', 'rrze-multisite-manager') . '</span></button>';
             } else {
-                $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Deaktivieren', 'rrze-multisite-manager') . '</span></a>';
+                $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Deaktivieren', 'rrze-multisite-manager') . '</span></a>';
             }
         }
 
         if (!empty($pluginDetails['settings_url'])) {
-            $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url((string)$pluginDetails['settings_url']) . '" title="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-admin-tools" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Einstellungen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['settings_url']) . '" title="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Einstellungen', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if ($pluginCheckUrl !== '') {
-            $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url($pluginCheckUrl) . '" title="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-plugins-checked" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Plugin prüfen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($pluginCheckUrl) . '" title="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Plugin prüfen', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if (!empty($pluginDetails['update_url'])) {
-            $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url((string)$pluginDetails['update_url']) . '" title="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-update" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['update_url']) . '" title="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if (!empty($pluginDetails['delete_url'])) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="' . esc_url((string)$pluginDetails['delete_url']) . '" title="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-trash" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Löschen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['delete_url']) . '" title="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Löschen', 'rrze-multisite-manager') . '</span></a>';
         }
 
         $html .= '</div>';
@@ -1505,7 +1553,7 @@ class Dashboard {
         $networkThemesUrl = network_admin_url('themes.php');
         $siteCount = (int)($themeDetails['site_count'] ?? 0);
 
-        $html .= '<a class="button button-small rrze-msm-site-action" href="' . esc_url($networkThemesUrl) . '" title="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-admin-appearance" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '</span></a>';
+        $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($networkThemesUrl) . '" title="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '</span></a>';
 
         if ($stylesheet === '') {
             $html .= '</div>';
@@ -1513,13 +1561,13 @@ class Dashboard {
         }
 
         if (!empty($themeDetails['network_enabled'])) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-warning" href="' . esc_url($this->getThemeNetworkDisableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-no" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkDisableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '</span></a>';
         } else {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-positive" href="' . esc_url($this->getThemeNetworkEnableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-yes" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-positive rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkEnableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if (empty($themeDetails['network_enabled']) && $siteCount === 0) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="' . esc_url($this->getThemeDeleteUrl($stylesheet)) . '" title="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-trash" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Theme löschen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url($this->getThemeDeleteUrl($stylesheet)) . '" title="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Theme löschen', 'rrze-multisite-manager') . '</span></a>';
         }
 
         $html .= '</div>';

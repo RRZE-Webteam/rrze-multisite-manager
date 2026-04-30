@@ -180,7 +180,7 @@
                                     <tr>
                                         <th><?php echo esc_html__('Post-Typ', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Slug', 'rrze-multisite-manager'); ?></th>
-                                        <th><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
+                                        <th class="rrze-msm-col-numeric"><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -221,7 +221,7 @@
                                             <td><code><?php echo esc_html((string)$custom_post_type['slug']); ?></code></td>
                                             <td><?php echo esc_html((string)$custom_post_type['group']); ?></td>
                                             <td><?php echo esc_html(!empty($custom_post_type['registered']) ? __('Ja', 'rrze-multisite-manager') : __('Nein', 'rrze-multisite-manager')); ?></td>
-                                            <td><?php echo esc_html(number_format_i18n((int)$custom_post_type['count'])); ?></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)$custom_post_type['count'])); ?></td>
                                             <td>
                                                 <button
                                                     type="button"
@@ -273,7 +273,7 @@
                                         <th><?php echo esc_html__('Bezeichnung', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Slug', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Im Request registriert', 'rrze-multisite-manager'); ?></th>
-                                        <th><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
+                                        <th class="rrze-msm-col-numeric"><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -282,7 +282,7 @@
                                             <td><?php echo esc_html((string)$custom_page['label']); ?></td>
                                             <td><code><?php echo esc_html((string)$custom_page['slug']); ?></code></td>
                                             <td><?php echo esc_html(!empty($custom_page['registered']) ? __('Ja', 'rrze-multisite-manager') : __('Nein', 'rrze-multisite-manager')); ?></td>
-                                            <td><?php echo esc_html(number_format_i18n((int)$custom_page['count'])); ?></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)$custom_page['count'])); ?></td>
                                         </tr>
                                     <?php } ?>
                                 </tbody>
@@ -295,7 +295,7 @@
                                     <tr>
                                         <th><?php echo esc_html__('Bezeichnung', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Slug', 'rrze-multisite-manager'); ?></th>
-                                        <th><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
+                                        <th class="rrze-msm-col-numeric"><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -303,7 +303,7 @@
                                         <tr>
                                             <td><?php echo esc_html((string)$block_template_type['label']); ?></td>
                                             <td><code><?php echo esc_html((string)$block_template_type['slug']); ?></code></td>
-                                            <td><?php echo esc_html(number_format_i18n((int)$block_template_type['count'])); ?></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)$block_template_type['count'])); ?></td>
                                         </tr>
                                     <?php } ?>
                                 </tbody>
@@ -356,7 +356,7 @@
                             <thead>
                                 <tr>
                                     <th><?php echo esc_html__('Pluginname', 'rrze-multisite-manager'); ?></th>
-                                    <th><?php echo esc_html__('Version', 'rrze-multisite-manager'); ?></th>
+                                    <th class="rrze-msm-plugin-col-version"><?php echo esc_html__('Version', 'rrze-multisite-manager'); ?></th>
                                     <th><?php echo esc_html__('Autor', 'rrze-multisite-manager'); ?></th>
                                     <th><?php echo esc_html__('Kurzbeschreibung', 'rrze-multisite-manager'); ?></th>
                                     <th><?php echo esc_html__('Status', 'rrze-multisite-manager'); ?></th>
@@ -367,7 +367,7 @@
                                 <?php foreach ($site_details['plugins'] as $plugin) { ?>
                                     <tr>
                                         <td><a href="<?php echo esc_url($this->getPluginDetailsUrl((string)($plugin['file'] ?? ''))); ?>"><?php echo esc_html((string)$plugin['name']); ?></a></td>
-                                        <td><?php echo esc_html((string)$plugin['version']); ?></td>
+                                        <td class="rrze-msm-plugin-col-version"><?php echo esc_html((string)$plugin['version']); ?></td>
                                         <td><?php echo esc_html((string)($plugin['author'] ?? '')); ?></td>
                                         <td><?php echo esc_html((string)$plugin['description']); ?></td>
                                         <td>
@@ -382,21 +382,18 @@
                                         <td>
                                             <div class="rrze-msm-site-actions">
                                                 <?php if (!empty($plugin['deactivate_url'])) { ?>
-                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="<?php echo esc_url((string)$plugin['deactivate_url']); ?>" title="<?php echo esc_attr__('Auf dieser Site deaktivieren', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Auf dieser Site deaktivieren', 'rrze-multisite-manager'); ?>">
-                                                        <span class="dashicons dashicons-dismiss" aria-hidden="true"></span>
-                                                        <span class="screen-reader-text"><?php echo esc_html__('Auf dieser Site deaktivieren', 'rrze-multisite-manager'); ?></span>
+                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="<?php echo esc_url((string)$plugin['deactivate_url']); ?>" title="<?php echo esc_attr__('Auf dieser Site deaktivieren', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Auf dieser Site deaktivieren', 'rrze-multisite-manager'); ?>">
+                                                        <span class="rrze-msm-site-action-label"><?php echo esc_html__('Auf dieser Site deaktivieren', 'rrze-multisite-manager'); ?></span>
                                                     </a>
                                                 <?php } ?>
                                                 <?php if (!empty($plugin['settings_url'])) { ?>
-                                                    <a class="button button-small rrze-msm-site-action" href="<?php echo esc_url((string)$plugin['settings_url']); ?>" title="<?php echo esc_attr__('Einstellungen', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Einstellungen', 'rrze-multisite-manager'); ?>">
-                                                        <span class="dashicons dashicons-admin-tools" aria-hidden="true"></span>
-                                                        <span class="screen-reader-text"><?php echo esc_html__('Einstellungen', 'rrze-multisite-manager'); ?></span>
+                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="<?php echo esc_url((string)$plugin['settings_url']); ?>" title="<?php echo esc_attr__('Einstellungen', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Einstellungen', 'rrze-multisite-manager'); ?>">
+                                                        <span class="rrze-msm-site-action-label"><?php echo esc_html__('Einstellungen', 'rrze-multisite-manager'); ?></span>
                                                     </a>
                                                 <?php } ?>
                                                 <?php if (!empty($plugin['details_url'])) { ?>
-                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-info" href="<?php echo esc_url((string)$plugin['details_url']); ?>" title="<?php echo esc_attr__('Details', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Details', 'rrze-multisite-manager'); ?>" target="_blank" rel="noopener noreferrer">
-                                                        <span class="dashicons dashicons-info-outline" aria-hidden="true"></span>
-                                                        <span class="screen-reader-text"><?php echo esc_html__('Details', 'rrze-multisite-manager'); ?></span>
+                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-text rrze-msm-site-action-info" href="<?php echo esc_url((string)$plugin['details_url']); ?>" title="<?php echo esc_attr__('Details', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Details', 'rrze-multisite-manager'); ?>" target="_blank" rel="noopener noreferrer">
+                                                        <span class="rrze-msm-site-action-label"><?php echo esc_html__('Details', 'rrze-multisite-manager'); ?></span>
                                                     </a>
                                                 <?php } ?>
                                             </div>
@@ -409,6 +406,43 @@
                         <p><?php echo esc_html__('Für diese Website wurden keine aktiven Plugins ermittelt.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>
                     <p><a class="button button-secondary" href="<?php echo esc_url($site_plugins_url); ?>"><?php echo esc_html__('Zur Plugin-Verwaltung der Site', 'rrze-multisite-manager'); ?></a></p>
+                </section>
+
+                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <header class="rrze-msm-widget-header">
+                        <h2><?php echo esc_html__('Registrierte Bildgrößen', 'rrze-multisite-manager'); ?></h2>
+                        <p><?php echo esc_html__('Hier sind die auf dieser Website derzeit registrierten Image-Sizes aus der tatsächlichen Laufzeitumgebung gelistet.', 'rrze-multisite-manager'); ?></p>
+                    </header>
+                    <?php if (!empty($site_details['image_sizes']) && is_array($site_details['image_sizes'])) { ?>
+                        <table class="widefat striped rrze-msm-table">
+                            <thead>
+                                <tr>
+                                    <th><?php echo esc_html__('Name', 'rrze-multisite-manager'); ?></th>
+                                    <th><?php echo esc_html__('Slug', 'rrze-multisite-manager'); ?></th>
+                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Breite', 'rrze-multisite-manager'); ?></th>
+                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Höhe', 'rrze-multisite-manager'); ?></th>
+                                    <th><?php echo esc_html__('Crop', 'rrze-multisite-manager'); ?></th>
+                                    <th><?php echo esc_html__('Quelle', 'rrze-multisite-manager'); ?></th>
+                                    <th><?php echo esc_html__('Verursacher', 'rrze-multisite-manager'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($site_details['image_sizes'] as $image_size) { ?>
+                                    <tr>
+                                        <td><strong><?php echo esc_html((string)($image_size['label'] ?? '')); ?></strong></td>
+                                        <td><code><?php echo esc_html((string)($image_size['slug'] ?? '')); ?></code></td>
+                                        <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)($image_size['width'] ?? 0))); ?></td>
+                                        <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)($image_size['height'] ?? 0))); ?></td>
+                                        <td><?php echo esc_html((string)($image_size['crop'] ?? '')); ?></td>
+                                        <td><?php echo esc_html((string)($image_size['provider_type'] ?? '')); ?></td>
+                                        <td><?php echo !empty($image_size['providers']) ? esc_html(implode(', ', (array)$image_size['providers'])) : esc_html__('Keine direkte Zuordnung', 'rrze-multisite-manager'); ?></td>
+                                    </tr>
+                                <?php } ?>
+                            </tbody>
+                        </table>
+                    <?php } else { ?>
+                        <p><?php echo esc_html__('Für diese Website konnten keine registrierten Bildgrößen ermittelt werden.', 'rrze-multisite-manager'); ?></p>
+                    <?php } ?>
                 </section>
 
                 <section id="rrze-msm-site-options" class="rrze-msm-widget rrze-msm-widget-span-12">

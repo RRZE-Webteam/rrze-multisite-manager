@@ -159,6 +159,18 @@
                                     <th><?php echo esc_html__('Textdomain', 'rrze-multisite-manager'); ?></th>
                                     <td><?php echo esc_html((string)($plugin_details['text_domain'] ?? '')); ?></td>
                                 </tr>
+                                <tr>
+                                    <th><?php echo esc_html__('Übersetzungen', 'rrze-multisite-manager'); ?></th>
+                                    <td>
+                                        <?php if (!empty($plugin_details['translation_languages']) && is_array($plugin_details['translation_languages'])) { ?>
+                                            <?php foreach ($plugin_details['translation_languages'] as $translation_language) { ?>
+                                                <div><code><?php echo esc_html((string)$translation_language); ?></code></div>
+                                            <?php } ?>
+                                        <?php } else { ?>
+                                            <?php echo esc_html__('Keine Übersetzungsdateien gefunden', 'rrze-multisite-manager'); ?>
+                                        <?php } ?>
+                                    </td>
+                                </tr>
                                 <?php if (!empty($plugin_details['supports'])) { ?>
                                     <tr>
                                         <th><?php echo esc_html__('Supports', 'rrze-multisite-manager'); ?></th>
@@ -260,6 +272,114 @@
                         </table>
                     <?php } else { ?>
                         <p><?php echo esc_html__('Es wurden keine statisch erkennbaren Shortcodes gefunden.', 'rrze-multisite-manager'); ?></p>
+                    <?php } ?>
+                </section>
+
+                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <header class="rrze-msm-widget-header">
+                        <h2><?php echo esc_html__('Custom Post Types und Taxonomien', 'rrze-multisite-manager'); ?></h2>
+                        <p><?php echo esc_html__('Hier sind die im Plugin-Code erkennbaren Registrierungen über register_post_type() und register_taxonomy() gelistet. Wenn Slugs dynamisch aufgebaut werden, wird das kenntlich gemacht.', 'rrze-multisite-manager'); ?></p>
+                    </header>
+                    <div class="rrze-msm-plugin-analysis-grid">
+                        <div>
+                            <h3><?php echo esc_html__('Custom Post Types', 'rrze-multisite-manager'); ?></h3>
+                            <?php if (!empty($plugin_details['custom_post_types']) && is_array($plugin_details['custom_post_types'])) { ?>
+                                <div class="rrze-msm-analysis-table-wrap">
+                                    <table class="widefat striped rrze-msm-table">
+                                        <thead>
+                                            <tr>
+                                                <th><?php echo esc_html__('Bezeichnung', 'rrze-multisite-manager'); ?></th>
+                                                <th><?php echo esc_html__('Slug', 'rrze-multisite-manager'); ?></th>
+                                                <th><?php echo esc_html__('Typ', 'rrze-multisite-manager'); ?></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($plugin_details['custom_post_types'] as $plugin_post_type) { ?>
+                                                <tr>
+                                                    <td><?php echo esc_html((string)($plugin_post_type['label'] ?? '')); ?></td>
+                                                    <td>
+                                                        <?php if (!empty($plugin_post_type['resolved'])) { ?>
+                                                            <code><?php echo esc_html((string)($plugin_post_type['slug'] ?? '')); ?></code>
+                                                        <?php } else { ?>
+                                                            <span><?php echo esc_html((string)($plugin_post_type['slug'] ?? '')); ?></span>
+                                                        <?php } ?>
+                                                    </td>
+                                                    <td><?php echo esc_html((string)($plugin_post_type['type'] ?? '')); ?></td>
+                                                </tr>
+                                            <?php } ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php } else { ?>
+                                <p><?php echo esc_html__('Es wurden keine statisch erkennbaren Custom Post Types gefunden.', 'rrze-multisite-manager'); ?></p>
+                            <?php } ?>
+                        </div>
+                        <div>
+                            <h3><?php echo esc_html__('Taxonomien', 'rrze-multisite-manager'); ?></h3>
+                            <?php if (!empty($plugin_details['taxonomies']) && is_array($plugin_details['taxonomies'])) { ?>
+                                <div class="rrze-msm-analysis-table-wrap">
+                                    <table class="widefat striped rrze-msm-table">
+                                        <thead>
+                                            <tr>
+                                                <th><?php echo esc_html__('Bezeichnung', 'rrze-multisite-manager'); ?></th>
+                                                <th><?php echo esc_html__('Slug', 'rrze-multisite-manager'); ?></th>
+                                                <th><?php echo esc_html__('Objekttyp', 'rrze-multisite-manager'); ?></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($plugin_details['taxonomies'] as $plugin_taxonomy) { ?>
+                                                <tr>
+                                                    <td><?php echo esc_html((string)($plugin_taxonomy['label'] ?? '')); ?></td>
+                                                    <td>
+                                                        <?php if (!empty($plugin_taxonomy['resolved'])) { ?>
+                                                            <code><?php echo esc_html((string)($plugin_taxonomy['slug'] ?? '')); ?></code>
+                                                        <?php } else { ?>
+                                                            <span><?php echo esc_html((string)($plugin_taxonomy['slug'] ?? '')); ?></span>
+                                                        <?php } ?>
+                                                    </td>
+                                                    <td><code><?php echo esc_html((string)($plugin_taxonomy['object_type'] ?? '')); ?></code></td>
+                                                </tr>
+                                            <?php } ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php } else { ?>
+                                <p><?php echo esc_html__('Es wurden keine statisch erkennbaren Taxonomien gefunden.', 'rrze-multisite-manager'); ?></p>
+                            <?php } ?>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <header class="rrze-msm-widget-header">
+                        <h2><?php echo esc_html__('Registrierte Bildgrößen', 'rrze-multisite-manager'); ?></h2>
+                        <p><?php echo esc_html__('Hier sind die im Plugin-Code direkt erkennbaren Registrierungen über add_image_size() und set_post_thumbnail_size() gelistet.', 'rrze-multisite-manager'); ?></p>
+                    </header>
+                    <?php if (!empty($plugin_details['image_sizes']) && is_array($plugin_details['image_sizes'])) { ?>
+                        <table class="widefat striped rrze-msm-table">
+                            <thead>
+                                <tr>
+                                    <th><?php echo esc_html__('Name', 'rrze-multisite-manager'); ?></th>
+                                    <th><?php echo esc_html__('Slug', 'rrze-multisite-manager'); ?></th>
+                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Breite', 'rrze-multisite-manager'); ?></th>
+                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Höhe', 'rrze-multisite-manager'); ?></th>
+                                    <th><?php echo esc_html__('Crop', 'rrze-multisite-manager'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($plugin_details['image_sizes'] as $plugin_image_size) { ?>
+                                    <tr>
+                                        <td><strong><?php echo esc_html((string)($plugin_image_size['label'] ?? '')); ?></strong></td>
+                                        <td><code><?php echo esc_html((string)($plugin_image_size['slug'] ?? '')); ?></code></td>
+                                        <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)($plugin_image_size['width'] ?? 0))); ?></td>
+                                        <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)($plugin_image_size['height'] ?? 0))); ?></td>
+                                        <td><?php echo esc_html((string)($plugin_image_size['crop'] ?? '')); ?></td>
+                                    </tr>
+                                <?php } ?>
+                            </tbody>
+                        </table>
+                    <?php } else { ?>
+                        <p><?php echo esc_html__('Es wurden keine direkt statisch erkennbaren Bildgrößen gefunden.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>
                 </section>
 

@@ -34,6 +34,7 @@ class PluginUsageWidget extends Widgets {
         $showActiveSiteList = !empty($args['show_active_site_list']);
         $showNetworkButton = !empty($args['show_network_button']);
         $highlightNetworkPlugins = !empty($args['highlight_network_plugins']);
+        $actionMode = (string)($args['action_mode'] ?? 'icon');
         $networkPluginsUrl = (string)($args['network_plugins_url'] ?? network_admin_url('plugins.php'));
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
@@ -134,18 +135,45 @@ class PluginUsageWidget extends Widgets {
 
             if (!empty($plugin['deactivate_url'])) {
                 if (!empty($plugin['network_active'])) {
-                    echo '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-open-plugin-deactivate-modal" data-plugin-name="' . esc_attr((string)($plugin['name'] ?? '')) . '" data-deactivate-url="' . esc_url((string)$plugin['deactivate_url']) . '" title="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-minus" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '</span></button>';
+                    echo $this->renderPluginActionButton(
+                        __('Netzwerkweit deaktivieren', 'rrze-multisite-manager'),
+                        'minus',
+                        'warning',
+                        [
+                            'data-plugin-name' => (string)($plugin['name'] ?? ''),
+                            'data-deactivate-url' => (string)($plugin['deactivate_url'] ?? ''),
+                        ],
+                        $actionMode
+                    );
                 } else {
-                    echo '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-open-plugin-deactivate-modal" data-plugin-name="' . esc_attr((string)($plugin['name'] ?? '')) . '" data-deactivate-url="' . esc_url((string)$plugin['deactivate_url']) . '" title="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Netzwerkweit für alle Sites deaktivieren', 'rrze-multisite-manager') . '</span></button>';
+                    echo $this->renderPluginActionLink(
+                        (string)($plugin['deactivate_url'] ?? ''),
+                        __('Deaktivieren', 'rrze-multisite-manager'),
+                        'no-alt',
+                        'danger',
+                        $actionMode
+                    );
                 }
             }
 
             if (!empty($plugin['settings_url'])) {
-                echo '<a class="button button-small rrze-msm-site-action" href="' . esc_url((string)$plugin['settings_url']) . '" title="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-admin-tools" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Einstellungen', 'rrze-multisite-manager') . '</span></a>';
+                echo $this->renderPluginActionLink(
+                    (string)($plugin['settings_url'] ?? ''),
+                    __('Einstellungen', 'rrze-multisite-manager'),
+                    'admin-tools',
+                    '',
+                    $actionMode
+                );
             }
 
             if (!empty($plugin['delete_url'])) {
-                echo '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger" href="' . esc_url((string)$plugin['delete_url']) . '" title="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '"><span class="dashicons dashicons-trash" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__('Löschen', 'rrze-multisite-manager') . '</span></a>';
+                echo $this->renderPluginActionLink(
+                    (string)($plugin['delete_url'] ?? ''),
+                    __('Löschen', 'rrze-multisite-manager'),
+                    'trash',
+                    'danger',
+                    $actionMode
+                );
             }
 
             echo '</div></td>';
@@ -327,5 +355,32 @@ class PluginUsageWidget extends Widgets {
         echo '</div>';
 
         return (string)ob_get_clean();
+    }
+
+    protected function renderPluginActionLink(string $url, string $label, string $icon, string $accent = '', string $displayMode = 'icon'): string {
+        $classes = trim('button button-small rrze-msm-site-action ' . ($accent !== '' ? 'rrze-msm-site-action-' . $accent . ' ' : '') . ($displayMode === 'text' ? 'rrze-msm-site-action-text' : 'rrze-msm-site-action-icon'));
+
+        if ($displayMode === 'text') {
+            return '<a class="' . esc_attr($classes) . '" href="' . esc_url($url) . '" title="' . esc_attr($label) . '" aria-label="' . esc_attr($label) . '"><span class="rrze-msm-site-action-label">' . esc_html($label) . '</span></a>';
+        }
+
+        return '<a class="' . esc_attr($classes) . '" href="' . esc_url($url) . '" title="' . esc_attr($label) . '" aria-label="' . esc_attr($label) . '"><span class="dashicons dashicons-' . esc_attr($icon) . '" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html($label) . '</span></a>';
+    }
+
+    protected function renderPluginActionButton(string $label, string $icon, string $accent = '', array $dataAttributes = [], string $displayMode = 'icon'): string {
+        $classes = trim('button button-small rrze-msm-site-action rrze-msm-open-plugin-deactivate-modal ' . ($accent !== '' ? 'rrze-msm-site-action-' . $accent . ' ' : '') . ($displayMode === 'text' ? 'rrze-msm-site-action-text' : 'rrze-msm-site-action-icon'));
+        $attributes = '';
+        $attributeName = '';
+        $attributeValue = '';
+
+        foreach ($dataAttributes as $attributeName => $attributeValue) {
+            $attributes .= ' ' . esc_attr($attributeName) . '="' . esc_attr((string)$attributeValue) . '"';
+        }
+
+        if ($displayMode === 'text') {
+            return '<button type="button" class="' . esc_attr($classes) . '" title="' . esc_attr($label) . '" aria-label="' . esc_attr($label) . '"' . $attributes . '><span class="rrze-msm-site-action-label">' . esc_html($label) . '</span></button>';
+        }
+
+        return '<button type="button" class="' . esc_attr($classes) . '" title="' . esc_attr($label) . '" aria-label="' . esc_attr($label) . '"' . $attributes . '><span class="dashicons dashicons-' . esc_attr($icon) . '" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html($label) . '</span></button>';
     }
 }

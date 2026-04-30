@@ -14,7 +14,7 @@
             <thead>
                 <tr>
                     <th><?php echo esc_html__('Name', 'rrze-multisite-manager'); ?></th>
-                    <th><?php echo esc_html__('Version', 'rrze-multisite-manager'); ?></th>
+                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Version', 'rrze-multisite-manager'); ?></th>
                     <th><?php echo esc_html__('Kurzbeschreibung', 'rrze-multisite-manager'); ?></th>
                 </tr>
             </thead>
@@ -22,7 +22,7 @@
                 <?php foreach ($items as $item) { ?>
                     <tr>
                         <td><?php echo esc_html((string)($item['name'] ?? '')); ?></td>
-                        <td><?php echo esc_html((string)($item['version'] ?? '')); ?></td>
+                        <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($item['version'] ?? '')); ?></td>
                         <td><?php echo esc_html((string)($item['description'] ?? '')); ?></td>
                     </tr>
                 <?php } ?>

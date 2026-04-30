@@ -1,11 +1,13 @@
 .rrze-msm-badge {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     padding: 4px 8px;
     border-radius: var(--rrze-msm-badge-border-radius);
     font-size: 12px;
     font-weight: 600;
     margin: 0 6px 6px 0;
+    text-align: center;
 }
 
 .rrze-msm-badge-positive {

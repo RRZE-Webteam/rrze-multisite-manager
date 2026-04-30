@@ -259,10 +259,21 @@
     color: inherit;
 }
 
+.rrze-msm-readme-toggle-button {
+    color: var(--rrze-msm-link);
+}
+
+.rrze-msm-readme-toggle-button:hover,
+.rrze-msm-readme-toggle-button:focus,
+.rrze-msm-readme-toggle-button:active {
+    color: var(--rrze-msm-link-hover);
+}
+
 .rrze-msm-plugin-meta-sep {
     opacity: 0.7;
 }
 
+.rrze-msm-col-numeric,
 .rrze-msm-plugin-col-version,
 .rrze-msm-plugin-col-active-sites {
     text-align: right;
@@ -381,6 +392,25 @@
 
 .rrze-msm-analysis-table-wrap .rrze-msm-table {
     min-width: 720px;
+}
+
+.rrze-msm-environment-table-wrap {
+    overflow-x: auto;
+}
+
+.rrze-msm-environment-table-wrap .rrze-msm-table {
+    min-width: 760px;
+}
+
+.rrze-msm-environment-table-wrap .rrze-msm-table td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.rrze-msm-environment-table-wrap .rrze-msm-table code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .rrze-msm-block-icon {

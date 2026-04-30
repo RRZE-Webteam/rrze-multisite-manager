@@ -5,6 +5,11 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 class MetricsService {
+    use MetricsServiceSiteTrait;
+    use MetricsServicePluginTrait;
+    use MetricsServiceThemeTrait;
+    use MetricsServiceEnvironmentTrait;
+
     protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v7_';
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected ?Settings $settings;
@@ -59,429 +64,6 @@ class MetricsService {
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v6_' . (string)get_current_network_id());
     }
 
-    public function getSiteDetails(int $siteId): array {
-        $site = $siteId > 0 ? get_site($siteId) : null;
-        $formattedSites = [];
-        $details = [];
-
-        if (!$site instanceof \WP_Site) {
-            return [];
-        }
-
-        $formattedSites = $this->formatSites([$site], true);
-
-        if (empty($formattedSites[0]) || !is_array($formattedSites[0])) {
-            return [];
-        }
-
-        $details = $formattedSites[0];
-        $details['status_user'] = $this->getStatusUserData((int)($details['status_user_id'] ?? 0));
-        $details = array_merge($details, $this->getSiteDetailMetrics($siteId));
-
-        return $details;
-    }
-
-    public function searchSites(string $searchTerm, int $limit = 20): array {
-        $sites = [];
-        $results = [];
-        $site = null;
-        $siteId = 0;
-        $siteName = '';
-        $siteUrl = '';
-        $haystack = '';
-        $searchNeedle = trim(mb_strtolower($searchTerm));
-
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
-            return [];
-        }
-
-        $sites = get_sites([
-            'number' => 0,
-            'orderby' => 'domain',
-            'order' => 'ASC',
-        ]);
-
-        foreach ($sites as $site) {
-            if (!$site instanceof \WP_Site) {
-                continue;
-            }
-
-            $siteId = (int)$site->blog_id;
-            $siteName = $this->getSiteName($site);
-            $siteUrl = get_home_url($siteId, '/');
-            $haystack = mb_strtolower($siteName . ' ' . $siteUrl . ' ' . $site->domain . $site->path);
-
-            if (mb_strpos($haystack, $searchNeedle) === false) {
-                continue;
-            }
-
-            $results[] = [
-                'id' => $siteId,
-                'name' => $siteName,
-                'url' => $siteUrl,
-            ];
-
-            if (count($results) >= $limit) {
-                break;
-            }
-        }
-
-        return $results;
-    }
-
-    public function searchPlugins(string $searchTerm, int $limit = 20): array {
-        $availablePlugins = [];
-        $results = [];
-        $pluginFile = '';
-        $pluginData = [];
-        $searchNeedle = trim(mb_strtolower($searchTerm));
-        $haystack = '';
-
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
-            return [];
-        }
-
-        $availablePlugins = get_plugins();
-
-        foreach ($availablePlugins as $pluginFile => $pluginData) {
-            $haystack = mb_strtolower(
-                (string)($pluginData['Name'] ?? '') . ' ' .
-                (string)($pluginData['Description'] ?? '') . ' ' .
-                $pluginFile
-            );
-
-            if (mb_strpos($haystack, $searchNeedle) === false) {
-                continue;
-            }
-
-            $results[] = [
-                'id' => $pluginFile,
-                'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                'version' => (string)($pluginData['Version'] ?? ''),
-                'file' => $pluginFile,
-            ];
-
-            if (count($results) >= $limit) {
-                break;
-            }
-        }
-
-        return $results;
-    }
-
-    public function searchThemes(string $searchTerm, int $limit = 20): array {
-        $themes = wp_get_themes();
-        $results = [];
-        $stylesheet = '';
-        $theme = null;
-        $searchNeedle = trim(mb_strtolower($searchTerm));
-        $haystack = '';
-
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
-            return [];
-        }
-
-        foreach ($themes as $stylesheet => $theme) {
-            if (!$theme instanceof \WP_Theme) {
-                continue;
-            }
-
-            $haystack = mb_strtolower(
-                (string)$theme->get('Name') . ' ' .
-                (string)$theme->get('Description') . ' ' .
-                $stylesheet
-            );
-
-            if (mb_strpos($haystack, $searchNeedle) === false) {
-                continue;
-            }
-
-            $results[] = [
-                'id' => $stylesheet,
-                'name' => (string)$theme->get('Name'),
-                'version' => (string)$theme->get('Version'),
-                'stylesheet' => $stylesheet,
-            ];
-
-            if (count($results) >= $limit) {
-                break;
-            }
-        }
-
-        return $results;
-    }
-
-    public function getPluginDetails(string $pluginFile): array {
-        $availablePlugins = [];
-        $pluginData = [];
-        $dashboardData = [];
-        $pluginUsage = [];
-        $pluginUsageItem = [];
-        $updateItem = null;
-        $analysis = [];
-        $status = [];
-        $supplementary = [];
-        $installTimestamp = 0;
-        $modifiedTimestamp = 0;
-
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-
-        $availablePlugins = get_plugins();
-
-        if (!isset($availablePlugins[$pluginFile]) || !is_array($availablePlugins[$pluginFile])) {
-            return [];
-        }
-
-        $pluginData = $availablePlugins[$pluginFile];
-        $dashboardData = $this->getDashboardData();
-        $pluginUsage = is_array($dashboardData['plugin_usage']['plugins'] ?? null) ? $dashboardData['plugin_usage']['plugins'] : [];
-        $pluginUsageItem = $this->findPluginUsageItem($pluginUsage, $pluginFile);
-        $updateItem = $this->getPluginUpdateItem($pluginFile);
-        $analysis = $this->analyzePluginCode($pluginFile);
-        $supplementary = $this->getPluginSupplementaryData($pluginFile);
-        $installTimestamp = $this->getPluginInstallTimestamp($pluginFile);
-        $modifiedTimestamp = $this->getPluginModifiedTimestamp($pluginFile);
-        $status = $this->getPluginStatus($pluginUsageItem);
-
-        if (empty($pluginUsageItem)) {
-            $pluginUsageItem = [
-                'file' => $pluginFile,
-                'site_count' => 0,
-                'active_sites' => [],
-                'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                'version' => (string)($pluginData['Version'] ?? 'n/a'),
-                'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
-                'author' => $this->getPluginAuthorLabel($pluginData),
-                'author_url' => $this->getPluginAuthorUrl($pluginData),
-                'network_active' => false,
-                'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginData),
-                'details_url' => $this->getPluginDetailsUrl($pluginData),
-                'deactivate_url' => '',
-                'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
-                'plugin_uri' => $this->getPluginDetailsUrl($pluginData),
-                'text_domain' => !empty($pluginData['TextDomain']) && is_string($pluginData['TextDomain']) ? (string)$pluginData['TextDomain'] : '',
-                'requires_php' => !empty($pluginData['RequiresPHP']) && is_string($pluginData['RequiresPHP']) ? (string)$pluginData['RequiresPHP'] : '',
-                'requires_wp' => !empty($pluginData['RequiresWP']) && is_string($pluginData['RequiresWP']) ? (string)$pluginData['RequiresWP'] : '',
-                'update_available' => $updateItem !== null,
-                'update_version' => $updateItem !== null ? (string)($updateItem->new_version ?? '') : '',
-                'update_details_url' => $this->getPluginUpdateDetailsUrl($pluginData, $updateItem),
-                'update_url' => $updateItem !== null ? $this->getNetworkPluginUpdateUrl($pluginFile) : '',
-            ];
-            $status = $this->getPluginStatus($pluginUsageItem);
-        }
-
-        if ((string)($pluginUsageItem['author'] ?? '') === '' && !empty($supplementary['author']['name'])) {
-            $pluginUsageItem['author'] = (string)$supplementary['author']['name'];
-        }
-
-        if ((string)($pluginUsageItem['author_url'] ?? '') === '' && !empty($supplementary['author']['url'])) {
-            $pluginUsageItem['author_url'] = (string)$supplementary['author']['url'];
-        }
-
-        if ((string)($pluginUsageItem['description'] ?? '') === '' && !empty($supplementary['description'])) {
-            $pluginUsageItem['description'] = (string)$supplementary['description'];
-        }
-
-        return array_merge(
-            $pluginUsageItem,
-            [
-                'status' => $status,
-                'author_email' => (string)($supplementary['author']['email'] ?? ''),
-                'compatibility' => (array)($supplementary['compatibility'] ?? []),
-                'supports' => (array)($supplementary['supports'] ?? []),
-                'license' => (array)($supplementary['license'] ?? []),
-                'tags' => (array)($supplementary['tags'] ?? []),
-                'repository' => (array)($supplementary['repository'] ?? []),
-                'extended_description' => (string)($supplementary['description'] ?? ''),
-                'metadata_sources' => (array)($supplementary['sources'] ?? []),
-                'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
-                'shortcodes' => $analysis['shortcodes'],
-                'blocks' => $analysis['blocks'],
-                'block_patterns' => $analysis['block_patterns'],
-                'provided_hooks' => $analysis['provided_hooks'],
-                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
-                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
-                'main_file_path' => $this->getPluginAbsolutePath($pluginFile),
-            ]
-        );
-    }
-
-    public function getThemeDetails(string $stylesheet): array {
-        $themes = $this->getThemes();
-        $themeItem = [];
-        $supplementary = [];
-        $analysis = [];
-        $installTimestamp = 0;
-        $modifiedTimestamp = 0;
-
-        foreach ($themes as $themeItem) {
-            if ((string)($themeItem['stylesheet'] ?? '') === $stylesheet) {
-                break;
-            }
-        }
-
-        if (empty($themeItem) || (string)($themeItem['stylesheet'] ?? '') !== $stylesheet) {
-            return [];
-        }
-
-        $supplementary = $this->getThemeSupplementaryData($stylesheet);
-        $analysis = $this->analyzeThemeCode($stylesheet);
-        $installTimestamp = $this->getThemeInstallTimestamp($stylesheet);
-        $modifiedTimestamp = $this->getThemeModifiedTimestamp($stylesheet);
-
-        if ((string)($themeItem['author'] ?? '') === '' && !empty($supplementary['author']['name'])) {
-            $themeItem['author'] = (string)$supplementary['author']['name'];
-        }
-
-        if ((string)($themeItem['author_url'] ?? '') === '' && !empty($supplementary['author']['url'])) {
-            $themeItem['author_url'] = (string)$supplementary['author']['url'];
-        }
-
-        if ((string)($themeItem['description'] ?? '') === '' && !empty($supplementary['description'])) {
-            $themeItem['description'] = (string)$supplementary['description'];
-        }
-
-        return array_merge(
-            $themeItem,
-            [
-                'author_email' => (string)($supplementary['author']['email'] ?? ''),
-                'compatibility' => (array)($supplementary['compatibility'] ?? []),
-                'supports' => (array)($supplementary['supports'] ?? []),
-                'license' => (array)($supplementary['license'] ?? []),
-                'repository' => (array)($supplementary['repository'] ?? []),
-                'metadata_sources' => (array)($supplementary['sources'] ?? []),
-                'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
-                'shortcodes' => (array)($analysis['shortcodes'] ?? []),
-                'blocks' => (array)($analysis['blocks'] ?? []),
-                'block_patterns' => (array)($analysis['block_patterns'] ?? []),
-                'provided_hooks' => (array)($analysis['provided_hooks'] ?? []),
-                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
-                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
-                'main_file_path' => $this->getThemeMainFilePath($stylesheet),
-            ]
-        );
-    }
-
-    protected function getSummary(): array {
-        return [
-            'total_sites' => $this->countSites(),
-            'active_sites' => $this->countSites([
-                'archived' => 0,
-                'deleted' => 0,
-                'spam' => 0,
-            ]),
-            'public_sites' => $this->countSites([
-                'public' => 1,
-            ]),
-            'archived_sites' => $this->countSites([
-                'archived' => 1,
-            ]),
-            'deleted_sites' => $this->countSites([
-                'deleted' => 1,
-            ]),
-            'spam_sites' => $this->countSites([
-                'spam' => 1,
-            ]),
-            'recent_sites_30' => $this->countRecentSites(30),
-        ];
-    }
-
-    protected function getStatusDistribution(): array {
-        $siteBuckets = $this->getSiteBuckets();
-        $totalSites = max(1, array_sum($siteBuckets));
-        $rows = [
-            [
-                'label' => __('Aktiv', 'rrze-multisite-manager'),
-                'value' => (int)$siteBuckets['active'],
-                'accent' => 'positive',
-            ],
-            [
-                'label' => __('Archiviert', 'rrze-multisite-manager'),
-                'value' => (int)$siteBuckets['archived'],
-                'accent' => 'warning',
-            ],
-            [
-                'label' => __('Gesperrt', 'rrze-multisite-manager'),
-                'value' => (int)$siteBuckets['spam'],
-                'accent' => 'neutral',
-            ],
-            [
-                'label' => __('Zum Löschen markiert', 'rrze-multisite-manager'),
-                'value' => (int)$siteBuckets['deleted'],
-                'accent' => 'danger',
-            ],
-        ];
-        $index = 0;
-
-        foreach ($rows as $index => $row) {
-            $rows[$index]['percent'] = (int)round((((int)$row['value']) / $totalSites) * 100);
-        }
-
-        return $rows;
-    }
-
-    protected function getRecentSites(): array {
-        $sites = get_sites([
-            'number' => $this->getSiteTableMaxRows(),
-            'orderby' => 'registered',
-            'order' => 'DESC',
-        ]);
-
-        return $this->formatSites($sites);
-    }
-
-    protected function getSitesByFlag(string $flag, int $value): array {
-        $sites = get_sites([
-            'number' => $this->getSiteTableMaxRows(),
-            'orderby' => 'registered',
-            'order' => 'DESC',
-            $flag => $value,
-        ]);
-
-        return $this->formatSites($sites);
-    }
-
-    protected function getSiteOverview(): array {
-        $sites = get_sites([
-            'number' => 0,
-            'orderby' => 'registered',
-            'order' => 'DESC',
-        ]);
-
-        return $this->formatSites($sites, true);
-    }
-
-    protected function filterFormattedSitesByFlag(array $sites, string $flagKey): array {
-        $results = [];
-        $site = [];
-
-        foreach ($sites as $site) {
-            if (!is_array($site)) {
-                continue;
-            }
-
-            if (empty($site[$flagKey])) {
-                continue;
-            }
-
-            $results[] = $site;
-        }
-
-        return array_slice($results, 0, $this->getSiteTableMaxRows());
-    }
-
-    protected function getRecentlyUpdatedSites(): array {
-        $sites = $this->getSitesSortedByActivity('DESC');
-        return array_slice($sites, 0, $this->getSiteTableMaxRows());
-    }
-
-    protected function getInactiveSites(): array {
-        $sites = $this->getSitesSortedByActivity('ASC');
-        return array_slice($sites, 0, $this->getSiteTableMaxRows());
-    }
-
     protected function getMonthlyGrowth(): array {
         global $wpdb;
 
@@ -533,185 +115,16 @@ class MetricsService {
         return $results;
     }
 
-    protected function getPluginUsage(): array {
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-
-        $availablePlugins = get_plugins();
-        $networkActivePlugins = get_site_option('active_sitewide_plugins', []);
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
-        $pluginStats = [];
-        $siteId = 0;
-        $activePlugins = [];
-        $pluginFile = '';
-        $totalSites = count($siteIds);
-        $sitePluginFiles = [];
-        $pluginData = [];
-        $pluginUpdates = get_site_transient('update_plugins');
-        $updateItem = null;
-
-        foreach ($availablePlugins as $pluginFile => $pluginData) {
-            $updateItem = is_object($pluginUpdates) && !empty($pluginUpdates->response[$pluginFile]) && is_object($pluginUpdates->response[$pluginFile])
-                ? $pluginUpdates->response[$pluginFile]
-                : null;
-            $pluginStats[$pluginFile] = [
-                'file' => $pluginFile,
-                'site_count' => 0,
-                'active_sites' => [],
-                'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                'version' => (string)($pluginData['Version'] ?? 'n/a'),
-                'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
-                'author' => $this->getPluginAuthorLabel($pluginData),
-                'author_url' => $this->getPluginAuthorUrl($pluginData),
-                'network_active' => isset($networkActivePlugins[$pluginFile]),
-                'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginData),
-                'details_url' => $this->getPluginDetailsUrl($pluginData),
-                'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
-                'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
-                'plugin_uri' => $this->getPluginDetailsUrl($pluginData),
-                'text_domain' => !empty($pluginData['TextDomain']) && is_string($pluginData['TextDomain']) ? (string)$pluginData['TextDomain'] : '',
-                'requires_php' => !empty($pluginData['RequiresPHP']) && is_string($pluginData['RequiresPHP']) ? (string)$pluginData['RequiresPHP'] : '',
-                'requires_wp' => !empty($pluginData['RequiresWP']) && is_string($pluginData['RequiresWP']) ? (string)$pluginData['RequiresWP'] : '',
-                'update_available' => $updateItem !== null,
-                'update_version' => $updateItem !== null ? (string)($updateItem->new_version ?? '') : '',
-                'update_details_url' => $this->getPluginUpdateDetailsUrl($pluginData, $updateItem),
-                'update_url' => $updateItem !== null ? $this->getNetworkPluginUpdateUrl($pluginFile) : '',
-            ];
-        }
-
-        foreach ($siteIds as $siteId) {
-            $activePlugins = get_blog_option((int)$siteId, 'active_plugins', []);
-
-            if (!is_array($activePlugins)) {
-                $activePlugins = [];
-            }
-
-            $sitePluginFiles = array_unique(
-                array_merge(
-                    array_keys($networkActivePlugins),
-                    array_values(array_filter($activePlugins, 'is_string'))
-                )
-            );
-
-            foreach ($sitePluginFiles as $pluginFile) {
-                if (!isset($pluginStats[$pluginFile])) {
-                    $pluginStats[$pluginFile] = [
-                        'file' => $pluginFile,
-                        'site_count' => 0,
-                        'active_sites' => [],
-                        'name' => $pluginFile,
-                        'version' => 'n/a',
-                        'description' => '',
-                        'author' => '',
-                        'author_url' => '',
-                        'network_active' => isset($networkActivePlugins[$pluginFile]),
-                        'settings_url' => '',
-                        'details_url' => '',
-                        'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
-                        'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
-                        'plugin_uri' => '',
-                        'text_domain' => '',
-                        'requires_php' => '',
-                        'requires_wp' => '',
-                        'update_available' => false,
-                        'update_version' => '',
-                        'update_details_url' => '',
-                        'update_url' => '',
-                    ];
-                }
-
-                $pluginStats[$pluginFile]['site_count']++;
-                $pluginStats[$pluginFile]['active_sites'][] = [
-                    'id' => (int)$siteId,
-                    'name' => $this->getSiteNameById((int)$siteId),
-                    'url' => get_home_url((int)$siteId, '/'),
-                ];
-            }
-        }
-
-        foreach ($pluginStats as $pluginFile => $pluginData) {
-            $pluginStats[$pluginFile]['active_sites'] = $this->sortPluginActiveSites((array)($pluginData['active_sites'] ?? []));
-        }
-
-        uasort($pluginStats, [self::class, 'comparePluginUsage']);
-
-        return [
-            'summary' => [
-                'available_plugins' => count($availablePlugins),
-                'network_active_plugins' => count($networkActivePlugins),
-                'locally_used_plugins' => $this->countLocallyUsedPlugins($pluginStats),
-                'total_sites' => $totalSites,
-            ],
-            'plugins' => array_values($pluginStats),
-            'distribution' => $this->buildPluginUsageDistribution($pluginStats),
-            'inactive_plugins' => array_values(
-                array_filter(
-                    $pluginStats,
-                    [self::class, 'isUnusedPlugin']
-                )
-            ),
-        ];
-    }
-
-    protected function findPluginUsageItem(array $plugins, string $pluginFile): array {
-        $plugin = [];
-
-        foreach ($plugins as $plugin) {
-            if ((string)($plugin['file'] ?? '') === $pluginFile) {
-                return $plugin;
-            }
-        }
-
-        return [];
-    }
-
-    protected function getPluginUpdateItem(string $pluginFile): ?object {
-        $pluginUpdates = get_site_transient('update_plugins');
-
-        if (!is_object($pluginUpdates) || empty($pluginUpdates->response[$pluginFile]) || !is_object($pluginUpdates->response[$pluginFile])) {
-            return null;
-        }
-
-        return $pluginUpdates->response[$pluginFile];
-    }
-
-    protected function getPluginStatus(array $plugin): array {
-        $items = [];
-
-        if (!empty($plugin['network_active'])) {
-            $items[] = [
-                'label' => __('Netzwerkweit aktiv', 'rrze-multisite-manager'),
-                'accent' => 'info',
-            ];
-        } elseif ((int)($plugin['site_count'] ?? 0) > 0) {
-            $items[] = [
-                'label' => __('Auf Websites aktiv', 'rrze-multisite-manager'),
-                'accent' => 'active',
-            ];
-        } else {
-            $items[] = [
-                'label' => __('Nicht aktiviert', 'rrze-multisite-manager'),
-                'accent' => 'archive',
-            ];
-        }
-
-        if (!empty($plugin['update_available']) && !empty($plugin['update_version'])) {
-            $items[] = [
-                'label' => sprintf(__('Update %s verfügbar', 'rrze-multisite-manager'), (string)$plugin['update_version']),
-                'accent' => 'info',
-            ];
-        }
-
-        return $items;
-    }
 
     protected function analyzePluginCode(string $pluginFile): array {
         $files = $this->getPluginAnalysisFiles($pluginFile);
+        $globalSymbols = $this->getSourceStringSymbolsFromFiles($files);
         $shortcodes = [];
         $blocks = [];
         $patterns = [];
+        $customPostTypes = [];
+        $taxonomies = [];
+        $imageSizes = [];
         $hooks = [];
         $filePath = '';
         $source = '';
@@ -734,6 +147,9 @@ class MetricsService {
                 $shortcodes = $this->mergeStringList($shortcodes, $this->extractShortcodesFromSource($source));
                 $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromSource($source));
                 $patterns = $this->mergeStringList($patterns, $this->extractBlockPatternsFromSource($source));
+                $customPostTypes = $this->mergePostTypeRows($customPostTypes, $this->extractCustomPostTypesFromSource($source, $globalSymbols));
+                $taxonomies = $this->mergeTaxonomyRows($taxonomies, $this->extractTaxonomiesFromSource($source, $globalSymbols));
+                $imageSizes = $this->mergeImageSizeRows($imageSizes, $this->extractImageSizesFromSource($source, $globalSymbols));
                 $hooks = $this->mergeKeyedRows($hooks, $this->extractProvidedHooksFromSource($source));
             }
 
@@ -745,12 +161,18 @@ class MetricsService {
         sort($shortcodes, SORT_NATURAL | SORT_FLAG_CASE);
         usort($blocks, [self::class, 'comparePluginNamedRows']);
         sort($patterns, SORT_NATURAL | SORT_FLAG_CASE);
+        usort($customPostTypes, [self::class, 'comparePluginPostTypeRows']);
+        usort($taxonomies, [self::class, 'comparePluginTaxonomyRows']);
+        usort($imageSizes, [self::class, 'compareImageSizeRows']);
         usort($hooks, [self::class, 'comparePluginNamedRows']);
 
         return [
             'shortcodes' => $shortcodes,
             'blocks' => $blocks,
             'block_patterns' => $patterns,
+            'custom_post_types' => $customPostTypes,
+            'taxonomies' => $taxonomies,
+            'image_sizes' => $imageSizes,
             'provided_hooks' => $hooks,
         ];
     }
@@ -760,6 +182,7 @@ class MetricsService {
         $shortcodes = [];
         $blocks = [];
         $patterns = [];
+        $imageSizes = [];
         $hooks = [];
         $filePath = '';
         $source = '';
@@ -782,6 +205,7 @@ class MetricsService {
                 $shortcodes = $this->mergeStringList($shortcodes, $this->extractShortcodesFromSource($source));
                 $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromSource($source));
                 $patterns = $this->mergeStringList($patterns, $this->extractBlockPatternsFromSource($source));
+                $imageSizes = $this->mergeImageSizeRows($imageSizes, $this->extractImageSizesFromSource($source));
                 $hooks = $this->mergeKeyedRows($hooks, $this->extractProvidedHooksFromSource($source));
             }
 
@@ -793,12 +217,14 @@ class MetricsService {
         sort($shortcodes, SORT_NATURAL | SORT_FLAG_CASE);
         usort($blocks, [self::class, 'comparePluginNamedRows']);
         sort($patterns, SORT_NATURAL | SORT_FLAG_CASE);
+        usort($imageSizes, [self::class, 'compareImageSizeRows']);
         usort($hooks, [self::class, 'comparePluginNamedRows']);
 
         return [
             'shortcodes' => $shortcodes,
             'blocks' => $blocks,
             'block_patterns' => $patterns,
+            'image_sizes' => $imageSizes,
             'provided_hooks' => $hooks,
         ];
     }
@@ -1191,33 +617,44 @@ class MetricsService {
         return array_values($results);
     }
 
-    protected function extractCustomPostTypesFromSource(string $source): array {
+    protected function extractCustomPostTypesFromSource(string $source, array $sharedSymbols = []): array {
         $matches = [];
         $results = [];
         $index = 0;
+        $token = '';
         $slug = '';
         $context = '';
         $label = '';
         $type = '';
+        $symbols = array_merge($sharedSymbols, $this->getSourceStringSymbols($source));
+        $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
 
-        if (!preg_match_all('/register_post_type\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_OFFSET_CAPTURE)) {
+        if (!preg_match_all('/(?<!function )\bregister_post_type\s*\(\s*([^,\)]+)\s*,/m', $source, $matches, PREG_OFFSET_CAPTURE)) {
             return [];
         }
 
         for ($index = 0; $index < count($matches[1]); $index++) {
-            $slug = (string)($matches[1][$index][0] ?? '');
+            $token = trim((string)($matches[1][$index][0] ?? ''));
+            $context = substr($source, (int)($matches[0][$index][1] ?? 0), 1600);
+            $slug = $this->resolveSourceStringToken($token, $symbols);
+            $label = $this->extractCustomPostTypeLabel($context, __('Dynamisch registrierter Post Type', 'rrze-multisite-manager'));
+            $type = $this->extractCustomPostTypeDisplayType($context);
 
             if ($slug === '') {
+                $results['__dynamic_cpt_' . $index] = [
+                    'slug' => __('Nicht statisch auflösbar', 'rrze-multisite-manager'),
+                    'label' => $label,
+                    'type' => $type,
+                    'resolved' => false,
+                ];
                 continue;
             }
 
-            $context = substr($source, (int)($matches[1][$index][1] ?? 0), 1200);
-            $label = $this->extractCustomPostTypeLabel($context, $slug);
-            $type = $this->extractCustomPostTypeDisplayType($context);
             $results[$slug] = [
                 'slug' => $slug,
-                'label' => $label,
+                'label' => $this->extractCustomPostTypeLabel($context, $slug),
                 'type' => $type,
+                'resolved' => true,
             ];
         }
 
@@ -1244,6 +681,503 @@ class MetricsService {
         }
 
         return 'post';
+    }
+
+    protected function extractTaxonomiesFromSource(string $source, array $sharedSymbols = []): array {
+        $matches = [];
+        $results = [];
+        $index = 0;
+        $taxonomyToken = '';
+        $objectTypeToken = '';
+        $slug = '';
+        $context = '';
+        $label = '';
+        $objectTypes = [];
+        $objectType = '';
+        $symbols = array_merge($sharedSymbols, $this->getSourceStringSymbols($source));
+        $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
+
+        if (!preg_match_all('/(?<!function )\bregister_taxonomy\s*\(\s*(.+?)\s*,\s*(\[.*?\]|array\s*\(.*?\)|[^,\)]+)/ms', $source, $matches, PREG_OFFSET_CAPTURE)) {
+            return [];
+        }
+
+        for ($index = 0; $index < count($matches[1]); $index++) {
+            $taxonomyToken = trim((string)($matches[1][$index][0] ?? ''));
+            $objectTypeToken = trim((string)($matches[2][$index][0] ?? ''));
+            $context = substr($source, (int)($matches[0][$index][1] ?? 0), 1800);
+            $slug = $this->resolveSourceStringToken($taxonomyToken, $symbols);
+            $label = $this->extractTaxonomyLabel($context, __('Dynamisch registrierte Taxonomie', 'rrze-multisite-manager'));
+            $objectTypes = $this->extractTaxonomyObjectTypes($objectTypeToken, $symbols);
+
+            if ($slug === '') {
+                if (empty($objectTypes)) {
+                    $objectTypes[] = __('Nicht statisch auflösbar', 'rrze-multisite-manager');
+                }
+
+                foreach ($objectTypes as $objectType) {
+                    $results['__dynamic_tax_' . $index . ':' . $objectType] = [
+                        'slug' => __('Nicht statisch auflösbar', 'rrze-multisite-manager'),
+                        'label' => $label,
+                        'object_type' => $objectType,
+                        'resolved' => false,
+                    ];
+                }
+
+                continue;
+            }
+
+            if (empty($objectTypes)) {
+                $objectTypes[] = '';
+            }
+
+            foreach ($objectTypes as $objectType) {
+                $results[$slug . ':' . $objectType] = [
+                    'slug' => $slug,
+                    'label' => $this->extractTaxonomyLabel($context, $slug),
+                    'object_type' => $objectType,
+                    'resolved' => true,
+                ];
+            }
+        }
+
+        return array_values($results);
+    }
+
+    protected function extractImageSizesFromSource(string $source, array $sharedSymbols = []): array {
+        $results = [];
+        $matches = [];
+        $index = 0;
+        $nameToken = '';
+        $widthToken = '';
+        $heightToken = '';
+        $cropToken = '';
+        $name = '';
+        $width = 0;
+        $height = 0;
+        $crop = '';
+        $symbols = array_merge($sharedSymbols, $this->getSourceStringSymbols($source));
+        $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
+
+        if (preg_match_all('/\badd_image_size\s*\(\s*([^,\)]+)\s*,\s*([^,\)]+)\s*,\s*([^,\)]+)(?:\s*,\s*([^\)]+))?\)/m', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $nameToken = trim((string)($matches[$index][1] ?? ''));
+                $widthToken = trim((string)($matches[$index][2] ?? ''));
+                $heightToken = trim((string)($matches[$index][3] ?? ''));
+                $cropToken = trim((string)($matches[$index][4] ?? ''));
+                $name = $this->resolveSourceStringToken($nameToken, $symbols);
+
+                if ($name === '') {
+                    continue;
+                }
+
+                $width = $this->resolveSourceIntegerToken($widthToken, $symbols);
+                $height = $this->resolveSourceIntegerToken($heightToken, $symbols);
+                $crop = $this->normalizeImageSizeCropToken($cropToken, $symbols);
+
+                $results[$name] = [
+                    'slug' => $name,
+                    'label' => $this->formatImageSizeLabel($name),
+                    'width' => $width,
+                    'height' => $height,
+                    'crop' => $crop,
+                ];
+            }
+        }
+
+        if (preg_match_all('/\bset_post_thumbnail_size\s*\(\s*([^,\)]+)\s*,\s*([^,\)]+)(?:\s*,\s*([^\)]+))?\)/m', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $widthToken = trim((string)($matches[$index][1] ?? ''));
+                $heightToken = trim((string)($matches[$index][2] ?? ''));
+                $cropToken = trim((string)($matches[$index][3] ?? ''));
+
+                $results['post-thumbnail'] = [
+                    'slug' => 'post-thumbnail',
+                    'label' => $this->formatImageSizeLabel('post-thumbnail'),
+                    'width' => $this->resolveSourceIntegerToken($widthToken, $symbols),
+                    'height' => $this->resolveSourceIntegerToken($heightToken, $symbols),
+                    'crop' => $this->normalizeImageSizeCropToken($cropToken, $symbols),
+                ];
+            }
+        }
+
+        return array_values($results);
+    }
+
+    protected function extractTaxonomyLabel(string $context, string $fallback): string {
+        $matches = [];
+
+        if (preg_match('/[\'"]name[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
+            return (string)($matches[1] ?? $fallback);
+        }
+
+        if (preg_match('/[\'"]label[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
+            return (string)($matches[1] ?? $fallback);
+        }
+
+        return $fallback;
+    }
+
+    protected function extractTaxonomyObjectTypes(string $token, array $symbols): array {
+        $objectTypes = [];
+        $objectType = '';
+        $matches = [];
+        $parts = [];
+        $part = '';
+
+        $token = trim($token);
+
+        if ($token === '') {
+            return [];
+        }
+
+        if (str_starts_with($token, '[') && str_ends_with($token, ']')) {
+            $token = trim(substr($token, 1, -1));
+            $parts = preg_split('/\s*,\s*/', $token);
+
+            if (!is_array($parts)) {
+                return [];
+            }
+
+            foreach ($parts as $part) {
+                $objectType = $this->resolveSourceStringToken((string)$part, $symbols);
+
+                if ($objectType !== '' && !in_array($objectType, $objectTypes, true)) {
+                    $objectTypes[] = $objectType;
+                }
+            }
+
+            return $objectTypes;
+        }
+
+        if (preg_match('/^array\s*\((.*)\)$/is', $token, $matches)) {
+            $parts = preg_split('/\s*,\s*/', (string)($matches[1] ?? ''));
+
+            if (!is_array($parts)) {
+                return [];
+            }
+
+            foreach ($parts as $part) {
+                $objectType = $this->resolveSourceStringToken((string)$part, $symbols);
+
+                if ($objectType !== '' && !in_array($objectType, $objectTypes, true)) {
+                    $objectTypes[] = $objectType;
+                }
+            }
+
+            return $objectTypes;
+        }
+
+        $objectType = $this->resolveSourceStringToken($token, $symbols);
+
+        if ($objectType !== '') {
+            return [$objectType];
+        }
+
+        return [];
+    }
+
+    protected function getSourceStringSymbols(string $source): array {
+        $symbols = [];
+        $matches = [];
+        $index = 0;
+        $name = '';
+        $value = '';
+
+        if (preg_match_all('/define\s*\(\s*[\'"]([A-Z0-9_]+)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)/', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $name = (string)($matches[$index][1] ?? '');
+                $value = (string)($matches[$index][2] ?? '');
+
+                if ($name !== '' && $value !== '') {
+                    $symbols[$name] = $value;
+                }
+            }
+        }
+
+        if (preg_match_all('/(?:public|protected|private)?\s*const\s+([A-Z0-9_]+)\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/i', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $name = (string)($matches[$index][1] ?? '');
+                $value = (string)($matches[$index][2] ?? '');
+
+                if ($name !== '' && $value !== '') {
+                    $symbols[$name] = $value;
+                }
+            }
+        }
+
+        if (preg_match_all('/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $name = '$' . (string)($matches[$index][1] ?? '');
+                $value = (string)($matches[$index][2] ?? '');
+
+                if ($name !== '$' && $value !== '') {
+                    $symbols[$name] = $value;
+                }
+            }
+        }
+
+        if (preg_match_all('/\$this->([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $name = '$this->' . (string)($matches[$index][1] ?? '');
+                $value = (string)($matches[$index][2] ?? '');
+
+                if ($name !== '$this->' && $value !== '') {
+                    $symbols[$name] = $value;
+                }
+            }
+        }
+
+        if (preg_match_all('/[\'"]([A-Za-z0-9_\-]+)[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/', $source, $matches, PREG_SET_ORDER)) {
+            for ($index = 0; $index < count($matches); $index++) {
+                $name = (string)($matches[$index][1] ?? '');
+                $value = (string)($matches[$index][2] ?? '');
+
+                if ($name !== '' && $value !== '' && !isset($symbols[$name])) {
+                    $symbols[$name] = $value;
+                }
+            }
+        }
+
+        return $symbols;
+    }
+
+    protected function getSourceStringSymbolsFromFiles(array $files): array {
+        $symbols = [];
+        $filePath = '';
+        $source = '';
+
+        foreach ($files as $filePath) {
+            if (!is_string($filePath) || $filePath === '' || !is_readable($filePath)) {
+                continue;
+            }
+
+            $source = (string)file_get_contents($filePath);
+
+            if ($source === '') {
+                continue;
+            }
+
+            $symbols = array_merge($symbols, $this->getSourceStringSymbols($source));
+            $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
+        }
+
+        return $symbols;
+    }
+
+    protected function resolveGetterBackedSourceSymbols(string $source, array $symbols): array {
+        $matches = [];
+        $index = 0;
+        $name = '';
+        $key = '';
+
+        if (!preg_match_all('/(\$this->\w+|\$\w+)\s*=\s*(?:\(string\)\s*)?(?:\$this->config|\$config|\$this->settings|\$settings)->get\(\s*[\'"]([^\'"]+)[\'"]\s*\)\s*;/i', $source, $matches, PREG_SET_ORDER)) {
+            return $symbols;
+        }
+
+        for ($index = 0; $index < count($matches); $index++) {
+            $name = trim((string)($matches[$index][1] ?? ''));
+            $key = trim((string)($matches[$index][2] ?? ''));
+
+            if ($name === '' || $key === '' || !isset($symbols[$key]) || !is_string($symbols[$key])) {
+                continue;
+            }
+
+            $symbols[$name] = (string)$symbols[$key];
+        }
+
+        return $symbols;
+    }
+
+    protected function resolveSourceStringToken(string $token, array $symbols): string {
+        $matches = [];
+        $key = '';
+
+        $token = trim($token);
+
+        if ($token === '') {
+            return '';
+        }
+
+        if (preg_match('/^[\'"]([^\'"]+)[\'"]$/', $token, $matches)) {
+            return (string)($matches[1] ?? '');
+        }
+
+        if (isset($symbols[$token]) && is_string($symbols[$token])) {
+            return (string)$symbols[$token];
+        }
+
+        if (preg_match('/^(?:\(string\)\s*)?(?:\$this->config|\$config|\$this->settings|\$settings)->get\(\s*[\'"]([^\'"]+)[\'"]\s*\)$/i', $token, $matches)) {
+            $key = (string)($matches[1] ?? '');
+
+            if ($key !== '' && isset($symbols[$key]) && is_string($symbols[$key])) {
+                return (string)$symbols[$key];
+            }
+        }
+
+        if (str_starts_with($token, 'self::')) {
+            $token = substr($token, 6);
+        } elseif (str_starts_with($token, 'static::')) {
+            $token = substr($token, 8);
+        }
+
+        if (isset($symbols[$token]) && is_string($symbols[$token])) {
+            return (string)$symbols[$token];
+        }
+
+        return '';
+    }
+
+    protected function resolveSourceIntegerToken(string $token, array $symbols): int {
+        $value = $this->resolveSourceStringToken($token, $symbols);
+
+        if ($value !== '' && is_numeric($value)) {
+            return max(0, (int)$value);
+        }
+
+        $token = trim($token);
+
+        if ($token === '') {
+            return 0;
+        }
+
+        if (preg_match('/^\(?\s*(\d+)\s*\)?$/', $token, $matches)) {
+            return (int)($matches[1] ?? 0);
+        }
+
+        if (isset($symbols[$token]) && is_numeric($symbols[$token])) {
+            return max(0, (int)$symbols[$token]);
+        }
+
+        return 0;
+    }
+
+    protected function normalizeImageSizeCropToken(string $token, array $symbols): string {
+        $token = trim($token);
+
+        if ($token === '') {
+            return __('Nein', 'rrze-multisite-manager');
+        }
+
+        if (preg_match('/^\[\s*[\'"]([^\'"]+)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\]$/', $token, $matches)) {
+            return (string)($matches[1] ?? '') . ' / ' . (string)($matches[2] ?? '');
+        }
+
+        if (preg_match('/^array\s*\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)$/i', $token, $matches)) {
+            return (string)($matches[1] ?? '') . ' / ' . (string)($matches[2] ?? '');
+        }
+
+        $resolved = strtolower($this->resolveSourceStringToken($token, $symbols));
+
+        if ($resolved === 'true' || strtolower($token) === 'true') {
+            return __('Ja', 'rrze-multisite-manager');
+        }
+
+        if ($resolved === 'false' || strtolower($token) === 'false') {
+            return __('Nein', 'rrze-multisite-manager');
+        }
+
+        return $token;
+    }
+
+    protected function formatImageSizeCropValue(mixed $crop): string {
+        if (is_array($crop) && count($crop) === 2) {
+            return (string)($crop[0] ?? '') . ' / ' . (string)($crop[1] ?? '');
+        }
+
+        if ($crop) {
+            return __('Ja', 'rrze-multisite-manager');
+        }
+
+        return __('Nein', 'rrze-multisite-manager');
+    }
+
+    protected function formatImageSizeLabel(string $slug): string {
+        $labels = [
+            'thumbnail' => __('Vorschaubild', 'rrze-multisite-manager'),
+            'medium' => __('Mittel', 'rrze-multisite-manager'),
+            'medium_large' => __('Mittel groß', 'rrze-multisite-manager'),
+            'large' => __('Groß', 'rrze-multisite-manager'),
+            'post-thumbnail' => __('Beitragsbild', 'rrze-multisite-manager'),
+            '1536x1536' => '1536x1536',
+            '2048x2048' => '2048x2048',
+        ];
+
+        if (isset($labels[$slug])) {
+            return $labels[$slug];
+        }
+
+        return ucwords(str_replace(['-', '_'], ' ', $slug));
+    }
+
+    protected function indexImageSizesBySlug(array $imageSizes, string $providerName): array {
+        $result = [];
+        $item = [];
+        $slug = '';
+
+        foreach ($imageSizes as $item) {
+            $slug = (string)($item['slug'] ?? '');
+
+            if ($slug === '') {
+                continue;
+            }
+
+            if (!isset($result[$slug])) {
+                $result[$slug] = [
+                    'providers' => [],
+                ];
+            }
+
+            if ($providerName !== '' && !in_array($providerName, $result[$slug]['providers'], true)) {
+                $result[$slug]['providers'][] = $providerName;
+            }
+        }
+
+        return $result;
+    }
+
+    protected function mergeImageSizeProviderMap(array $current, array $additional): array {
+        $slug = '';
+        $provider = '';
+
+        foreach ($additional as $slug => $data) {
+            if (!isset($current[$slug])) {
+                $current[$slug] = [
+                    'providers' => [],
+                ];
+            }
+
+            foreach ((array)($data['providers'] ?? []) as $provider) {
+                if (!is_string($provider) || $provider === '' || in_array($provider, $current[$slug]['providers'], true)) {
+                    continue;
+                }
+
+                $current[$slug]['providers'][] = $provider;
+            }
+        }
+
+        return $current;
+    }
+
+    protected function determineImageSizeProviderType(string $slug, array $providerNames): string {
+        $coreSlugs = [
+            'thumbnail',
+            'medium',
+            'medium_large',
+            'large',
+            'post-thumbnail',
+            '1536x1536',
+            '2048x2048',
+        ];
+
+        if (!empty($providerNames)) {
+            return __('Theme/Plugin', 'rrze-multisite-manager');
+        }
+
+        if (in_array($slug, $coreSlugs, true)) {
+            return __('WordPress Core', 'rrze-multisite-manager');
+        }
+
+        return __('Nicht direkt zugeordnet', 'rrze-multisite-manager');
     }
 
     protected function mergeDiscoveredOptions(array $current, array $additional): array {
@@ -1316,6 +1250,54 @@ class MetricsService {
     }
 
     protected function mergePostTypeRows(array $current, array $additional): array {
+        $result = [];
+        $item = [];
+        $key = '';
+
+        foreach ($current as $item) {
+            $key = (string)($item['slug'] ?? '');
+
+            if ($key !== '') {
+                $result[$key] = $item;
+            }
+        }
+
+        foreach ($additional as $item) {
+            $key = (string)($item['slug'] ?? '');
+
+            if ($key !== '') {
+                $result[$key] = $item;
+            }
+        }
+
+        return array_values($result);
+    }
+
+    protected function mergeTaxonomyRows(array $current, array $additional): array {
+        $result = [];
+        $item = [];
+        $key = '';
+
+        foreach ($current as $item) {
+            $key = (string)($item['slug'] ?? '') . ':' . (string)($item['object_type'] ?? '');
+
+            if ($key !== ':') {
+                $result[$key] = $item;
+            }
+        }
+
+        foreach ($additional as $item) {
+            $key = (string)($item['slug'] ?? '') . ':' . (string)($item['object_type'] ?? '');
+
+            if ($key !== ':') {
+                $result[$key] = $item;
+            }
+        }
+
+        return array_values($result);
+    }
+
+    protected function mergeImageSizeRows(array $current, array $additional): array {
         $result = [];
         $item = [];
         $key = '';
@@ -1414,6 +1396,97 @@ class MetricsService {
         }
 
         return dirname($mainFilePath);
+    }
+
+    protected function getTranslationLanguages(string $target, string $textDomain = '', string $type = 'plugin'): array {
+        $baseDir = $type === 'theme'
+            ? $this->getThemeAbsolutePath($target)
+            : $this->getPluginDirectoryPath($target);
+        $directories = [];
+        $directory = '';
+        $files = [];
+        $iterator = null;
+        $current = null;
+        $path = '';
+        $basename = '';
+        $language = '';
+        $extension = '';
+        $languages = [];
+
+        if ($baseDir === '' || !is_dir($baseDir)) {
+            return [];
+        }
+
+        $directories[] = $baseDir;
+
+        if (is_dir($baseDir . '/languages')) {
+            $directories[] = $baseDir . '/languages';
+        }
+
+        if (is_dir($baseDir . '/lang')) {
+            $directories[] = $baseDir . '/lang';
+        }
+
+        foreach (array_unique($directories) as $directory) {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator(
+                    $directory,
+                    \FilesystemIterator::SKIP_DOTS
+                )
+            );
+
+            foreach ($iterator as $current) {
+                if (!$current instanceof \SplFileInfo || !$current->isFile()) {
+                    continue;
+                }
+
+                $path = (string)$current->getPathname();
+                $extension = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
+
+                if (!in_array($extension, ['po', 'mo'], true)) {
+                    continue;
+                }
+
+                $files[] = $path;
+            }
+        }
+
+        sort($files, SORT_NATURAL | SORT_FLAG_CASE);
+
+        foreach ($files as $path) {
+            $basename = basename($path);
+
+            if ($textDomain !== '' && !str_starts_with($basename, $textDomain . '-')) {
+                continue;
+            }
+
+            $language = $this->extractLanguageFromTranslationFilename($basename, $textDomain);
+
+            if ($language === '') {
+                continue;
+            }
+
+            if (isset($languages[$language])) {
+                continue;
+            }
+
+            $languages[$language] = $language;
+        }
+
+        return array_values($languages);
+    }
+
+    protected function extractLanguageFromTranslationFilename(string $basename, string $textDomain = ''): string {
+        $matches = [];
+        $language = '';
+
+        if ($textDomain !== '' && preg_match('/^' . preg_quote($textDomain, '/') . '-([A-Za-z_@-]+)\.(?:po|mo|json)$/', $basename, $matches)) {
+            $language = (string)($matches[1] ?? '');
+        } elseif (preg_match('/-([a-z]{2,3}(?:_[A-Z]{2})?(?:_[a-z0-9]+)?)(?:\.l10n)?\.(?:po|mo|json)$/', $basename, $matches)) {
+            $language = (string)($matches[1] ?? '');
+        }
+
+        return str_replace('_', '-', $language);
     }
 
     protected function getPluginInstallTimestamp(string $pluginFile): int {
@@ -1743,69 +1816,6 @@ class MetricsService {
         }
 
         return '';
-    }
-
-    protected function getThemes(): array {
-        $themes = wp_get_themes();
-        $allowedThemes = $this->getAllowedThemes();
-        $siteCounts = $this->getThemeSiteCounts();
-        $siteUsageMap = $this->getThemeSiteUsageMap();
-        $results = [];
-        $stylesheet = '';
-        $theme = null;
-        $themeData = [];
-        $description = '';
-        $screenshot = '';
-        $tags = [];
-
-        foreach ($themes as $stylesheet => $theme) {
-            if (!$theme instanceof \WP_Theme) {
-                continue;
-            }
-
-            $description = (string)$theme->get('Description');
-            $screenshot = $theme->get_screenshot();
-            $tags = $theme->get('Tags');
-            $themeData = [
-                'stylesheet' => $stylesheet,
-                'name' => $theme->get('Name') ?: $stylesheet,
-                'version' => $theme->get('Version') ?: 'n/a',
-                'description' => wp_strip_all_tags($description),
-                'site_count' => (int)($siteCounts[$stylesheet] ?? 0),
-                'network_enabled' => isset($allowedThemes[$stylesheet]),
-                'active_sites' => (array)($siteUsageMap[$stylesheet] ?? []),
-                'author' => (string)$theme->get('Author'),
-                'author_url' => (string)$theme->get('AuthorURI'),
-                'theme_uri' => (string)$theme->get('ThemeURI'),
-                'text_domain' => (string)$theme->get('TextDomain'),
-                'template' => (string)$theme->get_template(),
-                'screenshot' => is_string($screenshot) ? $screenshot : '',
-                'is_block_theme' => method_exists($theme, 'is_block_theme') ? (bool)$theme->is_block_theme() : false,
-                'tags' => is_array($tags) ? $this->normalizeStringList($tags) : [],
-            ];
-            $themeData['status'] = $this->getThemeStatus($themeData);
-            $results[] = $themeData;
-        }
-
-        usort($results, [self::class, 'compareThemeUsage']);
-
-        return $results;
-    }
-
-    protected function getThemeUsage(): array {
-        $themes = $this->getThemes();
-        return $this->buildThemeUsageDistribution($themes);
-    }
-
-    protected function getInactiveThemes(): array {
-        $themes = $this->getThemes();
-
-        return array_values(
-            array_filter(
-                $themes,
-                [self::class, 'isUnusedTheme']
-            )
-        );
     }
 
     protected function buildThemeUsageDistribution(array $themes): array {
@@ -2162,6 +2172,7 @@ class MetricsService {
         $optionsOverview = [];
         $customPostTypes = [];
         $blockTemplateTypes = [];
+        $imageSizes = [];
         $transients = [];
         $cronEvents = [];
 
@@ -2172,6 +2183,7 @@ class MetricsService {
         $contentTypes = $this->getCurrentSiteContentTypeCounts();
         $customPostTypes = $this->getCurrentSiteCustomPostTypes();
         $blockTemplateTypes = $this->getCurrentSiteBlockTemplateTypes();
+        $imageSizes = $this->getCurrentSiteImageSizes($theme, $plugins);
         $optionsOverview = $this->getCurrentSiteOptionsOverview();
         $transients = $this->getCurrentSiteTransients();
         $cronEvents = $this->getCurrentSiteCronEvents();
@@ -2184,6 +2196,7 @@ class MetricsService {
             'content_types' => $contentTypes,
             'custom_post_types' => $customPostTypes,
             'block_template_types' => $blockTemplateTypes,
+            'image_sizes' => $imageSizes,
             'options_overview' => $optionsOverview,
             'transients' => $transients,
             'cron_events' => $cronEvents,
@@ -2263,6 +2276,80 @@ class MetricsService {
         usort($results, [self::class, 'compareDetailedPlugins']);
 
         return $results;
+    }
+
+    protected function getCurrentSiteImageSizes(array $theme, array $plugins): array {
+        global $_wp_additional_image_sizes;
+
+        $registeredSizes = function_exists('wp_get_registered_image_subsizes')
+            ? wp_get_registered_image_subsizes()
+            : [];
+        $themeDetails = [];
+        $pluginDetails = [];
+        $themeSizeMap = [];
+        $pluginSizeMap = [];
+        $rows = [];
+        $slug = '';
+        $sizeData = [];
+        $providerNames = [];
+        $crop = '';
+
+        if (!is_array($registeredSizes)) {
+            $registeredSizes = [];
+        }
+
+        if (!empty($theme['stylesheet']) && is_string($theme['stylesheet'])) {
+            $themeDetails = $this->getThemeDetails((string)$theme['stylesheet']);
+            $themeSizeMap = $this->indexImageSizesBySlug((array)($themeDetails['image_sizes'] ?? []), (string)($theme['name'] ?? ''));
+        }
+
+        foreach ($plugins as $plugin) {
+            if (empty($plugin['file']) || !is_string($plugin['file'])) {
+                continue;
+            }
+
+            $pluginDetails = $this->getPluginDetails((string)$plugin['file']);
+            $pluginSizeMap = $this->mergeImageSizeProviderMap(
+                $pluginSizeMap,
+                $this->indexImageSizesBySlug(
+                    (array)($pluginDetails['image_sizes'] ?? []),
+                    (string)($plugin['name'] ?? $plugin['file'])
+                )
+            );
+        }
+
+        foreach ($registeredSizes as $slug => $sizeData) {
+            if (!is_string($slug) || !is_array($sizeData)) {
+                continue;
+            }
+
+            $providerNames = [];
+
+            if (isset($themeSizeMap[$slug]) && is_array($themeSizeMap[$slug])) {
+                $providerNames = array_merge($providerNames, (array)($themeSizeMap[$slug]['providers'] ?? []));
+            }
+
+            if (isset($pluginSizeMap[$slug]) && is_array($pluginSizeMap[$slug])) {
+                $providerNames = array_merge($providerNames, (array)($pluginSizeMap[$slug]['providers'] ?? []));
+            }
+
+            $crop = $this->formatImageSizeCropValue($sizeData['crop'] ?? false);
+
+            $rows[] = [
+                'slug' => $slug,
+                'label' => $this->formatImageSizeLabel($slug),
+                'width' => (int)($sizeData['width'] ?? 0),
+                'height' => (int)($sizeData['height'] ?? 0),
+                'crop' => $crop,
+                'provider_type' => $this->determineImageSizeProviderType($slug, $providerNames),
+                'providers' => $this->normalizeStringList($providerNames),
+                'is_reserved' => !empty($sizeData['crop']) || isset($_wp_additional_image_sizes[$slug]) || in_array($slug, get_intermediate_image_sizes(), true),
+            ];
+        }
+
+        usort($rows, [self::class, 'compareImageSizeRows']);
+
+        return $rows;
     }
 
     protected function getPluginAuthorLabel(array $pluginData): string {
@@ -3893,6 +3980,18 @@ class MetricsService {
         }
 
         return strcmp((string)($left['type'] ?? ''), (string)($right['type'] ?? ''));
+    }
+
+    protected static function comparePluginTaxonomyRows(array $left, array $right): int {
+        if ((string)($left['object_type'] ?? '') === (string)($right['object_type'] ?? '')) {
+            return strcmp((string)($left['label'] ?? $left['slug'] ?? ''), (string)($right['label'] ?? $right['slug'] ?? ''));
+        }
+
+        return strcmp((string)($left['object_type'] ?? ''), (string)($right['object_type'] ?? ''));
+    }
+
+    protected static function compareImageSizeRows(array $left, array $right): int {
+        return strcmp((string)($left['label'] ?? $left['slug'] ?? ''), (string)($right['label'] ?? $right['slug'] ?? ''));
     }
 
     protected static function compareCronEvents(array $left, array $right): int {

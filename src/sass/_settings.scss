@@ -20,6 +20,11 @@ body.rrze-msm-mode-dark {
     --rrze-msm-table-border: #d9e2ec;
     --rrze-msm-text: #1f2933;
     --rrze-msm-muted: #52606d;
+    --rrze-msm-link: #005fcc;
+    --rrze-msm-link-hover: #004799;
+    --rrze-msm-input-bg: #ffffff;
+    --rrze-msm-input-text: #1f2933;
+    --rrze-msm-input-border: #d9e2ec;
     --rrze-msm-positive: var(--rrze-msm-status-active-bg);
     --rrze-msm-positive-text: var(--rrze-msm-status-active-text);
     --rrze-msm-positive-soft: color-mix(in srgb, var(--rrze-msm-status-active-bg) 18%, #fff 82%);
@@ -48,4 +53,9 @@ body.rrze-msm-mode-dark {
     --rrze-msm-table-border: #202428;
     --rrze-msm-text: #f5f7fa;
     --rrze-msm-muted: #c2c8d0;
+    --rrze-msm-link: #39ff88;
+    --rrze-msm-link-hover: #7dffb0;
+    --rrze-msm-input-bg: #133222;
+    --rrze-msm-input-text: #eafff1;
+    --rrze-msm-input-border: #2d6a4f;
 }

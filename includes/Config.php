@@ -22,6 +22,7 @@ class Config {
                 'capability' => 'manage_network_options',
                 'parent_slug' => 'rrze-multisite-manager-dashboard',
                 'dashboard_slug' => 'rrze-multisite-manager-dashboard',
+                'environment_overview_slug' => 'rrze-multisite-manager-environment-overview',
                 'site_overview_slug' => 'rrze-multisite-manager-site-overview',
                 'plugin_overview_slug' => 'rrze-multisite-manager-plugin-overview',
                 'plugin_details_slug' => 'rrze-multisite-manager-plugin-details',
