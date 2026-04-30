@@ -12,7 +12,10 @@ use RRZE\MultisiteManager\Widgets\InactivePluginsWidget;
 use RRZE\MultisiteManager\Widgets\InactiveSitesWidget;
 use RRZE\MultisiteManager\Widgets\InactiveThemesWidget;
 use RRZE\MultisiteManager\Widgets\NetworkStorageUsageWidget;
+use RRZE\MultisiteManager\Widgets\NewMonitoringAlertsWidget;
+use RRZE\MultisiteManager\Widgets\OperationalStatusWidget;
 use RRZE\MultisiteManager\Widgets\PluginUsageWidget;
+use RRZE\MultisiteManager\Widgets\ProblemSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
 use RRZE\MultisiteManager\Widgets\SiteOverviewWidget;
@@ -53,6 +56,7 @@ class Settings {
         if (is_admin()) {
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
+            add_action('network_admin_edit_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
         }
     }
 
@@ -121,6 +125,8 @@ class Settings {
     }
 
     public function saveNetworkOptions(): void {
+        $settingsTab = isset($_POST['settings_tab']) ? sanitize_key((string)wp_unslash($_POST['settings_tab'])) : 'general';
+
         if (!current_user_can('manage_network_options')) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
@@ -136,6 +142,7 @@ class Settings {
         $redirectUrl = add_query_arg(
             [
                 'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
+                'tab' => in_array($settingsTab, ['general', 'monitoring'], true) ? $settingsTab : 'general',
                 'updated' => 'true',
             ],
             network_admin_url('admin.php')
@@ -178,10 +185,20 @@ class Settings {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Die Ansichten wurden gespeichert.', 'rrze-multisite-manager') . '</p></div>';
         }
 
+        if (!empty($_GET['monitoring-ran'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Das Monitoring wurde sofort ausgeführt.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (!empty($_GET['monitoring-status-updated'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Der Betriebsstatus der Website wurde aktualisiert.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
         $this->renderSettingsTabs($currentTab);
 
         if ($currentTab === 'views') {
             $this->renderViewsTab();
+        } elseif ($currentTab === 'monitoring') {
+            $this->renderMonitoringTab();
         } else {
             $this->renderGeneralTab();
         }
@@ -210,7 +227,34 @@ class Settings {
         exit;
     }
 
-    protected function renderFields(): void {
+    public function runMonitoringNow(): void {
+        $monitoringService = null;
+        $redirectUrl = '';
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_run_monitoring');
+
+        $monitoringService = new MonitoringService($this->plugin, $this->config);
+        $monitoringService->runScheduledChecks();
+        (new MetricsService($this, $this->config))->clearCache();
+
+        $redirectUrl = add_query_arg(
+            [
+                'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
+                'tab' => 'monitoring',
+                'monitoring-ran' => 'true',
+            ],
+            network_admin_url('admin.php')
+        );
+
+        wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    protected function renderFields(array $allowedSections = []): void {
         $section = [];
         $sectionId = '';
         $sectionTitle = '';
@@ -221,6 +265,11 @@ class Settings {
 
         foreach ($this->settingsSections as $section) {
             $sectionId = (string)$section['id'];
+
+            if (!empty($allowedSections) && !in_array($sectionId, $allowedSections, true)) {
+                continue;
+            }
+
             $sectionTitle = (string)$section['title'];
             echo '<h2>' . esc_html($sectionTitle) . '</h2>';
 
@@ -364,7 +413,7 @@ class Settings {
     protected function getSettingsTab(): string {
         $tab = isset($_GET['tab']) ? sanitize_key((string)$_GET['tab']) : 'general';
 
-        if (!in_array($tab, ['general', 'views'], true)) {
+        if (!in_array($tab, ['general', 'monitoring', 'views'], true)) {
             return 'general';
         }
 
@@ -381,6 +430,7 @@ class Settings {
 
         echo '<nav class="nav-tab-wrapper">';
         echo '<a class="nav-tab' . ($currentTab === 'general' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['tab' => 'general'], $baseUrl)) . '">' . esc_html__('Allgemeines', 'rrze-multisite-manager') . '</a>';
+        echo '<a class="nav-tab' . ($currentTab === 'monitoring' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['tab' => 'monitoring'], $baseUrl)) . '">' . esc_html__('Monitoring', 'rrze-multisite-manager') . '</a>';
         echo '<a class="nav-tab' . ($currentTab === 'views' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['tab' => 'views'], $baseUrl)) . '">' . esc_html__('Ansichten', 'rrze-multisite-manager') . '</a>';
         echo '</nav>';
     }
@@ -388,7 +438,8 @@ class Settings {
     protected function renderGeneralTab(): void {
         echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=' . $this->optionName)) . '">';
         wp_nonce_field($this->optionName . '_save');
-        $this->renderFields();
+        echo '<input type="hidden" name="settings_tab" value="general">';
+        $this->renderFields(['dashboard']);
         submit_button();
         echo '</form>';
         echo '<hr>';
@@ -398,6 +449,61 @@ class Settings {
         wp_nonce_field('rrze_multisite_manager_refresh_metrics');
         submit_button(__('Kennzahlen aktualisieren', 'rrze-multisite-manager'), 'secondary', 'submit', false);
         echo '</form>';
+    }
+
+    protected function renderMonitoringTab(): void {
+        $monitoringService = new MonitoringService($this->plugin, $this->config);
+        $processes = $monitoringService->getProcessesOverview();
+        $process = [];
+
+        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=' . $this->optionName)) . '">';
+        wp_nonce_field($this->optionName . '_save');
+        echo '<input type="hidden" name="settings_tab" value="monitoring">';
+        $this->renderFields(['monitoring']);
+        submit_button();
+        echo '</form>';
+        echo '<hr>';
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
+        echo '<header class="rrze-msm-widget-header">';
+        echo '<h2>' . esc_html__('Monitoring-Prozesse', 'rrze-multisite-manager') . '</h2>';
+        echo '<p>' . esc_html__('Hier siehst du, welche Monitoring-Prozesse geplant sind, wann sie zuletzt liefen und kannst sie bei Bedarf sofort starten.', 'rrze-multisite-manager') . '</p>';
+        echo '</header>';
+
+        if (!empty($processes)) {
+            echo '<table class="widefat striped rrze-msm-table">';
+            echo '<thead><tr>';
+            echo '<th>' . esc_html__('Prozess', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Beschreibung', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Intervall (Std.)', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Zuletzt aktiv', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Letzte Site-Anzahl', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Nächster Lauf', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Aktion', 'rrze-multisite-manager') . '</th>';
+            echo '</tr></thead><tbody>';
+
+            foreach ($processes as $process) {
+                echo '<tr>';
+                echo '<td>' . esc_html((string)($process['title'] ?? '')) . '</td>';
+                echo '<td>' . esc_html((string)($process['description'] ?? '')) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
+                echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['last_run'] ?? ''))) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
+                echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
+                echo '<td>';
+                echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_run_monitoring')) . '">';
+                wp_nonce_field('rrze_multisite_manager_run_monitoring');
+                echo '<button type="submit" class="button button-secondary">' . esc_html__('Jetzt starten', 'rrze-multisite-manager') . '</button>';
+                echo '</form>';
+                echo '</td>';
+                echo '</tr>';
+            }
+
+            echo '</tbody></table>';
+        } else {
+            echo '<p>' . esc_html__('Derzeit sind keine Monitoring-Prozesse registriert.', 'rrze-multisite-manager') . '</p>';
+        }
+
+        echo '</section>';
     }
 
     protected function renderViewsTab(): void {
@@ -469,7 +575,10 @@ class Settings {
         return [
             'summary' => new SummaryWidget($this->plugin, $this->config),
             'status' => new StatusWidget($this->plugin, $this->config),
+            'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
+            'new_monitoring_alerts' => new NewMonitoringAlertsWidget($this->plugin, $this->config),
+            'problem_sites' => new ProblemSitesWidget($this->plugin, $this->config),
             'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),
             'editor_usage' => new EditorUsageWidget($this->plugin, $this->config),
             'recent_sites' => new RecentSitesWidget($this->plugin, $this->config),
@@ -498,5 +607,21 @@ class Settings {
         }
 
         return $options;
+    }
+
+    protected function formatProcessTimestamp(string $timestamp): string {
+        if ($timestamp === '' || $timestamp === '0000-00-00 00:00:00') {
+            return __('Noch nicht gelaufen', 'rrze-multisite-manager');
+        }
+
+        return get_date_from_gmt($timestamp, get_option('date_format') . ' ' . get_option('time_format'));
+    }
+
+    protected function formatScheduledTimestamp(int $timestamp): string {
+        if ($timestamp <= 0) {
+            return __('Nicht geplant', 'rrze-multisite-manager');
+        }
+
+        return wp_date(get_option('date_format') . ' ' . get_option('time_format'), $timestamp);
     }
 }

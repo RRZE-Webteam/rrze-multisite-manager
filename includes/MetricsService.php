@@ -23,23 +23,31 @@ class MetricsService {
     public function getDashboardData(): array {
         $cached = get_site_transient($this->getCacheKey());
         $siteOverview = [];
+        $networkStorageUsage = [];
 
         if (is_array($cached) && $this->isCompleteDashboardData($cached)) {
             return $cached;
         }
 
         $siteOverview = $this->getSiteOverview();
+        $networkStorageUsage = $this->getNetworkStorageUsage();
 
         $data = [
-            'summary' => $this->getSummary(),
+            'summary' => $this->getSummary($networkStorageUsage),
             'site_table_default_limit' => $this->getActivitySiteLimit(),
             'status_distribution' => $this->getStatusDistribution(),
-            'network_storage_usage' => $this->getNetworkStorageUsage(),
+            'operational_status_distribution' => $this->getOperationalStatusDistribution(),
+            'network_storage_usage' => $networkStorageUsage,
             'recent_sites' => $this->getRecentSites(),
             'site_overview' => $siteOverview,
             'archived_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_archived'),
             'blocked_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_spam'),
             'deleted_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_deleted'),
+            'problem_sites' => $this->getProblemSites($siteOverview),
+            'new_monitoring_alerts' => $this->getNewMonitoringAlerts($siteOverview),
+            'provisioning_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'provisioning'),
+            'dns_missing_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'dns_missing'),
+            'unreachable_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'unreachable'),
             'themes' => $this->getThemes(),
             'theme_usage' => $this->getThemeUsage(),
             'editor_usage' => $this->getEditorUsage(),
@@ -2085,6 +2093,24 @@ class MetricsService {
             'status_user_id' => (int)get_site_meta($siteId, 'rrze_msm_status_user_id', true),
             'archived_at' => (string)get_site_meta($siteId, 'rrze_msm_archived_at', true),
             'spam_at' => (string)get_site_meta($siteId, 'rrze_msm_spam_at', true),
+            'operational_status' => (string)get_site_meta($siteId, 'rrze_msm_operational_status', true),
+            'operational_status_label' => $this->getOperationalStatusLabel((string)get_site_meta($siteId, 'rrze_msm_operational_status', true)),
+            'operational_status_source' => (string)get_site_meta($siteId, 'rrze_msm_operational_status_source', true),
+            'previous_operational_status' => (string)get_site_meta($siteId, 'rrze_msm_previous_operational_status', true),
+            'previous_operational_status_label' => $this->getOperationalStatusLabel((string)get_site_meta($siteId, 'rrze_msm_previous_operational_status', true)),
+            'operational_status_changed_at' => (string)get_site_meta($siteId, 'rrze_msm_operational_status_changed_at', true),
+            'dns_status' => (string)get_site_meta($siteId, 'rrze_msm_dns_status', true),
+            'dns_status_label' => $this->getMonitoringStatusLabel((string)get_site_meta($siteId, 'rrze_msm_dns_status', true)),
+            'http_status' => (string)get_site_meta($siteId, 'rrze_msm_http_status', true),
+            'http_status_label' => $this->getMonitoringStatusLabel((string)get_site_meta($siteId, 'rrze_msm_http_status', true)),
+            'last_availability_check' => (string)get_site_meta($siteId, 'rrze_msm_last_availability_check', true),
+            'last_dns_ok_at' => (string)get_site_meta($siteId, 'rrze_msm_last_dns_ok_at', true),
+            'last_http_ok_at' => (string)get_site_meta($siteId, 'rrze_msm_last_http_ok_at', true),
+            'last_dns_error_at' => (string)get_site_meta($siteId, 'rrze_msm_last_dns_error_at', true),
+            'last_http_error_at' => (string)get_site_meta($siteId, 'rrze_msm_last_http_error_at', true),
+            'dns_failure_count' => (int)get_site_meta($siteId, 'rrze_msm_dns_failure_count', true),
+            'http_failure_count' => (int)get_site_meta($siteId, 'rrze_msm_http_failure_count', true),
+            'monitoring_note' => (string)get_site_meta($siteId, 'rrze_msm_monitoring_note', true),
         ];
     }
 
@@ -3635,6 +3661,7 @@ class MetricsService {
 
     protected function getSiteStatus(int $siteId, \WP_Site $site): array {
         $status = [];
+        $operationalStatus = (string)get_site_meta($siteId, 'rrze_msm_operational_status', true);
 
         if ((int)$site->archived === 1) {
             $status[] = [
@@ -3678,7 +3705,51 @@ class MetricsService {
             ];
         }
 
+        if ($operationalStatus !== '') {
+            $status[] = [
+                'label' => $this->getOperationalStatusLabel($operationalStatus),
+                'accent' => $this->getOperationalStatusAccent($operationalStatus),
+            ];
+        }
+
         return $status;
+    }
+
+    protected function getOperationalStatusLabel(string $status): string {
+        $labels = [
+            'provisioning' => __('Einrichtung läuft', 'rrze-multisite-manager'),
+            'healthy' => __('Technisch erreichbar', 'rrze-multisite-manager'),
+            'dns_missing' => __('DNS fehlt', 'rrze-multisite-manager'),
+            'unreachable' => __('Technisch nicht erreichbar', 'rrze-multisite-manager'),
+            'retired' => __('Außer Betrieb', 'rrze-multisite-manager'),
+        ];
+
+        return $labels[$status] ?? $status;
+    }
+
+    protected function getOperationalStatusAccent(string $status): string {
+        $accents = [
+            'provisioning' => 'info',
+            'healthy' => 'positive',
+            'dns_missing' => 'danger',
+            'unreachable' => 'warning',
+            'retired' => 'neutral',
+        ];
+
+        return $accents[$status] ?? 'neutral';
+    }
+
+    protected function getMonitoringStatusLabel(string $status): string {
+        $labels = [
+            'ok' => __('OK', 'rrze-multisite-manager'),
+            'missing' => __('Fehlt', 'rrze-multisite-manager'),
+            'error' => __('Fehler', 'rrze-multisite-manager'),
+            'timeout' => __('Timeout', 'rrze-multisite-manager'),
+            'unknown' => __('Unbekannt', 'rrze-multisite-manager'),
+            'pending' => __('Ausstehend', 'rrze-multisite-manager'),
+        ];
+
+        return $labels[$status] ?? ($status !== '' ? $status : __('Nicht gesetzt', 'rrze-multisite-manager'));
     }
 
     protected function getSiteBuckets(): array {
@@ -3686,7 +3757,8 @@ class MetricsService {
             'number' => 0,
         ]);
         $buckets = [
-            'active' => 0,
+            'active_public' => 0,
+            'active_private' => 0,
             'archived' => 0,
             'deleted' => 0,
             'spam' => 0,
@@ -3713,10 +3785,115 @@ class MetricsService {
                 continue;
             }
 
-            $buckets['active']++;
+            if ((int)$site->public === 1) {
+                $buckets['active_public']++;
+                continue;
+            }
+
+            $buckets['active_private']++;
         }
 
         return $buckets;
+    }
+
+    protected function getOperationalStatusBuckets(): array {
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+        ]);
+        $buckets = [
+            'automatic' => 0,
+            'healthy' => 0,
+            'provisioning' => 0,
+            'dns_missing' => 0,
+            'unreachable' => 0,
+            'retired' => 0,
+        ];
+        $siteId = 0;
+        $status = '';
+
+        foreach ($siteIds as $siteId) {
+            $status = (string)get_site_meta((int)$siteId, 'rrze_msm_operational_status', true);
+
+            if ($status === '' || !isset($buckets[$status])) {
+                $buckets['automatic']++;
+                continue;
+            }
+
+            $buckets[$status]++;
+        }
+
+        return $buckets;
+    }
+
+    protected function filterFormattedSitesByOperationalStatus(array $sites, string $status): array {
+        $results = [];
+        $site = [];
+
+        foreach ($sites as $site) {
+            if ((string)($site['operational_status'] ?? '') === $status) {
+                $results[] = $site;
+            }
+        }
+
+        return $results;
+    }
+
+    protected function getProblemSites(array $sites): array {
+        $results = [];
+        $site = [];
+        $status = '';
+
+        foreach ($sites as $site) {
+            $status = (string)($site['operational_status'] ?? '');
+
+            if (in_array($status, ['provisioning', 'dns_missing', 'unreachable'], true)) {
+                $results[] = $site;
+            }
+        }
+
+        return $results;
+    }
+
+    protected function getNewMonitoringAlerts(array $sites): array {
+        $results = [];
+        $site = [];
+        $previousRun = (string)get_site_option('rrze_msm_monitoring_previous_run', '');
+        $previousRunTimestamp = 0;
+        $changedTimestamp = 0;
+        $status = '';
+
+        if ($previousRun === '' || $previousRun === '0000-00-00 00:00:00') {
+            return [];
+        }
+
+        $previousRunTimestamp = (int)strtotime($previousRun . ' GMT');
+
+        if ($previousRunTimestamp <= 0) {
+            return [];
+        }
+
+        foreach ($sites as $site) {
+            $status = (string)($site['operational_status'] ?? '');
+
+            if (!in_array($status, ['dns_missing', 'unreachable'], true)) {
+                continue;
+            }
+
+            if ((string)($site['operational_status_source'] ?? '') !== 'auto') {
+                continue;
+            }
+
+            $changedTimestamp = (int)strtotime((string)($site['operational_status_changed_at'] ?? '') . ' GMT');
+
+            if ($changedTimestamp <= $previousRunTimestamp) {
+                continue;
+            }
+
+            $results[] = $site;
+        }
+
+        return $results;
     }
 
     protected function countLocallyUsedPlugins(array $pluginStats): int {
@@ -4026,12 +4203,18 @@ class MetricsService {
             'summary',
             'site_table_default_limit',
             'status_distribution',
+            'operational_status_distribution',
             'network_storage_usage',
             'recent_sites',
             'site_overview',
             'archived_sites',
             'blocked_sites',
             'deleted_sites',
+            'problem_sites',
+            'new_monitoring_alerts',
+            'provisioning_sites',
+            'dns_missing_sites',
+            'unreachable_sites',
             'themes',
             'theme_usage',
             'editor_usage',

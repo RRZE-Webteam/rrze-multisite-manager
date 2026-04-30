@@ -57,6 +57,27 @@ body.rrze-msm-mode-dark {
     justify-content: flex-end;
 }
 
+.rrze-msm-site-header-search {
+    position: relative;
+    min-width: 320px;
+    max-width: 480px;
+    flex: 1 1 360px;
+}
+
+.rrze-msm-site-header-search .regular-text,
+.rrze-msm-site-header-search input[type="search"] {
+    width: 100%;
+    margin: 0;
+}
+
+.rrze-msm-site-header-search .rrze-msm-site-search-results {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+}
+
 .rrze-msm-view-form {
     margin: 0;
 }
@@ -244,6 +265,13 @@ body.rrze-msm-mode-dark {
 
     .rrze-msm-header-controls {
         justify-content: flex-start;
+    }
+
+    .rrze-msm-site-header-search {
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+        flex-basis: 100%;
     }
 }
 

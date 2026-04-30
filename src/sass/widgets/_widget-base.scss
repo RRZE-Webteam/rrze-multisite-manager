@@ -600,6 +600,10 @@
     margin-top: 12px;
 }
 
+.rrze-msm-site-header-search .rrze-msm-site-search-results {
+    margin-top: 0;
+}
+
 .rrze-msm-site-search-list {
     margin: 0;
 }
@@ -804,6 +808,10 @@
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
+.rrze-msm-overview-tab:visited {
+    color: inherit;
+}
+
 .rrze-msm-overview-tab:hover,
 .rrze-msm-overview-tab:focus {
     opacity: 1;
@@ -821,8 +829,22 @@
     color: var(--rrze-msm-status-active-text);
 }
 
+.rrze-msm-tab-positive:visited,
+.rrze-msm-tab-positive:hover,
+.rrze-msm-tab-positive:focus,
+.rrze-msm-tab-positive.is-active {
+    color: var(--rrze-msm-status-active-text);
+}
+
 .rrze-msm-tab-all {
     background: var(--rrze-msm-tab-all-bg);
+    color: var(--rrze-msm-tab-all-text);
+}
+
+.rrze-msm-tab-all:visited,
+.rrze-msm-tab-all:hover,
+.rrze-msm-tab-all:focus,
+.rrze-msm-tab-all.is-active {
     color: var(--rrze-msm-tab-all-text);
 }
 
@@ -831,11 +853,19 @@
     color: var(--rrze-msm-status-archive-text);
 }
 
+.rrze-msm-tab-warning:visited,
+.rrze-msm-tab-warning:hover,
+.rrze-msm-tab-warning:focus,
+.rrze-msm-tab-warning.is-active {
+    color: var(--rrze-msm-status-archive-text);
+}
+
 .rrze-msm-tab-gold {
     background: var(--rrze-msm-status-blocked-bg);
     color: var(--rrze-msm-status-blocked-text);
 }
 
+.rrze-msm-tab-gold:visited,
 .rrze-msm-tab-gold:hover,
 .rrze-msm-tab-gold:focus,
 .rrze-msm-tab-gold.is-active {
@@ -847,13 +877,102 @@
     color: var(--rrze-msm-status-delete-text);
 }
 
+.rrze-msm-tab-danger:visited,
+.rrze-msm-tab-danger:hover,
+.rrze-msm-tab-danger:focus,
+.rrze-msm-tab-danger.is-active {
+    color: var(--rrze-msm-status-delete-text);
+}
+
 .rrze-msm-tab-info {
     background: var(--rrze-msm-status-info-bg);
     color: var(--rrze-msm-status-info-text);
 }
 
+.rrze-msm-tab-info:visited,
+.rrze-msm-tab-info:hover,
+.rrze-msm-tab-info:focus,
+.rrze-msm-tab-info.is-active {
+    color: var(--rrze-msm-status-info-text);
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab span,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab strong {
+    color: currentColor;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive.is-active {
+    color: var(--rrze-msm-status-active-text) !important;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all.is-active {
+    color: var(--rrze-msm-tab-all-text) !important;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning.is-active {
+    color: var(--rrze-msm-status-archive-text) !important;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold.is-active {
+    color: var(--rrze-msm-status-blocked-text) !important;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger.is-active {
+    color: var(--rrze-msm-status-delete-text) !important;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info.is-active {
+    color: var(--rrze-msm-status-info-text) !important;
+}
+
 .rrze-msm-site-details-actions .rrze-msm-site-actions {
     margin-top: 6px;
+}
+
+.rrze-msm-site-status-monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+.rrze-msm-site-status-monitoring-data,
+.rrze-msm-site-status-monitoring-form {
+    min-width: 0;
+}
+
+.rrze-msm-site-status-monitoring-form .form-table {
+    margin-top: 0;
 }
 
 .rrze-msm-site-status-section + .rrze-msm-site-status-section {

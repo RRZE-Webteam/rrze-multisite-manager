@@ -178,7 +178,7 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)($site['last_updated_timestamp'] ?? 0)) . '"';
             echo ' data-sort-admin-email="' . esc_attr((string)($site['admin_email_sort'] ?? strtolower((string)($site['admin_email'] ?? '')))) . '"';
             echo '>';
-            echo '<td><strong><a href="' . esc_url($this->getSiteDetailsPageUrl((int)($site['id'] ?? 0))) . '">' . esc_html((string)$site['name']) . '</a></strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
+            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
             echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
             echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unbekannt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
@@ -254,7 +254,7 @@ abstract class Widgets {
             echo ' data-sort-storage="' . esc_attr((string)($site['storage']['used_bytes'] ?? 0)) . '"';
             echo '>';
             echo '<td class="rrze-msm-site-branding-cell">' . $this->renderSiteBranding((array)($site['branding'] ?? []), (string)$site['name']) . '</td>';
-            echo '<td><strong><a href="' . esc_url($this->getSiteDetailsPageUrl((int)($site['id'] ?? 0))) . '">' . esc_html((string)$site['name']) . '</a></strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
+            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
             echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
             echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unbekannt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
@@ -331,10 +331,156 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site[$statusMetaKey] ?? ''))) . '"';
             echo ' data-sort-admin-email=""';
             echo '>';
-            echo '<td><strong><a href="' . esc_url($this->getSiteDetailsPageUrl((int)($site['id'] ?? 0))) . '">' . esc_html((string)$site['name']) . '</a></strong><br><a href="' . esc_url((string)$site['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html((string)$site['url']) . '</a></td>';
+            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site[$statusMetaKey] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusUser((int)($site['status_user_id'] ?? 0)) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['status_note'] ?? '')) . '</td>';
+            echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+        echo '<div class="tablenav bottom">';
+        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Seitennavigation', 'rrze-multisite-manager') . '"></div>';
+        echo '</div>';
+        echo '</div>';
+
+        return (string)ob_get_clean();
+    }
+
+    public function renderOperationalStatusSiteTable(array $sites, array $args = []): string {
+        $site = [];
+        $tableId = sanitize_key((string)($args['table_id'] ?? 'operational-status-sites'));
+        $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
+        $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
+        $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
+        $option = 0;
+
+        if (empty($sites)) {
+            return '<p>' . esc_html__('Keine problematischen Websites vorhanden.', 'rrze-multisite-manager') . '</p>';
+        }
+
+        ob_start();
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="tablenav top">';
+        echo '<div class="alignleft actions">';
+        echo '<label for="rrze-msm-operational-per-page-' . esc_attr($tableId) . '">' . esc_html__('Anzeigen:', 'rrze-multisite-manager') . '</label> ';
+        echo '<select class="rrze-msm-site-table-per-page" id="rrze-msm-operational-per-page-' . esc_attr($tableId) . '">';
+
+        foreach ($perPageOptions as $option) {
+            echo '<option value="' . esc_attr((string)$option) . '"' . selected($option, $defaultPerPage, false) . '>';
+
+            if ($option === $defaultPerPage) {
+                echo esc_html(sprintf(__('Standard (%d)', 'rrze-multisite-manager'), $option));
+            } else {
+                echo esc_html((string)$option);
+            }
+
+            echo '</option>';
+        }
+
+        echo '</select>';
+        echo '</div>';
+        echo '</div>';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table">';
+        echo '<thead><tr>';
+        echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
+        echo '<th>' . esc_html__('Betriebsstatus', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('DNS', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Letzte Prüfung', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Notiz', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ($sites as $site) {
+            echo '<tr';
+            echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
+            echo ' data-sort-registered="0"';
+            echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site['last_availability_check'] ?? ''))) . '"';
+            echo ' data-sort-admin-email=""';
+            echo '>';
+            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
+            echo '<td>' . $this->renderOperationalStatusBadge((string)($site['operational_status_label'] ?? ''), (string)($site['operational_status'] ?? '')) . '</td>';
+            echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))) . '</td>';
+            echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))) . '</td>';
+            echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['last_availability_check'] ?? ''))) . '</td>';
+            echo '<td>' . $this->renderStatusNote((string)($site['monitoring_note'] ?? '')) . '</td>';
+            echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+        echo '<div class="tablenav bottom">';
+        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Seitennavigation', 'rrze-multisite-manager') . '"></div>';
+        echo '</div>';
+        echo '</div>';
+
+        return (string)ob_get_clean();
+    }
+
+    public function renderMonitoringAlertSiteTable(array $sites, array $args = []): string {
+        $site = [];
+        $tableId = sanitize_key((string)($args['table_id'] ?? 'monitoring-alert-sites'));
+        $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
+        $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'last-updated'));
+        $sortDirection = strtolower((string)($args['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
+        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
+        $option = 0;
+
+        if (empty($sites)) {
+            return '<p>' . esc_html__('Seit dem letzten Monitoring-Lauf gibt es keine neuen technischen Warnungen.', 'rrze-multisite-manager') . '</p>';
+        }
+
+        ob_start();
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="tablenav top">';
+        echo '<div class="alignleft actions">';
+        echo '<label for="rrze-msm-monitoring-alerts-per-page-' . esc_attr($tableId) . '">' . esc_html__('Anzeigen:', 'rrze-multisite-manager') . '</label> ';
+        echo '<select class="rrze-msm-site-table-per-page" id="rrze-msm-monitoring-alerts-per-page-' . esc_attr($tableId) . '">';
+
+        foreach ($perPageOptions as $option) {
+            echo '<option value="' . esc_attr((string)$option) . '"' . selected($option, $defaultPerPage, false) . '>';
+
+            if ($option === $defaultPerPage) {
+                echo esc_html(sprintf(__('Standard (%d)', 'rrze-multisite-manager'), $option));
+            } else {
+                echo esc_html((string)$option);
+            }
+
+            echo '</option>';
+        }
+
+        echo '</select>';
+        echo '</div>';
+        echo '</div>';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table">';
+        echo '<thead><tr>';
+        echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
+        echo '<th>' . esc_html__('Neuer Betriebsstatus', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Vorheriger Status', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Geändert am', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('DNS', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ($sites as $site) {
+            echo '<tr';
+            echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
+            echo ' data-sort-registered="0"';
+            echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site['operational_status_changed_at'] ?? ''))) . '"';
+            echo ' data-sort-admin-email=""';
+            echo '>';
+            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
+            echo '<td>' . $this->renderOperationalStatusBadge((string)($site['operational_status_label'] ?? ''), (string)($site['operational_status'] ?? '')) . '</td>';
+            echo '<td>' . esc_html(trim((string)($site['previous_operational_status_label'] ?? '')) !== '' ? (string)$site['previous_operational_status_label'] : __('Nicht gesetzt', 'rrze-multisite-manager')) . '</td>';
+            echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['operational_status_changed_at'] ?? ''))) . '</td>';
+            echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))) . '</td>';
+            echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
             echo '</tr>';
         }
@@ -444,6 +590,7 @@ abstract class Widgets {
             'warning' => 'var(--rrze-msm-warning)',
             'danger' => 'var(--rrze-msm-danger)',
             'info' => 'var(--rrze-msm-info)',
+            'blocked' => 'var(--rrze-msm-status-blocked-visual)',
             'neutral' => 'var(--rrze-msm-neutral)',
             'theme-1' => '#175cd3',
             'theme-2' => '#137333',
@@ -513,6 +660,7 @@ abstract class Widgets {
         $isDeleted = !empty($site['is_deleted']);
         $isNormal = !$isArchived && !$isSpam && !$isDeleted;
         $isRestricted = $isArchived || $isSpam;
+        $isTechnicallyUnavailable = $this->isTechnicallyUnavailableSite($site);
         $actions = [];
 
         if ($siteId <= 0) {
@@ -526,20 +674,22 @@ abstract class Widgets {
             false,
             $displayMode
         );
-        $actions[] = $this->renderSiteActionLink(
-            get_admin_url($siteId),
-            __('Dashboard', 'rrze-multisite-manager'),
-            'dashboard',
-            false,
-            $displayMode
-        );
-        $actions[] = $this->renderSiteActionLink(
-            (string)($site['url'] ?? ''),
-            __('Aufrufen', 'rrze-multisite-manager'),
-            'visibility',
-            true,
-            $displayMode
-        );
+        if (!$isTechnicallyUnavailable) {
+            $actions[] = $this->renderSiteActionLink(
+                get_admin_url($siteId),
+                __('Dashboard', 'rrze-multisite-manager'),
+                'dashboard',
+                false,
+                $displayMode
+            );
+            $actions[] = $this->renderSiteActionLink(
+                (string)($site['url'] ?? ''),
+                __('Aufrufen', 'rrze-multisite-manager'),
+                'visibility',
+                true,
+                $displayMode
+            );
+        }
 
         if ($isMainSite) {
             return '<div class="rrze-msm-site-actions">' . implode('', $actions) . '</div>';
@@ -702,6 +852,60 @@ abstract class Widgets {
         }
 
         return '<div class="rrze-msm-status-note">' . nl2br(esc_html($note)) . '</div>';
+    }
+
+    protected function renderOperationalStatusBadge(string $label, string $status): string {
+        $accent = 'neutral';
+
+        if ($status === 'healthy') {
+            $accent = 'positive';
+        } elseif ($status === 'provisioning') {
+            $accent = 'info';
+        } elseif ($status === 'dns_missing') {
+            $accent = 'danger';
+        } elseif ($status === 'unreachable') {
+            $accent = 'warning';
+        }
+
+        if (trim($label) === '') {
+            $label = __('Nicht gesetzt', 'rrze-multisite-manager');
+        }
+
+        return '<span class="rrze-msm-badge rrze-msm-badge-' . esc_attr($accent) . '">' . esc_html($label) . '</span>';
+    }
+
+    protected function renderSiteTitleAndUrl(array $site): string {
+        $siteId = (int)($site['id'] ?? 0);
+        $siteName = (string)($site['name'] ?? '');
+        $siteUrl = (string)($site['url'] ?? '');
+        $detailsUrl = $siteId > 0 ? $this->getSiteDetailsPageUrl($siteId) : '';
+        $html = '<strong>';
+
+        if ($detailsUrl !== '') {
+            $html .= '<a href="' . esc_url($detailsUrl) . '">' . esc_html($siteName) . '</a>';
+        } else {
+            $html .= esc_html($siteName);
+        }
+
+        $html .= '</strong>';
+
+        if ($siteUrl !== '') {
+            $html .= '<br>';
+
+            if ($this->isTechnicallyUnavailableSite($site)) {
+                $html .= '<span>' . esc_html($siteUrl) . '</span>';
+            } else {
+                $html .= '<a href="' . esc_url($siteUrl) . '" target="_blank" rel="noopener noreferrer">' . esc_html($siteUrl) . '</a>';
+            }
+        }
+
+        return $html;
+    }
+
+    protected function isTechnicallyUnavailableSite(array $site): bool {
+        $operationalStatus = (string)($site['operational_status'] ?? '');
+
+        return in_array($operationalStatus, ['dns_missing', 'unreachable'], true);
     }
 
     protected function renderSiteBranding(array $branding, string $siteName): string {

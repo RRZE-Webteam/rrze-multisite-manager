@@ -31,33 +31,50 @@ class SummaryWidget extends Widgets {
         return [
             'cards' => [
                 [
-                    'label' => __('Sites gesamt', 'rrze-multisite-manager'),
+                    'label' => __('Sites', 'rrze-multisite-manager'),
                     'value' => $summary['total_sites'] ?? 0,
+                    'detail' => sprintf(
+                        __('davon %d aktiv', 'rrze-multisite-manager'),
+                        (int)($summary['active_sites'] ?? 0)
+                    ),
                     'accent' => 'neutral',
                 ],
                 [
-                    'label' => __('Aktive Sites', 'rrze-multisite-manager'),
-                    'value' => $summary['active_sites'] ?? 0,
+                    'label' => __('Benutzer', 'rrze-multisite-manager'),
+                    'value' => $summary['total_users'] ?? 0,
+                    'detail' => sprintf(
+                        __('davon %d Superadmins', 'rrze-multisite-manager'),
+                        (int)($summary['super_admins'] ?? 0)
+                    ),
                     'accent' => 'positive',
                 ],
                 [
-                    'label' => __('Gesperrt', 'rrze-multisite-manager'),
-                    'value' => $summary['spam_sites'] ?? 0,
+                    'label' => __('Plugins', 'rrze-multisite-manager'),
+                    'value' => $summary['total_plugins'] ?? 0,
+                    'detail' => sprintf(
+                        __('davon %d netzwerkweit aktiv', 'rrze-multisite-manager'),
+                        (int)($summary['network_active_plugins'] ?? 0)
+                    ),
                     'accent' => 'neutral',
                 ],
                 [
-                    'label' => __('Archiviert', 'rrze-multisite-manager'),
-                    'value' => $summary['archived_sites'] ?? 0,
+                    'label' => __('Themes', 'rrze-multisite-manager'),
+                    'value' => $summary['total_themes'] ?? 0,
+                    'detail' => sprintf(
+                        __('davon %d netzwerkweit verfügbar', 'rrze-multisite-manager'),
+                        (int)($summary['network_enabled_themes'] ?? 0)
+                    ),
                     'accent' => 'warning',
                 ],
                 [
-                    'label' => __('Zum Löschen markiert', 'rrze-multisite-manager'),
-                    'value' => $summary['deleted_sites'] ?? 0,
-                    'accent' => 'danger',
-                ],
-                [
-                    'label' => __('Neue Sites (30 Tage)', 'rrze-multisite-manager'),
-                    'value' => $summary['recent_sites_30'] ?? 0,
+                    'label' => __('Speicherbelegung', 'rrze-multisite-manager'),
+                    'value' => (string)($summary['total_storage_used_label'] ?? ''),
+                    'detail' => !empty($summary['has_unlimited_storage_site'])
+                        ? __('mindestens eine Site unbegrenzt', 'rrze-multisite-manager')
+                        : sprintf(
+                            __('von %s', 'rrze-multisite-manager'),
+                            (string)($summary['total_storage_max_label'] ?? '')
+                        ),
                     'accent' => 'info',
                 ],
             ],

@@ -15,6 +15,9 @@ class Config {
                 'textdomain' => 'rrze-multisite-manager',
                 'version' => '0.1.0',
                 'metrics_cache_ttl' => HOUR_IN_SECONDS,
+                'monitoring_schedule_slug' => 'rrze_msm_every_six_hours',
+                'monitoring_interval' => 6 * HOUR_IN_SECONDS,
+                'monitoring_hook' => 'rrze_msm_check_site_availability',
             ],
             'menu_settings' => [
                 'page_title' => __('RRZE Multisite Manager', 'rrze-multisite-manager'),
@@ -39,6 +42,11 @@ class Config {
                     'title' => __('Dashboard', 'rrze-multisite-manager'),
                     'description' => __('Einstellungen für Dashboard-Widgets und Aktivitätsauswertungen.', 'rrze-multisite-manager'),
                 ],
+                [
+                    'id' => 'monitoring',
+                    'title' => __('Monitoring', 'rrze-multisite-manager'),
+                    'description' => __('Einstellungen für technische Erreichbarkeits- und Verfügbarkeitsprüfungen.', 'rrze-multisite-manager'),
+                ],
             ],
             'settings_fields' => [
                 'dashboard' => [
@@ -59,6 +67,44 @@ class Config {
                         'min' => 1,
                     ],
                 ],
+                'monitoring' => [
+                    [
+                        'name' => 'monitoring_interval_hours',
+                        'label' => __('Prüfintervall in Stunden', 'rrze-multisite-manager'),
+                        'desc' => __('Wie oft der Verfügbarkeitscheck für alle Sites laufen soll.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 6,
+                        'min' => 1,
+                        'max' => 168,
+                    ],
+                    [
+                        'name' => 'provisioning_grace_hours',
+                        'label' => __('Karenzzeit für Einrichtung in Stunden', 'rrze-multisite-manager'),
+                        'desc' => __('Solange eine neue Site jünger ist als diese Karenzzeit, bleibt sie bei technischen Problemen im Status „Einrichtung läuft“ statt sofort als Problemfall zu gelten.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 48,
+                        'min' => 0,
+                        'max' => 720,
+                    ],
+                    [
+                        'name' => 'dns_failure_threshold',
+                        'label' => __('Schwelle für DNS-Fehlerläufe', 'rrze-multisite-manager'),
+                        'desc' => __('Erst ab dieser Zahl aufeinanderfolgender DNS-Fehlläufe wird der Betriebsstatus auf „DNS fehlt“ gesetzt.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 2,
+                        'min' => 1,
+                        'max' => 20,
+                    ],
+                    [
+                        'name' => 'http_failure_threshold',
+                        'label' => __('Schwelle für HTTP-Fehlerläufe', 'rrze-multisite-manager'),
+                        'desc' => __('Erst ab dieser Zahl aufeinanderfolgender HTTP-Fehlläufe wird der Betriebsstatus auf „Technisch nicht erreichbar“ gesetzt.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 2,
+                        'min' => 1,
+                        'max' => 20,
+                    ],
+                ],
             ],
         ];
     }
@@ -77,6 +123,18 @@ class Config {
 
     public function getMetricsCacheTtl(): int {
         return (int)($this->config['constants']['metrics_cache_ttl'] ?? HOUR_IN_SECONDS);
+    }
+
+    public function getMonitoringScheduleSlug(): string {
+        return (string)($this->config['constants']['monitoring_schedule_slug'] ?? 'rrze_msm_every_six_hours');
+    }
+
+    public function getMonitoringInterval(): int {
+        return (int)($this->config['constants']['monitoring_interval'] ?? (6 * HOUR_IN_SECONDS));
+    }
+
+    public function getMonitoringHook(): string {
+        return (string)($this->config['constants']['monitoring_hook'] ?? 'rrze_msm_check_site_availability');
     }
 
     public function getSections(): array {

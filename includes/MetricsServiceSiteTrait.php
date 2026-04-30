@@ -75,7 +75,18 @@ trait MetricsServiceSiteTrait {
         return $results;
     }
 
-    protected function getSummary(): array {
+    protected function getSummary(array $networkStorageUsage = []): array {
+        $totalUsers = function_exists('get_user_count') ? (int)get_user_count() : 0;
+        $superAdmins = function_exists('get_super_admins') ? count((array)get_super_admins()) : 0;
+        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
+        $allowedThemes = (array)get_site_option('allowedthemes', []);
+        $totalThemes = count(wp_get_themes());
+        $totalPlugins = 0;
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $totalPlugins = count(get_plugins());
+
         return [
             'total_sites' => $this->countSites(),
             'active_sites' => $this->countSites([
@@ -96,6 +107,17 @@ trait MetricsServiceSiteTrait {
                 'spam' => 1,
             ]),
             'recent_sites_30' => $this->countRecentSites(30),
+            'total_users' => $totalUsers,
+            'super_admins' => $superAdmins,
+            'total_plugins' => $totalPlugins,
+            'network_active_plugins' => count($networkActivePlugins),
+            'total_themes' => $totalThemes,
+            'network_enabled_themes' => count($allowedThemes),
+            'total_storage_used_bytes' => (int)($networkStorageUsage['total_used_bytes'] ?? 0),
+            'total_storage_used_label' => (string)($networkStorageUsage['total_used_label'] ?? ''),
+            'total_storage_max_bytes' => (int)($networkStorageUsage['total_max_bytes'] ?? 0),
+            'total_storage_max_label' => (string)($networkStorageUsage['total_max_label'] ?? ''),
+            'has_unlimited_storage_site' => !empty($networkStorageUsage['has_unlimited_site']),
         ];
     }
 
@@ -104,9 +126,14 @@ trait MetricsServiceSiteTrait {
         $totalSites = max(1, array_sum($siteBuckets));
         $rows = [
             [
-                'label' => __('Aktiv', 'rrze-multisite-manager'),
-                'value' => (int)$siteBuckets['active'],
+                'label' => __('Aktiv und öffentlich', 'rrze-multisite-manager'),
+                'value' => (int)$siteBuckets['active_public'],
                 'accent' => 'positive',
+            ],
+            [
+                'label' => __('Aktiv, Suchmaschinen ausgeschlossen', 'rrze-multisite-manager'),
+                'value' => (int)$siteBuckets['active_private'],
+                'accent' => 'info',
             ],
             [
                 'label' => __('Archiviert', 'rrze-multisite-manager'),
@@ -116,12 +143,56 @@ trait MetricsServiceSiteTrait {
             [
                 'label' => __('Gesperrt', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['spam'],
-                'accent' => 'neutral',
+                'accent' => 'blocked',
             ],
             [
                 'label' => __('Zum Löschen markiert', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['deleted'],
                 'accent' => 'danger',
+            ],
+        ];
+        $index = 0;
+
+        foreach ($rows as $index => $row) {
+            $rows[$index]['percent'] = (int)round((((int)$row['value']) / $totalSites) * 100);
+        }
+
+        return $rows;
+    }
+
+    protected function getOperationalStatusDistribution(): array {
+        $statusBuckets = $this->getOperationalStatusBuckets();
+        $totalSites = max(1, array_sum($statusBuckets));
+        $rows = [
+            [
+                'label' => __('Nicht gesetzt / automatisch', 'rrze-multisite-manager'),
+                'value' => (int)$statusBuckets['automatic'],
+                'accent' => 'theme-1',
+            ],
+            [
+                'label' => __('Technisch erreichbar', 'rrze-multisite-manager'),
+                'value' => (int)$statusBuckets['healthy'],
+                'accent' => 'positive',
+            ],
+            [
+                'label' => __('Einrichtung läuft', 'rrze-multisite-manager'),
+                'value' => (int)$statusBuckets['provisioning'],
+                'accent' => 'info',
+            ],
+            [
+                'label' => __('DNS fehlt', 'rrze-multisite-manager'),
+                'value' => (int)$statusBuckets['dns_missing'],
+                'accent' => 'danger',
+            ],
+            [
+                'label' => __('Technisch nicht erreichbar', 'rrze-multisite-manager'),
+                'value' => (int)$statusBuckets['unreachable'],
+                'accent' => 'warning',
+            ],
+            [
+                'label' => __('Außer Betrieb', 'rrze-multisite-manager'),
+                'value' => (int)$statusBuckets['retired'],
+                'accent' => 'neutral',
             ],
         ];
         $index = 0;

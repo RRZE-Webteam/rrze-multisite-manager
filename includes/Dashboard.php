@@ -12,7 +12,10 @@ use RRZE\MultisiteManager\Widgets\InactiveSitesWidget;
 use RRZE\MultisiteManager\Widgets\InactivePluginsWidget;
 use RRZE\MultisiteManager\Widgets\InactiveThemesWidget;
 use RRZE\MultisiteManager\Widgets\NetworkStorageUsageWidget;
+use RRZE\MultisiteManager\Widgets\NewMonitoringAlertsWidget;
+use RRZE\MultisiteManager\Widgets\OperationalStatusWidget;
 use RRZE\MultisiteManager\Widgets\PluginUsageWidget;
+use RRZE\MultisiteManager\Widgets\ProblemSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
 use RRZE\MultisiteManager\Widgets\SiteOverviewWidget;
@@ -33,6 +36,16 @@ class Dashboard {
     protected const META_SPAM_AT = 'rrze_msm_spam_at';
     protected const META_STATUS_NOTE = 'rrze_msm_status_note';
     protected const META_STATUS_USER_ID = 'rrze_msm_status_user_id';
+    protected const META_OPERATIONAL_STATUS = 'rrze_msm_operational_status';
+    protected const META_OPERATIONAL_STATUS_SOURCE = 'rrze_msm_operational_status_source';
+    protected const META_PREVIOUS_OPERATIONAL_STATUS = 'rrze_msm_previous_operational_status';
+    protected const META_OPERATIONAL_STATUS_CHANGED_AT = 'rrze_msm_operational_status_changed_at';
+    protected const META_DNS_STATUS = 'rrze_msm_dns_status';
+    protected const META_HTTP_STATUS = 'rrze_msm_http_status';
+    protected const META_LAST_AVAILABILITY_CHECK = 'rrze_msm_last_availability_check';
+    protected const META_LAST_DNS_OK_AT = 'rrze_msm_last_dns_ok_at';
+    protected const META_LAST_HTTP_OK_AT = 'rrze_msm_last_http_ok_at';
+    protected const META_MONITORING_NOTE = 'rrze_msm_monitoring_note';
 
     public function __construct(Plugin $plugin, Settings $settings) {
         $this->plugin = $plugin;
@@ -58,6 +71,7 @@ class Dashboard {
         add_action('wp_ajax_rrze_msm_search_themes', [$this, 'ajaxSearchThemes']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('network_admin_edit_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
+        add_action('network_admin_edit_rrze_multisite_manager_update_site_monitoring_status', [$this, 'handleSiteMonitoringStatusUpdate']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
@@ -336,7 +350,7 @@ class Dashboard {
         $widget = new SiteOverviewWidget($this->plugin, $this->config);
         $summary = is_array($dashboardData['summary'] ?? null) ? $dashboardData['summary'] : [];
 
-        if (!in_array($currentTab, ['all', 'active', 'archived', 'blocked', 'deleted'], true)) {
+        if (!in_array($currentTab, ['all', 'active', 'archived', 'blocked', 'deleted', 'provisioning', 'dns-missing', 'unreachable'], true)) {
             $currentTab = 'all';
         }
 
@@ -406,6 +420,45 @@ class Dashboard {
                     network_admin_url('admin.php')
                 ),
             ],
+            [
+                'slug' => 'provisioning',
+                'label' => __('Einrichtung läuft', 'rrze-multisite-manager'),
+                'count' => count((array)($dashboardData['provisioning_sites'] ?? [])),
+                'class' => 'rrze-msm-tab-info',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'provisioning',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'dns-missing',
+                'label' => __('DNS fehlt', 'rrze-multisite-manager'),
+                'count' => count((array)($dashboardData['dns_missing_sites'] ?? [])),
+                'class' => 'rrze-msm-tab-danger',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'dns-missing',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
+            [
+                'slug' => 'unreachable',
+                'label' => __('Technisch nicht erreichbar', 'rrze-multisite-manager'),
+                'count' => count((array)($dashboardData['unreachable_sites'] ?? [])),
+                'class' => 'rrze-msm-tab-gold',
+                'url' => add_query_arg(
+                    [
+                        'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                        'tab' => 'unreachable',
+                    ],
+                    network_admin_url('admin.php')
+                ),
+            ],
         ];
 
         $tabTables = [
@@ -463,6 +516,36 @@ class Dashboard {
                     'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
                     'sort_key' => 'registered',
                     'sort_direction' => 'desc',
+                    'action_mode' => 'text',
+                ]
+            ),
+            'provisioning' => $widget->renderOperationalStatusSiteTable(
+                $dashboardData['provisioning_sites'] ?? [],
+                [
+                    'table_id' => 'site-overview-page-provisioning',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
+                    'action_mode' => 'text',
+                ]
+            ),
+            'dns-missing' => $widget->renderOperationalStatusSiteTable(
+                $dashboardData['dns_missing_sites'] ?? [],
+                [
+                    'table_id' => 'site-overview-page-dns-missing',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
+                    'action_mode' => 'text',
+                ]
+            ),
+            'unreachable' => $widget->renderOperationalStatusSiteTable(
+                $dashboardData['unreachable_sites'] ?? [],
+                [
+                    'table_id' => 'site-overview-page-unreachable',
+                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
                     'action_mode' => 'text',
                 ]
             ),
@@ -629,6 +712,75 @@ class Dashboard {
                 'archived_at_label' => $this->formatStatusDate((string)($siteDetails['archived_at'] ?? '')),
                 'blocked_at_label' => $this->formatStatusDate((string)($siteDetails['spam_at'] ?? '')),
                 'status_sections' => $statusSections,
+                'site_monitoring_rows' => [
+                    [
+                        'label' => __('Betriebsstatus', 'rrze-multisite-manager'),
+                        'value' => (string)($siteDetails['operational_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager')),
+                    ],
+                    [
+                        'label' => __('Quelle des Betriebsstatus', 'rrze-multisite-manager'),
+                        'value' => !empty($siteDetails['operational_status_source']) && (string)$siteDetails['operational_status_source'] === 'manual'
+                            ? __('Manuell gesetzt', 'rrze-multisite-manager')
+                            : __('Automatisch / nicht gesetzt', 'rrze-multisite-manager'),
+                    ],
+                    [
+                        'label' => __('Vorheriger Betriebsstatus', 'rrze-multisite-manager'),
+                        'value' => trim((string)($siteDetails['previous_operational_status_label'] ?? '')) !== ''
+                            ? (string)$siteDetails['previous_operational_status_label']
+                            : __('Nicht gesetzt', 'rrze-multisite-manager'),
+                    ],
+                    [
+                        'label' => __('Betriebsstatus geändert am', 'rrze-multisite-manager'),
+                        'value' => $this->formatStatusDate((string)($siteDetails['operational_status_changed_at'] ?? '')),
+                    ],
+                    [
+                        'label' => __('DNS-Status', 'rrze-multisite-manager'),
+                        'value' => (string)($siteDetails['dns_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager')),
+                    ],
+                    [
+                        'label' => __('HTTP-Status', 'rrze-multisite-manager'),
+                        'value' => (string)($siteDetails['http_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager')),
+                    ],
+                    [
+                        'label' => __('Letzte Verfügbarkeitsprüfung', 'rrze-multisite-manager'),
+                        'value' => $this->formatStatusDate((string)($siteDetails['last_availability_check'] ?? '')),
+                    ],
+                    [
+                        'label' => __('Zuletzt DNS erfolgreich', 'rrze-multisite-manager'),
+                        'value' => $this->formatStatusDate((string)($siteDetails['last_dns_ok_at'] ?? '')),
+                    ],
+                    [
+                        'label' => __('Zuletzt DNS fehlerhaft', 'rrze-multisite-manager'),
+                        'value' => $this->formatStatusDate((string)($siteDetails['last_dns_error_at'] ?? '')),
+                    ],
+                    [
+                        'label' => __('DNS-Fehlversuche in Folge', 'rrze-multisite-manager'),
+                        'value' => (string)number_format_i18n((int)($siteDetails['dns_failure_count'] ?? 0)),
+                    ],
+                    [
+                        'label' => __('Zuletzt HTTP erfolgreich', 'rrze-multisite-manager'),
+                        'value' => $this->formatStatusDate((string)($siteDetails['last_http_ok_at'] ?? '')),
+                    ],
+                    [
+                        'label' => __('Zuletzt HTTP fehlerhaft', 'rrze-multisite-manager'),
+                        'value' => $this->formatStatusDate((string)($siteDetails['last_http_error_at'] ?? '')),
+                    ],
+                    [
+                        'label' => __('HTTP-Fehlversuche in Folge', 'rrze-multisite-manager'),
+                        'value' => (string)number_format_i18n((int)($siteDetails['http_failure_count'] ?? 0)),
+                    ],
+                    [
+                        'label' => __('Monitoring-Notiz', 'rrze-multisite-manager'),
+                        'value' => trim((string)($siteDetails['monitoring_note'] ?? '')) !== ''
+                            ? (string)$siteDetails['monitoring_note']
+                            : __('Keine Notiz', 'rrze-multisite-manager'),
+                    ],
+                ],
+                'site_monitoring_update_action' => network_admin_url('edit.php?action=rrze_multisite_manager_update_site_monitoring_status'),
+                'site_monitoring_operational_options' => $this->getOperationalStatusOptions(),
+                'site_monitoring_notice_message' => !empty($_GET['monitoring-status-updated'])
+                    ? __('Der Betriebsstatus wurde aktualisiert.', 'rrze-multisite-manager')
+                    : '',
                 'site_users_url' => $siteId > 0 ? get_admin_url($siteId, 'users.php') : '',
                 'site_user_edit_base_url' => $siteId > 0 ? get_admin_url($siteId, 'user-edit.php') : '',
                 'site_options_groups' => $optionsGroups,
@@ -1164,6 +1316,69 @@ class Dashboard {
         exit;
     }
 
+    public function handleSiteMonitoringStatusUpdate(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        $operationalStatus = isset($_POST['operational_status']) ? sanitize_key((string)wp_unslash($_POST['operational_status'])) : '';
+        $monitoringNote = isset($_POST['monitoring_note']) ? sanitize_textarea_field((string)wp_unslash($_POST['monitoring_note'])) : '';
+        $redirectUrl = $this->getSiteDetailsUrl($siteId);
+        $allowedStatuses = array_keys($this->getOperationalStatusOptions());
+        $currentStatus = '';
+        $timestamp = current_time('mysql', true);
+
+        if (!current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You are not allowed to update monitoring data.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_update_site_monitoring_status_' . $siteId);
+
+        if ($siteId <= 0 || !get_site($siteId) instanceof \WP_Site) {
+            wp_die(esc_html__('Ungültige Site.', 'rrze-multisite-manager'));
+        }
+
+        if (!in_array($operationalStatus, $allowedStatuses, true)) {
+            wp_die(esc_html__('Ungültiger Betriebsstatus.', 'rrze-multisite-manager'));
+        }
+
+        $currentStatus = (string)get_site_meta($siteId, self::META_OPERATIONAL_STATUS, true);
+
+        if ($operationalStatus === '') {
+            if ($currentStatus !== '') {
+                update_site_meta($siteId, self::META_PREVIOUS_OPERATIONAL_STATUS, $currentStatus);
+                update_site_meta($siteId, self::META_OPERATIONAL_STATUS_CHANGED_AT, $timestamp);
+            }
+
+            delete_site_meta($siteId, self::META_OPERATIONAL_STATUS);
+            delete_site_meta($siteId, self::META_OPERATIONAL_STATUS_SOURCE);
+        } else {
+            if ($currentStatus !== $operationalStatus) {
+                update_site_meta($siteId, self::META_PREVIOUS_OPERATIONAL_STATUS, $currentStatus);
+                update_site_meta($siteId, self::META_OPERATIONAL_STATUS_CHANGED_AT, $timestamp);
+            }
+
+            update_site_meta($siteId, self::META_OPERATIONAL_STATUS, $operationalStatus);
+            update_site_meta($siteId, self::META_OPERATIONAL_STATUS_SOURCE, 'manual');
+        }
+
+        if ($monitoringNote === '') {
+            delete_site_meta($siteId, self::META_MONITORING_NOTE);
+        } else {
+            update_site_meta($siteId, self::META_MONITORING_NOTE, $monitoringNote);
+        }
+
+        $this->metrics->clearCache();
+
+        $redirectUrl = add_query_arg(
+            [
+                'site_id' => $siteId,
+                'monitoring-status-updated' => 'true',
+            ],
+            $this->getSiteDetailsUrl()
+        );
+
+        wp_safe_redirect($redirectUrl . '#rrze-msm-site-monitoring');
+        exit;
+    }
+
     public function handleSiteOptionGroupDelete(): void {
         $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
         $groupKey = isset($_POST['group_key']) ? sanitize_key((string)wp_unslash($_POST['group_key'])) : '';
@@ -1363,7 +1578,10 @@ class Dashboard {
         return [
             'summary' => new SummaryWidget($this->plugin, $this->config),
             'status' => new StatusWidget($this->plugin, $this->config),
+            'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
+            'new_monitoring_alerts' => new NewMonitoringAlertsWidget($this->plugin, $this->config),
+            'problem_sites' => new ProblemSitesWidget($this->plugin, $this->config),
             'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),
             'editor_usage' => new EditorUsageWidget($this->plugin, $this->config),
             'recent_sites' => new RecentSitesWidget($this->plugin, $this->config),
@@ -1676,6 +1894,17 @@ class Dashboard {
         }
 
         return get_date_from_gmt($dateValue, get_option('date_format') . ' ' . get_option('time_format'));
+    }
+
+    protected function getOperationalStatusOptions(): array {
+        return [
+            '' => __('Nicht gesetzt / automatisch', 'rrze-multisite-manager'),
+            'provisioning' => __('Einrichtung läuft', 'rrze-multisite-manager'),
+            'healthy' => __('Technisch erreichbar', 'rrze-multisite-manager'),
+            'dns_missing' => __('DNS fehlt', 'rrze-multisite-manager'),
+            'unreachable' => __('Technisch nicht erreichbar', 'rrze-multisite-manager'),
+            'retired' => __('Außer Betrieb', 'rrze-multisite-manager'),
+        ];
     }
 
     protected function renderSimpleMarkdown(string $markdown): string {

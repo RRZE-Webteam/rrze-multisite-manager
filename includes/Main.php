@@ -9,6 +9,7 @@ class Main {
     protected Settings $settings;
     protected Config $config;
     protected Dashboard $dashboard;
+    protected MonitoringService $monitoring;
 
     public function __construct(Plugin $plugin) {
         $this->plugin = $plugin;
@@ -23,5 +24,9 @@ class Main {
         $dashboard = new Dashboard($this->plugin, $settings);
         $dashboard->onLoaded();
         $this->dashboard = $dashboard;
+
+        $monitoring = new MonitoringService($this->plugin, $this->config);
+        $monitoring->onLoaded();
+        $this->monitoring = $monitoring;
     }
 }

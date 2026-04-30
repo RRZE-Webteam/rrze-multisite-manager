@@ -8,17 +8,4 @@
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
     <?php echo $this->renderPieChart($items, $empty_message); ?>
-    <?php if (!empty($status_explanations) && is_array($status_explanations)) { ?>
-        <div class="rrze-msm-status-explanations">
-            <h3><?php echo esc_html__('Kurz erklärt', 'rrze-multisite-manager'); ?></h3>
-            <ul>
-                <?php foreach ($status_explanations as $status_explanation) { ?>
-                    <li>
-                        <strong><?php echo esc_html((string)($status_explanation['label'] ?? '')); ?>:</strong>
-                        <?php echo esc_html((string)($status_explanation['text'] ?? '')); ?>
-                    </li>
-                <?php } ?>
-            </ul>
-        </div>
-    <?php } ?>
 </section>
