@@ -6,21 +6,28 @@
                 <p><?php echo esc_html__('Detailansicht eines einzelnen Plugins mit Metadaten, Nutzung und technischer Code-Auswertung.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
+                <?php if (!empty($plugin_details)) { ?>
+                    <div class="rrze-msm-site-header-search">
+                        <label class="screen-reader-text" for="rrze-msm-plugin-search"><?php echo esc_html__('Plugin suchen', 'rrze-multisite-manager'); ?></label>
+                        <input id="rrze-msm-plugin-search" class="regular-text" type="search" placeholder="<?php echo esc_attr($plugin_search_placeholder); ?>" autocomplete="off">
+                        <div class="rrze-msm-site-search-results" id="rrze-msm-plugin-search-results"></div>
+                    </div>
+                <?php } ?>
                 <button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="<?php echo esc_attr($mode_class === 'rrze-msm-mode-dark' ? 'light' : 'dark'); ?>">
                     <?php echo esc_html($mode_toggle_label); ?>
                 </button>
             </div>
         </div>
 
-        <section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-details-search">
-            <header class="rrze-msm-widget-header">
-                <h2><?php echo esc_html__('Plugin auswählen', 'rrze-multisite-manager'); ?></h2>
-                <p><?php echo esc_html__('Suche nach dem Namen eines Plugins und öffne danach die gewünschte Detailansicht.', 'rrze-multisite-manager'); ?></p>
-            </header>
-            <label class="screen-reader-text" for="rrze-msm-plugin-search"><?php echo esc_html__('Plugin suchen', 'rrze-multisite-manager'); ?></label>
-            <input id="rrze-msm-plugin-search" class="regular-text" type="search" placeholder="<?php echo esc_attr($plugin_search_placeholder); ?>" autocomplete="off">
-            <div class="rrze-msm-site-search-results" id="rrze-msm-plugin-search-results"></div>
-        </section>
+        <?php if (empty($plugin_details)) { ?>
+            <section class="rrze-msm-detail-search-entry">
+                <div class="rrze-msm-detail-search-entry-inner">
+                    <label class="screen-reader-text" for="rrze-msm-plugin-search"><?php echo esc_html__('Plugin suchen', 'rrze-multisite-manager'); ?></label>
+                    <input id="rrze-msm-plugin-search" class="regular-text" type="search" placeholder="<?php echo esc_attr($plugin_search_placeholder); ?>" autocomplete="off">
+                    <div class="rrze-msm-site-search-results" id="rrze-msm-plugin-search-results"></div>
+                </div>
+            </section>
+        <?php } ?>
 
         <?php if (!empty($plugin_details)) { ?>
             <section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-details-hero">

@@ -6,16 +6,28 @@
                 <p><?php echo esc_html__('Detailansicht einer einzelnen Website mit Status-, Benutzer-, Inhalts- und Speicherinformationen.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
-                <div class="rrze-msm-site-header-search">
-                    <label class="screen-reader-text" for="rrze-msm-site-search"><?php echo esc_html__('Website suchen', 'rrze-multisite-manager'); ?></label>
-                    <input id="rrze-msm-site-search" class="regular-text" type="search" placeholder="<?php echo esc_attr($site_search_placeholder); ?>" autocomplete="off">
-                    <div class="rrze-msm-site-search-results" id="rrze-msm-site-search-results"></div>
-                </div>
+                <?php if (!empty($site_details)) { ?>
+                    <div class="rrze-msm-site-header-search">
+                        <label class="screen-reader-text" for="rrze-msm-site-search"><?php echo esc_html__('Website suchen', 'rrze-multisite-manager'); ?></label>
+                        <input id="rrze-msm-site-search" class="regular-text" type="search" placeholder="<?php echo esc_attr($site_search_placeholder); ?>" autocomplete="off">
+                        <div class="rrze-msm-site-search-results" id="rrze-msm-site-search-results"></div>
+                    </div>
+                <?php } ?>
                 <button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="<?php echo esc_attr($mode_class === 'rrze-msm-mode-dark' ? 'light' : 'dark'); ?>">
                     <?php echo esc_html($mode_toggle_label); ?>
                 </button>
             </div>
         </div>
+
+        <?php if (empty($site_details)) { ?>
+            <section class="rrze-msm-detail-search-entry">
+                <div class="rrze-msm-detail-search-entry-inner">
+                    <label class="screen-reader-text" for="rrze-msm-site-search"><?php echo esc_html__('Website suchen', 'rrze-multisite-manager'); ?></label>
+                    <input id="rrze-msm-site-search" class="regular-text" type="search" placeholder="<?php echo esc_attr($site_search_placeholder); ?>" autocomplete="off">
+                    <div class="rrze-msm-site-search-results" id="rrze-msm-site-search-results"></div>
+                </div>
+            </section>
+        <?php } ?>
 
         <?php if (!empty($site_details)) { ?>
             <section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-details-hero">
