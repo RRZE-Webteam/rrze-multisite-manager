@@ -5,13 +5,22 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 trait MetricsServiceSiteTrait {
-    public function getSiteDetails(int $siteId): array {
+    public function getSiteDetails(int $siteId, array $load = []): array {
         $site = $siteId > 0 ? get_site($siteId) : null;
+        $cacheKey = '';
+        $cached = null;
         $formattedSites = [];
         $details = [];
 
         if (!$site instanceof \WP_Site) {
             return [];
+        }
+
+        $cacheKey = $this->getSiteDetailsCacheKey($siteId, $load);
+        $cached = get_site_transient($cacheKey);
+
+        if (is_array($cached) && !empty($cached)) {
+            return $cached;
         }
 
         $formattedSites = $this->formatSites([$site], true);
@@ -22,7 +31,8 @@ trait MetricsServiceSiteTrait {
 
         $details = $formattedSites[0];
         $details['status_user'] = $this->getStatusUserData((int)($details['status_user_id'] ?? 0));
-        $details = array_merge($details, $this->getSiteDetailMetrics($siteId));
+        $details = array_merge($details, $this->getSiteDetailMetrics($siteId, $load));
+        set_site_transient($cacheKey, $details, $this->getDetailCacheTtl());
 
         return $details;
     }
@@ -30,21 +40,26 @@ trait MetricsServiceSiteTrait {
     public function searchSites(string $searchTerm, int $limit = 20): array {
         $sites = [];
         $results = [];
+        $siteMap = [];
         $site = null;
         $siteId = 0;
         $siteName = '';
         $siteUrl = '';
         $haystack = '';
         $searchNeedle = trim(mb_strtolower($searchTerm));
+        $candidateSiteIds = [];
+        $fallbackScanLimit = 500;
 
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
+        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 3) {
             return [];
         }
 
         $sites = get_sites([
-            'number' => 0,
+            'number' => max($limit * 3, 20),
             'orderby' => 'domain',
             'order' => 'ASC',
+            'search' => $searchNeedle,
+            'search_columns' => ['domain', 'path'],
         ]);
 
         foreach ($sites as $site) {
@@ -52,6 +67,33 @@ trait MetricsServiceSiteTrait {
                 continue;
             }
 
+            $siteMap[(int)$site->blog_id] = $site;
+        }
+
+        if (count($siteMap) < $limit) {
+            $candidateSiteIds = get_sites([
+                'fields' => 'ids',
+                'number' => $fallbackScanLimit,
+                'orderby' => 'registered',
+                'order' => 'DESC',
+            ]);
+
+            foreach ($candidateSiteIds as $siteId) {
+                $siteId = (int)$siteId;
+
+                if ($siteId <= 0 || isset($siteMap[$siteId])) {
+                    continue;
+                }
+
+                $site = get_site($siteId);
+
+                if ($site instanceof \WP_Site) {
+                    $siteMap[$siteId] = $site;
+                }
+            }
+        }
+
+        foreach ($siteMap as $site) {
             $siteId = (int)$site->blog_id;
             $siteName = $this->getSiteName($site);
             $siteUrl = get_home_url($siteId, '/');

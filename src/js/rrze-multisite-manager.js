@@ -1,5 +1,10 @@
 'use strict';
 
+var rrzeMsmSiteSearchTimer = 0;
+var rrzeMsmPluginSearchTimer = 0;
+var rrzeMsmThemeSearchTimer = 0;
+var rrzeMsmSearchDelay = 250;
+
 function getAdminConfig() {
     if (typeof window.rrzeMultisiteManagerAdmin === 'undefined') {
         return null;
@@ -890,25 +895,35 @@ function onSiteSearchInput() {
     var config = getAdminConfig();
     var input = getSiteSearchInput();
     var query = '';
-    var minLength = 2;
+    var minLength = 3;
 
     if (!config || !input) {
         return;
     }
 
     query = String(input.value || '').trim();
-    minLength = parseInt(String(config.siteSearchMinLength || '2'), 10);
+    minLength = parseInt(String(config.siteSearchMinLength || '3'), 10);
 
     if (isNaN(minLength) || minLength < 1) {
-        minLength = 2;
+        minLength = 3;
     }
 
     if (query.length < minLength) {
         clearSiteSearchResults();
+        if (rrzeMsmSiteSearchTimer) {
+            window.clearTimeout(rrzeMsmSiteSearchTimer);
+            rrzeMsmSiteSearchTimer = 0;
+        }
         return;
     }
 
-    fetchSiteSearchResults(query);
+    if (rrzeMsmSiteSearchTimer) {
+        window.clearTimeout(rrzeMsmSiteSearchTimer);
+    }
+
+    rrzeMsmSiteSearchTimer = window.setTimeout(function () {
+        fetchSiteSearchResults(query);
+    }, rrzeMsmSearchDelay);
 }
 
 function initSiteSearch() {
@@ -1001,25 +1016,35 @@ function onPluginSearchInput() {
     var config = getAdminConfig();
     var input = getPluginSearchInput();
     var query = '';
-    var minLength = 2;
+    var minLength = 3;
 
     if (!config || !input) {
         return;
     }
 
     query = String(input.value || '').trim();
-    minLength = parseInt(String(config.pluginSearchMinLength || '2'), 10);
+    minLength = parseInt(String(config.pluginSearchMinLength || '3'), 10);
 
     if (isNaN(minLength) || minLength < 1) {
-        minLength = 2;
+        minLength = 3;
     }
 
     if (query.length < minLength) {
         clearPluginSearchResults();
+        if (rrzeMsmPluginSearchTimer) {
+            window.clearTimeout(rrzeMsmPluginSearchTimer);
+            rrzeMsmPluginSearchTimer = 0;
+        }
         return;
     }
 
-    fetchPluginSearchResults(query);
+    if (rrzeMsmPluginSearchTimer) {
+        window.clearTimeout(rrzeMsmPluginSearchTimer);
+    }
+
+    rrzeMsmPluginSearchTimer = window.setTimeout(function () {
+        fetchPluginSearchResults(query);
+    }, rrzeMsmSearchDelay);
 }
 
 function initPluginSearch() {
@@ -1112,25 +1137,35 @@ function onThemeSearchInput() {
     var config = getAdminConfig();
     var input = getThemeSearchInput();
     var query = '';
-    var minLength = 2;
+    var minLength = 3;
 
     if (!config || !input) {
         return;
     }
 
     query = String(input.value || '').trim();
-    minLength = parseInt(String(config.themeSearchMinLength || '2'), 10);
+    minLength = parseInt(String(config.themeSearchMinLength || '3'), 10);
 
     if (isNaN(minLength) || minLength < 1) {
-        minLength = 2;
+        minLength = 3;
     }
 
     if (query.length < minLength) {
         clearThemeSearchResults();
+        if (rrzeMsmThemeSearchTimer) {
+            window.clearTimeout(rrzeMsmThemeSearchTimer);
+            rrzeMsmThemeSearchTimer = 0;
+        }
         return;
     }
 
-    fetchThemeSearchResults(query);
+    if (rrzeMsmThemeSearchTimer) {
+        window.clearTimeout(rrzeMsmThemeSearchTimer);
+    }
+
+    rrzeMsmThemeSearchTimer = window.setTimeout(function () {
+        fetchThemeSearchResults(query);
+    }, rrzeMsmSearchDelay);
 }
 
 function initThemeSearch() {

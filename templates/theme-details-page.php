@@ -37,12 +37,14 @@
                 <?php echo $theme_widget->renderThemeCard((array)$theme_details, ['link_title' => false]); ?>
             </section>
 
-            <section class="rrze-msm-widget rrze-msm-widget-span-12">
-                <header class="rrze-msm-widget-header">
-                    <h2><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></h2>
-                </header>
-                <div class="rrze-msm-site-details-actions"><?php echo $theme_actions_html; ?></div>
-            </section>
+            <?php if (!empty($theme_actions_html)) { ?>
+                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <header class="rrze-msm-widget-header">
+                        <h2><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></h2>
+                    </header>
+                    <div class="rrze-msm-site-details-actions"><?php echo $theme_actions_html; ?></div>
+                </section>
+            <?php } ?>
 
             <section class="rrze-msm-widget rrze-msm-widget-span-12">
                 <header class="rrze-msm-widget-header">

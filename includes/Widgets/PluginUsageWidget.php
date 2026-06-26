@@ -36,6 +36,7 @@ class PluginUsageWidget extends Widgets {
         $highlightNetworkPlugins = !empty($args['highlight_network_plugins']);
         $actionMode = (string)($args['action_mode'] ?? 'icon');
         $networkPluginsUrl = (string)($args['network_plugins_url'] ?? network_admin_url('plugins.php'));
+        $canUseNetworkAdminFeatures = $this->currentUserCanUseNetworkAdminFeatures();
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
         $plugin = [];
@@ -50,7 +51,7 @@ class PluginUsageWidget extends Widgets {
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
 
-        if ($showNetworkButton) {
+        if ($showNetworkButton && $canUseNetworkAdminFeatures) {
             echo '<a class="button" href="' . esc_url($networkPluginsUrl) . '">' . esc_html__('Plugin-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '</a>';
         }
 
@@ -113,7 +114,7 @@ class PluginUsageWidget extends Widgets {
                     echo '<a href="' . esc_url((string)$plugin['update_details_url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Details', 'rrze-multisite-manager') . '</a>';
                 }
 
-                if (!empty($plugin['update_url'])) {
+                if (!empty($plugin['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['update_url']))) {
                     echo '<a href="' . esc_url((string)$plugin['update_url']) . '">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</a>';
                 }
 
@@ -133,7 +134,7 @@ class PluginUsageWidget extends Widgets {
 
             echo '<td><div class="rrze-msm-site-actions">';
 
-            if (!empty($plugin['deactivate_url'])) {
+            if (!empty($plugin['deactivate_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['deactivate_url']))) {
                 if (!empty($plugin['network_active'])) {
                     echo $this->renderPluginActionButton(
                         __('Netzwerkweit deaktivieren', 'rrze-multisite-manager'),
@@ -156,7 +157,7 @@ class PluginUsageWidget extends Widgets {
                 }
             }
 
-            if (!empty($plugin['settings_url'])) {
+            if (!empty($plugin['settings_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['settings_url']))) {
                 echo $this->renderPluginActionLink(
                     (string)($plugin['settings_url'] ?? ''),
                     __('Einstellungen', 'rrze-multisite-manager'),
@@ -166,7 +167,7 @@ class PluginUsageWidget extends Widgets {
                 );
             }
 
-            if (!empty($plugin['delete_url'])) {
+            if ($canUseNetworkAdminFeatures && !empty($plugin['delete_url'])) {
                 echo $this->renderPluginActionLink(
                     (string)($plugin['delete_url'] ?? ''),
                     __('Löschen', 'rrze-multisite-manager'),

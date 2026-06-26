@@ -134,6 +134,33 @@
                                     <?php } ?>
                                 </tbody>
                             </table>
+                            <?php if (!empty($site_monitoring_history) && is_array($site_monitoring_history)) { ?>
+                                <h3><?php echo esc_html__('Letzte Monitoring-Prüfungen', 'rrze-multisite-manager'); ?></h3>
+                                <table class="widefat striped rrze-msm-table">
+                                    <thead>
+                                        <tr>
+                                            <th><?php echo esc_html__('Zeitpunkt', 'rrze-multisite-manager'); ?></th>
+                                            <th><?php echo esc_html__('DNS', 'rrze-multisite-manager'); ?></th>
+                                            <th><?php echo esc_html__('HTTP', 'rrze-multisite-manager'); ?></th>
+                                            <th><?php echo esc_html__('Vorheriger Status', 'rrze-multisite-manager'); ?></th>
+                                            <th><?php echo esc_html__('Neuer Status', 'rrze-multisite-manager'); ?></th>
+                                            <th><?php echo esc_html__('Änderung', 'rrze-multisite-manager'); ?></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($site_monitoring_history as $site_monitoring_entry) { ?>
+                                            <tr>
+                                                <td><?php echo esc_html($this->formatStatusDate((string)($site_monitoring_entry['checked_at'] ?? ''))); ?></td>
+                                                <td><?php echo esc_html((string)($site_monitoring_entry['dns_status_label'] ?? '')); ?></td>
+                                                <td><?php echo esc_html((string)($site_monitoring_entry['http_status_label'] ?? '')); ?></td>
+                                                <td><?php echo esc_html((string)($site_monitoring_entry['previous_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))); ?></td>
+                                                <td><?php echo esc_html((string)($site_monitoring_entry['status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))); ?></td>
+                                                <td><?php echo esc_html(!empty($site_monitoring_entry['status_changed']) ? __('Ja', 'rrze-multisite-manager') : __('Nein', 'rrze-multisite-manager')); ?></td>
+                                            </tr>
+                                        <?php } ?>
+                                    </tbody>
+                                </table>
+                            <?php } ?>
                         </div>
                         <div class="rrze-msm-site-status-monitoring-form">
                             <?php if (!empty($site_monitoring_notice_message)) { ?>
@@ -411,7 +438,9 @@
                                         <th><?php echo esc_html__('Gruppe', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Im Request registriert', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
-                                        <th><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
+                                        <?php if (!empty($can_manage_network_actions)) { ?>
+                                            <th><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
+                                        <?php } ?>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -422,46 +451,50 @@
                                             <td><?php echo esc_html((string)$custom_post_type['group']); ?></td>
                                             <td><?php echo esc_html(!empty($custom_post_type['registered']) ? __('Ja', 'rrze-multisite-manager') : __('Nein', 'rrze-multisite-manager')); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)$custom_post_type['count'])); ?></td>
-                                            <td>
-                                                <button
-                                                    type="button"
-                                                    class="button button-secondary rrze-msm-button-danger rrze-msm-open-delete-cpt-modal"
-                                                    data-post-type="<?php echo esc_attr((string)$custom_post_type['slug']); ?>"
-                                                    data-post-type-label="<?php echo esc_attr((string)$custom_post_type['label']); ?>">
-                                                    <?php echo esc_html__('Löschen', 'rrze-multisite-manager'); ?>
-                                                </button>
-                                            </td>
+                                            <?php if (!empty($can_manage_network_actions)) { ?>
+                                                <td>
+                                                    <button
+                                                        type="button"
+                                                        class="button button-secondary rrze-msm-button-danger rrze-msm-open-delete-cpt-modal"
+                                                        data-post-type="<?php echo esc_attr((string)$custom_post_type['slug']); ?>"
+                                                        data-post-type-label="<?php echo esc_attr((string)$custom_post_type['label']); ?>">
+                                                        <?php echo esc_html__('Löschen', 'rrze-multisite-manager'); ?>
+                                                    </button>
+                                                </td>
+                                            <?php } ?>
                                         </tr>
                                     <?php } ?>
                                 </tbody>
                             </table>
-                            <div class="rrze-msm-modal" id="rrze-msm-delete-cpt-modal" hidden>
-                                <div class="rrze-msm-modal-backdrop rrze-msm-close-modal"></div>
-                                <div class="rrze-msm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rrze-msm-delete-cpt-title">
-                                    <h3 id="rrze-msm-delete-cpt-title"><?php echo esc_html__('Custom Post Type löschen', 'rrze-multisite-manager'); ?></h3>
-                                    <p class="rrze-msm-modal-text">
-                                        <?php echo esc_html__('Damit werden alle Einträge dieses Custom Post Types endgültig gelöscht. Die Registrierung des Typs im Plugin- oder Theme-Code bleibt davon unberührt.', 'rrze-multisite-manager'); ?>
-                                    </p>
-                                    <p class="rrze-msm-modal-target">
-                                        <strong><?php echo esc_html__('Ausgewählter Typ:', 'rrze-multisite-manager'); ?></strong>
-                                        <span id="rrze-msm-delete-cpt-target"></span>
-                                    </p>
-                                    <form method="post" action="<?php echo esc_url($site_post_type_delete_action); ?>">
-                                        <?php wp_nonce_field('rrze_multisite_manager_delete_post_type_entries_' . (int)$site_id); ?>
-                                        <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
-                                        <input type="hidden" name="post_type" id="rrze-msm-delete-cpt-input" value="">
-                                        <input type="hidden" name="confirm_delete" value="1">
-                                        <label class="rrze-msm-modal-checkbox">
-                                            <input type="checkbox" id="rrze-msm-delete-cpt-confirm">
-                                            <span><?php echo esc_html__('Ja, ich bin sicher und möchte alle Einträge dieses Custom Post Types endgültig löschen.', 'rrze-multisite-manager'); ?></span>
-                                        </label>
-                                        <div class="rrze-msm-modal-actions">
-                                            <button type="button" class="button button-secondary rrze-msm-close-modal"><?php echo esc_html__('Abbrechen', 'rrze-multisite-manager'); ?></button>
-                                            <button type="submit" class="button button-secondary rrze-msm-button-danger" id="rrze-msm-delete-cpt-submit" disabled><?php echo esc_html__('Custom Post Type und alle Einträge endgültig löschen', 'rrze-multisite-manager'); ?></button>
-                                        </div>
-                                    </form>
+                            <?php if (!empty($can_manage_network_actions)) { ?>
+                                <div class="rrze-msm-modal" id="rrze-msm-delete-cpt-modal" hidden>
+                                    <div class="rrze-msm-modal-backdrop rrze-msm-close-modal"></div>
+                                    <div class="rrze-msm-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rrze-msm-delete-cpt-title">
+                                        <h3 id="rrze-msm-delete-cpt-title"><?php echo esc_html__('Custom Post Type löschen', 'rrze-multisite-manager'); ?></h3>
+                                        <p class="rrze-msm-modal-text">
+                                            <?php echo esc_html__('Damit werden alle Einträge dieses Custom Post Types endgültig gelöscht. Die Registrierung des Typs im Plugin- oder Theme-Code bleibt davon unberührt.', 'rrze-multisite-manager'); ?>
+                                        </p>
+                                        <p class="rrze-msm-modal-target">
+                                            <strong><?php echo esc_html__('Ausgewählter Typ:', 'rrze-multisite-manager'); ?></strong>
+                                            <span id="rrze-msm-delete-cpt-target"></span>
+                                        </p>
+                                        <form method="post" action="<?php echo esc_url($site_post_type_delete_action); ?>">
+                                            <?php wp_nonce_field('rrze_multisite_manager_delete_post_type_entries_' . (int)$site_id); ?>
+                                            <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                            <input type="hidden" name="post_type" id="rrze-msm-delete-cpt-input" value="">
+                                            <input type="hidden" name="confirm_delete" value="1">
+                                            <label class="rrze-msm-modal-checkbox">
+                                                <input type="checkbox" id="rrze-msm-delete-cpt-confirm">
+                                                <span><?php echo esc_html__('Ja, ich bin sicher und möchte alle Einträge dieses Custom Post Types endgültig löschen.', 'rrze-multisite-manager'); ?></span>
+                                            </label>
+                                            <div class="rrze-msm-modal-actions">
+                                                <button type="button" class="button button-secondary rrze-msm-close-modal"><?php echo esc_html__('Abbrechen', 'rrze-multisite-manager'); ?></button>
+                                                <button type="submit" class="button button-secondary rrze-msm-button-danger" id="rrze-msm-delete-cpt-submit" disabled><?php echo esc_html__('Custom Post Type und alle Einträge endgültig löschen', 'rrze-multisite-manager'); ?></button>
+                                            </div>
+                                        </form>
+                                    </div>
                                 </div>
-                            </div>
+                            <?php } ?>
                         <?php } else { ?>
                             <p><?php echo esc_html__('Für diese Website wurden keine Custom Post Types erkannt.', 'rrze-multisite-manager'); ?></p>
                         <?php } ?>
@@ -538,7 +571,7 @@
                                 <?php if ((string)($site_options_group['slug'] ?? '') !== (string)$site_options_current_tab) { ?>
                                     <?php continue; ?>
                                 <?php } ?>
-                                <?php if ((string)($site_options_group['slug'] ?? '') !== 'all' && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
+                                <?php if (!empty($can_manage_network_actions) && (string)($site_options_group['slug'] ?? '') !== 'all' && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
                                     <form method="post" action="<?php echo esc_url($site_option_group_delete_action); ?>" class="rrze-msm-option-delete-form">
                                         <?php wp_nonce_field('rrze_multisite_manager_delete_site_option_group_' . (int)$site_id . '_' . (string)$site_options_group['slug']); ?>
                                         <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
@@ -546,13 +579,16 @@
                                         <button type="submit" class="button button-secondary rrze-msm-button-danger"><?php echo esc_html__('Gesamte Gruppe löschen', 'rrze-multisite-manager'); ?></button>
                                     </form>
                                 <?php } ?>
+                                <?php if (!empty($site_options_group['is_truncated'])) { ?>
+                                    <p class="description"><?php echo esc_html(sprintf(__('Aus Performance-Gründen werden hier maximal %d Optionen angezeigt.', 'rrze-multisite-manager'), (int)($site_options_group['limit'] ?? $site_detail_section_limit ?? 250))); ?></p>
+                                <?php } ?>
                                 <table class="widefat striped rrze-msm-table">
                                     <thead>
                                         <tr>
                                             <th><?php echo esc_html__('Name', 'rrze-multisite-manager'); ?></th>
                                             <th><?php echo esc_html__('Wert', 'rrze-multisite-manager'); ?></th>
                                             <th><?php echo esc_html__('Autoload', 'rrze-multisite-manager'); ?></th>
-                                            <?php if ((string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
+                                            <?php if (!empty($can_manage_network_actions) && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
                                                 <th><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
                                             <?php } ?>
                                         </tr>
@@ -568,7 +604,7 @@
                                                     </details>
                                                 </td>
                                                 <td><?php echo esc_html((string)$site_option['autoload']); ?></td>
-                                                <?php if ((string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
+                                                <?php if (!empty($can_manage_network_actions) && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
                                                     <td>
                                                         <?php if (empty($site_option['is_core'])) { ?>
                                                             <form method="post" action="<?php echo esc_url($site_option_delete_action); ?>" class="rrze-msm-option-delete-form">
@@ -605,10 +641,13 @@
                     </nav>
                     <?php if ($site_process_current_tab === 'stats') { ?>
                         <ul class="rrze-msm-inline-stats">
-                            <li><strong><?php echo esc_html(number_format_i18n(count((array)($site_details['transients'] ?? [])))); ?></strong> <?php echo esc_html__('Transients', 'rrze-multisite-manager'); ?></li>
-                            <li><strong><?php echo esc_html(number_format_i18n(count((array)($site_details['cron_events'] ?? [])))); ?></strong> <?php echo esc_html__('Scheduler-Einträge', 'rrze-multisite-manager'); ?></li>
+                            <li><strong><?php echo esc_html(number_format_i18n((int)($site_details['process_stats']['transients'] ?? count((array)($site_details['transients'] ?? []))))); ?></strong> <?php echo esc_html__('Transients', 'rrze-multisite-manager'); ?></li>
+                            <li><strong><?php echo esc_html(number_format_i18n((int)($site_details['process_stats']['cron_events'] ?? count((array)($site_details['cron_events'] ?? []))))); ?></strong> <?php echo esc_html__('Scheduler-Einträge', 'rrze-multisite-manager'); ?></li>
                         </ul>
                     <?php } elseif ($site_process_current_tab === 'transients') { ?>
+                        <?php if (!empty($site_details['transients_truncated'])) { ?>
+                            <p class="description"><?php echo esc_html(sprintf(__('Aus Performance-Gründen werden hier maximal %d Transients angezeigt.', 'rrze-multisite-manager'), (int)($site_detail_section_limit ?? 250))); ?></p>
+                        <?php } ?>
                         <?php if (!empty($site_details['transients']) && is_array($site_details['transients'])) { ?>
                             <table class="widefat striped rrze-msm-table">
                                 <thead>
@@ -630,6 +669,9 @@
                             <p><?php echo esc_html__('Für diese Website wurden keine Transients gefunden.', 'rrze-multisite-manager'); ?></p>
                         <?php } ?>
                     <?php } elseif ($site_process_current_tab === 'scheduler') { ?>
+                        <?php if (!empty($site_details['cron_events_truncated'])) { ?>
+                            <p class="description"><?php echo esc_html(sprintf(__('Aus Performance-Gründen werden hier maximal %d Scheduler-Einträge angezeigt.', 'rrze-multisite-manager'), (int)($site_detail_section_limit ?? 250))); ?></p>
+                        <?php } ?>
                         <?php if (!empty($site_details['cron_events']) && is_array($site_details['cron_events'])) { ?>
                             <table class="widefat striped rrze-msm-table">
                                 <thead>

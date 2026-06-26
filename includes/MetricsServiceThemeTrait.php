@@ -13,7 +13,7 @@ trait MetricsServiceThemeTrait {
         $searchNeedle = trim(mb_strtolower($searchTerm));
         $haystack = '';
 
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
+        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 3) {
             return [];
         }
 
@@ -49,6 +49,8 @@ trait MetricsServiceThemeTrait {
 
     public function getThemeDetails(string $stylesheet): array {
         $themes = $this->getThemes();
+        $cacheKey = '';
+        $cached = null;
         $themeItem = [];
         $supplementary = [];
         $analysis = [];
@@ -63,6 +65,13 @@ trait MetricsServiceThemeTrait {
 
         if (empty($themeItem) || (string)($themeItem['stylesheet'] ?? '') !== $stylesheet) {
             return [];
+        }
+
+        $cacheKey = $this->getThemeDetailsCacheKey($stylesheet);
+        $cached = get_site_transient($cacheKey);
+
+        if (is_array($cached) && !empty($cached)) {
+            return $cached;
         }
 
         $supplementary = $this->getThemeSupplementaryData($stylesheet);
@@ -82,7 +91,7 @@ trait MetricsServiceThemeTrait {
             $themeItem['description'] = (string)$supplementary['description'];
         }
 
-        return array_merge(
+        $themeItem = array_merge(
             $themeItem,
             [
                 'author_email' => (string)($supplementary['author']['email'] ?? ''),
@@ -107,13 +116,18 @@ trait MetricsServiceThemeTrait {
                 'main_file_path' => $this->getThemeMainFilePath($stylesheet),
             ]
         );
+
+        set_site_transient($cacheKey, $themeItem, $this->getDetailCacheTtl());
+
+        return $themeItem;
     }
 
     protected function getThemes(): array {
         $themes = wp_get_themes();
         $allowedThemes = $this->getAllowedThemes();
-        $siteCounts = $this->getThemeSiteCounts();
-        $siteUsageMap = $this->getThemeSiteUsageMap();
+        $themeSiteAggregate = $this->getThemeSiteAggregate();
+        $siteCounts = (array)($themeSiteAggregate['counts'] ?? []);
+        $siteUsageMap = (array)($themeSiteAggregate['usage_map'] ?? []);
         $results = [];
         $stylesheet = '';
         $theme = null;

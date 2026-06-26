@@ -22,7 +22,7 @@ class Config {
             'menu_settings' => [
                 'page_title' => __('RRZE Multisite Manager', 'rrze-multisite-manager'),
                 'menu_title' => __('Multisite Manager', 'rrze-multisite-manager'),
-                'capability' => 'manage_network_options',
+                'capability' => 'rrze_multisite_manager_access',
                 'parent_slug' => 'rrze-multisite-manager-dashboard',
                 'dashboard_slug' => 'rrze-multisite-manager-dashboard',
                 'environment_overview_slug' => 'rrze-multisite-manager-environment-overview',

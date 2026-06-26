@@ -44,17 +44,19 @@
                     <h2><?php echo esc_html__('Status und Aktionen', 'rrze-multisite-manager'); ?></h2>
                 </header>
                 <div class="rrze-msm-plugin-status-actions">
-                        <div class="rrze-msm-plugin-status-actions-item">
-                            <strong><?php echo esc_html__('Status', 'rrze-multisite-manager'); ?></strong>
-                            <div><?php echo $plugin_status_badges_html; ?></div>
-                            <?php if (!empty($plugin_status_update_html)) { ?>
-                                <?php echo $plugin_status_update_html; ?>
-                            <?php } ?>
-                        </div>
                     <div class="rrze-msm-plugin-status-actions-item">
-                        <strong><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></strong>
-                        <div class="rrze-msm-site-details-actions"><?php echo $plugin_actions_html; ?></div>
+                        <strong><?php echo esc_html__('Status', 'rrze-multisite-manager'); ?></strong>
+                        <div><?php echo $plugin_status_badges_html; ?></div>
+                        <?php if (!empty($plugin_status_update_html)) { ?>
+                            <?php echo $plugin_status_update_html; ?>
+                        <?php } ?>
                     </div>
+                    <?php if (!empty($plugin_actions_html)) { ?>
+                        <div class="rrze-msm-plugin-status-actions-item">
+                            <strong><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></strong>
+                            <div class="rrze-msm-site-details-actions"><?php echo $plugin_actions_html; ?></div>
+                        </div>
+                    <?php } ?>
                 </div>
             </section>
 

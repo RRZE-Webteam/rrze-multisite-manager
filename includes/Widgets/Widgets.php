@@ -652,6 +652,14 @@ abstract class Widgets {
         return '<a href="mailto:' . esc_attr($email) . '">' . esc_html($email) . '</a>';
     }
 
+    protected function currentUserCanUseNetworkAdminFeatures(): bool {
+        return is_super_admin();
+    }
+
+    protected function isNetworkAdminUrl(string $url): bool {
+        return str_contains($url, '/wp-admin/network/');
+    }
+
     protected function renderSiteActions(array $site, string $displayMode = 'icon'): string {
         $siteId = (int)($site['id'] ?? 0);
         $isMainSite = !empty($site['is_main_site']);
@@ -667,13 +675,16 @@ abstract class Widgets {
             return '';
         }
 
-        $actions[] = $this->renderSiteActionLink(
-            network_admin_url('site-info.php?id=' . $siteId),
-            __('Bearbeiten', 'rrze-multisite-manager'),
-            'edit',
-            false,
-            $displayMode
-        );
+        if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            $actions[] = $this->renderSiteActionLink(
+                network_admin_url('site-info.php?id=' . $siteId),
+                __('Bearbeiten', 'rrze-multisite-manager'),
+                'edit',
+                false,
+                $displayMode
+            );
+        }
+
         if (!$isTechnicallyUnavailable) {
             $actions[] = $this->renderSiteActionLink(
                 get_admin_url($siteId),
@@ -695,7 +706,7 @@ abstract class Widgets {
             return '<div class="rrze-msm-site-actions">' . implode('', $actions) . '</div>';
         }
 
-        if ($isNormal) {
+        if ($this->currentUserCanUseNetworkAdminFeatures() && $isNormal) {
             $actions[] = $this->renderSiteActionLink(
                 $this->getSiteStatusPageUrl($siteId, 'archive'),
                 __('Archivieren', 'rrze-multisite-manager'),
@@ -712,7 +723,7 @@ abstract class Widgets {
             );
         }
 
-        if ($isRestricted) {
+        if ($this->currentUserCanUseNetworkAdminFeatures() && $isRestricted) {
             $actions[] = $this->renderSiteActionLink(
                 $this->getSiteStatusSubmitUrl($siteId, 'restore'),
                 __('Wiederherstellen', 'rrze-multisite-manager'),
@@ -729,7 +740,7 @@ abstract class Widgets {
             );
         }
 
-        if ($isDeleted) {
+        if ($this->currentUserCanUseNetworkAdminFeatures() && $isDeleted) {
             $actions[] = $this->renderSiteActionLink(
                 $this->getSiteStatusSubmitUrl($siteId, 'restore'),
                 __('Wiederherstellen', 'rrze-multisite-manager'),
@@ -951,14 +962,14 @@ abstract class Widgets {
 
     protected function getSiteUsersUrl(int $siteId, string $role = ''): string {
         $args = [
-            'id' => $siteId,
+            'role' => $role,
         ];
 
-        if ($role !== '') {
-            $args['role'] = $role;
+        if ($role === '') {
+            unset($args['role']);
         }
 
-        return add_query_arg($args, network_admin_url('site-users.php'));
+        return add_query_arg($args, get_admin_url($siteId, 'users.php'));
     }
 
     protected function getSiteActionAccentClass(string $icon): string {
@@ -988,7 +999,7 @@ abstract class Widgets {
                 'site_id' => $siteId,
                 'status_action' => $statusAction,
             ],
-            network_admin_url('admin.php')
+            admin_url('admin.php')
         );
     }
 
@@ -996,11 +1007,15 @@ abstract class Widgets {
         return wp_nonce_url(
             add_query_arg(
                 [
-                    'action' => 'rrze_multisite_manager_site_status',
                     'site_id' => $siteId,
                     'status_action' => $statusAction,
                 ],
-                network_admin_url('edit.php')
+                add_query_arg(
+                    [
+                        'action' => 'rrze_multisite_manager_site_status',
+                    ],
+                    admin_url('admin-post.php')
+                )
             ),
             'rrze_multisite_manager_site_status_' . $statusAction . '_' . $siteId
         );
@@ -1012,7 +1027,7 @@ abstract class Widgets {
                 'page' => (string)($this->config->getMenuSettings()['site_details_slug'] ?? 'rrze-multisite-manager-site-details'),
                 'site_id' => $siteId,
             ],
-            network_admin_url('admin.php')
+            admin_url('admin.php')
         );
     }
 
@@ -1025,7 +1040,7 @@ abstract class Widgets {
             $args['plugin'] = $pluginFile;
         }
 
-        return add_query_arg($args, network_admin_url('admin.php'));
+        return add_query_arg($args, admin_url('admin.php'));
     }
 
     protected function getThemeDetailsPageUrl(string $stylesheet): string {
@@ -1037,7 +1052,7 @@ abstract class Widgets {
             $args['theme'] = $stylesheet;
         }
 
-        return add_query_arg($args, network_admin_url('admin.php'));
+        return add_query_arg($args, admin_url('admin.php'));
     }
 
     protected function renderThemeSitesHtml(array $theme): string {

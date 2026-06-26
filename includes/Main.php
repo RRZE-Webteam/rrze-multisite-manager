@@ -8,6 +8,7 @@ class Main {
     protected Plugin $plugin;
     protected Settings $settings;
     protected Config $config;
+    protected MetricsService $metrics;
     protected Dashboard $dashboard;
     protected MonitoringService $monitoring;
 
@@ -20,6 +21,10 @@ class Main {
         $settings = new Settings($this->plugin);
         $settings->onLoaded();
         $this->settings = $settings;
+
+        $metrics = new MetricsService($settings, $this->config);
+        $metrics->onLoaded();
+        $this->metrics = $metrics;
 
         $dashboard = new Dashboard($this->plugin, $settings);
         $dashboard->onLoaded();

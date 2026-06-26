@@ -19,9 +19,19 @@ class MonitoringService {
     protected const META_DNS_FAILURE_COUNT = 'rrze_msm_dns_failure_count';
     protected const META_HTTP_FAILURE_COUNT = 'rrze_msm_http_failure_count';
     protected const META_MONITORING_NOTE = 'rrze_msm_monitoring_note';
+    protected const META_MONITORING_HISTORY = 'rrze_msm_monitoring_history';
     protected const OPTION_LAST_RUN = 'rrze_msm_monitoring_last_run';
     protected const OPTION_PREVIOUS_RUN = 'rrze_msm_monitoring_previous_run';
     protected const OPTION_LAST_SITE_COUNT = 'rrze_msm_monitoring_last_site_count';
+    protected const OPTION_BATCH_OFFSET = 'rrze_msm_monitoring_batch_offset';
+    protected const OPTION_BATCH_TOTAL = 'rrze_msm_monitoring_batch_total';
+    protected const OPTION_RUN_STATE = 'rrze_msm_monitoring_run_state';
+    protected const OPTION_RUN_LOG = 'rrze_msm_monitoring_run_log';
+    protected const LOCK_KEY = 'rrze_msm_monitoring_lock';
+    protected const LOCK_TTL = 900;
+    protected const BATCH_SIZE = 20;
+    protected const MAX_RUN_LOG_ENTRIES = 20;
+    protected const MAX_SITE_HISTORY_ENTRIES = 10;
 
     protected Plugin $plugin;
     protected Config $config;
@@ -63,24 +73,7 @@ class MonitoringService {
     }
 
     public function runScheduledChecks(): void {
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
-        $siteId = 0;
-        $timestamp = current_time('mysql', true);
-        $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
-
-        if ($lastRun !== '') {
-            update_site_option(self::OPTION_PREVIOUS_RUN, $lastRun);
-        }
-
-        foreach ($siteIds as $siteId) {
-            $this->checkSiteAvailability((int)$siteId);
-        }
-
-        update_site_option(self::OPTION_LAST_RUN, $timestamp);
-        update_site_option(self::OPTION_LAST_SITE_COUNT, count($siteIds));
+        $this->runMonitoringBatch();
     }
 
     public static function clearScheduledEvent(?Config $config = null): void {
@@ -92,6 +85,11 @@ class MonitoringService {
             wp_unschedule_event($timestamp, $hook);
             $timestamp = wp_next_scheduled($hook);
         }
+
+        delete_site_option(self::OPTION_BATCH_OFFSET);
+        delete_site_option(self::OPTION_BATCH_TOTAL);
+        delete_site_option(self::OPTION_RUN_STATE);
+        delete_site_transient(self::LOCK_KEY);
     }
 
     public function getProcessesOverview(): array {
@@ -99,6 +97,9 @@ class MonitoringService {
         $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
         $lastSiteCount = (int)get_site_option(self::OPTION_LAST_SITE_COUNT, 0);
         $nextRunTimestamp = wp_next_scheduled($hook);
+        $batchOffset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
+        $batchTotal = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
+        $isRunning = $this->isMonitoringLocked();
 
         return [
             [
@@ -112,8 +113,176 @@ class MonitoringService {
                 'last_run' => $lastRun,
                 'last_site_count' => $lastSiteCount,
                 'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
+                'batch_offset' => $batchOffset,
+                'batch_total' => $batchTotal,
+                'is_running' => $isRunning,
+                'batch_size' => $this->getBatchSize(),
+                'run_state' => $this->getRunState(),
             ],
         ];
+    }
+
+    public function getRunHistory(): array {
+        $history = get_site_option(self::OPTION_RUN_LOG, []);
+
+        return is_array($history) ? $history : [];
+    }
+
+    public function getSiteHistory(int $siteId): array {
+        $history = get_site_meta($siteId, self::META_MONITORING_HISTORY, true);
+
+        return is_array($history) ? $history : [];
+    }
+
+    public function startMonitoringRun(bool $runImmediately = true): void {
+        $this->resetBatchState();
+        $this->initializeRunState($runImmediately ? 'manual' : 'scheduled');
+
+        if ($runImmediately) {
+            $this->runMonitoringBatch(true);
+            return;
+        }
+
+        $this->scheduleNextBatch(5);
+    }
+
+    protected function runMonitoringBatch(bool $manual = false): void {
+        $siteIds = [];
+        $offset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
+        $totalSites = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
+        $siteId = 0;
+        $timestamp = current_time('mysql', true);
+        $lastRun = '';
+        $nextOffset = 0;
+        $batchSize = $this->getBatchSize();
+        $runState = $this->getRunState();
+        $result = [];
+
+        if (!$this->acquireMonitoringLock()) {
+            return;
+        }
+
+        if (empty($runState)) {
+            $this->initializeRunState($manual ? 'manual' : 'scheduled');
+            $runState = $this->getRunState();
+        }
+
+        if ($offset <= 0 || $totalSites <= 0) {
+            $totalSites = (int)get_sites([
+                'count' => true,
+                'number' => 1,
+            ]);
+            update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
+            $runState['total_sites'] = $totalSites;
+            $this->saveRunState($runState);
+            $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
+
+            if ($lastRun !== '') {
+                update_site_option(self::OPTION_PREVIOUS_RUN, $lastRun);
+            }
+        }
+
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => $batchSize,
+            'offset' => max(0, $offset),
+            'orderby' => 'id',
+            'order' => 'ASC',
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $result = $this->checkSiteAvailability((int)$siteId);
+            $runState = $this->applyCheckResultToRunState($runState, $result);
+        }
+
+        $this->saveRunState($runState);
+        $nextOffset = $offset + count($siteIds);
+
+        if (empty($siteIds) || $nextOffset >= $totalSites) {
+            update_site_option(self::OPTION_LAST_RUN, $timestamp);
+            update_site_option(self::OPTION_LAST_SITE_COUNT, $totalSites);
+            $this->finalizeRunState($timestamp);
+            $this->resetBatchState();
+            $this->releaseMonitoringLock();
+            (new MetricsService(null, $this->config))->invalidateCaches();
+            return;
+        }
+
+        update_site_option(self::OPTION_BATCH_OFFSET, $nextOffset);
+        update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
+        $this->releaseMonitoringLock();
+        $this->scheduleNextBatch($manual ? 5 : 30);
+    }
+
+    protected function getBatchSize(): int {
+        return self::BATCH_SIZE;
+    }
+
+    protected function scheduleNextBatch(int $delay = 30): void {
+        wp_schedule_single_event(time() + max(5, $delay), $this->config->getMonitoringHook());
+    }
+
+    protected function resetBatchState(): void {
+        update_site_option(self::OPTION_BATCH_OFFSET, 0);
+        update_site_option(self::OPTION_BATCH_TOTAL, 0);
+    }
+
+    protected function initializeRunState(string $trigger): void {
+        $this->saveRunState([
+            'started_at' => current_time('mysql', true),
+            'finished_at' => '',
+            'trigger' => $trigger,
+            'total_sites' => 0,
+            'checked_sites' => 0,
+            'status_changes' => 0,
+            'dns_issues' => 0,
+            'http_issues' => 0,
+            'healthy_sites' => 0,
+            'provisioning_sites' => 0,
+            'dns_missing_sites' => 0,
+            'unreachable_sites' => 0,
+        ]);
+    }
+
+    protected function getRunState(): array {
+        $state = get_site_option(self::OPTION_RUN_STATE, []);
+
+        return is_array($state) ? $state : [];
+    }
+
+    protected function saveRunState(array $state): void {
+        update_site_option(self::OPTION_RUN_STATE, $state);
+    }
+
+    protected function finalizeRunState(string $finishedAt): void {
+        $state = $this->getRunState();
+        $history = $this->getRunHistory();
+
+        if (empty($state)) {
+            return;
+        }
+
+        $state['finished_at'] = $finishedAt;
+        array_unshift($history, $state);
+        $history = array_slice($history, 0, self::MAX_RUN_LOG_ENTRIES);
+        update_site_option(self::OPTION_RUN_LOG, $history);
+        delete_site_option(self::OPTION_RUN_STATE);
+    }
+
+    protected function acquireMonitoringLock(): bool {
+        if ($this->isMonitoringLocked()) {
+            return false;
+        }
+
+        return (bool)set_site_transient(self::LOCK_KEY, time(), self::LOCK_TTL);
+    }
+
+    protected function releaseMonitoringLock(): void {
+        delete_site_transient(self::LOCK_KEY);
+    }
+
+    protected function isMonitoringLocked(): bool {
+        return (int)get_site_transient(self::LOCK_KEY) > 0;
     }
 
     protected function getMonitoringInterval(): int {
@@ -146,7 +315,7 @@ class MonitoringService {
         return $default;
     }
 
-    protected function checkSiteAvailability(int $siteId): void {
+    protected function checkSiteAvailability(int $siteId): array {
         $site = get_site($siteId);
         $siteUrl = '';
         $host = '';
@@ -159,9 +328,11 @@ class MonitoringService {
         $dnsFailureCount = (int)get_site_meta($siteId, self::META_DNS_FAILURE_COUNT, true);
         $httpFailureCount = (int)get_site_meta($siteId, self::META_HTTP_FAILURE_COUNT, true);
         $isProvisioningGrace = false;
+        $statusChanged = false;
+        $result = [];
 
         if (!$site instanceof \WP_Site) {
-            return;
+            return [];
         }
 
         $siteUrl = get_home_url($siteId, '/');
@@ -192,7 +363,9 @@ class MonitoringService {
 
         if ($operationalStatusSource === 'manual' || $operationalStatus === 'retired' || $operationalStatus === 'provisioning') {
             $this->updateFailureTracking($siteId, $dnsStatus, $httpStatus, $timestamp, $dnsFailureCount, $httpFailureCount);
-            return;
+            $result = $this->buildCheckResult($siteId, $timestamp, $dnsStatus, $httpStatus, $operationalStatus, $operationalStatus, false);
+            $this->appendSiteHistory($siteId, $result);
+            return $result;
         }
 
         $isProvisioningGrace = $this->isWithinProvisioningGracePeriod($site);
@@ -210,19 +383,25 @@ class MonitoringService {
             $nextOperationalStatus = 'unreachable';
         }
 
-        $this->updateOperationalStatus($siteId, $operationalStatus, $nextOperationalStatus, $timestamp, 'auto');
+        $statusChanged = $this->updateOperationalStatus($siteId, $operationalStatus, $nextOperationalStatus, $timestamp, 'auto');
+        $result = $this->buildCheckResult($siteId, $timestamp, $dnsStatus, $httpStatus, $operationalStatus, $nextOperationalStatus, $statusChanged);
+        $this->appendSiteHistory($siteId, $result);
+
+        return $result;
     }
 
-    protected function updateOperationalStatus(int $siteId, string $currentStatus, string $nextStatus, string $timestamp, string $source): void {
+    protected function updateOperationalStatus(int $siteId, string $currentStatus, string $nextStatus, string $timestamp, string $source): bool {
         if ($currentStatus === $nextStatus) {
             update_site_meta($siteId, self::META_OPERATIONAL_STATUS_SOURCE, $source);
-            return;
+            return false;
         }
 
         update_site_meta($siteId, self::META_PREVIOUS_OPERATIONAL_STATUS, $currentStatus);
         update_site_meta($siteId, self::META_OPERATIONAL_STATUS, $nextStatus);
         update_site_meta($siteId, self::META_OPERATIONAL_STATUS_SOURCE, $source);
         update_site_meta($siteId, self::META_OPERATIONAL_STATUS_CHANGED_AT, $timestamp);
+
+        return true;
     }
 
     protected function updateFailureTracking(int $siteId, string $dnsStatus, string $httpStatus, string $timestamp, int $dnsFailureCount, int $httpFailureCount): void {
@@ -350,5 +529,65 @@ class MonitoringService {
         }
 
         return false;
+    }
+
+    protected function buildCheckResult(int $siteId, string $checkedAt, string $dnsStatus, string $httpStatus, string $previousStatus, string $nextStatus, bool $statusChanged): array {
+        return [
+            'site_id' => $siteId,
+            'checked_at' => $checkedAt,
+            'dns_status' => $dnsStatus,
+            'http_status' => $httpStatus,
+            'previous_status' => $previousStatus,
+            'status' => $nextStatus,
+            'status_changed' => $statusChanged,
+        ];
+    }
+
+    protected function appendSiteHistory(int $siteId, array $entry): void {
+        $history = $this->getSiteHistory($siteId);
+
+        if (empty($entry)) {
+            return;
+        }
+
+        array_unshift($history, $entry);
+        $history = array_slice($history, 0, self::MAX_SITE_HISTORY_ENTRIES);
+        update_site_meta($siteId, self::META_MONITORING_HISTORY, $history);
+    }
+
+    protected function applyCheckResultToRunState(array $runState, array $result): array {
+        $status = (string)($result['status'] ?? '');
+        $dnsStatus = (string)($result['dns_status'] ?? '');
+        $httpStatus = (string)($result['http_status'] ?? '');
+
+        if (empty($runState)) {
+            return $runState;
+        }
+
+        $runState['checked_sites'] = (int)($runState['checked_sites'] ?? 0) + 1;
+
+        if (!empty($result['status_changed'])) {
+            $runState['status_changes'] = (int)($runState['status_changes'] ?? 0) + 1;
+        }
+
+        if ($dnsStatus !== 'ok' && $dnsStatus !== 'unknown') {
+            $runState['dns_issues'] = (int)($runState['dns_issues'] ?? 0) + 1;
+        }
+
+        if (!in_array($httpStatus, ['ok', 'unknown', 'pending'], true)) {
+            $runState['http_issues'] = (int)($runState['http_issues'] ?? 0) + 1;
+        }
+
+        if ($status === 'healthy') {
+            $runState['healthy_sites'] = (int)($runState['healthy_sites'] ?? 0) + 1;
+        } elseif ($status === 'provisioning') {
+            $runState['provisioning_sites'] = (int)($runState['provisioning_sites'] ?? 0) + 1;
+        } elseif ($status === 'dns_missing') {
+            $runState['dns_missing_sites'] = (int)($runState['dns_missing_sites'] ?? 0) + 1;
+        } elseif ($status === 'unreachable') {
+            $runState['unreachable_sites'] = (int)($runState['unreachable_sites'] ?? 0) + 1;
+        }
+
+        return $runState;
     }
 }

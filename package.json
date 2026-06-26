@@ -1,7 +1,7 @@
 {
   "name": "rrze-multisite-manager",
   "title": "RRZE Multisite Manager",
-  "version": "0.1.2-22",
+  "version": "0.1.3",
   "description": "Multisite-Management für WordPress",
   "main": "rrze-multisite-manager.php",
   "textdomain": "rrze-multisite-manager",
@@ -20,7 +20,7 @@
   },
   "compatibility": {
     "wprequires": "6.9.4",
-    "wptestedup": "6.9.4",
+    "wptestedup": "7.0",
     "phprequires": "8.3"
   },
   "supports": {

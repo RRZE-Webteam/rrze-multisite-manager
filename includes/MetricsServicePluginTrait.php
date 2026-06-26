@@ -15,7 +15,7 @@ trait MetricsServicePluginTrait {
 
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 2) {
+        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 3) {
             return [];
         }
 
@@ -49,6 +49,8 @@ trait MetricsServicePluginTrait {
 
     public function getPluginDetails(string $pluginFile): array {
         $availablePlugins = [];
+        $cacheKey = '';
+        $cached = null;
         $pluginData = [];
         $dashboardData = [];
         $pluginUsage = [];
@@ -67,6 +69,13 @@ trait MetricsServicePluginTrait {
 
         if (!isset($availablePlugins[$pluginFile]) || !is_array($availablePlugins[$pluginFile])) {
             return [];
+        }
+
+        $cacheKey = $this->getPluginDetailsCacheKey($pluginFile);
+        $cached = get_site_transient($cacheKey);
+
+        if (is_array($cached) && !empty($cached)) {
+            return $cached;
         }
 
         $pluginData = $availablePlugins[$pluginFile];
@@ -124,7 +133,7 @@ trait MetricsServicePluginTrait {
             $pluginUsageItem['description'] = (string)$supplementary['description'];
         }
 
-        return array_merge(
+        $pluginData = array_merge(
             $pluginUsageItem,
             [
                 'status' => $status,
@@ -150,6 +159,10 @@ trait MetricsServicePluginTrait {
                 'main_file_path' => $this->getPluginAbsolutePath($pluginFile),
             ]
         );
+
+        set_site_transient($cacheKey, $pluginData, $this->getDetailCacheTtl());
+
+        return $pluginData;
     }
 
     protected function getPluginUsage(): array {

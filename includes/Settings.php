@@ -54,6 +54,9 @@ class Settings {
         $this->options = $this->getOptions();
 
         if (is_admin()) {
+            add_action('admin_post_' . $this->optionName, [$this, 'saveNetworkOptions']);
+            add_action('admin_post_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
+            add_action('admin_post_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
             add_action('network_admin_edit_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
@@ -127,7 +130,7 @@ class Settings {
     public function saveNetworkOptions(): void {
         $settingsTab = isset($_POST['settings_tab']) ? sanitize_key((string)wp_unslash($_POST['settings_tab'])) : 'general';
 
-        if (!current_user_can('manage_network_options')) {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
 
@@ -137,7 +140,9 @@ class Settings {
         $options = $this->sanitizeOptions($rawOptions);
 
         update_site_option($this->optionName, $options);
-        (new MetricsService($this, $this->config))->clearCache();
+        (new MetricsService($this, $this->config))->rebuildDashboardData(true);
+        MonitoringService::clearScheduledEvent($this->config);
+        (new MonitoringService($this->plugin, $this->config))->ensureScheduledEvent();
 
         $redirectUrl = add_query_arg(
             [
@@ -145,7 +150,7 @@ class Settings {
                 'tab' => in_array($settingsTab, ['general', 'monitoring'], true) ? $settingsTab : 'general',
                 'updated' => 'true',
             ],
-            network_admin_url('admin.php')
+            admin_url('admin.php')
         );
 
         wp_safe_redirect($redirectUrl);
@@ -155,7 +160,7 @@ class Settings {
     public function renderOptionsPage(): void {
         $currentTab = $this->getSettingsTab();
 
-        if (!current_user_can('manage_network_options')) {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
 
@@ -186,7 +191,7 @@ class Settings {
         }
 
         if (!empty($_GET['monitoring-ran'])) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Das Monitoring wurde sofort ausgeführt.', 'rrze-multisite-manager') . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Das Monitoring wurde gestartet und arbeitet die Websites jetzt in Batches ab.', 'rrze-multisite-manager') . '</p></div>';
         }
 
         if (!empty($_GET['monitoring-status-updated'])) {
@@ -208,19 +213,19 @@ class Settings {
     }
 
     public function refreshMetrics(): void {
-        if (!current_user_can('manage_network_options')) {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
 
         check_admin_referer('rrze_multisite_manager_refresh_metrics');
-        (new MetricsService($this, $this->config))->clearCache();
+        (new MetricsService($this, $this->config))->rebuildDashboardData(true);
 
         $redirectUrl = add_query_arg(
             [
                 'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
                 'metrics-refreshed' => 'true',
             ],
-            network_admin_url('admin.php')
+            admin_url('admin.php')
         );
 
         wp_safe_redirect($redirectUrl);
@@ -231,15 +236,14 @@ class Settings {
         $monitoringService = null;
         $redirectUrl = '';
 
-        if (!current_user_can('manage_network_options')) {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
 
         check_admin_referer('rrze_multisite_manager_run_monitoring');
 
         $monitoringService = new MonitoringService($this->plugin, $this->config);
-        $monitoringService->runScheduledChecks();
-        (new MetricsService($this, $this->config))->clearCache();
+        $monitoringService->startMonitoringRun(true);
 
         $redirectUrl = add_query_arg(
             [
@@ -247,7 +251,7 @@ class Settings {
                 'tab' => 'monitoring',
                 'monitoring-ran' => 'true',
             ],
-            network_admin_url('admin.php')
+            admin_url('admin.php')
         );
 
         wp_safe_redirect($redirectUrl);
@@ -303,6 +307,19 @@ class Settings {
 
             echo '</tbody></table>';
         }
+    }
+
+    protected function currentUserCanUseNetworkAdminFeatures(): bool {
+        return is_super_admin();
+    }
+
+    protected function getAdminPostActionUrl(string $action): string {
+        return add_query_arg(
+            [
+                'action' => $action,
+            ],
+            admin_url('admin-post.php')
+        );
     }
 
     protected function renderFieldInput(string $fieldId, string $fieldName, array $field, mixed $value): void {
@@ -425,7 +442,7 @@ class Settings {
             [
                 'page' => $this->getSettingsSlug(),
             ],
-            network_admin_url('admin.php')
+            admin_url('admin.php')
         );
 
         echo '<nav class="nav-tab-wrapper">';
@@ -436,7 +453,7 @@ class Settings {
     }
 
     protected function renderGeneralTab(): void {
-        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=' . $this->optionName)) . '">';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="general">';
         $this->renderFields(['dashboard']);
@@ -445,7 +462,7 @@ class Settings {
         echo '<hr>';
         echo '<h2>' . esc_html__('Kennzahlen aktualisieren', 'rrze-multisite-manager') . '</h2>';
         echo '<p>' . esc_html__('Leert den Kennzahlen-Cache. Die Daten werden beim nächsten Aufruf der Übersichten neu berechnet.', 'rrze-multisite-manager') . '</p>';
-        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_refresh_metrics')) . '">';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_metrics')) . '">';
         wp_nonce_field('rrze_multisite_manager_refresh_metrics');
         submit_button(__('Kennzahlen aktualisieren', 'rrze-multisite-manager'), 'secondary', 'submit', false);
         echo '</form>';
@@ -454,9 +471,11 @@ class Settings {
     protected function renderMonitoringTab(): void {
         $monitoringService = new MonitoringService($this->plugin, $this->config);
         $processes = $monitoringService->getProcessesOverview();
+        $runHistory = $monitoringService->getRunHistory();
         $process = [];
+        $run = [];
 
-        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=' . $this->optionName)) . '">';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="monitoring">';
         $this->renderFields(['monitoring']);
@@ -490,7 +509,7 @@ class Settings {
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
                 echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
                 echo '<td>';
-                echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_run_monitoring')) . '">';
+                echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_run_monitoring')) . '">';
                 wp_nonce_field('rrze_multisite_manager_run_monitoring');
                 echo '<button type="submit" class="button button-secondary">' . esc_html__('Jetzt starten', 'rrze-multisite-manager') . '</button>';
                 echo '</form>';
@@ -504,6 +523,47 @@ class Settings {
         }
 
         echo '</section>';
+
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
+        echo '<header class="rrze-msm-widget-header">';
+        echo '<h2>' . esc_html__('Letzte Monitoring-Läufe', 'rrze-multisite-manager') . '</h2>';
+        echo '<p>' . esc_html__('Das ist das kurze Laufprotokoll der letzten kompletten Monitoring-Durchgänge.', 'rrze-multisite-manager') . '</p>';
+        echo '</header>';
+
+        if (!empty($runHistory)) {
+            echo '<table class="widefat striped rrze-msm-table">';
+            echo '<thead><tr>';
+            echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Ende', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Auslöser', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Sites geprüft', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Statuswechsel', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('DNS-Probleme', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('HTTP-Probleme', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('DNS fehlt', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Nicht erreichbar', 'rrze-multisite-manager') . '</th>';
+            echo '</tr></thead><tbody>';
+
+            foreach ($runHistory as $run) {
+                echo '<tr>';
+                echo '<td>' . esc_html($this->formatProcessTimestamp((string)($run['started_at'] ?? ''))) . '</td>';
+                echo '<td>' . esc_html($this->formatProcessTimestamp((string)($run['finished_at'] ?? ''))) . '</td>';
+                echo '<td>' . esc_html((string)($run['trigger'] ?? '')) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['checked_sites'] ?? 0))) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['status_changes'] ?? 0))) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['dns_issues'] ?? 0))) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['http_issues'] ?? 0))) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['dns_missing_sites'] ?? 0))) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['unreachable_sites'] ?? 0))) . '</td>';
+                echo '</tr>';
+            }
+
+            echo '</tbody></table>';
+        } else {
+            echo '<p>' . esc_html__('Bisher wurde noch kein vollständiger Monitoring-Lauf protokolliert.', 'rrze-multisite-manager') . '</p>';
+        }
+
+        echo '</section>';
     }
 
     protected function renderViewsTab(): void {
@@ -514,7 +574,7 @@ class Settings {
         $view = [];
         $widgetOption = [];
 
-        echo '<form method="post" action="' . esc_url(network_admin_url('edit.php?action=rrze_multisite_manager_save_views')) . '" class="rrze-msm-views-form">';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_save_views')) . '" class="rrze-msm-views-form">';
         wp_nonce_field('rrze_multisite_manager_save_views');
         echo '<input type="hidden" name="settings_tab" value="views">';
 

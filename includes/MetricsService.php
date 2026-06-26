@@ -12,27 +12,102 @@ class MetricsService {
 
     protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v7_';
     protected const SITE_TABLE_MAX_ROWS = 100;
+    protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
+    protected const DASHBOARD_LOCK_KEY = 'rrze_msm_dashboard_metrics_refresh_lock';
+    protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
+    protected const DETAIL_CACHE_TTL = 900;
+    protected const DETAIL_SECTION_MAX_ROWS = 250;
+    protected const DASHBOARD_LOCK_TTL = 900;
     protected ?Settings $settings;
     protected Config $config;
+    protected array $siteNameCache = [];
+    protected array $siteAdminEmailCache = [];
+    protected ?array $themeSiteAggregate = null;
 
     public function __construct(?Settings $settings = null, ?Config $config = null) {
         $this->settings = $settings;
         $this->config = $config ?? new Config();
     }
 
+    public function onLoaded(): void {
+        add_action(self::DASHBOARD_REFRESH_HOOK, [$this, 'handleScheduledDashboardRefresh']);
+        $this->registerInvalidationHooks();
+    }
+
     public function getDashboardData(): array {
-        $cached = get_site_transient($this->getCacheKey());
+        $cached = $this->getStoredDashboardCache();
+
+        if ($this->isUsableDashboardCache($cached)) {
+            if ($this->shouldRefreshDashboardCache($cached)) {
+                if (!empty($cached['dirty']) && is_admin() && !$this->isDashboardRefreshLocked()) {
+                    return $this->rebuildDashboardData();
+                }
+
+                $this->scheduleDashboardRefresh();
+            }
+
+            return (array)($cached['data'] ?? []);
+        }
+
+        return $this->rebuildDashboardData();
+    }
+
+    public function rebuildDashboardData(bool $force = false): array {
+        $cached = $this->getStoredDashboardCache();
         $siteOverview = [];
         $networkStorageUsage = [];
+        $data = [];
 
-        if (is_array($cached) && $this->isCompleteDashboardData($cached)) {
-            return $cached;
+        if (!$force && $this->isDashboardRefreshLocked()) {
+            if ($this->isUsableDashboardCache($cached)) {
+                return (array)($cached['data'] ?? []);
+            }
+        }
+
+        if (!$this->acquireDashboardRefreshLock()) {
+            if ($this->isUsableDashboardCache($cached)) {
+                return (array)($cached['data'] ?? []);
+            }
         }
 
         $siteOverview = $this->getSiteOverview();
         $networkStorageUsage = $this->getNetworkStorageUsage();
 
-        $data = [
+        $data = $this->buildDashboardDataPayload($siteOverview, $networkStorageUsage);
+
+        update_site_option(
+            $this->getCacheKey(),
+            [
+                'data' => $data,
+                'generated_at' => time(),
+                'dirty' => false,
+            ]
+        );
+        $this->releaseDashboardRefreshLock();
+
+        return $data;
+    }
+
+    public function clearCache(): void {
+        $this->markAllCachesDirty();
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v1_' . (string)get_current_network_id());
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v2_' . (string)get_current_network_id());
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v3_' . (string)get_current_network_id());
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v4_' . (string)get_current_network_id());
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v5_' . (string)get_current_network_id());
+        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v6_' . (string)get_current_network_id());
+    }
+
+    public function handleScheduledDashboardRefresh(): void {
+        $this->rebuildDashboardData(true);
+    }
+
+    public function invalidateCaches(...$args): void {
+        $this->markAllCachesDirty();
+    }
+
+    protected function buildDashboardDataPayload(array $siteOverview, array $networkStorageUsage): array {
+        return [
             'summary' => $this->getSummary($networkStorageUsage),
             'site_table_default_limit' => $this->getActivitySiteLimit(),
             'status_distribution' => $this->getStatusDistribution(),
@@ -56,20 +131,6 @@ class MetricsService {
             'recently_updated_sites' => $this->getRecentlyUpdatedSites(),
             'inactive_sites' => $this->getInactiveSites(),
         ];
-
-        set_site_transient($this->getCacheKey(), $data, $this->config->getMetricsCacheTtl());
-
-        return $data;
-    }
-
-    public function clearCache(): void {
-        delete_site_transient($this->getCacheKey());
-        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v1_' . (string)get_current_network_id());
-        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v2_' . (string)get_current_network_id());
-        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v3_' . (string)get_current_network_id());
-        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v4_' . (string)get_current_network_id());
-        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v5_' . (string)get_current_network_id());
-        delete_site_transient('rrze_multisite_manager_dashboard_metrics_v6_' . (string)get_current_network_id());
     }
 
     protected function getMonthlyGrowth(): array {
@@ -1827,10 +1888,7 @@ class MetricsService {
     }
 
     protected function buildThemeUsageDistribution(array $themes): array {
-        $totalSites = count(get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]));
+        $totalSites = $this->countSites();
         $items = [];
         $theme = [];
 
@@ -2078,11 +2136,18 @@ class MetricsService {
     }
 
     protected function getSiteAdminEmail(int $siteId): string {
+        if (isset($this->siteAdminEmailCache[$siteId])) {
+            return $this->siteAdminEmailCache[$siteId];
+        }
+
         $email = get_blog_option($siteId, 'admin_email', '');
 
         if (!is_string($email) || trim($email) === '') {
+            $this->siteAdminEmailCache[$siteId] = '';
             return '';
         }
+
+        $this->siteAdminEmailCache[$siteId] = $email;
 
         return $email;
     }
@@ -2111,7 +2176,34 @@ class MetricsService {
             'dns_failure_count' => (int)get_site_meta($siteId, 'rrze_msm_dns_failure_count', true),
             'http_failure_count' => (int)get_site_meta($siteId, 'rrze_msm_http_failure_count', true),
             'monitoring_note' => (string)get_site_meta($siteId, 'rrze_msm_monitoring_note', true),
+            'monitoring_history' => $this->normalizeMonitoringHistory((array)get_site_meta($siteId, 'rrze_msm_monitoring_history', true)),
         ];
+    }
+
+    protected function normalizeMonitoringHistory(array $history): array {
+        $results = [];
+        $entry = [];
+
+        foreach ($history as $entry) {
+            if (!is_array($entry) || empty($entry['checked_at'])) {
+                continue;
+            }
+
+            $results[] = [
+                'checked_at' => (string)($entry['checked_at'] ?? ''),
+                'dns_status' => (string)($entry['dns_status'] ?? ''),
+                'dns_status_label' => $this->getMonitoringStatusLabel((string)($entry['dns_status'] ?? '')),
+                'http_status' => (string)($entry['http_status'] ?? ''),
+                'http_status_label' => $this->getMonitoringStatusLabel((string)($entry['http_status'] ?? '')),
+                'previous_status' => (string)($entry['previous_status'] ?? ''),
+                'previous_status_label' => $this->getOperationalStatusLabel((string)($entry['previous_status'] ?? '')),
+                'status' => (string)($entry['status'] ?? ''),
+                'status_label' => $this->getOperationalStatusLabel((string)($entry['status'] ?? '')),
+                'status_changed' => !empty($entry['status_changed']),
+            ];
+        }
+
+        return $results;
     }
 
     protected function getStatusUserData(int $userId): array {
@@ -2143,6 +2235,7 @@ class MetricsService {
     }
 
     protected function getSiteOverviewMetrics(int $siteId): array {
+        $cacheKey = 'rrze_msm_site_overview_metrics_' . $this->getDetailCacheVersion() . '_' . $siteId;
         $roleCounts = [
             'admins' => 0,
             'editors' => 0,
@@ -2163,7 +2256,12 @@ class MetricsService {
             'url' => '',
             'type' => '',
         ];
+        $cached = get_site_transient($cacheKey);
         $userData = [];
+
+        if (is_array($cached) && !empty($cached)) {
+            return $cached;
+        }
 
         switch_to_blog($siteId);
 
@@ -2177,15 +2275,19 @@ class MetricsService {
 
         restore_current_blog();
 
-        return [
+        $cached = [
             'branding' => $branding,
             'role_counts' => $roleCounts,
             'content_counts' => $contentCounts,
             'storage' => $storage,
         ];
+
+        set_site_transient($cacheKey, $cached, $this->getDetailCacheTtl());
+
+        return $cached;
     }
 
-    protected function getSiteDetailMetrics(int $siteId): array {
+    protected function getSiteDetailMetrics(int $siteId, array $load = []): array {
         $theme = [
             'name' => '',
             'version' => '',
@@ -2199,20 +2301,53 @@ class MetricsService {
         $customPostTypes = [];
         $blockTemplateTypes = [];
         $imageSizes = [];
+        $optionsGroups = [];
+        $optionsGroupDetail = [];
+        $processStats = [
+            'transients' => 0,
+            'cron_events' => 0,
+        ];
         $transients = [];
         $cronEvents = [];
+        $loadContent = !empty($load['content']);
+        $loadOptionsSummary = !empty($load['options_summary']);
+        $loadOptionValuesGroup = !empty($load['options_values_group']) ? (string)$load['options_values_group'] : '';
+        $loadProcessStats = !empty($load['process_stats']);
+        $loadTransients = !empty($load['transients']);
+        $loadCronEvents = !empty($load['cron_events']);
 
         switch_to_blog($siteId);
         $theme = $this->getCurrentThemeDetails();
         $plugins = $this->getCurrentSiteActivePlugins();
         $users = $this->getCurrentSiteUsers();
-        $contentTypes = $this->getCurrentSiteContentTypeCounts();
-        $customPostTypes = $this->getCurrentSiteCustomPostTypes();
-        $blockTemplateTypes = $this->getCurrentSiteBlockTemplateTypes();
         $imageSizes = $this->getCurrentSiteImageSizes($theme, $plugins);
-        $optionsOverview = $this->getCurrentSiteOptionsOverview();
-        $transients = $this->getCurrentSiteTransients();
-        $cronEvents = $this->getCurrentSiteCronEvents();
+
+        if ($loadContent) {
+            $contentTypes = $this->getCurrentSiteContentTypeCounts();
+            $customPostTypes = $this->getCurrentSiteCustomPostTypes();
+            $blockTemplateTypes = $this->getCurrentSiteBlockTemplateTypes();
+        }
+
+        if ($loadOptionsSummary) {
+            $optionsGroups = $this->getCurrentSiteOptionsGroupSummary();
+        }
+
+        if ($loadOptionValuesGroup !== '') {
+            $optionsGroupDetail = $this->getCurrentSiteOptionsByGroup($loadOptionValuesGroup);
+        }
+
+        if ($loadProcessStats) {
+            $processStats = $this->getCurrentSiteProcessStats();
+        }
+
+        if ($loadTransients) {
+            $transients = $this->getCurrentSiteTransients();
+        }
+
+        if ($loadCronEvents) {
+            $cronEvents = $this->getCurrentSiteCronEvents();
+        }
+
         restore_current_blog();
 
         return [
@@ -2223,24 +2358,37 @@ class MetricsService {
             'custom_post_types' => $customPostTypes,
             'block_template_types' => $blockTemplateTypes,
             'image_sizes' => $imageSizes,
-            'options_overview' => $optionsOverview,
+            'options_overview' => [
+                'groups' => $optionsGroups,
+                'selected_group' => $optionsGroupDetail,
+            ],
+            'process_stats' => $processStats,
             'transients' => $transients,
             'cron_events' => $cronEvents,
+            'transients_truncated' => count($transients) >= $this->getDetailSectionMaxRows(),
+            'cron_events_truncated' => count($cronEvents) >= $this->getDetailSectionMaxRows(),
         ];
     }
 
     protected function getCurrentThemeDetails(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('theme');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $theme = wp_get_theme();
         $screenshot = $theme instanceof \WP_Theme ? $theme->get_screenshot() : '';
         $description = '';
         $tags = [];
+        $result = [];
 
         if ($theme instanceof \WP_Theme) {
             $description = (string)$theme->get('Description');
             $tags = $theme->get('Tags');
         }
 
-        return [
+        $result = [
             'name' => $theme instanceof \WP_Theme ? ((string)$theme->get('Name') ?: (string)$theme->get_stylesheet()) : '',
             'stylesheet' => $theme instanceof \WP_Theme ? (string)$theme->get_stylesheet() : '',
             'version' => $theme instanceof \WP_Theme ? ((string)$theme->get('Version') ?: '') : '',
@@ -2252,9 +2400,19 @@ class MetricsService {
             'author_url' => $theme instanceof \WP_Theme ? (string)$theme->get('AuthorURI') : '',
             'tags' => is_array($tags) ? $this->normalizeStringList($tags) : [],
         ];
+
+        $this->setCachedCurrentSiteDetailSection('theme', $result);
+
+        return $result;
     }
 
     protected function getCurrentSiteActivePlugins(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('plugins');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $networkActivePlugins = get_site_option('active_sitewide_plugins', []);
         $localActivePlugins = get_option('active_plugins', []);
         $pluginFiles = [];
@@ -2301,10 +2459,18 @@ class MetricsService {
 
         usort($results, [self::class, 'compareDetailedPlugins']);
 
+        $this->setCachedCurrentSiteDetailSection('plugins', $results);
+
         return $results;
     }
 
     protected function getCurrentSiteImageSizes(array $theme, array $plugins): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('image_sizes');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         global $_wp_additional_image_sizes;
 
         $registeredSizes = function_exists('wp_get_registered_image_subsizes')
@@ -2374,6 +2540,8 @@ class MetricsService {
         }
 
         usort($rows, [self::class, 'compareImageSizeRows']);
+
+        $this->setCachedCurrentSiteDetailSection('image_sizes', $rows);
 
         return $rows;
     }
@@ -2454,19 +2622,33 @@ class MetricsService {
 
     protected function getNetworkPluginDeleteUrl(string $pluginFile): string {
         return wp_nonce_url(
-            'plugins.php?action=delete-selected&verify-delete=1&checked[]=' . rawurlencode($pluginFile),
+            add_query_arg(
+                [
+                    'action' => 'delete-selected',
+                    'verify-delete' => 1,
+                    'checked[]' => $pluginFile,
+                ],
+                network_admin_url('plugins.php')
+            ),
             'bulk-plugins'
         );
     }
 
     protected function getSiteNameById(int $siteId): string {
+        if (isset($this->siteNameCache[$siteId])) {
+            return $this->siteNameCache[$siteId];
+        }
+
         $site = get_site($siteId);
 
         if (!$site instanceof \WP_Site) {
-            return (string)$siteId;
+            $this->siteNameCache[$siteId] = (string)$siteId;
+            return $this->siteNameCache[$siteId];
         }
 
-        return $this->getSiteName($site);
+        $this->siteNameCache[$siteId] = $this->getSiteName($site);
+
+        return $this->siteNameCache[$siteId];
     }
 
     protected function sortPluginActiveSites(array $sites): array {
@@ -2529,6 +2711,12 @@ class MetricsService {
     }
 
     protected function getCurrentSiteUsers(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('users');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $users = get_users([
             'blog_id' => get_current_blog_id(),
             'orderby' => 'display_name',
@@ -2556,10 +2744,18 @@ class MetricsService {
 
         usort($results, [self::class, 'compareDetailedUsers']);
 
+        $this->setCachedCurrentSiteDetailSection('users', $results);
+
         return $results;
     }
 
     protected function getCurrentSiteContentTypeCounts(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('content_types');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $postTypes = get_post_types([], 'objects');
         $postTypeCounts = $this->getDistinctPostTypeCounts();
         $results = [];
@@ -2698,10 +2894,18 @@ class MetricsService {
             $results = array_merge($results, $grouped['other']);
         }
 
+        $this->setCachedCurrentSiteDetailSection('content_types', $results);
+
         return $results;
     }
 
     protected function getCurrentSiteCustomPostTypes(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('custom_post_types');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $postTypes = get_post_types([], 'objects');
         $postTypeCounts = $this->getDistinctPostTypeCounts();
         $results = [];
@@ -2745,10 +2949,18 @@ class MetricsService {
 
         usort($results, [self::class, 'compareDetailedContentTypes']);
 
+        $this->setCachedCurrentSiteDetailSection('custom_post_types', $results);
+
         return $results;
     }
 
     protected function getCurrentSiteBlockTemplateTypes(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('block_template_types');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $postTypeCounts = $this->getDistinctPostTypeCounts();
         $results = [];
         $map = [
@@ -2768,6 +2980,8 @@ class MetricsService {
                 'count' => (int)$postTypeCounts[$slug],
             ];
         }
+
+        $this->setCachedCurrentSiteDetailSection('block_template_types', $results);
 
         return $results;
     }
@@ -3138,11 +3352,17 @@ class MetricsService {
         ];
     }
 
-    protected function getCurrentSiteOptionsOverview(): array {
+    protected function getCurrentSiteOptionsGroupSummary(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('options_summary');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         global $wpdb;
 
         $rows = $wpdb->get_results(
-            "SELECT option_name, option_value, autoload
+            "SELECT option_name
             FROM {$wpdb->options}
             ORDER BY option_name ASC"
         );
@@ -3151,13 +3371,11 @@ class MetricsService {
                 'slug' => 'all',
                 'label' => __('Alle Optionen', 'rrze-multisite-manager'),
                 'count' => 0,
-                'options' => [],
             ],
         ];
         $row = null;
         $optionName = '';
         $groupKey = '';
-        $optionEntry = [];
 
         foreach ($rows as $row) {
             $optionName = (string)($row->option_name ?? '');
@@ -3167,36 +3385,153 @@ class MetricsService {
             }
 
             $groupKey = $this->getOptionGroupKey($optionName);
-            $optionEntry = [
-                'name' => $optionName,
-                'value' => $this->formatOptionValue((string)($row->option_value ?? '')),
-                'autoload' => (string)($row->autoload ?? ''),
-                'is_core' => $this->isWordPressCoreOption($optionName),
-            ];
 
             if (!isset($groups[$groupKey])) {
                 $groups[$groupKey] = [
                     'slug' => $groupKey,
                     'label' => $this->getOptionGroupLabel($groupKey, $optionName),
                     'count' => 0,
-                    'options' => [],
                 ];
             }
 
-            $groups['all']['options'][] = $optionEntry;
             $groups['all']['count']++;
-            $groups[$groupKey]['options'][] = $optionEntry;
             $groups[$groupKey]['count']++;
         }
 
         uasort($groups, [self::class, 'compareOptionGroups']);
 
-        return [
-            'groups' => array_values($groups),
+        $groups = array_values($groups);
+
+        $this->setCachedCurrentSiteDetailSection('options_summary', $groups);
+
+        return $groups;
+    }
+
+    protected function getCurrentSiteOptionsByGroup(string $groupKey): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('options_group', $groupKey);
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        global $wpdb;
+
+        $whereData = $this->getOptionGroupWhereData($groupKey);
+        $limit = $this->getDetailSectionMaxRows() + 1;
+        $rows = [];
+        $options = [];
+        $row = null;
+        $optionName = '';
+        $isTruncated = false;
+
+        if (!empty($whereData['where'])) {
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT option_name, option_value, autoload
+                    FROM {$wpdb->options}
+                    WHERE " . (string)$whereData['where'] . '
+                    ORDER BY option_name ASC
+                    LIMIT %d',
+                    ...array_merge((array)($whereData['params'] ?? []), [$limit])
+                )
+            );
+        } else {
+            $rows = $wpdb->get_results(
+                "SELECT option_name, option_value, autoload
+                FROM {$wpdb->options}
+                ORDER BY option_name ASC"
+            );
+        }
+
+        foreach ($rows as $row) {
+            $optionName = (string)($row->option_name ?? '');
+
+            if ($optionName === '') {
+                continue;
+            }
+
+            if ($groupKey !== 'all' && $this->getOptionGroupKey($optionName) !== $groupKey) {
+                continue;
+            }
+
+            $options[] = [
+                'name' => $optionName,
+                'value' => $this->formatOptionValue((string)($row->option_value ?? '')),
+                'autoload' => (string)($row->autoload ?? ''),
+                'is_core' => $this->isWordPressCoreOption($optionName),
+            ];
+
+            if (count($options) >= $this->getDetailSectionMaxRows()) {
+                $isTruncated = true;
+                break;
+            }
+        }
+
+        $result = [
+            'slug' => $groupKey,
+            'options' => $options,
+            'is_truncated' => $isTruncated,
+            'limit' => $this->getDetailSectionMaxRows(),
         ];
+
+        $this->setCachedCurrentSiteDetailSection('options_group', $result, $groupKey);
+
+        return $result;
+    }
+
+    protected function getCurrentSiteProcessStats(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('process_stats');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        global $wpdb;
+
+        $transientCount = (int)$wpdb->get_var(
+            "SELECT COUNT(option_name)
+            FROM {$wpdb->options}
+            WHERE option_name LIKE '\\_transient\\_%'
+            AND option_name NOT LIKE '\\_transient\\_timeout\\_%'"
+        );
+        $cronArray = _get_cron_array();
+        $cronEventCount = 0;
+        $hooks = [];
+        $events = [];
+
+        if (is_array($cronArray)) {
+            foreach ($cronArray as $hooks) {
+                if (!is_array($hooks)) {
+                    continue;
+                }
+
+                foreach ($hooks as $events) {
+                    if (!is_array($events)) {
+                        continue;
+                    }
+
+                    $cronEventCount += count($events);
+                }
+            }
+        }
+
+        $result = [
+            'transients' => max(0, $transientCount),
+            'cron_events' => max(0, $cronEventCount),
+        ];
+
+        $this->setCachedCurrentSiteDetailSection('process_stats', $result);
+
+        return $result;
     }
 
     protected function getCurrentSiteTransients(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('transients');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         global $wpdb;
 
         $rows = $wpdb->get_results(
@@ -3236,12 +3571,24 @@ class MetricsService {
                 'name' => $transientName,
                 'expires_at' => $timestamp > 0 ? $this->formatTimestamp($timestamp) : __('Kein Ablauf gesetzt', 'rrze-multisite-manager'),
             ];
+
+            if (count($transients) >= $this->getDetailSectionMaxRows()) {
+                break;
+            }
         }
+
+        $this->setCachedCurrentSiteDetailSection('transients', $transients);
 
         return $transients;
     }
 
     protected function getCurrentSiteCronEvents(): array {
+        $cached = $this->getCachedCurrentSiteDetailSection('cron_events');
+
+        if (is_array($cached)) {
+            return $cached;
+        }
+
         $cronArray = _get_cron_array();
         $results = [];
         $timestamp = 0;
@@ -3280,8 +3627,43 @@ class MetricsService {
         }
 
         usort($results, [self::class, 'compareCronEvents']);
+        $results = array_slice($results, 0, $this->getDetailSectionMaxRows());
+
+        $this->setCachedCurrentSiteDetailSection('cron_events', $results);
 
         return $results;
+    }
+
+    protected function getOptionGroupWhereData(string $groupKey): array {
+        if ($groupKey === 'all' || $groupKey === 'wordpress-core' || $groupKey === 'misc') {
+            return [
+                'where' => '',
+                'params' => [],
+            ];
+        }
+
+        if ($groupKey === 'theme_mods') {
+            return [
+                'where' => 'option_name LIKE %s',
+                'params' => ['theme_mods_%'],
+            ];
+        }
+
+        if ($groupKey === 'widgets') {
+            return [
+                'where' => '(option_name LIKE %s OR option_name LIKE %s)',
+                'params' => ['widget_%', 'sidebars_%'],
+            ];
+        }
+
+        return [
+            'where' => '(option_name LIKE %s OR option_name LIKE %s)',
+            'params' => [$groupKey . '_%', $groupKey . '-%'],
+        ];
+    }
+
+    protected function getDetailSectionMaxRows(): int {
+        return self::DETAIL_SECTION_MAX_ROWS;
     }
 
     public function deleteSiteOption(int $siteId, string $optionName): bool {
@@ -3330,26 +3712,30 @@ class MetricsService {
         }
 
         switch_to_blog($siteId);
-        $rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT ID
-                FROM {$wpdb->posts}
-                WHERE post_type = %s",
-                $postType
-            )
-        );
+        do {
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT ID
+                    FROM {$wpdb->posts}
+                    WHERE post_type = %s
+                    LIMIT %d",
+                    $postType,
+                    100
+                )
+            );
 
-        foreach ($rows as $row) {
-            $postId = (int)($row->ID ?? 0);
+            foreach ($rows as $row) {
+                $postId = (int)($row->ID ?? 0);
 
-            if ($postId <= 0) {
-                continue;
+                if ($postId <= 0) {
+                    continue;
+                }
+
+                if (wp_delete_post($postId, true)) {
+                    $deleted++;
+                }
             }
-
-            if (wp_delete_post($postId, true)) {
-                $deleted++;
-            }
-        }
+        } while (!empty($rows));
 
         restore_current_blog();
 
@@ -3363,17 +3749,32 @@ class MetricsService {
         $rows = [];
         $row = null;
         $optionName = '';
+        $whereData = [];
 
-        if ($siteId <= 0 || trim($groupKey) === '') {
+        if ($siteId <= 0 || trim($groupKey) === '' || in_array($groupKey, ['all', 'wordpress-core'], true)) {
             return 0;
         }
 
         switch_to_blog($siteId);
-        $rows = $wpdb->get_results(
-            "SELECT option_name
-            FROM {$wpdb->options}
-            ORDER BY option_name ASC"
-        );
+        $whereData = $this->getOptionGroupWhereData($groupKey);
+
+        if (!empty($whereData['where'])) {
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT option_name
+                    FROM {$wpdb->options}
+                    WHERE " . (string)$whereData['where'] . '
+                    ORDER BY option_name ASC',
+                    ...((array)($whereData['params'] ?? []))
+                )
+            );
+        } else {
+            $rows = $wpdb->get_results(
+                "SELECT option_name
+                FROM {$wpdb->options}
+                ORDER BY option_name ASC"
+            );
+        }
 
         foreach ($rows as $row) {
             $optionName = (string)($row->option_name ?? '');
@@ -3909,45 +4310,17 @@ class MetricsService {
         return $count;
     }
 
-    protected function getThemeSiteCounts(): array {
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
-        $counts = [];
-        $siteId = 0;
-        $stylesheet = '';
-
-        foreach ($siteIds as $siteId) {
-            switch_to_blog((int)$siteId);
-            $stylesheet = (string)get_option('stylesheet', '');
-
-            if ($stylesheet === '') {
-                $stylesheet = (string)get_option('template', '');
-            }
-
-            restore_current_blog();
-
-            if ($stylesheet === '') {
-                continue;
-            }
-
-            if (!isset($counts[$stylesheet])) {
-                $counts[$stylesheet] = 0;
-            }
-
-            $counts[$stylesheet]++;
+    protected function getThemeSiteAggregate(): array {
+        if (is_array($this->themeSiteAggregate)) {
+            return $this->themeSiteAggregate;
         }
 
-        return $counts;
-    }
-
-    protected function getThemeSiteUsageMap(): array {
         $sites = get_sites([
             'number' => 0,
             'orderby' => 'domain',
             'order' => 'ASC',
         ]);
+        $counts = [];
         $results = [];
         $site = null;
         $siteId = 0;
@@ -3977,6 +4350,12 @@ class MetricsService {
                 continue;
             }
 
+            if (!isset($counts[$stylesheet])) {
+                $counts[$stylesheet] = 0;
+            }
+
+            $counts[$stylesheet]++;
+
             if (!isset($results[$stylesheet])) {
                 $results[$stylesheet] = [];
             }
@@ -3988,7 +4367,24 @@ class MetricsService {
             ];
         }
 
-        return $results;
+        $this->themeSiteAggregate = [
+            'counts' => $counts,
+            'usage_map' => $results,
+        ];
+
+        return $this->themeSiteAggregate;
+    }
+
+    protected function getThemeSiteCounts(): array {
+        $aggregate = $this->getThemeSiteAggregate();
+
+        return (array)($aggregate['counts'] ?? []);
+    }
+
+    protected function getThemeSiteUsageMap(): array {
+        $aggregate = $this->getThemeSiteAggregate();
+
+        return (array)($aggregate['usage_map'] ?? []);
     }
 
     protected function getAllowedThemes(): array {
@@ -4231,6 +4627,191 @@ class MetricsService {
         }
 
         return true;
+    }
+
+    protected function isUsableDashboardCache(array $cached): bool {
+        return !empty($cached['data']) && is_array($cached['data']) && $this->isCompleteDashboardData((array)$cached['data']);
+    }
+
+    protected function shouldRefreshDashboardCache(array $cached): bool {
+        $generatedAt = (int)($cached['generated_at'] ?? 0);
+        $dirty = !empty($cached['dirty']);
+        $ttl = max(300, $this->config->getMetricsCacheTtl());
+
+        if ($dirty) {
+            return true;
+        }
+
+        if ($generatedAt <= 0) {
+            return true;
+        }
+
+        return ($generatedAt + $ttl) <= time();
+    }
+
+    protected function getStoredDashboardCache(): array {
+        $cached = get_site_option($this->getCacheKey(), []);
+
+        return is_array($cached) ? $cached : [];
+    }
+
+    protected function markAllCachesDirty(bool $scheduleRefresh = true): void {
+        $cached = $this->getStoredDashboardCache();
+
+        if (!is_array($cached)) {
+            $cached = [];
+        }
+
+        $cached['dirty'] = true;
+        update_site_option($this->getCacheKey(), $cached);
+        $this->bumpDetailCacheVersion();
+
+        if ($scheduleRefresh) {
+            $this->scheduleDashboardRefresh();
+        }
+    }
+
+    protected function registerInvalidationHooks(): void {
+        add_action('wpmu_new_blog', [$this, 'invalidateCaches'], 20, 6);
+        add_action('archive_blog', [$this, 'invalidateCaches'], 20, 1);
+        add_action('unarchive_blog', [$this, 'invalidateCaches'], 20, 1);
+        add_action('make_spam_blog', [$this, 'invalidateCaches'], 20, 1);
+        add_action('make_ham_blog', [$this, 'invalidateCaches'], 20, 1);
+        add_action('delete_blog', [$this, 'invalidateCaches'], 20, 2);
+        add_action('undelete_blog', [$this, 'invalidateCaches'], 20, 1);
+        add_action('mature_blog', [$this, 'invalidateCaches'], 20, 1);
+        add_action('unmature_blog', [$this, 'invalidateCaches'], 20, 1);
+        add_action('activated_plugin', [$this, 'invalidateCaches'], 20, 2);
+        add_action('deactivated_plugin', [$this, 'invalidateCaches'], 20, 2);
+        add_action('switch_theme', [$this, 'invalidateCaches'], 20, 3);
+        add_action('upgrader_process_complete', [$this, 'invalidateCaches'], 20, 2);
+        add_action('save_post', [$this, 'invalidateCaches'], 20, 3);
+        add_action('deleted_post', [$this, 'invalidateCaches'], 20, 2);
+        add_action('add_attachment', [$this, 'invalidateCaches'], 20, 1);
+        add_action('delete_attachment', [$this, 'invalidateCaches'], 20, 1);
+        add_action('user_register', [$this, 'invalidateCaches'], 20, 1);
+        add_action('deleted_user', [$this, 'invalidateCaches'], 20, 1);
+        add_action('add_user_to_blog', [$this, 'invalidateCaches'], 20, 3);
+        add_action('remove_user_from_blog', [$this, 'invalidateCaches'], 20, 2);
+        add_action('set_user_role', [$this, 'invalidateCaches'], 20, 3);
+        add_action('update_option_blogname', [$this, 'invalidateCaches'], 20, 3);
+        add_action('update_option_admin_email', [$this, 'invalidateCaches'], 20, 3);
+        add_action('update_option_stylesheet', [$this, 'invalidateCaches'], 20, 3);
+        add_action('update_option_template', [$this, 'invalidateCaches'], 20, 3);
+        add_action('update_option_active_plugins', [$this, 'invalidateCaches'], 20, 3);
+        add_action('add_option_active_plugins', [$this, 'invalidateCaches'], 20, 2);
+        add_action('delete_option_active_plugins', [$this, 'invalidateCaches'], 20, 1);
+        add_action('update_site_option_active_sitewide_plugins', [$this, 'invalidateCaches'], 20, 4);
+        add_action('update_site_option_allowedthemes', [$this, 'invalidateCaches'], 20, 4);
+        add_action('update_site_option_blog_upload_space', [$this, 'invalidateCaches'], 20, 4);
+    }
+
+    protected function scheduleDashboardRefresh(int $delay = 60): void {
+        if (wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK)) {
+            return;
+        }
+
+        wp_schedule_single_event(time() + max(5, $delay), self::DASHBOARD_REFRESH_HOOK);
+    }
+
+    protected function acquireDashboardRefreshLock(): bool {
+        if ($this->isDashboardRefreshLocked()) {
+            return false;
+        }
+
+        return (bool)set_site_transient(self::DASHBOARD_LOCK_KEY, time(), self::DASHBOARD_LOCK_TTL);
+    }
+
+    protected function releaseDashboardRefreshLock(): void {
+        delete_site_transient(self::DASHBOARD_LOCK_KEY);
+    }
+
+    protected function isDashboardRefreshLocked(): bool {
+        return (int)get_site_transient(self::DASHBOARD_LOCK_KEY) > 0;
+    }
+
+    protected function bumpDetailCacheVersion(): int {
+        $version = time();
+        update_site_option(self::DETAIL_CACHE_VERSION_OPTION, $version);
+        return $version;
+    }
+
+    protected function getDetailCacheVersion(): int {
+        $version = (int)get_site_option(self::DETAIL_CACHE_VERSION_OPTION, 0);
+
+        if ($version <= 0) {
+            $version = $this->bumpDetailCacheVersion();
+        }
+
+        return $version;
+    }
+
+    protected function getDetailCacheTtl(): int {
+        return self::DETAIL_CACHE_TTL;
+    }
+
+    protected function getSiteDetailsCacheKey(int $siteId, array $load = []): string {
+        return 'rrze_msm_site_details_' . $this->getDetailCacheVersion() . '_' . md5((string)$siteId . '|' . wp_json_encode($load));
+    }
+
+    protected function getSiteDetailSectionCacheKey(int $siteId, string $section, string $suffix = ''): string {
+        return 'rrze_msm_site_detail_section_' . $this->getDetailCacheVersion() . '_' . md5($siteId . '|' . $section . '|' . $suffix);
+    }
+
+    protected function getCachedCurrentSiteDetailSection(string $section, string $suffix = ''): mixed {
+        $siteId = get_current_blog_id();
+
+        if ($siteId <= 0) {
+            return null;
+        }
+
+        return get_site_transient($this->getSiteDetailSectionCacheKey($siteId, $section, $suffix));
+    }
+
+    protected function setCachedCurrentSiteDetailSection(string $section, mixed $value, string $suffix = ''): void {
+        $siteId = get_current_blog_id();
+
+        if ($siteId <= 0) {
+            return;
+        }
+
+        set_site_transient(
+            $this->getSiteDetailSectionCacheKey($siteId, $section, $suffix),
+            $value,
+            self::DETAIL_CACHE_TTL
+        );
+    }
+
+    protected function getPluginDetailsCacheKey(string $pluginFile): string {
+        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5($pluginFile . '|' . $this->getPluginCacheFingerprint($pluginFile));
+    }
+
+    protected function getThemeDetailsCacheKey(string $stylesheet): string {
+        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5($stylesheet . '|' . $this->getThemeCacheFingerprint($stylesheet));
+    }
+
+    protected function getPluginCacheFingerprint(string $pluginFile): string {
+        $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
+        $baseDir = $mainFilePath !== '' ? dirname($mainFilePath) : '';
+        $fingerprint = [
+            $pluginFile,
+            $mainFilePath !== '' && file_exists($mainFilePath) ? (string)filemtime($mainFilePath) : '0',
+            $baseDir !== '' && file_exists($baseDir) ? (string)filemtime($baseDir) : '0',
+        ];
+
+        return implode('|', $fingerprint);
+    }
+
+    protected function getThemeCacheFingerprint(string $stylesheet): string {
+        $themePath = $this->getThemeAbsolutePath($stylesheet);
+        $mainPath = $this->getThemeMainFilePath($stylesheet);
+        $fingerprint = [
+            $stylesheet,
+            $themePath !== '' && file_exists($themePath) ? (string)filemtime($themePath) : '0',
+            $mainPath !== '' && file_exists($mainPath) ? (string)filemtime($mainPath) : '0',
+        ];
+
+        return implode('|', $fingerprint);
     }
 
     protected function getCacheKey(): string {
