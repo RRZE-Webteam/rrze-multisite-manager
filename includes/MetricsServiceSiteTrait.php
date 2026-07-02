@@ -37,6 +37,23 @@ trait MetricsServiceSiteTrait {
         return $details;
     }
 
+    public function getSiteStorageAnalysisSite(int $siteId): array {
+        $site = $siteId > 0 ? get_site($siteId) : null;
+        $formattedSites = [];
+
+        if (!$site instanceof \WP_Site) {
+            return [];
+        }
+
+        $formattedSites = $this->formatSites([$site], true);
+
+        if (empty($formattedSites[0]) || !is_array($formattedSites[0])) {
+            return [];
+        }
+
+        return $formattedSites[0];
+    }
+
     public function searchSites(string $searchTerm, int $limit = 20): array {
         $sites = [];
         $results = [];

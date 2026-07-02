@@ -108,6 +108,27 @@ function updateSiteDeleteSubmitState() {
     submit.setAttribute('aria-disabled', 'true');
 }
 
+function closeOrphanFileDeleteModal() {
+    var modal = document.querySelector('#rrze-msm-orphan-file-delete-modal');
+
+    if (!modal) {
+        return;
+    }
+
+    modal.setAttribute('hidden', 'hidden');
+}
+
+function updateOrphanFileDeleteSubmitState() {
+    var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
+    var submit = document.querySelector('#rrze-msm-orphan-file-delete-submit');
+
+    if (!checkbox || !submit) {
+        return;
+    }
+
+    submit.disabled = !checkbox.checked;
+}
+
 function onDeleteCptButtonClick(event) {
     var button = event.currentTarget;
     var modal = document.querySelector('#rrze-msm-delete-cpt-modal');
@@ -162,6 +183,28 @@ function onSiteDeleteButtonClick(event) {
     modal.removeAttribute('hidden');
 }
 
+function onOrphanFileDeleteButtonClick(event) {
+    var button = event.currentTarget;
+    var modal = document.querySelector('#rrze-msm-orphan-file-delete-modal');
+    var target = document.querySelector('#rrze-msm-orphan-file-delete-target');
+    var pathInput = document.querySelector('#rrze-msm-orphan-file-delete-path');
+    var siteInput = document.querySelector('#rrze-msm-orphan-file-delete-site-id');
+    var nonceInput = document.querySelector('#rrze-msm-orphan-file-delete-nonce');
+    var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
+
+    if (!button || !modal || !target || !pathInput || !siteInput || !nonceInput || !checkbox) {
+        return;
+    }
+
+    target.textContent = button.getAttribute('data-file-path') || '';
+    pathInput.value = button.getAttribute('data-file-path') || '';
+    siteInput.value = button.getAttribute('data-site-id') || '';
+    nonceInput.value = button.getAttribute('data-delete-nonce') || '';
+    checkbox.checked = false;
+    updateOrphanFileDeleteSubmitState();
+    modal.removeAttribute('hidden');
+}
+
 function onCloseDeleteCptModalClick(event) {
     event.preventDefault();
     closeDeleteCptModal();
@@ -185,10 +228,23 @@ function onCloseSiteDeleteModalClick(event) {
     closeSiteDeleteModal();
 }
 
+function onCloseOrphanFileDeleteModalClick(event) {
+    event.preventDefault();
+    closeOrphanFileDeleteModal();
+}
+
 function onSiteDeleteSubmitClick(event) {
     var submit = event.currentTarget;
 
     if (!submit || submit.getAttribute('aria-disabled') === 'true') {
+        event.preventDefault();
+    }
+}
+
+function onOrphanFileDeleteSubmitClick(event) {
+    var submit = event.currentTarget;
+
+    if (!submit || submit.disabled) {
         event.preventDefault();
     }
 }
@@ -259,6 +315,31 @@ function initSiteDeleteModal() {
     if (submit) {
         submit.addEventListener('click', onSiteDeleteSubmitClick);
         updateSiteDeleteSubmitState();
+    }
+}
+
+function initOrphanFileDeleteModal() {
+    var openButtons = document.querySelectorAll('.rrze-msm-open-orphan-file-delete-modal');
+    var closeButtons = document.querySelectorAll('.rrze-msm-close-orphan-file-delete-modal');
+    var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
+    var submit = document.querySelector('#rrze-msm-orphan-file-delete-submit');
+    var i = 0;
+
+    for (i = 0; i < openButtons.length; i++) {
+        openButtons[i].addEventListener('click', onOrphanFileDeleteButtonClick);
+    }
+
+    for (i = 0; i < closeButtons.length; i++) {
+        closeButtons[i].addEventListener('click', onCloseOrphanFileDeleteModalClick);
+    }
+
+    if (checkbox) {
+        checkbox.addEventListener('change', updateOrphanFileDeleteSubmitState);
+    }
+
+    if (submit) {
+        submit.addEventListener('click', onOrphanFileDeleteSubmitClick);
+        updateOrphanFileDeleteSubmitState();
     }
 }
 
@@ -854,7 +935,7 @@ function renderSiteSearchResults(items) {
 
     for (i = 0; i < items.length; i++) {
         item = items[i];
-        targetUrl = String(config.siteDetailsBaseUrl || '') + '&site_id=' + String(item.id || '');
+        targetUrl = String(config.siteSearchBaseUrl || config.siteDetailsBaseUrl || '') + '&site_id=' + String(item.id || '');
         html += '<li class="rrze-msm-site-search-item">';
         html += '<a href="' + escapeHtml(targetUrl) + '">';
         html += '<strong>' + escapeHtml(item.name || '') + '</strong>';
@@ -1393,6 +1474,7 @@ function initRrzeMultisiteManager() {
     initDeleteCptModal();
     initPluginDeactivateModal();
     initSiteDeleteModal();
+    initOrphanFileDeleteModal();
     initPluginSitesTextToggles();
     initPluginSitesPagers();
     initReadmeToggles();

@@ -273,9 +273,24 @@
     opacity: 0.7;
 }
 
-.rrze-msm-col-numeric,
-.rrze-msm-plugin-col-version,
-.rrze-msm-plugin-col-active-sites {
+.widefat th.rrze-msm-col-numeric,
+.widefat td.rrze-msm-col-numeric,
+.widefat th.rrze-msm-plugin-col-version,
+.widefat td.rrze-msm-plugin-col-version,
+.widefat th.rrze-msm-plugin-col-active-sites,
+.widefat td.rrze-msm-plugin-col-active-sites,
+.rrze-msm-table th.rrze-msm-col-numeric,
+.rrze-msm-table td.rrze-msm-col-numeric,
+.rrze-msm-table th.rrze-msm-plugin-col-version,
+.rrze-msm-table td.rrze-msm-plugin-col-version,
+.rrze-msm-table th.rrze-msm-plugin-col-active-sites,
+.rrze-msm-table td.rrze-msm-plugin-col-active-sites,
+th.rrze-msm-col-numeric,
+td.rrze-msm-col-numeric,
+th.rrze-msm-plugin-col-version,
+td.rrze-msm-plugin-col-version,
+th.rrze-msm-plugin-col-active-sites,
+td.rrze-msm-plugin-col-active-sites {
     text-align: right;
     white-space: nowrap;
 }

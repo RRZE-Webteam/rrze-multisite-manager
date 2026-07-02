@@ -82,6 +82,9 @@
                                         <br><?php echo esc_html(sprintf(__('%d%% belegt', 'rrze-multisite-manager'), (int)$site_details['storage']['percent'])); ?>
                                         <br><?php echo esc_html(sprintf(__('%d%% frei', 'rrze-multisite-manager'), $freePercent)); ?>
                                     <?php } ?>
+                                    <?php if (!empty($site_storage_analysis_url)) { ?>
+                                        <br><a class="button button-secondary" href="<?php echo esc_url((string)$site_storage_analysis_url); ?>"><?php echo esc_html__('Speicher analysieren', 'rrze-multisite-manager'); ?></a>
+                                    <?php } ?>
                                 </div>
                             </div>
                         </div>

@@ -17,6 +17,7 @@ class MetricsService {
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
+    protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const DASHBOARD_LOCK_TTL = 900;
     protected ?Settings $settings;
     protected Config $config;
@@ -3263,6 +3264,898 @@ class MetricsService {
         ];
     }
 
+    public function getSiteStorageAnalysis(int $siteId): array {
+        $cacheKey = 'rrze_msm_site_storage_analysis_' . $this->getDetailCacheVersion() . '_' . $siteId;
+        $cached = get_site_transient($cacheKey);
+        $analysis = [];
+
+        if ($siteId <= 0) {
+            return [];
+        }
+
+        if (
+            is_array($cached)
+            && !empty($cached)
+            && array_key_exists('orphan_files_found_in_content', $cached)
+            && array_key_exists('orphan_files_without_content_matches', $cached)
+        ) {
+            return $cached;
+        }
+
+        switch_to_blog($siteId);
+        $analysis = $this->buildCurrentSiteStorageAnalysis();
+        restore_current_blog();
+
+        set_site_transient($cacheKey, $analysis, $this->getDetailCacheTtl());
+
+        return $analysis;
+    }
+
+    protected function buildCurrentSiteStorageAnalysis(): array {
+        $uploadDir = wp_get_upload_dir();
+        $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
+        $baseUrl = is_array($uploadDir) && !empty($uploadDir['baseurl']) ? (string)$uploadDir['baseurl'] : '';
+        $wordpressStorage = $this->getSiteStorageUsage();
+        $scan = [];
+        $attachmentIndex = [];
+        $referencedFiles = [];
+        $actualBytes = 0;
+        $differenceBytes = 0;
+        $summary = [];
+        $warnings = [];
+
+        if ($baseDir === '' || !is_dir($baseDir)) {
+            return [
+                'upload_basedir' => $baseDir,
+                'upload_baseurl' => $baseUrl,
+                'wordpress_storage' => $wordpressStorage,
+                'error' => __('Das Upload-Verzeichnis dieser Website konnte nicht gefunden werden.', 'rrze-multisite-manager'),
+                'generated_at' => current_time('mysql', true),
+            ];
+        }
+
+        if (!is_readable($baseDir)) {
+            return [
+                'upload_basedir' => $baseDir,
+                'upload_baseurl' => $baseUrl,
+                'wordpress_storage' => $wordpressStorage,
+                'error' => __('Das Upload-Verzeichnis dieser Website ist nicht lesbar.', 'rrze-multisite-manager'),
+                'generated_at' => current_time('mysql', true),
+            ];
+        }
+
+        $attachmentIndex = $this->getCurrentSiteUploadAttachmentIndex();
+        $referencedFiles = array_fill_keys(array_keys($attachmentIndex), true);
+        $scan = $this->scanUploadDirectory($baseDir, $baseUrl, $attachmentIndex);
+        $actualBytes = (int)($scan['total_bytes'] ?? 0);
+        $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
+        $warnings = $this->buildStorageAnalysisWarnings($differenceBytes, $actualBytes, $wordpressStorage, $scan);
+        $summary = [
+            [
+                'label' => __('WordPress gemeldet', 'rrze-multisite-manager'),
+                'value' => (string)($wordpressStorage['used_label'] ?? ''),
+            ],
+            [
+                'label' => __('Im Upload-Verzeichnis gefunden', 'rrze-multisite-manager'),
+                'value' => size_format($actualBytes),
+            ],
+            [
+                'label' => __('Differenz', 'rrze-multisite-manager'),
+                'value' => ($differenceBytes >= 0 ? '+' : '-') . size_format(abs($differenceBytes)),
+            ],
+            [
+                'label' => __('Dateien', 'rrze-multisite-manager'),
+                'value' => number_format_i18n((int)($scan['total_files'] ?? 0)),
+            ],
+            [
+                'label' => __('Dateien laut Datenbank referenziert', 'rrze-multisite-manager'),
+                'value' => number_format_i18n(count($referencedFiles)),
+            ],
+            [
+                'label' => __('Ordner', 'rrze-multisite-manager'),
+                'value' => number_format_i18n((int)($scan['total_directories'] ?? 0)),
+            ],
+            [
+                'label' => __('Potenziell verwaiste Dateien', 'rrze-multisite-manager'),
+                'value' => number_format_i18n((int)($scan['orphan_file_count'] ?? 0)),
+            ],
+            [
+                'label' => __('Analysezeitpunkt', 'rrze-multisite-manager'),
+                'value' => $this->formatDate((string)current_time('mysql', true)),
+            ],
+        ];
+
+        return [
+            'upload_basedir' => $baseDir,
+            'upload_baseurl' => $baseUrl,
+            'wordpress_storage' => $wordpressStorage,
+            'actual_bytes' => $actualBytes,
+            'actual_label' => size_format($actualBytes),
+            'difference_bytes' => $differenceBytes,
+            'difference_label' => ($differenceBytes >= 0 ? '+' : '-') . size_format(abs($differenceBytes)),
+            'total_files' => (int)($scan['total_files'] ?? 0),
+            'total_directories' => (int)($scan['total_directories'] ?? 0),
+            'orphan_file_count' => (int)($scan['orphan_file_count'] ?? 0),
+            'orphan_total_bytes' => (int)($scan['orphan_total_bytes'] ?? 0),
+            'orphan_total_label' => size_format((int)($scan['orphan_total_bytes'] ?? 0)),
+            'largest_orphan_files' => (array)($scan['largest_orphan_files'] ?? []),
+            'orphan_files_found_in_content' => (array)($scan['orphan_files_found_in_content'] ?? []),
+            'orphan_files_without_content_matches' => (array)($scan['orphan_files_without_content_matches'] ?? []),
+            'top_level_directories' => (array)($scan['top_level_directories'] ?? []),
+            'top_consumers' => (array)($scan['top_consumers'] ?? []),
+            'largest_files' => (array)($scan['largest_files'] ?? []),
+            'summary_rows' => $summary,
+            'warnings' => $warnings,
+            'generated_at' => current_time('mysql', true),
+        ];
+    }
+
+    protected function scanUploadDirectory(string $baseDir, string $baseUrl, array $attachmentIndex): array {
+        $normalizedBaseDir = trailingslashit(wp_normalize_path($baseDir));
+        $directoryStats = [];
+        $topLevelDirectoryStats = [];
+        $largestFiles = [];
+        $totalBytes = 0;
+        $totalFiles = 0;
+        $totalDirectories = 0;
+        $iterator = null;
+        $fileInfo = null;
+        $normalizedPath = '';
+        $relativePath = '';
+        $sizeBytes = 0;
+        $modifiedTimestamp = 0;
+        $ancestorPath = '';
+        $topLevelKey = '';
+        $topConsumers = [];
+        $referencedFiles = array_fill_keys(array_keys($attachmentIndex), true);
+        $orphanFileCount = 0;
+        $orphanTotalBytes = 0;
+        $largestOrphanFiles = [];
+        $classifiedLargestOrphanFiles = [];
+
+        $directoryStats[$normalizedBaseDir] = [
+            'relative_path' => '.',
+            'size_bytes' => 0,
+            'file_count' => 0,
+        ];
+
+        try {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST
+            );
+        } catch (\Throwable $exception) {
+            return [
+                'total_bytes' => 0,
+                'total_files' => 0,
+                'total_directories' => 0,
+                'top_level_directories' => [],
+                'top_consumers' => [],
+                'largest_files' => [],
+            ];
+        }
+
+        foreach ($iterator as $fileInfo) {
+            if (!$fileInfo instanceof \SplFileInfo) {
+                continue;
+            }
+
+            if ($fileInfo->isLink()) {
+                continue;
+            }
+
+            $normalizedPath = wp_normalize_path((string)$fileInfo->getPathname());
+            $relativePath = ltrim(substr($normalizedPath, strlen($normalizedBaseDir)), '/');
+
+            if ($fileInfo->isDir()) {
+                $totalDirectories++;
+                $this->ensureDirectoryStat($directoryStats, trailingslashit($normalizedPath), $normalizedBaseDir);
+                continue;
+            }
+
+            if (!$fileInfo->isFile()) {
+                continue;
+            }
+
+            try {
+                $sizeBytes = (int)$fileInfo->getSize();
+            } catch (\Throwable $exception) {
+                $sizeBytes = 0;
+            }
+
+            try {
+                $modifiedTimestamp = (int)$fileInfo->getMTime();
+            } catch (\Throwable $exception) {
+                $modifiedTimestamp = 0;
+            }
+
+            $totalBytes += max(0, $sizeBytes);
+            $totalFiles++;
+            $topLevelKey = $this->getTopLevelDirectoryKey($relativePath);
+            $this->addToTopLevelDirectoryStats($topLevelDirectoryStats, $topLevelKey, $sizeBytes);
+            $this->pushLargestFileEntry(
+                $largestFiles,
+                $this->buildStorageFileEntry(
+                    $relativePath === '' ? basename($normalizedPath) : $relativePath,
+                    max(0, $sizeBytes),
+                    $modifiedTimestamp,
+                    $baseUrl,
+                    $attachmentIndex
+                )
+            );
+
+            if ($this->isPotentiallyOrphanUploadFile($relativePath, $referencedFiles)) {
+                $orphanFileCount++;
+                $orphanTotalBytes += max(0, $sizeBytes);
+                $this->pushLargestFileEntry(
+                    $largestOrphanFiles,
+                    $this->buildStorageFileEntry(
+                        $relativePath === '' ? basename($normalizedPath) : $relativePath,
+                        max(0, $sizeBytes),
+                        $modifiedTimestamp,
+                        $baseUrl,
+                        $attachmentIndex
+                    )
+                );
+            }
+
+            $ancestorPath = trailingslashit(wp_normalize_path(dirname($normalizedPath)));
+
+            while (str_starts_with($ancestorPath, $normalizedBaseDir)) {
+                $this->ensureDirectoryStat($directoryStats, $ancestorPath, $normalizedBaseDir);
+                $directoryStats[$ancestorPath]['size_bytes'] += max(0, $sizeBytes);
+                $directoryStats[$ancestorPath]['file_count']++;
+
+                if ($ancestorPath === $normalizedBaseDir) {
+                    break;
+                }
+
+                $ancestorPath = trailingslashit(wp_normalize_path(dirname(rtrim($ancestorPath, '/'))));
+            }
+        }
+
+        $topConsumers = $this->buildTopStorageConsumers($directoryStats, $largestFiles, $normalizedBaseDir);
+        $classifiedLargestOrphanFiles = $this->classifyCurrentSitePotentialOrphanFiles(array_slice($largestOrphanFiles, 0, 10));
+
+        return [
+            'total_bytes' => $totalBytes,
+            'total_files' => $totalFiles,
+            'total_directories' => $totalDirectories,
+            'orphan_file_count' => $orphanFileCount,
+            'orphan_total_bytes' => $orphanTotalBytes,
+            'largest_orphan_files' => array_slice($largestOrphanFiles, 0, 10),
+            'orphan_files_found_in_content' => (array)($classifiedLargestOrphanFiles['found_in_content'] ?? []),
+            'orphan_files_without_content_matches' => (array)($classifiedLargestOrphanFiles['without_matches'] ?? []),
+            'top_level_directories' => $this->finalizeTopLevelDirectoryStats($topLevelDirectoryStats, $totalBytes),
+            'top_consumers' => $topConsumers,
+            'largest_files' => array_slice($largestFiles, 0, self::STORAGE_LARGEST_FILES_LIMIT),
+        ];
+    }
+
+    protected function classifyCurrentSitePotentialOrphanFiles(array $files): array {
+        $foundInContent = [];
+        $withoutMatches = [];
+        $fileRow = [];
+        $matches = [];
+        $matchCount = 0;
+
+        foreach ($files as $fileRow) {
+            if (!is_array($fileRow)) {
+                continue;
+            }
+
+            $matches = $this->searchCurrentSiteFileUsageMatches(
+                is_string($fileRow['file_url'] ?? null) ? (string)$fileRow['file_url'] : '',
+                is_string($fileRow['path'] ?? null) ? (string)$fileRow['path'] : ''
+            );
+            $matchCount = count($matches);
+            $fileRow['content_usage_count'] = $matchCount;
+            $fileRow['content_usage_label'] = sprintf(
+                _n('%d Treffer', '%d Treffer', $matchCount, 'rrze-multisite-manager'),
+                $matchCount
+            );
+
+            if ($matchCount > 0) {
+                $fileRow['content_usage_results'] = $matches;
+                $foundInContent[] = $fileRow;
+                continue;
+            }
+
+            $withoutMatches[] = $fileRow;
+        }
+
+        return [
+            'found_in_content' => $foundInContent,
+            'without_matches' => $withoutMatches,
+        ];
+    }
+
+    protected function getCurrentSiteUploadAttachmentIndex(): array {
+        global $wpdb;
+
+        $index = [];
+        $rows = $wpdb->get_results(
+            "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file, pm_meta.meta_value AS attachment_metadata
+            FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm_file
+                ON pm_file.post_id = p.ID AND pm_file.meta_key = '_wp_attached_file'
+            LEFT JOIN {$wpdb->postmeta} pm_meta
+                ON pm_meta.post_id = p.ID AND pm_meta.meta_key = '_wp_attachment_metadata'
+            WHERE p.post_type = 'attachment'"
+        );
+        $row = null;
+        $attachedPath = '';
+        $metadata = [];
+        $attachmentId = 0;
+        $baseEntry = [];
+
+        foreach ($rows as $row) {
+            $attachmentId = (int)($row->ID ?? 0);
+            $attachedPath = is_string($row->attached_file ?? null) ? (string)$row->attached_file : '';
+
+            if ($attachmentId <= 0 || trim($attachedPath) === '') {
+                continue;
+            }
+
+            $baseEntry = [
+                'attachment_id' => $attachmentId,
+                'media_edit_url' => get_edit_post_link($attachmentId, ''),
+                'mime_type' => is_string($row->post_mime_type ?? null) ? (string)$row->post_mime_type : '',
+                'type_label' => $this->getStorageFileTypeLabel($attachedPath, is_string($row->post_mime_type ?? null) ? (string)$row->post_mime_type : ''),
+            ];
+
+            $index[$this->normalizeRelativeUploadPath($attachedPath)] = $baseEntry;
+
+            $metadata = maybe_unserialize($row->attachment_metadata ?? '');
+
+            if (!is_array($metadata)) {
+                continue;
+            }
+
+            $this->collectAttachmentIndexPathsFromMetadata($index, $baseEntry, $metadata);
+        }
+
+        return $index;
+    }
+
+    protected function collectAttachmentIndexPathsFromMetadata(array &$index, array $baseEntry, array $metadata): void {
+        $baseFile = '';
+        $baseDir = '';
+        $sizes = [];
+        $sizeRow = [];
+        $originalImage = '';
+
+        if (!empty($metadata['file']) && is_string($metadata['file'])) {
+            $baseFile = $this->normalizeRelativeUploadPath((string)$metadata['file']);
+            $index[$baseFile] = $baseEntry;
+            $baseDir = dirname($baseFile);
+
+            if ($baseDir === '.' || $baseDir === DIRECTORY_SEPARATOR) {
+                $baseDir = '';
+            }
+        }
+
+        $sizes = is_array($metadata['sizes'] ?? null) ? $metadata['sizes'] : [];
+
+        foreach ($sizes as $sizeRow) {
+            if (!is_array($sizeRow) || empty($sizeRow['file']) || !is_string($sizeRow['file'])) {
+                continue;
+            }
+
+            if ($baseDir !== '') {
+                $index[$this->normalizeRelativeUploadPath($baseDir . '/' . (string)$sizeRow['file'])] = $baseEntry;
+                continue;
+            }
+
+            $index[$this->normalizeRelativeUploadPath((string)$sizeRow['file'])] = $baseEntry;
+        }
+
+        $originalImage = !empty($metadata['original_image']) && is_string($metadata['original_image'])
+            ? (string)$metadata['original_image']
+            : '';
+
+        if ($originalImage !== '') {
+            if ($baseDir !== '') {
+                $index[$this->normalizeRelativeUploadPath($baseDir . '/' . $originalImage)] = $baseEntry;
+            } else {
+                $index[$this->normalizeRelativeUploadPath($originalImage)] = $baseEntry;
+            }
+        }
+    }
+
+    protected function getCurrentSiteReferencedUploadFiles(): array {
+        $index = $this->getCurrentSiteUploadAttachmentIndex();
+        $paths = [];
+
+        foreach (array_keys($index) as $attachedPath) {
+            if (!is_string($attachedPath) || trim($attachedPath) === '') {
+                continue;
+            }
+
+            $paths[$this->normalizeRelativeUploadPath($attachedPath)] = true;
+        }
+
+        return $paths;
+    }
+
+    protected function buildStorageFileEntry(string $relativePath, int $sizeBytes, int $modifiedTimestamp, string $baseUrl, array $attachmentIndex): array {
+        $normalizedRelativePath = $this->normalizeRelativeUploadPath($relativePath);
+        $attachmentEntry = is_array($attachmentIndex[$normalizedRelativePath] ?? null) ? $attachmentIndex[$normalizedRelativePath] : [];
+        $mimeType = is_string($attachmentEntry['mime_type'] ?? null) ? (string)$attachmentEntry['mime_type'] : '';
+
+        return [
+            'type' => 'file',
+            'path' => $relativePath,
+            'size_bytes' => $sizeBytes,
+            'size_label' => size_format($sizeBytes),
+            'modified_label' => $this->formatTimestamp($modifiedTimestamp),
+            'file_url' => trailingslashit($baseUrl) . ltrim($normalizedRelativePath, '/'),
+            'media_edit_url' => is_string($attachmentEntry['media_edit_url'] ?? null) ? (string)$attachmentEntry['media_edit_url'] : '',
+            'attachment_id' => (int)($attachmentEntry['attachment_id'] ?? 0),
+            'mime_type' => $mimeType,
+            'type_label' => !empty($attachmentEntry['type_label'])
+                ? (string)$attachmentEntry['type_label']
+                : $this->getStorageFileTypeLabel($normalizedRelativePath, $mimeType),
+        ];
+    }
+
+    protected function collectReferencedPathsFromAttachmentMetadata(array &$paths, array $metadata): void {
+        $baseFile = '';
+        $baseDir = '';
+        $sizes = [];
+        $sizeRow = [];
+        $originalImage = '';
+
+        if (!empty($metadata['file']) && is_string($metadata['file'])) {
+            $baseFile = $this->normalizeRelativeUploadPath((string)$metadata['file']);
+            $paths[$baseFile] = true;
+            $baseDir = dirname($baseFile);
+
+            if ($baseDir === '.' || $baseDir === DIRECTORY_SEPARATOR) {
+                $baseDir = '';
+            }
+        }
+
+        $sizes = is_array($metadata['sizes'] ?? null) ? $metadata['sizes'] : [];
+
+        foreach ($sizes as $sizeRow) {
+            if (!is_array($sizeRow) || empty($sizeRow['file']) || !is_string($sizeRow['file'])) {
+                continue;
+            }
+
+            if ($baseDir !== '') {
+                $paths[$this->normalizeRelativeUploadPath($baseDir . '/' . (string)$sizeRow['file'])] = true;
+                continue;
+            }
+
+            $paths[$this->normalizeRelativeUploadPath((string)$sizeRow['file'])] = true;
+        }
+
+        $originalImage = !empty($metadata['original_image']) && is_string($metadata['original_image'])
+            ? (string)$metadata['original_image']
+            : '';
+
+        if ($originalImage !== '') {
+            if ($baseDir !== '') {
+                $paths[$this->normalizeRelativeUploadPath($baseDir . '/' . $originalImage)] = true;
+            } else {
+                $paths[$this->normalizeRelativeUploadPath($originalImage)] = true;
+            }
+        }
+    }
+
+    protected function normalizeRelativeUploadPath(string $path): string {
+        $normalized = ltrim(wp_normalize_path($path), '/');
+
+        return $normalized;
+    }
+
+    protected function isPotentiallyOrphanUploadFile(string $relativePath, array $referencedFiles): bool {
+        $normalizedPath = $this->normalizeRelativeUploadPath($relativePath);
+        $basename = basename($normalizedPath);
+
+        if ($normalizedPath === '' || isset($referencedFiles[$normalizedPath])) {
+            return false;
+        }
+
+        if (in_array($basename, ['index.php', '.htaccess', 'web.config'], true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function getStorageFileTypeLabel(string $relativePath, string $mimeType = ''): string {
+        $extension = strtolower((string)pathinfo($relativePath, PATHINFO_EXTENSION));
+
+        if ($extension !== '') {
+            return strtoupper($extension);
+        }
+
+        if ($mimeType !== '') {
+            return strtoupper((string)preg_replace('/[^a-z0-9]+/i', '-', $mimeType));
+        }
+
+        return __('Datei', 'rrze-multisite-manager');
+    }
+
+    protected function buildStorageAnalysisWarnings(int $differenceBytes, int $actualBytes, array $wordpressStorage, array $scan): array {
+        $warnings = [];
+        $differencePercent = $actualBytes > 0 ? abs($differenceBytes) / $actualBytes : 0.0;
+        $orphanFileCount = (int)($scan['orphan_file_count'] ?? 0);
+        $orphanTotalBytes = (int)($scan['orphan_total_bytes'] ?? 0);
+
+        if (abs($differenceBytes) >= (50 * MB_IN_BYTES) && $differencePercent >= 0.2) {
+            $warnings[] = [
+                'type' => $differenceBytes > 0 ? 'warning' : 'info',
+                'message' => $differenceBytes > 0
+                    ? sprintf(
+                        __('Das Upload-Verzeichnis ist um %s größer als der von WordPress gemeldete Speicherwert. Das deutet oft auf veraltete Core-Caches oder zusätzliche Dateien im Uploads-Ordner hin.', 'rrze-multisite-manager'),
+                        size_format(abs($differenceBytes))
+                    )
+                    : sprintf(
+                        __('WordPress meldet %s mehr Speicher als im aktuell gescannten Upload-Verzeichnis gefunden wurde. Das deutet oft auf einen veralteten WordPress-Speicherwert hin.', 'rrze-multisite-manager'),
+                        size_format(abs($differenceBytes))
+                    ),
+            ];
+        }
+
+        if ($orphanFileCount > 0 && $orphanTotalBytes >= (5 * MB_IN_BYTES)) {
+            $warnings[] = [
+                'type' => 'warning',
+                'message' => sprintf(
+                    __('Es wurden %1$s potenziell verwaiste Dateien mit zusammen %2$s gefunden. Das sind Dateien im Uploads-Ordner, die aktuell nicht über Attachment-Metadaten referenziert werden.', 'rrze-multisite-manager'),
+                    number_format_i18n($orphanFileCount),
+                    size_format($orphanTotalBytes)
+                ),
+            ];
+        }
+
+        if (!empty($wordpressStorage['is_unlimited'])) {
+            $warnings[] = [
+                'type' => 'info',
+                'message' => __('Diese Website hat kein festes Upload-Limit. Die Speicheranalyse zeigt deshalb nur tatsächlichen Verbrauch und keine sinnvolle Auslastung in Prozent.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        return $warnings;
+    }
+
+    public function searchSiteFileUsage(int $siteId, string $fileUrl, string $relativePath): array {
+        if ($siteId <= 0 || trim($fileUrl) === '') {
+            return [];
+        }
+
+        switch_to_blog($siteId);
+        $results = $this->searchCurrentSiteFileUsageMatches($fileUrl, $relativePath);
+        restore_current_blog();
+
+        return $results;
+    }
+
+    public function deleteSiteOrphanFile(int $siteId, string $relativePath): array {
+        $result = [];
+
+        if ($siteId <= 0 || trim($relativePath) === '') {
+            return [
+                'deleted' => false,
+                'message' => __('Ungültige Datei.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        switch_to_blog($siteId);
+        $result = $this->deleteCurrentSiteOrphanFile($relativePath);
+        restore_current_blog();
+
+        return $result;
+    }
+
+    protected function searchCurrentSiteFileUsageMatches(string $fileUrl, string $relativePath): array {
+        global $wpdb;
+
+        $results = [];
+        $needles = [];
+        $seen = [];
+        $posts = [];
+        $metaRows = [];
+        $post = null;
+        $metaRow = null;
+        $postId = 0;
+
+        $needles = $this->buildFileUsageSearchNeedles($fileUrl, $relativePath);
+
+        if (empty($needles)) {
+            return [];
+        }
+
+        $posts = $wpdb->get_results(
+            $this->prepareContentNeedleQuery($wpdb, $needles)
+        );
+
+        foreach ($posts as $post) {
+            $postId = (int)($post->ID ?? 0);
+
+            if ($postId <= 0) {
+                continue;
+            }
+
+            $results[$postId] = [
+                'post_id' => $postId,
+                'post_type' => (string)($post->post_type ?? ''),
+                'title' => trim((string)($post->post_title ?? '')) !== '' ? (string)$post->post_title : __('(ohne Titel)', 'rrze-multisite-manager'),
+                'edit_url' => get_edit_post_link($postId, ''),
+                'view_url' => get_permalink($postId),
+                'matches' => [__('Inhalt', 'rrze-multisite-manager')],
+            ];
+            $seen[$postId . ':content'] = true;
+        }
+
+        $metaRows = $wpdb->get_results(
+            $this->prepareMetaNeedleQuery($wpdb, $needles)
+        );
+
+        foreach ($metaRows as $metaRow) {
+            $postId = (int)($metaRow->ID ?? 0);
+
+            if ($postId <= 0) {
+                continue;
+            }
+
+            if (!isset($results[$postId])) {
+                $results[$postId] = [
+                    'post_id' => $postId,
+                    'post_type' => (string)($metaRow->post_type ?? ''),
+                    'title' => trim((string)($metaRow->post_title ?? '')) !== '' ? (string)$metaRow->post_title : __('(ohne Titel)', 'rrze-multisite-manager'),
+                    'edit_url' => get_edit_post_link($postId, ''),
+                    'view_url' => get_permalink($postId),
+                    'matches' => [],
+                ];
+            }
+
+            if (!isset($seen[$postId . ':meta'])) {
+                $results[$postId]['matches'][] = sprintf(
+                    __('Metafeld: %s', 'rrze-multisite-manager'),
+                    (string)($metaRow->meta_key ?? '')
+                );
+                $seen[$postId . ':meta'] = true;
+            }
+        }
+
+        foreach ($results as $index => $resultRow) {
+            $results[$index]['matches_label'] = implode(', ', (array)($resultRow['matches'] ?? []));
+        }
+
+        return array_values($results);
+    }
+
+    protected function deleteCurrentSiteOrphanFile(string $relativePath): array {
+        $uploadDir = wp_get_upload_dir();
+        $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
+        $baseUrl = is_array($uploadDir) && !empty($uploadDir['baseurl']) ? (string)$uploadDir['baseurl'] : '';
+        $normalizedBaseDir = trailingslashit(wp_normalize_path($baseDir));
+        $normalizedRelativePath = $this->normalizeRelativeUploadPath($relativePath);
+        $targetPath = $normalizedBaseDir . ltrim($normalizedRelativePath, '/');
+        $attachmentIndex = [];
+        $fileUrl = '';
+
+        if ($baseDir === '' || !is_dir($baseDir)) {
+            return [
+                'deleted' => false,
+                'message' => __('Das Upload-Verzeichnis wurde nicht gefunden.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        if ($normalizedRelativePath === '') {
+            return [
+                'deleted' => false,
+                'message' => __('Ungültige Datei.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        if (!str_starts_with(wp_normalize_path($targetPath), $normalizedBaseDir)) {
+            return [
+                'deleted' => false,
+                'message' => __('Der Dateipfad ist ungültig.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        if (!is_file($targetPath)) {
+            return [
+                'deleted' => false,
+                'message' => __('Die Datei existiert nicht mehr.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        $attachmentIndex = $this->getCurrentSiteUploadAttachmentIndex();
+
+        if (isset($attachmentIndex[$normalizedRelativePath])) {
+            return [
+                'deleted' => false,
+                'message' => __('Diese Datei ist noch als Attachment registriert und darf hier nicht gelöscht werden.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        $fileUrl = trailingslashit($baseUrl) . ltrim($normalizedRelativePath, '/');
+
+        if (!empty($this->searchCurrentSiteFileUsageMatches($fileUrl, $normalizedRelativePath))) {
+            return [
+                'deleted' => false,
+                'message' => __('Diese Datei wird noch in Inhalten oder Metafeldern referenziert und wird deshalb nicht gelöscht.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        if (!is_writable($targetPath)) {
+            return [
+                'deleted' => false,
+                'message' => __('Die Datei ist nicht beschreibbar.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        if (!@unlink($targetPath)) {
+            return [
+                'deleted' => false,
+                'message' => __('Die Datei konnte nicht gelöscht werden.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        return [
+            'deleted' => true,
+            'message' => __('Die Datei wurde gelöscht.', 'rrze-multisite-manager'),
+        ];
+    }
+
+    protected function buildFileUsageSearchNeedles(string $fileUrl, string $relativePath): array {
+        $needles = [];
+        $parsedPath = (string)wp_parse_url($fileUrl, PHP_URL_PATH);
+        $normalizedRelativePath = $this->normalizeRelativeUploadPath($relativePath);
+        $needle = '';
+
+        foreach ([$fileUrl, rawurldecode($fileUrl), $parsedPath, rawurldecode($parsedPath), $normalizedRelativePath] as $needle) {
+            if (!is_string($needle) || trim($needle) === '' || mb_strlen($needle) < 6) {
+                continue;
+            }
+
+            if (!in_array($needle, $needles, true)) {
+                $needles[] = $needle;
+            }
+        }
+
+        return $needles;
+    }
+
+    protected function prepareContentNeedleQuery(\wpdb $wpdb, array $needles): string {
+        $conditions = [];
+        $params = [];
+        $needle = '';
+
+        foreach ($needles as $needle) {
+            $conditions[] = 'post_content LIKE %s';
+            $params[] = '%' . $wpdb->esc_like($needle) . '%';
+        }
+
+        return $wpdb->prepare(
+            "SELECT ID, post_type, post_title
+            FROM {$wpdb->posts}
+            WHERE post_type IN ('post', 'page')
+            AND post_status NOT IN ('auto-draft', 'trash')
+            AND (" . implode(' OR ', $conditions) . ')',
+            ...$params
+        );
+    }
+
+    protected function prepareMetaNeedleQuery(\wpdb $wpdb, array $needles): string {
+        $conditions = [];
+        $params = [];
+        $needle = '';
+
+        foreach ($needles as $needle) {
+            $conditions[] = 'pm.meta_value LIKE %s';
+            $params[] = '%' . $wpdb->esc_like($needle) . '%';
+        }
+
+        return $wpdb->prepare(
+            "SELECT DISTINCT p.ID, p.post_type, p.post_title, pm.meta_key
+            FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
+            WHERE p.post_type IN ('post', 'page')
+            AND p.post_status NOT IN ('auto-draft', 'trash')
+            AND (" . implode(' OR ', $conditions) . ')',
+            ...$params
+        );
+    }
+
+    protected function ensureDirectoryStat(array &$directoryStats, string $directoryPath, string $normalizedBaseDir): void {
+        $relativePath = '.';
+
+        if (isset($directoryStats[$directoryPath])) {
+            return;
+        }
+
+        if ($directoryPath !== $normalizedBaseDir) {
+            $relativePath = rtrim(ltrim(substr($directoryPath, strlen($normalizedBaseDir)), '/'), '/');
+        }
+
+        $directoryStats[$directoryPath] = [
+            'relative_path' => $relativePath === '' ? '.' : $relativePath,
+            'size_bytes' => 0,
+            'file_count' => 0,
+        ];
+    }
+
+    protected function getTopLevelDirectoryKey(string $relativePath): string {
+        $segments = [];
+
+        if ($relativePath === '') {
+            return '.';
+        }
+
+        $segments = explode('/', $relativePath);
+
+        return !empty($segments[0]) ? (string)$segments[0] : '.';
+    }
+
+    protected function addToTopLevelDirectoryStats(array &$topLevelDirectoryStats, string $topLevelKey, int $sizeBytes): void {
+        if (!isset($topLevelDirectoryStats[$topLevelKey])) {
+            $topLevelDirectoryStats[$topLevelKey] = [
+                'path' => $topLevelKey === '.' ? __('Dateien im Wurzelverzeichnis', 'rrze-multisite-manager') : $topLevelKey,
+                'size_bytes' => 0,
+                'file_count' => 0,
+            ];
+        }
+
+        $topLevelDirectoryStats[$topLevelKey]['size_bytes'] += max(0, $sizeBytes);
+        $topLevelDirectoryStats[$topLevelKey]['file_count']++;
+    }
+
+    protected function pushLargestFileEntry(array &$largestFiles, array $entry): void {
+        $largestFiles[] = $entry;
+        usort($largestFiles, [self::class, 'compareStorageEntries']);
+        $largestFiles = array_slice($largestFiles, 0, self::STORAGE_LARGEST_FILES_LIMIT);
+    }
+
+    protected function buildTopStorageConsumers(array $directoryStats, array $largestFiles, string $normalizedBaseDir): array {
+        $directoryEntries = [];
+        $stats = [];
+        $entries = [];
+
+        foreach ($directoryStats as $path => $stats) {
+            if ($path === $normalizedBaseDir || empty($stats['relative_path']) || (string)$stats['relative_path'] === '.') {
+                continue;
+            }
+
+            $directoryEntries[] = [
+                'type' => 'directory',
+                'path' => (string)$stats['relative_path'],
+                'size_bytes' => (int)($stats['size_bytes'] ?? 0),
+                'size_label' => size_format((int)($stats['size_bytes'] ?? 0)),
+                'file_count' => (int)($stats['file_count'] ?? 0),
+            ];
+        }
+
+        usort($directoryEntries, [self::class, 'compareStorageEntries']);
+        $directoryEntries = array_slice($directoryEntries, 0, 10);
+        $entries = array_merge($directoryEntries, $largestFiles);
+        usort($entries, [self::class, 'compareStorageEntries']);
+
+        return array_slice($entries, 0, 10);
+    }
+
+    protected function finalizeTopLevelDirectoryStats(array $topLevelDirectoryStats, int $totalBytes): array {
+        $results = array_values($topLevelDirectoryStats);
+        $entry = [];
+
+        usort($results, [self::class, 'compareStorageEntries']);
+
+        foreach ($results as $index => $entry) {
+            $results[$index]['size_label'] = size_format((int)($entry['size_bytes'] ?? 0));
+            $results[$index]['percent'] = $totalBytes > 0
+                ? (int)round((((int)($entry['size_bytes'] ?? 0)) / $totalBytes) * 100)
+                : 0;
+        }
+
+        return $results;
+    }
+
     protected function getNetworkStorageUsage(): array {
         $siteIds = get_sites([
             'fields' => 'ids',
@@ -4565,6 +5458,17 @@ class MetricsService {
 
     protected static function compareImageSizeRows(array $left, array $right): int {
         return strcmp((string)($left['label'] ?? $left['slug'] ?? ''), (string)($right['label'] ?? $right['slug'] ?? ''));
+    }
+
+    protected static function compareStorageEntries(array $left, array $right): int {
+        $leftSize = (int)($left['size_bytes'] ?? 0);
+        $rightSize = (int)($right['size_bytes'] ?? 0);
+
+        if ($leftSize === $rightSize) {
+            return strcmp((string)($left['path'] ?? ''), (string)($right['path'] ?? ''));
+        }
+
+        return $rightSize <=> $leftSize;
     }
 
     protected static function compareCronEvents(array $left, array $right): int {
