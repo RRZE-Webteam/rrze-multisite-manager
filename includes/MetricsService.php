@@ -3299,6 +3299,7 @@ class MetricsService {
         $scan = [];
         $attachmentIndex = [];
         $referencedFiles = [];
+        $excludedTopLevelDirectories = [];
         $actualBytes = 0;
         $differenceBytes = 0;
         $summary = [];
@@ -3326,7 +3327,8 @@ class MetricsService {
 
         $attachmentIndex = $this->getCurrentSiteUploadAttachmentIndex();
         $referencedFiles = array_fill_keys(array_keys($attachmentIndex), true);
-        $scan = $this->scanUploadDirectory($baseDir, $baseUrl, $attachmentIndex);
+        $excludedTopLevelDirectories = $this->getExcludedUploadTopLevelDirectoriesForCurrentSite();
+        $scan = $this->scanUploadDirectory($baseDir, $baseUrl, $attachmentIndex, $excludedTopLevelDirectories);
         $actualBytes = (int)($scan['total_bytes'] ?? 0);
         $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
         $warnings = $this->buildStorageAnalysisWarnings($differenceBytes, $actualBytes, $wordpressStorage, $scan);
@@ -3390,7 +3392,7 @@ class MetricsService {
         ];
     }
 
-    protected function scanUploadDirectory(string $baseDir, string $baseUrl, array $attachmentIndex): array {
+    protected function scanUploadDirectory(string $baseDir, string $baseUrl, array $attachmentIndex, array $excludedTopLevelDirectories = []): array {
         $normalizedBaseDir = trailingslashit(wp_normalize_path($baseDir));
         $directoryStats = [];
         $topLevelDirectoryStats = [];
@@ -3412,6 +3414,8 @@ class MetricsService {
         $orphanTotalBytes = 0;
         $largestOrphanFiles = [];
         $classifiedLargestOrphanFiles = [];
+        $directoryIterator = null;
+        $callbackIterator = null;
 
         $directoryStats[$normalizedBaseDir] = [
             'relative_path' => '.',
@@ -3420,8 +3424,29 @@ class MetricsService {
         ];
 
         try {
+            $directoryIterator = new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS);
+            $callbackIterator = new \RecursiveCallbackFilterIterator(
+                $directoryIterator,
+                function ($current, $key, $iterator) use ($normalizedBaseDir, $excludedTopLevelDirectories) {
+                    $pathname = '';
+                    $relativePath = '';
+
+                    if (!$current instanceof \SplFileInfo) {
+                        return false;
+                    }
+
+                    $pathname = wp_normalize_path((string)$current->getPathname());
+                    $relativePath = ltrim(substr($pathname, strlen($normalizedBaseDir)), '/');
+
+                    if ($this->shouldExcludeUploadRelativePath($relativePath, $excludedTopLevelDirectories)) {
+                        return false;
+                    }
+
+                    return true;
+                }
+            );
             $iterator = new \RecursiveIteratorIterator(
-                new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS),
+                $callbackIterator,
                 \RecursiveIteratorIterator::SELF_FIRST
             );
         } catch (\Throwable $exception) {
@@ -3530,6 +3555,31 @@ class MetricsService {
             'top_consumers' => $topConsumers,
             'largest_files' => array_slice($largestFiles, 0, self::STORAGE_LARGEST_FILES_LIMIT),
         ];
+    }
+
+    protected function getExcludedUploadTopLevelDirectoriesForCurrentSite(): array {
+        if (!is_multisite() || !is_main_site()) {
+            return [];
+        }
+
+        return ['sites'];
+    }
+
+    protected function shouldExcludeUploadRelativePath(string $relativePath, array $excludedTopLevelDirectories): bool {
+        $normalizedRelativePath = trim($this->normalizeRelativeUploadPath($relativePath), '/');
+        $firstSegment = '';
+
+        if ($normalizedRelativePath === '' || empty($excludedTopLevelDirectories)) {
+            return false;
+        }
+
+        $firstSegment = strtok($normalizedRelativePath, '/');
+
+        if (!is_string($firstSegment) || $firstSegment === '') {
+            return false;
+        }
+
+        return in_array($firstSegment, $excludedTopLevelDirectories, true);
     }
 
     protected function classifyCurrentSitePotentialOrphanFiles(array $files): array {
