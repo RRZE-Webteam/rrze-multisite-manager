@@ -14,7 +14,12 @@ class MetricsService {
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
     protected const DASHBOARD_LOCK_KEY = 'rrze_msm_dashboard_metrics_refresh_lock';
+    protected const DASHBOARD_BATCH_OFFSET_OPTION = 'rrze_msm_dashboard_metrics_batch_offset';
+    protected const DASHBOARD_BATCH_TOTAL_OPTION = 'rrze_msm_dashboard_metrics_batch_total';
+    protected const DASHBOARD_BATCH_STATE_OPTION = 'rrze_msm_dashboard_metrics_batch_state';
+    protected const DASHBOARD_BATCH_SIZE = 25;
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
+    protected const SITE_DETAIL_CACHE_VERSION_META = 'rrze_msm_site_detail_cache_version';
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
@@ -40,17 +45,15 @@ class MetricsService {
 
         if ($this->isUsableDashboardCache($cached)) {
             if ($this->shouldRefreshDashboardCache($cached)) {
-                if (!empty($cached['dirty']) && is_admin() && !$this->isDashboardRefreshLocked()) {
-                    return $this->rebuildDashboardData();
-                }
-
                 $this->scheduleDashboardRefresh();
             }
 
             return (array)($cached['data'] ?? []);
         }
 
-        return $this->rebuildDashboardData();
+        $this->scheduleDashboardRefresh(5);
+
+        return $this->getEmptyDashboardDataPayload();
     }
 
     public function rebuildDashboardData(bool $force = false): array {
@@ -81,6 +84,8 @@ class MetricsService {
             [
                 'data' => $data,
                 'generated_at' => time(),
+                'started_at' => time(),
+                'duration_seconds' => 0,
                 'dirty' => false,
             ]
         );
@@ -100,11 +105,91 @@ class MetricsService {
     }
 
     public function handleScheduledDashboardRefresh(): void {
-        $this->rebuildDashboardData(true);
+        $this->runDashboardRefreshBatch();
     }
 
     public function invalidateCaches(...$args): void {
         $this->markAllCachesDirty();
+    }
+
+    public function invalidateCurrentSiteCaches(...$args): void {
+        $siteId = get_current_blog_id();
+
+        if ($siteId > 0) {
+            $this->invalidateSiteDetailCaches($siteId);
+        }
+
+        $this->markDashboardCacheDirty();
+    }
+
+    public function invalidateCurrentSiteAndGlobalCaches(...$args): void {
+        $siteId = get_current_blog_id();
+
+        if ($siteId > 0) {
+            $this->invalidateSiteDetailCaches($siteId);
+        }
+
+        $this->markDashboardCacheDirty();
+        $this->bumpDetailCacheVersion();
+    }
+
+    public function invalidateSiteCachesFromHook(int $siteId, ...$args): void {
+        if ($siteId > 0) {
+            $this->invalidateSiteDetailCaches($siteId);
+        }
+
+        $this->markDashboardCacheDirty();
+    }
+
+    public function invalidateSiteAndGlobalCachesFromHook(int $siteId, ...$args): void {
+        if ($siteId > 0) {
+            $this->invalidateSiteDetailCaches($siteId);
+        }
+
+        $this->markDashboardCacheDirty();
+        $this->bumpDetailCacheVersion();
+    }
+
+    public function invalidateUserSiteCachesFromHook(int $userId, string $role, int $siteId): void {
+        if ($siteId > 0) {
+            $this->invalidateSiteDetailCaches($siteId);
+        }
+
+        $this->markDashboardCacheDirty();
+    }
+
+    public function invalidateUserRemovalSiteCachesFromHook(int $userId, int $siteId): void {
+        if ($siteId > 0) {
+            $this->invalidateSiteDetailCaches($siteId);
+        }
+
+        $this->markDashboardCacheDirty();
+    }
+
+    public function invalidateDashboardCacheOnly(...$args): void {
+        $this->markDashboardCacheDirty();
+    }
+
+    public function startDashboardRefreshRun(bool $runImmediately = true): void {
+        if ($this->isDashboardRefreshLocked()) {
+            $this->scheduleDashboardRefresh(5);
+            return;
+        }
+
+        $this->markDashboardCacheDirty(false);
+        $this->resetDashboardRefreshBatchState();
+
+        if ($runImmediately) {
+            $this->runDashboardRefreshBatch(true);
+            return;
+        }
+
+        $this->scheduleDashboardRefresh(5);
+    }
+
+    public function resetDashboardRefreshState(): void {
+        $this->resetDashboardRefreshBatchState();
+        $this->releaseDashboardRefreshLock();
     }
 
     protected function buildDashboardDataPayload(array $siteOverview, array $networkStorageUsage): array {
@@ -132,6 +217,232 @@ class MetricsService {
             'recently_updated_sites' => $this->getRecentlyUpdatedSites(),
             'inactive_sites' => $this->getInactiveSites(),
         ];
+    }
+
+    protected function buildDashboardDataPayloadFromBatchState(array $state): array {
+        $siteOverview = is_array($state['site_overview'] ?? null) ? (array)$state['site_overview'] : [];
+        $networkStorageUsage = $this->finalizeDashboardBatchStorageUsage((array)($state['network_storage_usage'] ?? []));
+        $pluginUsage = $this->finalizePluginUsageStats(
+            (array)($state['plugin_usage']['stats'] ?? []),
+            (int)($state['plugin_usage']['total_sites'] ?? 0)
+        );
+        $editorUsage = $this->finalizeDashboardBatchEditorUsage((array)($state['editor_usage'] ?? []));
+        $recentSites = array_slice($siteOverview, 0, $this->getSiteTableMaxRows());
+        $recentlyUpdatedSites = $this->sortFormattedSitesByActivity($siteOverview, 'DESC');
+        $inactiveSites = $this->sortFormattedSitesByActivity($siteOverview, 'ASC');
+
+        $this->themeSiteAggregate = is_array($state['theme_aggregate'] ?? null)
+            ? (array)$state['theme_aggregate']
+            : [
+                'counts' => [],
+                'usage_map' => [],
+            ];
+
+        return [
+            'summary' => $this->getSummary($networkStorageUsage),
+            'site_table_default_limit' => $this->getActivitySiteLimit(),
+            'status_distribution' => $this->getStatusDistribution(),
+            'operational_status_distribution' => $this->getOperationalStatusDistribution(),
+            'network_storage_usage' => $networkStorageUsage,
+            'recent_sites' => $recentSites,
+            'site_overview' => $siteOverview,
+            'archived_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_archived'),
+            'blocked_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_spam'),
+            'deleted_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_deleted'),
+            'problem_sites' => $this->getProblemSites($siteOverview),
+            'new_monitoring_alerts' => $this->getNewMonitoringAlerts($siteOverview),
+            'provisioning_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'provisioning'),
+            'dns_missing_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'dns_missing'),
+            'unreachable_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'unreachable'),
+            'themes' => $this->getThemes(),
+            'theme_usage' => $this->getThemeUsage(),
+            'editor_usage' => $editorUsage,
+            'plugin_usage' => $pluginUsage,
+            'inactive_themes' => $this->getInactiveThemes(),
+            'recently_updated_sites' => array_slice($recentlyUpdatedSites, 0, $this->getSiteTableMaxRows()),
+            'inactive_sites' => array_slice($inactiveSites, 0, $this->getSiteTableMaxRows()),
+        ];
+    }
+
+    public function getDashboardDataStatus(): array {
+        $cached = $this->getStoredDashboardCache();
+        $hasData = $this->isUsableDashboardCache($cached);
+        $needsRefresh = $this->shouldRefreshDashboardCache($cached);
+        $nextRunTimestamp = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+        $siteCount = 0;
+        $batchOffset = (int)get_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, 0);
+        $batchTotal = (int)get_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
+        $batchState = $this->getDashboardRefreshBatchState();
+        $startedAtTimestamp = (int)($batchState['started_at'] ?? 0);
+        $isRunning = $this->isDashboardRefreshLocked();
+        $currentDurationSeconds = ($isRunning && $startedAtTimestamp > 0)
+            ? max(0, time() - $startedAtTimestamp)
+            : 0;
+        $checkedSites = $batchTotal > 0 ? min($batchTotal, $batchOffset) : 0;
+        $remainingSites = $batchTotal > 0 ? max(0, $batchTotal - $checkedSites) : 0;
+        $progressPercent = ($batchTotal > 0 && $checkedSites > 0)
+            ? (int)round(($checkedSites / $batchTotal) * 100)
+            : 0;
+        $isStale = $this->isDashboardRefreshStale($isRunning, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
+
+        if ($hasData) {
+            $siteCount = count((array)($cached['data']['site_overview'] ?? []));
+        }
+
+        return [
+            'has_data' => $hasData,
+            'is_dirty' => !empty($cached['dirty']),
+            'needs_refresh' => $needsRefresh,
+            'is_running' => $isRunning,
+            'last_run_timestamp' => (int)($cached['generated_at'] ?? 0),
+            'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
+            'last_site_count' => $siteCount,
+            'batch_offset' => $batchOffset,
+            'batch_total' => $batchTotal,
+            'checked_sites' => $checkedSites,
+            'remaining_sites' => $remainingSites,
+            'progress_percent' => $progressPercent,
+            'started_at_timestamp' => $startedAtTimestamp,
+            'current_duration_seconds' => $currentDurationSeconds,
+            'last_duration_seconds' => (int)($cached['duration_seconds'] ?? 0),
+            'is_stale' => $isStale,
+        ];
+    }
+
+    public function getProcessesOverview(): array {
+        $status = $this->getDashboardDataStatus();
+
+        return [
+            [
+                'id' => 'dashboard-metrics',
+                'title' => __('Dashboard-Metriken', 'rrze-multisite-manager'),
+                'description' => __('Berechnet die aggregierten Netzwerkkennzahlen für Dashboard sowie Website-, Plugin- und Theme-Übersichten.', 'rrze-multisite-manager'),
+                'interval_hours' => 0,
+                'interval_label' => __('Bei Bedarf nach Änderungen', 'rrze-multisite-manager'),
+                'last_run' => $status['last_run_timestamp'] > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_run_timestamp']) : '',
+                'last_site_count' => (int)$status['last_site_count'],
+                'next_run_timestamp' => (int)($status['next_run_timestamp'] ?? 0),
+                'is_running' => !empty($status['is_running']),
+                'batch_offset' => (int)($status['batch_offset'] ?? 0),
+                'batch_total' => (int)($status['batch_total'] ?? 0),
+                'checked_sites' => (int)($status['checked_sites'] ?? 0),
+                'remaining_sites' => (int)($status['remaining_sites'] ?? 0),
+                'progress_percent' => (int)($status['progress_percent'] ?? 0),
+                'batch_size' => self::DASHBOARD_BATCH_SIZE,
+                'current_duration_seconds' => (int)($status['current_duration_seconds'] ?? 0),
+                'last_duration_seconds' => (int)($status['last_duration_seconds'] ?? 0),
+                'run_state' => [
+                    'has_data' => !empty($status['has_data']),
+                    'needs_refresh' => !empty($status['needs_refresh']),
+                    'is_dirty' => !empty($status['is_dirty']),
+                ],
+            ],
+        ];
+    }
+
+    protected function runDashboardRefreshBatch(bool $manual = false): void {
+        $offset = (int)get_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, 0);
+        $totalSites = (int)get_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
+        $state = $this->getDashboardRefreshBatchState();
+        $siteIds = [];
+        $siteId = 0;
+        $nextOffset = 0;
+        $site = null;
+        $formattedSites = [];
+        $formattedSite = [];
+        $siteName = '';
+        $siteUrl = '';
+        $stylesheet = '';
+        $storage = [];
+        $activePlugins = [];
+        $sitePluginFiles = [];
+        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
+
+        if (!$this->acquireDashboardRefreshLock()) {
+            return;
+        }
+
+        if ($offset <= 0 || $totalSites <= 0 || empty($state)) {
+            $totalSites = (int)get_sites([
+                'count' => true,
+                'number' => 1,
+            ]);
+            update_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, $totalSites);
+            $state = $this->getInitialDashboardRefreshBatchState();
+        }
+
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => self::DASHBOARD_BATCH_SIZE,
+            'offset' => max(0, $offset),
+            'orderby' => 'registered',
+            'order' => 'DESC',
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            $site = get_site($siteId);
+
+            if (!$site instanceof \WP_Site) {
+                continue;
+            }
+
+            $formattedSites = $this->formatSites([$site], true);
+
+            if (empty($formattedSites[0]) || !is_array($formattedSites[0])) {
+                continue;
+            }
+
+            $formattedSite = $formattedSites[0];
+            $state['site_overview'][] = $formattedSite;
+
+            $siteName = (string)($formattedSite['name'] ?? $this->getSiteName($site));
+            $siteUrl = (string)($formattedSite['url'] ?? get_home_url($siteId, '/'));
+            $storage = is_array($formattedSite['storage'] ?? null) ? $formattedSite['storage'] : [];
+            $stylesheet = (string)get_blog_option($siteId, 'stylesheet', '');
+
+            if ($stylesheet === '') {
+                $stylesheet = (string)get_blog_option($siteId, 'template', '');
+            }
+
+            $activePlugins = get_blog_option($siteId, 'active_plugins', []);
+
+            if (!is_array($activePlugins)) {
+                $activePlugins = [];
+            }
+
+            $sitePluginFiles = array_unique(
+                array_merge(
+                    array_keys($networkActivePlugins),
+                    array_values(array_filter($activePlugins, 'is_string'))
+                )
+            );
+
+            $this->accumulateDashboardBatchStorageUsage($state['network_storage_usage'], $siteId, $siteName, $storage);
+            $this->accumulateDashboardBatchThemeUsage($state['theme_aggregate'], $siteId, $siteName, $siteUrl, $stylesheet);
+            $this->accumulateDashboardBatchPluginUsage($state['plugin_usage'], $siteId, $siteName, $siteUrl, $sitePluginFiles, $networkActivePlugins);
+            $this->accumulateDashboardBatchEditorUsage($state['editor_usage'], $sitePluginFiles, $networkActivePlugins);
+        }
+
+        $this->saveDashboardRefreshBatchState($state);
+        $nextOffset = $offset + count($siteIds);
+
+        if (empty($siteIds) || $nextOffset >= $totalSites) {
+            $this->finalizeDashboardRefreshBatchState($state);
+            $this->resetDashboardRefreshBatchState();
+            $this->releaseDashboardRefreshLock();
+            return;
+        }
+
+        update_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, $nextOffset);
+        update_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, $totalSites);
+        $this->releaseDashboardRefreshLock();
+        $this->scheduleDashboardRefresh($manual ? 5 : 20);
     }
 
     protected function getMonthlyGrowth(): array {
@@ -2085,19 +2396,8 @@ class MetricsService {
             'number' => 0,
         ]);
         $results = $this->formatSites($sites);
-        $thresholdTimestamp = $this->getInactiveThresholdTimestamp();
 
-        usort($results, [$this, 'compareSitesByActivity']);
-
-        if ($direction === 'ASC') {
-            $results = array_reverse($results);
-        }
-
-        foreach ($results as $index => $site) {
-            $results[$index]['highlight_inactive'] = ((int)$site['last_updated_timestamp'] > 0 && (int)$site['last_updated_timestamp'] <= $thresholdTimestamp);
-        }
-
-        return $results;
+        return $this->sortFormattedSitesByActivity($results, $direction);
     }
 
     protected function getSiteName(\WP_Site $site): string {
@@ -4211,88 +4511,29 @@ class MetricsService {
             'fields' => 'ids',
             'number' => 0,
         ]);
-        $items = [];
         $siteId = 0;
         $storage = [];
-        $usedBytes = 0;
-        $maxBytes = 0;
-        $hasUnlimitedSite = false;
-        $totalUsedBytes = 0;
-        $totalMaxBytes = 0;
-        $freeBytes = 0;
-        $item = [];
-        $index = 0;
-        $percentBase = 0;
-        $mode = 'capacity';
+        $state = [
+            'items' => [],
+            'total_used_bytes' => 0,
+            'total_max_bytes' => 0,
+            'has_unlimited_site' => false,
+        ];
 
         foreach ($siteIds as $siteId) {
             switch_to_blog((int)$siteId);
             $storage = $this->getSiteStorageUsage();
             restore_current_blog();
 
-            $usedBytes = (int)($storage['used_bytes'] ?? 0);
-            $maxBytes = (int)($storage['max_bytes'] ?? 0);
-
-            if (!empty($storage['is_unlimited'])) {
-                $hasUnlimitedSite = true;
-            }
-
-            $totalUsedBytes += max(0, $usedBytes);
-            $totalMaxBytes += max(0, $maxBytes);
-
-            if ($usedBytes <= 0) {
-                continue;
-            }
-
-            $items[] = [
-                'label' => $this->getSiteNameById((int)$siteId),
-                'value' => $usedBytes,
-                'value_label' => size_format($usedBytes),
-                'site_id' => (int)$siteId,
-            ];
+            $this->accumulateDashboardBatchStorageUsage(
+                $state,
+                (int)$siteId,
+                $this->getSiteNameById((int)$siteId),
+                $storage
+            );
         }
 
-        usort($items, [self::class, 'compareUsageDistributionRows']);
-
-        if ($hasUnlimitedSite) {
-            $mode = 'usage';
-            $percentBase = $totalUsedBytes;
-        } else {
-            $freeBytes = max(0, $totalMaxBytes - $totalUsedBytes);
-            $percentBase = $totalMaxBytes;
-
-            if ($freeBytes > 0) {
-                $items[] = [
-                    'label' => __('Freier Speicher', 'rrze-multisite-manager'),
-                    'value' => $freeBytes,
-                    'value_label' => size_format($freeBytes),
-                    'accent' => 'neutral',
-                ];
-            }
-        }
-
-        foreach ($items as $index => $item) {
-            $items[$index]['percent'] = $percentBase > 0
-                ? (int)round((((int)$item['value']) / $percentBase) * 100)
-                : 0;
-
-            if (!isset($items[$index]['accent'])) {
-                $items[$index]['accent'] = 'theme-' . (($index % 6) + 1);
-            }
-        }
-
-        return [
-            'mode' => $mode,
-            'items' => $items,
-            'total_used_bytes' => $totalUsedBytes,
-            'total_used_label' => size_format($totalUsedBytes),
-            'total_max_bytes' => $totalMaxBytes,
-            'total_max_label' => $totalMaxBytes > 0 ? size_format($totalMaxBytes) : '',
-            'percent' => (!$hasUnlimitedSite && $totalMaxBytes > 0)
-                ? (int)round(($totalUsedBytes / $totalMaxBytes) * 100)
-                : null,
-            'has_unlimited_site' => $hasUnlimitedSite,
-        ];
+        return $this->finalizeDashboardBatchStorageUsage($state);
     }
 
     protected function getCurrentSiteOptionsGroupSummary(): array {
@@ -5263,8 +5504,10 @@ class MetricsService {
             'orderby' => 'domain',
             'order' => 'ASC',
         ]);
-        $counts = [];
-        $results = [];
+        $aggregate = [
+            'counts' => [],
+            'usage_map' => [],
+        ];
         $site = null;
         $siteId = 0;
         $stylesheet = '';
@@ -5289,31 +5532,10 @@ class MetricsService {
 
             restore_current_blog();
 
-            if ($stylesheet === '') {
-                continue;
-            }
-
-            if (!isset($counts[$stylesheet])) {
-                $counts[$stylesheet] = 0;
-            }
-
-            $counts[$stylesheet]++;
-
-            if (!isset($results[$stylesheet])) {
-                $results[$stylesheet] = [];
-            }
-
-            $results[$stylesheet][] = [
-                'id' => $siteId,
-                'name' => $siteName,
-                'url' => $siteUrl,
-            ];
+            $this->accumulateDashboardBatchThemeUsage($aggregate, $siteId, $siteName, $siteUrl, $stylesheet);
         }
 
-        $this->themeSiteAggregate = [
-            'counts' => $counts,
-            'usage_map' => $results,
-        ];
+        $this->themeSiteAggregate = $aggregate;
 
         return $this->themeSiteAggregate;
     }
@@ -5406,6 +5628,24 @@ class MetricsService {
         }
 
         return (int)$right['last_updated_timestamp'] <=> (int)$left['last_updated_timestamp'];
+    }
+
+    protected function sortFormattedSitesByActivity(array $sites, string $direction): array {
+        $results = array_values($sites);
+        $thresholdTimestamp = $this->getInactiveThresholdTimestamp();
+        $site = [];
+
+        usort($results, [$this, 'compareSitesByActivity']);
+
+        if ($direction === 'ASC') {
+            $results = array_reverse($results);
+        }
+
+        foreach ($results as $index => $site) {
+            $results[$index]['highlight_inactive'] = ((int)($site['last_updated_timestamp'] ?? 0) > 0 && (int)($site['last_updated_timestamp'] ?? 0) <= $thresholdTimestamp);
+        }
+
+        return $results;
     }
 
     protected static function compareDetailedPlugins(array $left, array $right): int {
@@ -5609,7 +5849,39 @@ class MetricsService {
         return is_array($cached) ? $cached : [];
     }
 
+    protected function getEmptyDashboardDataPayload(): array {
+        return [
+            'summary' => [],
+            'site_table_default_limit' => $this->getActivitySiteLimit(),
+            'status_distribution' => [],
+            'operational_status_distribution' => [],
+            'network_storage_usage' => [],
+            'recent_sites' => [],
+            'site_overview' => [],
+            'archived_sites' => [],
+            'blocked_sites' => [],
+            'deleted_sites' => [],
+            'problem_sites' => [],
+            'new_monitoring_alerts' => [],
+            'provisioning_sites' => [],
+            'dns_missing_sites' => [],
+            'unreachable_sites' => [],
+            'themes' => [],
+            'theme_usage' => [],
+            'editor_usage' => [],
+            'plugin_usage' => [],
+            'inactive_themes' => [],
+            'recently_updated_sites' => [],
+            'inactive_sites' => [],
+        ];
+    }
+
     protected function markAllCachesDirty(bool $scheduleRefresh = true): void {
+        $this->markDashboardCacheDirty($scheduleRefresh);
+        $this->bumpDetailCacheVersion();
+    }
+
+    protected function markDashboardCacheDirty(bool $scheduleRefresh = true): void {
         $cached = $this->getStoredDashboardCache();
 
         if (!is_array($cached)) {
@@ -5618,7 +5890,6 @@ class MetricsService {
 
         $cached['dirty'] = true;
         update_site_option($this->getCacheKey(), $cached);
-        $this->bumpDetailCacheVersion();
 
         if ($scheduleRefresh) {
             $this->scheduleDashboardRefresh();
@@ -5626,35 +5897,35 @@ class MetricsService {
     }
 
     protected function registerInvalidationHooks(): void {
-        add_action('wpmu_new_blog', [$this, 'invalidateCaches'], 20, 6);
-        add_action('archive_blog', [$this, 'invalidateCaches'], 20, 1);
-        add_action('unarchive_blog', [$this, 'invalidateCaches'], 20, 1);
-        add_action('make_spam_blog', [$this, 'invalidateCaches'], 20, 1);
-        add_action('make_ham_blog', [$this, 'invalidateCaches'], 20, 1);
-        add_action('delete_blog', [$this, 'invalidateCaches'], 20, 2);
-        add_action('undelete_blog', [$this, 'invalidateCaches'], 20, 1);
-        add_action('mature_blog', [$this, 'invalidateCaches'], 20, 1);
-        add_action('unmature_blog', [$this, 'invalidateCaches'], 20, 1);
-        add_action('activated_plugin', [$this, 'invalidateCaches'], 20, 2);
-        add_action('deactivated_plugin', [$this, 'invalidateCaches'], 20, 2);
-        add_action('switch_theme', [$this, 'invalidateCaches'], 20, 3);
+        add_action('wpmu_new_blog', [$this, 'invalidateSiteAndGlobalCachesFromHook'], 20, 6);
+        add_action('archive_blog', [$this, 'invalidateSiteCachesFromHook'], 20, 1);
+        add_action('unarchive_blog', [$this, 'invalidateSiteCachesFromHook'], 20, 1);
+        add_action('make_spam_blog', [$this, 'invalidateSiteCachesFromHook'], 20, 1);
+        add_action('make_ham_blog', [$this, 'invalidateSiteCachesFromHook'], 20, 1);
+        add_action('delete_blog', [$this, 'invalidateSiteAndGlobalCachesFromHook'], 20, 2);
+        add_action('undelete_blog', [$this, 'invalidateSiteAndGlobalCachesFromHook'], 20, 1);
+        add_action('mature_blog', [$this, 'invalidateSiteCachesFromHook'], 20, 1);
+        add_action('unmature_blog', [$this, 'invalidateSiteCachesFromHook'], 20, 1);
+        add_action('activated_plugin', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 2);
+        add_action('deactivated_plugin', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 2);
+        add_action('switch_theme', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
         add_action('upgrader_process_complete', [$this, 'invalidateCaches'], 20, 2);
-        add_action('save_post', [$this, 'invalidateCaches'], 20, 3);
-        add_action('deleted_post', [$this, 'invalidateCaches'], 20, 2);
-        add_action('add_attachment', [$this, 'invalidateCaches'], 20, 1);
-        add_action('delete_attachment', [$this, 'invalidateCaches'], 20, 1);
-        add_action('user_register', [$this, 'invalidateCaches'], 20, 1);
+        add_action('save_post', [$this, 'invalidateCurrentSiteCaches'], 20, 3);
+        add_action('deleted_post', [$this, 'invalidateCurrentSiteCaches'], 20, 2);
+        add_action('add_attachment', [$this, 'invalidateCurrentSiteCaches'], 20, 1);
+        add_action('delete_attachment', [$this, 'invalidateCurrentSiteCaches'], 20, 1);
+        add_action('user_register', [$this, 'invalidateDashboardCacheOnly'], 20, 1);
         add_action('deleted_user', [$this, 'invalidateCaches'], 20, 1);
-        add_action('add_user_to_blog', [$this, 'invalidateCaches'], 20, 3);
-        add_action('remove_user_from_blog', [$this, 'invalidateCaches'], 20, 2);
-        add_action('set_user_role', [$this, 'invalidateCaches'], 20, 3);
-        add_action('update_option_blogname', [$this, 'invalidateCaches'], 20, 3);
-        add_action('update_option_admin_email', [$this, 'invalidateCaches'], 20, 3);
-        add_action('update_option_stylesheet', [$this, 'invalidateCaches'], 20, 3);
-        add_action('update_option_template', [$this, 'invalidateCaches'], 20, 3);
-        add_action('update_option_active_plugins', [$this, 'invalidateCaches'], 20, 3);
-        add_action('add_option_active_plugins', [$this, 'invalidateCaches'], 20, 2);
-        add_action('delete_option_active_plugins', [$this, 'invalidateCaches'], 20, 1);
+        add_action('add_user_to_blog', [$this, 'invalidateUserSiteCachesFromHook'], 20, 3);
+        add_action('remove_user_from_blog', [$this, 'invalidateUserRemovalSiteCachesFromHook'], 20, 2);
+        add_action('set_user_role', [$this, 'invalidateCurrentSiteCaches'], 20, 3);
+        add_action('update_option_blogname', [$this, 'invalidateCurrentSiteCaches'], 20, 3);
+        add_action('update_option_admin_email', [$this, 'invalidateCurrentSiteCaches'], 20, 3);
+        add_action('update_option_stylesheet', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
+        add_action('update_option_template', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
+        add_action('update_option_active_plugins', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
+        add_action('add_option_active_plugins', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 2);
+        add_action('delete_option_active_plugins', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 1);
         add_action('update_site_option_active_sitewide_plugins', [$this, 'invalidateCaches'], 20, 4);
         add_action('update_site_option_allowedthemes', [$this, 'invalidateCaches'], 20, 4);
         add_action('update_site_option_blog_upload_space', [$this, 'invalidateCaches'], 20, 4);
@@ -5684,9 +5955,22 @@ class MetricsService {
         return (int)get_site_transient(self::DASHBOARD_LOCK_KEY) > 0;
     }
 
+    protected function isDashboardRefreshStale(bool $isRunning, int $batchTotal, int $checkedSites, int $nextRunTimestamp, int $currentDurationSeconds): bool {
+        if ($isRunning && $currentDurationSeconds > (self::DASHBOARD_LOCK_TTL + 120)) {
+            return true;
+        }
+
+        if (!$isRunning && $batchTotal > 0 && $checkedSites < $batchTotal && $nextRunTimestamp > 0 && $nextRunTimestamp < (time() - 300)) {
+            return true;
+        }
+
+        return false;
+    }
+
     protected function bumpDetailCacheVersion(): int {
-        $version = time();
+        $version = $this->getNextCacheVersion((int)get_site_option(self::DETAIL_CACHE_VERSION_OPTION, 0));
         update_site_option(self::DETAIL_CACHE_VERSION_OPTION, $version);
+        $this->themeSiteAggregate = null;
         return $version;
     }
 
@@ -5705,11 +5989,11 @@ class MetricsService {
     }
 
     protected function getSiteDetailsCacheKey(int $siteId, array $load = []): string {
-        return 'rrze_msm_site_details_' . $this->getDetailCacheVersion() . '_' . md5((string)$siteId . '|' . wp_json_encode($load));
+        return 'rrze_msm_site_details_' . $this->getDetailCacheVersion() . '_' . $this->getSiteDetailCacheVersion($siteId) . '_' . md5((string)$siteId . '|' . wp_json_encode($load));
     }
 
     protected function getSiteDetailSectionCacheKey(int $siteId, string $section, string $suffix = ''): string {
-        return 'rrze_msm_site_detail_section_' . $this->getDetailCacheVersion() . '_' . md5($siteId . '|' . $section . '|' . $suffix);
+        return 'rrze_msm_site_detail_section_' . $this->getDetailCacheVersion() . '_' . $this->getSiteDetailCacheVersion($siteId) . '_' . md5($siteId . '|' . $section . '|' . $suffix);
     }
 
     protected function getCachedCurrentSiteDetailSection(string $section, string $suffix = ''): mixed {
@@ -5770,6 +6054,365 @@ class MetricsService {
 
     protected function getCacheKey(): string {
         return self::CACHE_KEY . (string)get_current_network_id();
+    }
+
+    protected function getDashboardRefreshBatchState(): array {
+        $state = get_site_option(self::DASHBOARD_BATCH_STATE_OPTION, []);
+
+        return is_array($state) ? $state : [];
+    }
+
+    protected function saveDashboardRefreshBatchState(array $state): void {
+        update_site_option(self::DASHBOARD_BATCH_STATE_OPTION, $state);
+    }
+
+    protected function resetDashboardRefreshBatchState(): void {
+        update_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, 0);
+        update_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
+        delete_site_option(self::DASHBOARD_BATCH_STATE_OPTION);
+    }
+
+    protected function getInitialDashboardRefreshBatchState(): array {
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+        ]);
+
+        return [
+            'started_at' => time(),
+            'site_overview' => [],
+            'network_storage_usage' => [
+                'items' => [],
+                'total_used_bytes' => 0,
+                'total_max_bytes' => 0,
+                'has_unlimited_site' => false,
+            ],
+            'theme_aggregate' => [
+                'counts' => [],
+                'usage_map' => [],
+            ],
+            'plugin_usage' => [
+                'total_sites' => count($siteIds),
+                'stats' => $this->createBasePluginUsageStats(),
+            ],
+            'editor_usage' => [
+                'total_sites' => count($siteIds),
+                'classic_sites' => 0,
+                'block_sites' => 0,
+                'classic_everywhere' => isset(((array)get_site_option('active_sitewide_plugins', []))['classic-editor/classic-editor.php']),
+            ],
+        ];
+    }
+
+    protected function finalizeDashboardRefreshBatchState(array $state): void {
+        $data = $this->buildDashboardDataPayloadFromBatchState($state);
+        $generatedAt = time();
+        $startedAt = (int)($state['started_at'] ?? $generatedAt);
+
+        update_site_option(
+            $this->getCacheKey(),
+            [
+                'data' => $data,
+                'generated_at' => $generatedAt,
+                'started_at' => $startedAt,
+                'duration_seconds' => max(0, $generatedAt - $startedAt),
+                'dirty' => false,
+            ]
+        );
+    }
+
+    protected function createBasePluginUsageStats(): array {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $availablePlugins = get_plugins();
+        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
+        $pluginUpdates = get_site_transient('update_plugins');
+        $pluginStats = [];
+        $pluginFile = '';
+        $pluginData = [];
+        $updateItem = null;
+
+        foreach ($availablePlugins as $pluginFile => $pluginData) {
+            $updateItem = is_object($pluginUpdates) && !empty($pluginUpdates->response[$pluginFile]) && is_object($pluginUpdates->response[$pluginFile])
+                ? $pluginUpdates->response[$pluginFile]
+                : null;
+            $pluginStats[$pluginFile] = [
+                'file' => $pluginFile,
+                'site_count' => 0,
+                'active_sites' => [],
+                'name' => (string)($pluginData['Name'] ?? $pluginFile),
+                'version' => (string)($pluginData['Version'] ?? 'n/a'),
+                'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
+                'author' => $this->getPluginAuthorLabel($pluginData),
+                'author_url' => $this->getPluginAuthorUrl($pluginData),
+                'network_active' => isset($networkActivePlugins[$pluginFile]),
+                'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginData),
+                'details_url' => $this->getPluginDetailsUrl($pluginData),
+                'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
+                'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
+                'plugin_uri' => $this->getPluginDetailsUrl($pluginData),
+                'text_domain' => !empty($pluginData['TextDomain']) && is_string($pluginData['TextDomain']) ? (string)$pluginData['TextDomain'] : '',
+                'requires_php' => !empty($pluginData['RequiresPHP']) && is_string($pluginData['RequiresPHP']) ? (string)$pluginData['RequiresPHP'] : '',
+                'requires_wp' => !empty($pluginData['RequiresWP']) && is_string($pluginData['RequiresWP']) ? (string)$pluginData['RequiresWP'] : '',
+                'update_available' => $updateItem !== null,
+                'update_version' => $updateItem !== null ? (string)($updateItem->new_version ?? '') : '',
+                'update_details_url' => $this->getPluginUpdateDetailsUrl($pluginData, $updateItem),
+                'update_url' => $updateItem !== null ? $this->getNetworkPluginUpdateUrl($pluginFile) : '',
+            ];
+        }
+
+        return $pluginStats;
+    }
+
+    protected function accumulatePluginUsageStats(array &$pluginStats, int $siteId, string $siteName, string $siteUrl, array $sitePluginFiles, array $networkActivePlugins = []): void {
+        $pluginFile = '';
+
+        foreach ($sitePluginFiles as $pluginFile) {
+            if (!isset($pluginStats[$pluginFile])) {
+                $pluginStats[$pluginFile] = [
+                    'file' => $pluginFile,
+                    'site_count' => 0,
+                    'active_sites' => [],
+                    'name' => $pluginFile,
+                    'version' => 'n/a',
+                    'description' => '',
+                    'author' => '',
+                    'author_url' => '',
+                    'network_active' => isset($networkActivePlugins[$pluginFile]),
+                    'settings_url' => '',
+                    'details_url' => '',
+                    'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
+                    'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
+                    'plugin_uri' => '',
+                    'text_domain' => '',
+                    'requires_php' => '',
+                    'requires_wp' => '',
+                    'update_available' => false,
+                    'update_version' => '',
+                    'update_details_url' => '',
+                    'update_url' => '',
+                ];
+            }
+
+            $pluginStats[$pluginFile]['site_count']++;
+            $pluginStats[$pluginFile]['active_sites'][] = [
+                'id' => $siteId,
+                'name' => $siteName,
+                'url' => $siteUrl,
+            ];
+        }
+    }
+
+    protected function finalizePluginUsageStats(array $pluginStats, int $totalSites): array {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $pluginFile = '';
+        $pluginData = [];
+        $availablePluginCount = count(get_plugins());
+
+        foreach ($pluginStats as $pluginFile => $pluginData) {
+            $pluginStats[$pluginFile]['active_sites'] = $this->sortPluginActiveSites((array)($pluginData['active_sites'] ?? []));
+        }
+
+        uasort($pluginStats, [self::class, 'comparePluginUsage']);
+
+        return [
+            'summary' => [
+                'available_plugins' => $availablePluginCount,
+                'network_active_plugins' => count((array)get_site_option('active_sitewide_plugins', [])),
+                'locally_used_plugins' => $this->countLocallyUsedPlugins($pluginStats),
+                'total_sites' => $totalSites,
+            ],
+            'plugins' => array_values($pluginStats),
+            'distribution' => $this->buildPluginUsageDistribution($pluginStats),
+            'inactive_plugins' => array_values(
+                array_filter(
+                    $pluginStats,
+                    [self::class, 'isUnusedPlugin']
+                )
+            ),
+        ];
+    }
+
+    protected function accumulateDashboardBatchPluginUsage(array &$pluginUsageState, int $siteId, string $siteName, string $siteUrl, array $sitePluginFiles, array $networkActivePlugins = []): void {
+        if (!isset($pluginUsageState['stats']) || !is_array($pluginUsageState['stats'])) {
+            $pluginUsageState['stats'] = $this->createBasePluginUsageStats();
+        }
+
+        if (!isset($pluginUsageState['total_sites'])) {
+            $pluginUsageState['total_sites'] = 0;
+        }
+
+        $this->accumulatePluginUsageStats($pluginUsageState['stats'], $siteId, $siteName, $siteUrl, $sitePluginFiles, $networkActivePlugins);
+    }
+
+    protected function accumulateDashboardBatchThemeUsage(array &$themeAggregate, int $siteId, string $siteName, string $siteUrl, string $stylesheet): void {
+        if ($stylesheet === '') {
+            return;
+        }
+
+        if (!isset($themeAggregate['counts'][$stylesheet])) {
+            $themeAggregate['counts'][$stylesheet] = 0;
+        }
+
+        if (!isset($themeAggregate['usage_map'][$stylesheet]) || !is_array($themeAggregate['usage_map'][$stylesheet])) {
+            $themeAggregate['usage_map'][$stylesheet] = [];
+        }
+
+        $themeAggregate['counts'][$stylesheet]++;
+        $themeAggregate['usage_map'][$stylesheet][] = [
+            'id' => $siteId,
+            'name' => $siteName,
+            'url' => $siteUrl,
+        ];
+    }
+
+    protected function accumulateDashboardBatchStorageUsage(array &$storageState, int $siteId, string $siteName, array $storage): void {
+        $usedBytes = (int)($storage['used_bytes'] ?? 0);
+        $maxBytes = (int)($storage['max_bytes'] ?? 0);
+
+        if (!isset($storageState['items']) || !is_array($storageState['items'])) {
+            $storageState['items'] = [];
+        }
+
+        $storageState['total_used_bytes'] = (int)($storageState['total_used_bytes'] ?? 0) + max(0, $usedBytes);
+        $storageState['total_max_bytes'] = (int)($storageState['total_max_bytes'] ?? 0) + max(0, $maxBytes);
+
+        if (!empty($storage['is_unlimited'])) {
+            $storageState['has_unlimited_site'] = true;
+        }
+
+        if ($usedBytes <= 0) {
+            return;
+        }
+
+        $storageState['items'][] = [
+            'label' => $siteName,
+            'value' => $usedBytes,
+            'value_label' => size_format($usedBytes),
+            'site_id' => $siteId,
+        ];
+    }
+
+    protected function finalizeDashboardBatchStorageUsage(array $storageState): array {
+        $items = is_array($storageState['items'] ?? null) ? $storageState['items'] : [];
+        $totalUsedBytes = (int)($storageState['total_used_bytes'] ?? 0);
+        $totalMaxBytes = (int)($storageState['total_max_bytes'] ?? 0);
+        $hasUnlimitedSite = !empty($storageState['has_unlimited_site']);
+        $freeBytes = 0;
+        $item = [];
+        $index = 0;
+        $percentBase = 0;
+        $mode = 'capacity';
+
+        usort($items, [self::class, 'compareUsageDistributionRows']);
+
+        if ($hasUnlimitedSite) {
+            $mode = 'usage';
+            $percentBase = $totalUsedBytes;
+        } else {
+            $freeBytes = max(0, $totalMaxBytes - $totalUsedBytes);
+            $percentBase = $totalMaxBytes;
+
+            if ($freeBytes > 0) {
+                $items[] = [
+                    'label' => __('Freier Speicher', 'rrze-multisite-manager'),
+                    'value' => $freeBytes,
+                    'value_label' => size_format($freeBytes),
+                    'accent' => 'neutral',
+                ];
+            }
+        }
+
+        foreach ($items as $index => $item) {
+            $items[$index]['percent'] = $percentBase > 0
+                ? (int)round((((int)$item['value']) / $percentBase) * 100)
+                : 0;
+
+            if (!isset($items[$index]['accent'])) {
+                $items[$index]['accent'] = 'theme-' . (($index % 6) + 1);
+            }
+        }
+
+        return [
+            'mode' => $mode,
+            'items' => $items,
+            'total_used_bytes' => $totalUsedBytes,
+            'total_used_label' => size_format($totalUsedBytes),
+            'total_max_bytes' => $totalMaxBytes,
+            'total_max_label' => $totalMaxBytes > 0 ? size_format($totalMaxBytes) : '',
+            'percent' => (!$hasUnlimitedSite && $totalMaxBytes > 0)
+                ? (int)round(($totalUsedBytes / $totalMaxBytes) * 100)
+                : null,
+            'has_unlimited_site' => $hasUnlimitedSite,
+        ];
+    }
+
+    protected function accumulateDashboardBatchEditorUsage(array &$editorState, array $sitePluginFiles, array $networkActivePlugins = []): void {
+        $classicEverywhere = !empty($editorState['classic_everywhere']) || isset($networkActivePlugins['classic-editor/classic-editor.php']);
+
+        if ($classicEverywhere || in_array('classic-editor/classic-editor.php', $sitePluginFiles, true)) {
+            $editorState['classic_sites'] = (int)($editorState['classic_sites'] ?? 0) + 1;
+            return;
+        }
+
+        $editorState['block_sites'] = (int)($editorState['block_sites'] ?? 0) + 1;
+    }
+
+    protected function finalizeDashboardBatchEditorUsage(array $editorState): array {
+        $totalSites = (int)($editorState['total_sites'] ?? 0);
+        $classicSites = (int)($editorState['classic_sites'] ?? 0);
+        $blockSites = (int)($editorState['block_sites'] ?? 0);
+
+        if ($totalSites <= 0) {
+            return [];
+        }
+
+        return [
+            [
+                'label' => __('Classic Editor', 'rrze-multisite-manager'),
+                'value' => $classicSites,
+                'percent' => (int)round(($classicSites / $totalSites) * 100),
+                'accent' => 'warning',
+            ],
+            [
+                'label' => __('Block Editor', 'rrze-multisite-manager'),
+                'value' => $blockSites,
+                'percent' => (int)round(($blockSites / $totalSites) * 100),
+                'accent' => 'info',
+            ],
+        ];
+    }
+
+    protected function invalidateSiteDetailCaches(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        update_site_meta($siteId, self::SITE_DETAIL_CACHE_VERSION_META, $this->getNextCacheVersion($this->getStoredSiteDetailCacheVersion($siteId)));
+    }
+
+    protected function getSiteDetailCacheVersion(int $siteId): int {
+        $version = $this->getStoredSiteDetailCacheVersion($siteId);
+
+        if ($version <= 0) {
+            $version = $this->getNextCacheVersion(0);
+            update_site_meta($siteId, self::SITE_DETAIL_CACHE_VERSION_META, $version);
+        }
+
+        return $version;
+    }
+
+    protected function getStoredSiteDetailCacheVersion(int $siteId): int {
+        if ($siteId <= 0) {
+            return 0;
+        }
+
+        return (int)get_site_meta($siteId, self::SITE_DETAIL_CACHE_VERSION_META, true);
+    }
+
+    protected function getNextCacheVersion(int $currentVersion): int {
+        return max(time(), $currentVersion + 1);
     }
 
     protected function getActivitySiteLimit(): int {

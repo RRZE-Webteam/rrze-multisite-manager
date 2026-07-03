@@ -31,9 +31,19 @@
             <span><?php echo esc_html($current_view_label); ?></span>
         </div>
 
-        <div class="rrze-msm-grid rrze-msm-grid-primary" data-current-view="<?php echo esc_attr($current_view_slug); ?>">
-            <?php foreach ($widget_markup as $markup) { echo $markup; } ?>
-        </div>
+        <?php if (!empty($metrics_refreshed)) { ?>
+            <div class="notice notice-success is-dismissible">
+                <p><?php echo esc_html__('Die Kennzahlen wurden neu aufgebaut.', 'rrze-multisite-manager'); ?></p>
+            </div>
+        <?php } ?>
+
+        <?php if (!empty($metrics_notice_html)) { echo $metrics_notice_html; } ?>
+
+        <?php if (!empty($metrics_has_data)) { ?>
+            <div class="rrze-msm-grid rrze-msm-grid-primary" data-current-view="<?php echo esc_attr($current_view_slug); ?>">
+                <?php foreach ($widget_markup as $markup) { echo $markup; } ?>
+            </div>
+        <?php } ?>
     </div>
     <div class="rrze-msm-modal" id="rrze-msm-site-delete-modal" hidden>
         <div class="rrze-msm-modal-backdrop rrze-msm-close-site-delete-modal"></div>

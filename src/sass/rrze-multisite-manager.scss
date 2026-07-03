@@ -245,6 +245,63 @@ body.rrze-msm-mode-dark {
     color: var(--rrze-msm-text);
 }
 
+.rrze-msm-process-description {
+    display: grid;
+    gap: 6px;
+}
+
+.rrze-msm-process-meta {
+    color: var(--rrze-msm-muted);
+    font-size: 12px;
+}
+
+.rrze-msm-process-status {
+    display: grid;
+    gap: 8px;
+}
+
+.rrze-msm-process-warning {
+    color: var(--rrze-msm-danger);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.rrze-msm-process-progress {
+    display: grid;
+    gap: 8px;
+    min-width: 180px;
+}
+
+.rrze-msm-process-progress-label {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.rrze-msm-process-progress-bar {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--rrze-msm-surface-alt);
+    border: 1px solid var(--rrze-msm-border);
+    overflow: hidden;
+}
+
+.rrze-msm-process-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--rrze-msm-info) 0%, var(--rrze-msm-positive) 100%);
+}
+
+.rrze-msm-process-actions {
+    display: grid;
+    gap: 8px;
+}
+
+.rrze-msm-process-actions form {
+    margin: 0;
+}
+
 .rrze-msm-mode-dark .rrze-multisite-manager-admin .button:not(.rrze-msm-site-action):not(.rrze-msm-button-danger),
 .rrze-msm-mode-dark .rrze-multisite-manager-admin .button-secondary:not(.rrze-msm-site-action):not(.rrze-msm-button-danger) {
     background: var(--rrze-msm-surface);

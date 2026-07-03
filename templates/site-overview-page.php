@@ -18,17 +18,27 @@
             </div>
         <?php } ?>
 
-        <section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-overview-page-section">
-            <nav class="rrze-msm-overview-tabs" aria-label="<?php echo esc_attr__('Statusfilter für Websites', 'rrze-multisite-manager'); ?>">
-                <?php foreach ($overview_tabs as $tab) { ?>
-                    <a class="rrze-msm-overview-tab <?php echo esc_attr((string)$tab['class']); ?><?php echo $current_tab === (string)$tab['slug'] ? ' is-active' : ''; ?>" href="<?php echo esc_url((string)$tab['url']); ?>">
-                        <span><?php echo esc_html((string)$tab['label']); ?></span>
-                        <strong>(<?php echo esc_html(number_format_i18n((int)$tab['count'])); ?>)</strong>
-                    </a>
-                <?php } ?>
-            </nav>
-            <?php echo $site_overview_table; ?>
-        </section>
+        <?php if (!empty($metrics_refreshed)) { ?>
+            <div class="notice notice-success is-dismissible">
+                <p><?php echo esc_html__('Die Kennzahlen wurden neu aufgebaut.', 'rrze-multisite-manager'); ?></p>
+            </div>
+        <?php } ?>
+
+        <?php if (!empty($metrics_notice_html)) { echo $metrics_notice_html; } ?>
+
+        <?php if (!empty($metrics_has_data)) { ?>
+            <section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-overview-page-section">
+                <nav class="rrze-msm-overview-tabs" aria-label="<?php echo esc_attr__('Statusfilter für Websites', 'rrze-multisite-manager'); ?>">
+                    <?php foreach ($overview_tabs as $tab) { ?>
+                        <a class="rrze-msm-overview-tab <?php echo esc_attr((string)$tab['class']); ?><?php echo $current_tab === (string)$tab['slug'] ? ' is-active' : ''; ?>" href="<?php echo esc_url((string)$tab['url']); ?>">
+                            <span><?php echo esc_html((string)$tab['label']); ?></span>
+                            <strong>(<?php echo esc_html(number_format_i18n((int)$tab['count'])); ?>)</strong>
+                        </a>
+                    <?php } ?>
+                </nav>
+                <?php echo $site_overview_table; ?>
+            </section>
+        <?php } ?>
     </div>
     <div class="rrze-msm-modal" id="rrze-msm-site-delete-modal" hidden>
         <div class="rrze-msm-modal-backdrop rrze-msm-close-site-delete-modal"></div>

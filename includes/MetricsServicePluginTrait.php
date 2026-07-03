@@ -168,50 +168,16 @@ trait MetricsServicePluginTrait {
     protected function getPluginUsage(): array {
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
-        $availablePlugins = get_plugins();
         $networkActivePlugins = get_site_option('active_sitewide_plugins', []);
         $siteIds = get_sites([
             'fields' => 'ids',
             'number' => 0,
         ]);
-        $pluginStats = [];
+        $pluginStats = $this->createBasePluginUsageStats();
         $siteId = 0;
         $activePlugins = [];
-        $pluginFile = '';
         $totalSites = count($siteIds);
         $sitePluginFiles = [];
-        $pluginData = [];
-        $pluginUpdates = get_site_transient('update_plugins');
-        $updateItem = null;
-
-        foreach ($availablePlugins as $pluginFile => $pluginData) {
-            $updateItem = is_object($pluginUpdates) && !empty($pluginUpdates->response[$pluginFile]) && is_object($pluginUpdates->response[$pluginFile])
-                ? $pluginUpdates->response[$pluginFile]
-                : null;
-            $pluginStats[$pluginFile] = [
-                'file' => $pluginFile,
-                'site_count' => 0,
-                'active_sites' => [],
-                'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                'version' => (string)($pluginData['Version'] ?? 'n/a'),
-                'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
-                'author' => $this->getPluginAuthorLabel($pluginData),
-                'author_url' => $this->getPluginAuthorUrl($pluginData),
-                'network_active' => isset($networkActivePlugins[$pluginFile]),
-                'settings_url' => $this->getPluginSettingsUrl($pluginFile, $pluginData),
-                'details_url' => $this->getPluginDetailsUrl($pluginData),
-                'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
-                'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
-                'plugin_uri' => $this->getPluginDetailsUrl($pluginData),
-                'text_domain' => !empty($pluginData['TextDomain']) && is_string($pluginData['TextDomain']) ? (string)$pluginData['TextDomain'] : '',
-                'requires_php' => !empty($pluginData['RequiresPHP']) && is_string($pluginData['RequiresPHP']) ? (string)$pluginData['RequiresPHP'] : '',
-                'requires_wp' => !empty($pluginData['RequiresWP']) && is_string($pluginData['RequiresWP']) ? (string)$pluginData['RequiresWP'] : '',
-                'update_available' => $updateItem !== null,
-                'update_version' => $updateItem !== null ? (string)($updateItem->new_version ?? '') : '',
-                'update_details_url' => $this->getPluginUpdateDetailsUrl($pluginData, $updateItem),
-                'update_url' => $updateItem !== null ? $this->getNetworkPluginUpdateUrl($pluginFile) : '',
-            ];
-        }
 
         foreach ($siteIds as $siteId) {
             $activePlugins = get_blog_option((int)$siteId, 'active_plugins', []);
@@ -227,64 +193,17 @@ trait MetricsServicePluginTrait {
                 )
             );
 
-            foreach ($sitePluginFiles as $pluginFile) {
-                if (!isset($pluginStats[$pluginFile])) {
-                    $pluginStats[$pluginFile] = [
-                        'file' => $pluginFile,
-                        'site_count' => 0,
-                        'active_sites' => [],
-                        'name' => $pluginFile,
-                        'version' => 'n/a',
-                        'description' => '',
-                        'author' => '',
-                        'author_url' => '',
-                        'network_active' => isset($networkActivePlugins[$pluginFile]),
-                        'settings_url' => '',
-                        'details_url' => '',
-                        'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
-                        'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
-                        'plugin_uri' => '',
-                        'text_domain' => '',
-                        'requires_php' => '',
-                        'requires_wp' => '',
-                        'update_available' => false,
-                        'update_version' => '',
-                        'update_details_url' => '',
-                        'update_url' => '',
-                    ];
-                }
-
-                $pluginStats[$pluginFile]['site_count']++;
-                $pluginStats[$pluginFile]['active_sites'][] = [
-                    'id' => (int)$siteId,
-                    'name' => $this->getSiteNameById((int)$siteId),
-                    'url' => get_home_url((int)$siteId, '/'),
-                ];
-            }
+            $this->accumulatePluginUsageStats(
+                $pluginStats,
+                (int)$siteId,
+                $this->getSiteNameById((int)$siteId),
+                get_home_url((int)$siteId, '/'),
+                $sitePluginFiles,
+                is_array($networkActivePlugins) ? $networkActivePlugins : []
+            );
         }
 
-        foreach ($pluginStats as $pluginFile => $pluginData) {
-            $pluginStats[$pluginFile]['active_sites'] = $this->sortPluginActiveSites((array)($pluginData['active_sites'] ?? []));
-        }
-
-        uasort($pluginStats, [self::class, 'comparePluginUsage']);
-
-        return [
-            'summary' => [
-                'available_plugins' => count($availablePlugins),
-                'network_active_plugins' => count($networkActivePlugins),
-                'locally_used_plugins' => $this->countLocallyUsedPlugins($pluginStats),
-                'total_sites' => $totalSites,
-            ],
-            'plugins' => array_values($pluginStats),
-            'distribution' => $this->buildPluginUsageDistribution($pluginStats),
-            'inactive_plugins' => array_values(
-                array_filter(
-                    $pluginStats,
-                    [self::class, 'isUnusedPlugin']
-                )
-            ),
-        ];
+        return $this->finalizePluginUsageStats($pluginStats, $totalSites);
     }
 
     protected function findPluginUsageItem(array $plugins, string $pluginFile): array {

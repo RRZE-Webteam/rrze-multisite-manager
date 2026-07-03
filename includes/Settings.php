@@ -57,9 +57,13 @@ class Settings {
             add_action('admin_post_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('admin_post_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
             add_action('admin_post_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
+            add_action('admin_post_rrze_multisite_manager_reset_metrics', [$this, 'resetMetrics']);
+            add_action('admin_post_rrze_multisite_manager_reset_monitoring', [$this, 'resetMonitoring']);
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
             add_action('network_admin_edit_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
+            add_action('network_admin_edit_rrze_multisite_manager_reset_metrics', [$this, 'resetMetrics']);
+            add_action('network_admin_edit_rrze_multisite_manager_reset_monitoring', [$this, 'resetMonitoring']);
         }
     }
 
@@ -140,7 +144,7 @@ class Settings {
         $options = $this->sanitizeOptions($rawOptions);
 
         update_site_option($this->optionName, $options);
-        (new MetricsService($this, $this->config))->rebuildDashboardData(true);
+        (new MetricsService($this, $this->config))->startDashboardRefreshRun(false);
         MonitoringService::clearScheduledEvent($this->config);
         (new MonitoringService($this->plugin, $this->config))->ensureScheduledEvent();
 
@@ -183,7 +187,7 @@ class Settings {
         }
 
         if (!empty($_GET['metrics-refreshed'])) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Die Kennzahlen wurden neu aufgebaut.', 'rrze-multisite-manager') . '</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Die Aktualisierung der Kennzahlen wurde gestartet und läuft jetzt in Batches.', 'rrze-multisite-manager') . '</p></div>';
         }
 
         if (!empty($_GET['views-updated'])) {
@@ -192,6 +196,14 @@ class Settings {
 
         if (!empty($_GET['monitoring-ran'])) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Das Monitoring wurde gestartet und arbeitet die Websites jetzt in Batches ab.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (!empty($_GET['metrics-reset'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Der Metrics-Prozess wurde zurückgesetzt.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (!empty($_GET['monitoring-reset'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Der Monitoring-Prozess wurde zurückgesetzt.', 'rrze-multisite-manager') . '</p></div>';
         }
 
         if (!empty($_GET['monitoring-status-updated'])) {
@@ -213,19 +225,29 @@ class Settings {
     }
 
     public function refreshMetrics(): void {
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
         if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
 
         check_admin_referer('rrze_multisite_manager_refresh_metrics');
-        (new MetricsService($this, $this->config))->rebuildDashboardData(true);
+        (new MetricsService($this, $this->config))->startDashboardRefreshRun(true);
+
+        $redirectUrl = $redirectTo !== ''
+            ? $redirectTo
+            : add_query_arg(
+                [
+                    'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
+                    'metrics-refreshed' => 'true',
+                ],
+                admin_url('admin.php')
+            );
 
         $redirectUrl = add_query_arg(
             [
-                'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
                 'metrics-refreshed' => 'true',
             ],
-            admin_url('admin.php')
+            $redirectUrl
         );
 
         wp_safe_redirect($redirectUrl);
@@ -250,6 +272,70 @@ class Settings {
                 'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
                 'tab' => 'monitoring',
                 'monitoring-ran' => 'true',
+            ],
+            admin_url('admin.php')
+        );
+
+        wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function resetMetrics(): void {
+        $restart = !empty($_POST['restart']);
+        $redirectUrl = '';
+        $metricsService = null;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_reset_metrics');
+
+        $metricsService = new MetricsService($this, $this->config);
+        $metricsService->resetDashboardRefreshState();
+
+        if ($restart) {
+            $metricsService->startDashboardRefreshRun(true);
+        }
+
+        $redirectUrl = add_query_arg(
+            [
+                'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
+                'tab' => 'monitoring',
+                'metrics-reset' => 'true',
+                'metrics-refreshed' => $restart ? 'true' : null,
+            ],
+            admin_url('admin.php')
+        );
+
+        wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function resetMonitoring(): void {
+        $restart = !empty($_POST['restart']);
+        $redirectUrl = '';
+        $monitoringService = null;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_reset_monitoring');
+
+        $monitoringService = new MonitoringService($this->plugin, $this->config);
+        $monitoringService->resetMonitoringRunState();
+
+        if ($restart) {
+            $monitoringService->startMonitoringRun(true);
+        }
+
+        $redirectUrl = add_query_arg(
+            [
+                'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
+                'tab' => 'monitoring',
+                'monitoring-reset' => 'true',
+                'monitoring-ran' => $restart ? 'true' : null,
             ],
             admin_url('admin.php')
         );
@@ -461,7 +547,7 @@ class Settings {
         echo '</form>';
         echo '<hr>';
         echo '<h2>' . esc_html__('Kennzahlen aktualisieren', 'rrze-multisite-manager') . '</h2>';
-        echo '<p>' . esc_html__('Leert den Kennzahlen-Cache. Die Daten werden beim nächsten Aufruf der Übersichten neu berechnet.', 'rrze-multisite-manager') . '</p>';
+        echo '<p>' . esc_html__('Markiert die Kennzahlen als veraltet und startet eine neue Hintergrundberechnung in Batches über das gesamte Netzwerk.', 'rrze-multisite-manager') . '</p>';
         echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_metrics')) . '">';
         wp_nonce_field('rrze_multisite_manager_refresh_metrics');
         submit_button(__('Kennzahlen aktualisieren', 'rrze-multisite-manager'), 'secondary', 'submit', false);
@@ -470,7 +556,8 @@ class Settings {
 
     protected function renderMonitoringTab(): void {
         $monitoringService = new MonitoringService($this->plugin, $this->config);
-        $processes = $monitoringService->getProcessesOverview();
+        $metricsService = new MetricsService($this, $this->config);
+        $processes = array_merge($monitoringService->getProcessesOverview(), $metricsService->getProcessesOverview());
         $runHistory = $monitoringService->getRunHistory();
         $process = [];
         $run = [];
@@ -493,7 +580,12 @@ class Settings {
             echo '<thead><tr>';
             echo '<th>' . esc_html__('Prozess', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Beschreibung', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('Intervall (Std.)', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Fortschritt', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Rest', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Letzte Laufdauer', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Aktuelle Laufdauer', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Zuletzt aktiv', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('Letzte Site-Anzahl', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Nächster Lauf', 'rrze-multisite-manager') . '</th>';
@@ -503,17 +595,17 @@ class Settings {
             foreach ($processes as $process) {
                 echo '<tr>';
                 echo '<td>' . esc_html((string)($process['title'] ?? '')) . '</td>';
-                echo '<td>' . esc_html((string)($process['description'] ?? '')) . '</td>';
-                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
+                echo '<td>' . $this->renderProcessDescriptionHtml($process) . '</td>';
+                echo '<td>' . $this->renderProcessStatusHtml($process) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(!empty($process['interval_label']) ? (string)$process['interval_label'] : number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
+                echo '<td>' . $this->renderProcessProgressHtml($process) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatProcessRemaining($process)) . '</td>';
+                echo '<td>' . esc_html($this->formatProcessDuration((int)($process['last_duration_seconds'] ?? 0))) . '</td>';
+                echo '<td>' . esc_html($this->formatProcessDuration((int)($process['current_duration_seconds'] ?? 0), empty($process['is_running']))) . '</td>';
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['last_run'] ?? ''))) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
                 echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
-                echo '<td>';
-                echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_run_monitoring')) . '">';
-                wp_nonce_field('rrze_multisite_manager_run_monitoring');
-                echo '<button type="submit" class="button button-secondary">' . esc_html__('Jetzt starten', 'rrze-multisite-manager') . '</button>';
-                echo '</form>';
-                echo '</td>';
+                echo '<td>' . $this->renderProcessActionsHtml($process) . '</td>';
                 echo '</tr>';
             }
 
@@ -535,6 +627,7 @@ class Settings {
             echo '<thead><tr>';
             echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Ende', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Dauer', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Auslöser', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('Sites geprüft', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('Statuswechsel', 'rrze-multisite-manager') . '</th>';
@@ -548,6 +641,7 @@ class Settings {
                 echo '<tr>';
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($run['started_at'] ?? ''))) . '</td>';
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($run['finished_at'] ?? ''))) . '</td>';
+                echo '<td>' . esc_html($this->formatProcessDuration($this->calculateTimestampDuration((string)($run['started_at'] ?? ''), (string)($run['finished_at'] ?? '')))) . '</td>';
                 echo '<td>' . esc_html((string)($run['trigger'] ?? '')) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['checked_sites'] ?? 0))) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['status_changes'] ?? 0))) . '</td>';
@@ -683,5 +777,252 @@ class Settings {
         }
 
         return wp_date(get_option('date_format') . ' ' . get_option('time_format'), $timestamp);
+    }
+
+    protected function formatProcessDuration(int $seconds, bool $treatZeroAsEmpty = true): string {
+        $hours = 0;
+        $minutes = 0;
+        $remainingSeconds = 0;
+        $parts = [];
+
+        if ($seconds <= 0) {
+            return $treatZeroAsEmpty ? __('-', 'rrze-multisite-manager') : __('0 Sek.', 'rrze-multisite-manager');
+        }
+
+        $hours = (int)floor($seconds / HOUR_IN_SECONDS);
+        $minutes = (int)floor(($seconds % HOUR_IN_SECONDS) / MINUTE_IN_SECONDS);
+        $remainingSeconds = $seconds % MINUTE_IN_SECONDS;
+
+        if ($hours > 0) {
+            $parts[] = sprintf(_n('%d Std.', '%d Std.', $hours, 'rrze-multisite-manager'), $hours);
+        }
+
+        if ($minutes > 0) {
+            $parts[] = sprintf(_n('%d Min.', '%d Min.', $minutes, 'rrze-multisite-manager'), $minutes);
+        }
+
+        if ($remainingSeconds > 0 || empty($parts)) {
+            $parts[] = sprintf(_n('%d Sek.', '%d Sek.', $remainingSeconds, 'rrze-multisite-manager'), $remainingSeconds);
+        }
+
+        return implode(' ', $parts);
+    }
+
+    protected function formatProcessProgress(array $process): string {
+        $checkedSites = (int)($process['checked_sites'] ?? 0);
+        $batchTotal = (int)($process['batch_total'] ?? 0);
+        $progressPercent = (int)($process['progress_percent'] ?? 0);
+
+        if ($batchTotal > 0) {
+            return sprintf(
+                __('%1$s / %2$s (%3$d%%)', 'rrze-multisite-manager'),
+                number_format_i18n($checkedSites),
+                number_format_i18n($batchTotal),
+                $progressPercent
+            );
+        }
+
+        if ((int)($process['last_site_count'] ?? 0) > 0) {
+            return sprintf(
+                __('%1$s / %2$s', 'rrze-multisite-manager'),
+                number_format_i18n($checkedSites),
+                number_format_i18n((int)($process['last_site_count'] ?? 0))
+            );
+        }
+
+        return __('-', 'rrze-multisite-manager');
+    }
+
+    protected function formatProcessRemaining(array $process): string {
+        $remainingSites = (int)($process['remaining_sites'] ?? 0);
+
+        if ((int)($process['batch_total'] ?? 0) <= 0 && (int)($process['last_site_count'] ?? 0) <= 0) {
+            return __('-', 'rrze-multisite-manager');
+        }
+
+        return number_format_i18n($remainingSites);
+    }
+
+    protected function getProcessStatusLabel(array $process): string {
+        if (!empty($process['is_running'])) {
+            return __('Läuft', 'rrze-multisite-manager');
+        }
+
+        if (!empty($process['run_state']['needs_refresh']) || !empty($process['run_state']['is_dirty'])) {
+            return __('Eingeplant', 'rrze-multisite-manager');
+        }
+
+        if (!empty($process['last_run'])) {
+            return __('Bereit', 'rrze-multisite-manager');
+        }
+
+        return __('Noch nicht gelaufen', 'rrze-multisite-manager');
+    }
+
+    protected function renderProcessDescriptionHtml(array $process): string {
+        $description = (string)($process['description'] ?? '');
+        $meta = [];
+
+        if ((int)($process['batch_size'] ?? 0) > 0) {
+            $meta[] = sprintf(
+                __('Batch-Größe: %s', 'rrze-multisite-manager'),
+                number_format_i18n((int)($process['batch_size'] ?? 0))
+            );
+        }
+
+        if ((int)($process['checked_sites'] ?? 0) > 0) {
+            $meta[] = sprintf(
+                __('Zuletzt verarbeitet: %s Sites', 'rrze-multisite-manager'),
+                number_format_i18n((int)($process['checked_sites'] ?? 0))
+            );
+        }
+
+        $html = '<div class="rrze-msm-process-description">';
+        $html .= '<div>' . esc_html($description) . '</div>';
+
+        if (!empty($meta)) {
+            $html .= '<div class="rrze-msm-process-meta">' . esc_html(implode(' | ', $meta)) . '</div>';
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderProcessStatusHtml(array $process): string {
+        $label = $this->getProcessStatusLabel($process);
+        $warning = $this->getProcessWarningLabel($process);
+        $className = 'rrze-msm-badge rrze-msm-badge-neutral';
+        $html = '';
+
+        if (!empty($process['is_running'])) {
+            $className = 'rrze-msm-badge rrze-msm-badge-info';
+        } elseif ($warning !== '') {
+            $className = 'rrze-msm-badge rrze-msm-badge-danger';
+        } elseif (!empty($process['run_state']['needs_refresh']) || !empty($process['run_state']['is_dirty'])) {
+            $className = 'rrze-msm-badge rrze-msm-badge-warning';
+        } elseif (!empty($process['last_run'])) {
+            $className = 'rrze-msm-badge rrze-msm-badge-positive';
+        }
+
+        $html .= '<div class="rrze-msm-process-status">';
+        $html .= '<span class="' . esc_attr($className) . '">' . esc_html($label) . '</span>';
+
+        if ($warning !== '') {
+            $html .= '<div class="rrze-msm-process-warning">' . esc_html($warning) . '</div>';
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderProcessProgressHtml(array $process): string {
+        $label = $this->formatProcessProgress($process);
+        $progressPercent = max(0, min(100, (int)($process['progress_percent'] ?? 0)));
+        $html = '<div class="rrze-msm-process-progress">';
+        $html .= '<div class="rrze-msm-process-progress-label">' . esc_html($label) . '</div>';
+
+        if ((int)($process['batch_total'] ?? 0) > 0) {
+            $html .= '<div class="rrze-msm-process-progress-bar" aria-hidden="true">';
+            $html .= '<span class="rrze-msm-process-progress-fill" style="width:' . esc_attr((string)$progressPercent) . '%;"></span>';
+            $html .= '</div>';
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderProcessActionsHtml(array $process): string {
+        $processId = (string)($process['id'] ?? '');
+        $html = '<div class="rrze-msm-process-actions">';
+
+        if ($processId === 'dashboard-metrics') {
+            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_metrics')) . '">';
+            $html .= wp_nonce_field('rrze_multisite_manager_refresh_metrics', '_wpnonce', true, false);
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Jetzt aktualisieren', 'rrze-multisite-manager') . '</button>';
+            $html .= '</form>';
+
+            if (!empty($process['is_stale'])) {
+                $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_reset_metrics')) . '">';
+                $html .= wp_nonce_field('rrze_multisite_manager_reset_metrics', '_wpnonce', true, false);
+                $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Zurücksetzen', 'rrze-multisite-manager') . '</button>';
+                $html .= '</form>';
+                $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_reset_metrics')) . '">';
+                $html .= '<input type="hidden" name="restart" value="1">';
+                $html .= wp_nonce_field('rrze_multisite_manager_reset_metrics', '_wpnonce', true, false);
+                $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Zurücksetzen und neu starten', 'rrze-multisite-manager') . '</button>';
+                $html .= '</form>';
+            }
+        } else {
+            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_run_monitoring')) . '">';
+            $html .= wp_nonce_field('rrze_multisite_manager_run_monitoring', '_wpnonce', true, false);
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Jetzt starten', 'rrze-multisite-manager') . '</button>';
+            $html .= '</form>';
+
+            if (!empty($process['is_stale'])) {
+                $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_reset_monitoring')) . '">';
+                $html .= wp_nonce_field('rrze_multisite_manager_reset_monitoring', '_wpnonce', true, false);
+                $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Zurücksetzen', 'rrze-multisite-manager') . '</button>';
+                $html .= '</form>';
+                $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_reset_monitoring')) . '">';
+                $html .= '<input type="hidden" name="restart" value="1">';
+                $html .= wp_nonce_field('rrze_multisite_manager_reset_monitoring', '_wpnonce', true, false);
+                $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Zurücksetzen und neu starten', 'rrze-multisite-manager') . '</button>';
+                $html .= '</form>';
+            }
+        }
+
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function getProcessWarningLabel(array $process): string {
+        $isRunning = !empty($process['is_running']);
+        $currentDurationSeconds = (int)($process['current_duration_seconds'] ?? 0);
+        $nextRunTimestamp = (int)($process['next_run_timestamp'] ?? 0);
+        $lastRun = (string)($process['last_run'] ?? '');
+        $thresholdSeconds = $this->getProcessWarningThresholdSeconds($process);
+
+        if ($isRunning && $currentDurationSeconds > $thresholdSeconds) {
+            return __('Lauf dauert auffällig lange', 'rrze-multisite-manager');
+        }
+
+        if (!$isRunning && $nextRunTimestamp > 0 && $nextRunTimestamp < (time() - 300)) {
+            return __('Nächster Lauf ist überfällig', 'rrze-multisite-manager');
+        }
+
+        if ($lastRun === '' && empty($process['run_state']['has_data'])) {
+            return __('Es gibt noch keine fertigen Prozessdaten', 'rrze-multisite-manager');
+        }
+
+        return '';
+    }
+
+    protected function getProcessWarningThresholdSeconds(array $process): int {
+        $intervalHours = (int)($process['interval_hours'] ?? 0);
+
+        if ($intervalHours > 0) {
+            return max(900, (int)floor(($intervalHours * HOUR_IN_SECONDS) / 2));
+        }
+
+        return 900;
+    }
+
+    protected function calculateTimestampDuration(string $startedAt, string $finishedAt): int {
+        $startedTimestamp = ($startedAt !== '' && $startedAt !== '0000-00-00 00:00:00')
+            ? (int)strtotime($startedAt . ' GMT')
+            : 0;
+        $finishedTimestamp = ($finishedAt !== '' && $finishedAt !== '0000-00-00 00:00:00')
+            ? (int)strtotime($finishedAt . ' GMT')
+            : 0;
+
+        if ($startedTimestamp <= 0 || $finishedTimestamp <= 0 || $finishedTimestamp < $startedTimestamp) {
+            return 0;
+        }
+
+        return $finishedTimestamp - $startedTimestamp;
     }
 }

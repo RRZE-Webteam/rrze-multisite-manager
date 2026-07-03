@@ -92,6 +92,19 @@ class MonitoringService {
         delete_site_transient(self::LOCK_KEY);
     }
 
+    public function resetMonitoringRunState(bool $clearSchedule = false): void {
+        if ($clearSchedule) {
+            self::clearScheduledEvent($this->config);
+            $this->ensureScheduledEvent();
+            return;
+        }
+
+        delete_site_option(self::OPTION_BATCH_OFFSET);
+        delete_site_option(self::OPTION_BATCH_TOTAL);
+        delete_site_option(self::OPTION_RUN_STATE);
+        delete_site_transient(self::LOCK_KEY);
+    }
+
     public function getProcessesOverview(): array {
         $hook = $this->config->getMonitoringHook();
         $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
@@ -100,6 +113,23 @@ class MonitoringService {
         $batchOffset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
         $batchTotal = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
         $isRunning = $this->isMonitoringLocked();
+        $runState = $this->getRunState();
+        $runHistory = $this->getRunHistory();
+        $lastRunEntry = !empty($runHistory[0]) && is_array($runHistory[0]) ? $runHistory[0] : [];
+        $startedAtTimestamp = !empty($runState['started_at']) ? strtotime((string)$runState['started_at'] . ' GMT') : 0;
+        $lastDurationSeconds = $this->calculateRunDurationSeconds(
+            (string)($lastRunEntry['started_at'] ?? ''),
+            (string)($lastRunEntry['finished_at'] ?? '')
+        );
+        $checkedSites = $isRunning ? (int)($runState['checked_sites'] ?? 0) : $lastSiteCount;
+        $remainingSites = max(0, ($batchTotal > 0 ? $batchTotal : $lastSiteCount) - $checkedSites);
+        $progressPercent = ($batchTotal > 0 && $checkedSites > 0)
+            ? (int)round(($checkedSites / $batchTotal) * 100)
+            : 0;
+        $currentDurationSeconds = ($isRunning && $startedAtTimestamp > 0)
+            ? max(0, time() - $startedAtTimestamp)
+            : 0;
+        $isStale = $this->isMonitoringRunStale($isRunning, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
 
         return [
             [
@@ -115,9 +145,15 @@ class MonitoringService {
                 'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
                 'batch_offset' => $batchOffset,
                 'batch_total' => $batchTotal,
+                'checked_sites' => $checkedSites,
+                'remaining_sites' => $remainingSites,
+                'progress_percent' => $progressPercent,
                 'is_running' => $isRunning,
+                'is_stale' => $isStale,
                 'batch_size' => $this->getBatchSize(),
-                'run_state' => $this->getRunState(),
+                'current_duration_seconds' => $currentDurationSeconds,
+                'last_duration_seconds' => $lastDurationSeconds,
+                'run_state' => $runState,
             ],
         ];
     }
@@ -283,6 +319,33 @@ class MonitoringService {
 
     protected function isMonitoringLocked(): bool {
         return (int)get_site_transient(self::LOCK_KEY) > 0;
+    }
+
+    protected function isMonitoringRunStale(bool $isRunning, int $batchTotal, int $checkedSites, int $nextRunTimestamp, int $currentDurationSeconds): bool {
+        if ($isRunning && $currentDurationSeconds > (self::LOCK_TTL + 120)) {
+            return true;
+        }
+
+        if (!$isRunning && $batchTotal > 0 && $checkedSites < $batchTotal && $nextRunTimestamp > 0 && $nextRunTimestamp < (time() - 300)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function calculateRunDurationSeconds(string $startedAt, string $finishedAt): int {
+        $startedTimestamp = ($startedAt !== '' && $startedAt !== '0000-00-00 00:00:00')
+            ? (int)strtotime($startedAt . ' GMT')
+            : 0;
+        $finishedTimestamp = ($finishedAt !== '' && $finishedAt !== '0000-00-00 00:00:00')
+            ? (int)strtotime($finishedAt . ' GMT')
+            : 0;
+
+        if ($startedTimestamp <= 0 || $finishedTimestamp <= 0 || $finishedTimestamp < $startedTimestamp) {
+            return 0;
+        }
+
+        return $finishedTimestamp - $startedTimestamp;
     }
 
     protected function getMonitoringInterval(): int {
