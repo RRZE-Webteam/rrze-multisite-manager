@@ -32,6 +32,7 @@ class MonitoringService {
     protected const BATCH_SIZE = 20;
     protected const MAX_RUN_LOG_ENTRIES = 20;
     protected const MAX_SITE_HISTORY_ENTRIES = 10;
+    protected const MAX_RUN_EVENT_ENTRIES = 12;
 
     protected Plugin $plugin;
     protected Config $config;
@@ -277,6 +278,8 @@ class MonitoringService {
             'provisioning_sites' => 0,
             'dns_missing_sites' => 0,
             'unreachable_sites' => 0,
+            'changed_sites' => [],
+            'issue_sites' => [],
         ]);
     }
 
@@ -381,6 +384,7 @@ class MonitoringService {
     protected function checkSiteAvailability(int $siteId): array {
         $site = get_site($siteId);
         $siteUrl = '';
+        $siteLabel = '';
         $host = '';
         $dnsStatus = 'unknown';
         $httpStatus = 'unknown';
@@ -399,6 +403,7 @@ class MonitoringService {
         }
 
         $siteUrl = get_home_url($siteId, '/');
+        $siteLabel = $this->getSiteMonitoringLabel($site);
         $host = (string)wp_parse_url($siteUrl, PHP_URL_HOST);
 
         update_site_meta($siteId, self::META_LAST_AVAILABILITY_CHECK, $timestamp);
@@ -426,7 +431,7 @@ class MonitoringService {
 
         if ($operationalStatusSource === 'manual' || $operationalStatus === 'retired' || $operationalStatus === 'provisioning') {
             $this->updateFailureTracking($siteId, $dnsStatus, $httpStatus, $timestamp, $dnsFailureCount, $httpFailureCount);
-            $result = $this->buildCheckResult($siteId, $timestamp, $dnsStatus, $httpStatus, $operationalStatus, $operationalStatus, false);
+            $result = $this->buildCheckResult($siteId, $siteLabel, $siteUrl, $host, $timestamp, $dnsStatus, $httpStatus, $operationalStatus, $operationalStatus, false);
             $this->appendSiteHistory($siteId, $result);
             return $result;
         }
@@ -447,10 +452,20 @@ class MonitoringService {
         }
 
         $statusChanged = $this->updateOperationalStatus($siteId, $operationalStatus, $nextOperationalStatus, $timestamp, 'auto');
-        $result = $this->buildCheckResult($siteId, $timestamp, $dnsStatus, $httpStatus, $operationalStatus, $nextOperationalStatus, $statusChanged);
+        $result = $this->buildCheckResult($siteId, $siteLabel, $siteUrl, $host, $timestamp, $dnsStatus, $httpStatus, $operationalStatus, $nextOperationalStatus, $statusChanged);
         $this->appendSiteHistory($siteId, $result);
 
         return $result;
+    }
+
+    protected function getSiteMonitoringLabel(\WP_Site $site): string {
+        $label = trim($site->domain . $site->path);
+
+        if ($label !== '') {
+            return $label;
+        }
+
+        return sprintf(__('Site %d', 'rrze-multisite-manager'), (int)$site->blog_id);
     }
 
     protected function updateOperationalStatus(int $siteId, string $currentStatus, string $nextStatus, string $timestamp, string $source): bool {
@@ -594,9 +609,12 @@ class MonitoringService {
         return false;
     }
 
-    protected function buildCheckResult(int $siteId, string $checkedAt, string $dnsStatus, string $httpStatus, string $previousStatus, string $nextStatus, bool $statusChanged): array {
+    protected function buildCheckResult(int $siteId, string $siteLabel, string $siteUrl, string $host, string $checkedAt, string $dnsStatus, string $httpStatus, string $previousStatus, string $nextStatus, bool $statusChanged): array {
         return [
             'site_id' => $siteId,
+            'site_label' => $siteLabel,
+            'site_url' => $siteUrl,
+            'host' => $host,
             'checked_at' => $checkedAt,
             'dns_status' => $dnsStatus,
             'http_status' => $httpStatus,
@@ -622,6 +640,7 @@ class MonitoringService {
         $status = (string)($result['status'] ?? '');
         $dnsStatus = (string)($result['dns_status'] ?? '');
         $httpStatus = (string)($result['http_status'] ?? '');
+        $issueKind = '';
 
         if (empty($runState)) {
             return $runState;
@@ -631,14 +650,24 @@ class MonitoringService {
 
         if (!empty($result['status_changed'])) {
             $runState['status_changes'] = (int)($runState['status_changes'] ?? 0) + 1;
+            $runState = $this->appendRunStateEvent(
+                $runState,
+                'changed_sites',
+                $this->buildRunEventEntry($result, 'status_change')
+            );
         }
 
         if ($dnsStatus !== 'ok' && $dnsStatus !== 'unknown') {
             $runState['dns_issues'] = (int)($runState['dns_issues'] ?? 0) + 1;
+            $issueKind = 'dns_issue';
         }
 
         if (!in_array($httpStatus, ['ok', 'unknown', 'pending'], true)) {
             $runState['http_issues'] = (int)($runState['http_issues'] ?? 0) + 1;
+
+            if ($issueKind === '') {
+                $issueKind = 'http_issue';
+            }
         }
 
         if ($status === 'healthy') {
@@ -651,6 +680,45 @@ class MonitoringService {
             $runState['unreachable_sites'] = (int)($runState['unreachable_sites'] ?? 0) + 1;
         }
 
+        if ($issueKind !== '') {
+            $runState = $this->appendRunStateEvent(
+                $runState,
+                'issue_sites',
+                $this->buildRunEventEntry($result, $issueKind)
+            );
+        }
+
         return $runState;
+    }
+
+    protected function appendRunStateEvent(array $runState, string $key, array $entry): array {
+        $events = [];
+
+        if (empty($entry)) {
+            return $runState;
+        }
+
+        $events = isset($runState[$key]) && is_array($runState[$key]) ? $runState[$key] : [];
+        array_unshift($events, $entry);
+        $events = array_slice($events, 0, self::MAX_RUN_EVENT_ENTRIES);
+        $runState[$key] = $events;
+
+        return $runState;
+    }
+
+    protected function buildRunEventEntry(array $result, string $type): array {
+        return [
+            'type' => $type,
+            'site_id' => (int)($result['site_id'] ?? 0),
+            'site_label' => (string)($result['site_label'] ?? ''),
+            'site_url' => (string)($result['site_url'] ?? ''),
+            'host' => (string)($result['host'] ?? ''),
+            'checked_at' => (string)($result['checked_at'] ?? ''),
+            'dns_status' => (string)($result['dns_status'] ?? ''),
+            'http_status' => (string)($result['http_status'] ?? ''),
+            'previous_status' => (string)($result['previous_status'] ?? ''),
+            'status' => (string)($result['status'] ?? ''),
+            'status_changed' => !empty($result['status_changed']),
+        ];
     }
 }

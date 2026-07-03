@@ -619,7 +619,7 @@ class Settings {
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
         echo '<header class="rrze-msm-widget-header">';
         echo '<h2>' . esc_html__('Letzte Monitoring-Läufe', 'rrze-multisite-manager') . '</h2>';
-        echo '<p>' . esc_html__('Das ist das kurze Laufprotokoll der letzten kompletten Monitoring-Durchgänge.', 'rrze-multisite-manager') . '</p>';
+        echo '<p>' . esc_html__('Das ist das Laufprotokoll der letzten kompletten Monitoring-Durchgänge inklusive auffälliger Statuswechsel und technischer Probleme.', 'rrze-multisite-manager') . '</p>';
         echo '</header>';
 
         if (!empty($runHistory)) {
@@ -635,6 +635,7 @@ class Settings {
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('HTTP-Probleme', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('DNS fehlt', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('Nicht erreichbar', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Details', 'rrze-multisite-manager') . '</th>';
             echo '</tr></thead><tbody>';
 
             foreach ($runHistory as $run) {
@@ -649,12 +650,52 @@ class Settings {
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['http_issues'] ?? 0))) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['dns_missing_sites'] ?? 0))) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($run['unreachable_sites'] ?? 0))) . '</td>';
+                echo '<td>' . $this->renderMonitoringRunDetailsHtml($run) . '</td>';
                 echo '</tr>';
             }
 
             echo '</tbody></table>';
         } else {
             echo '<p>' . esc_html__('Bisher wurde noch kein vollständiger Monitoring-Lauf protokolliert.', 'rrze-multisite-manager') . '</p>';
+        }
+
+        echo '</section>';
+
+        $recentEvents = $this->collectMonitoringRecentEvents($runHistory);
+
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
+        echo '<header class="rrze-msm-widget-header">';
+        echo '<h2>' . esc_html__('Zuletzt erkannte Auffälligkeiten', 'rrze-multisite-manager') . '</h2>';
+        echo '<p>' . esc_html__('Kompakter Verlauf der letzten vom Monitoring protokollierten Statuswechsel und technischen Probleme.', 'rrze-multisite-manager') . '</p>';
+        echo '</header>';
+
+        if (!empty($recentEvents)) {
+            echo '<table class="widefat striped rrze-msm-table">';
+            echo '<thead><tr>';
+            echo '<th>' . esc_html__('Zeitpunkt', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Website', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Ereignis', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('DNS', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Lauf', 'rrze-multisite-manager') . '</th>';
+            echo '</tr></thead><tbody>';
+
+            foreach ($recentEvents as $event) {
+                echo '<tr>';
+                echo '<td>' . esc_html($this->formatProcessTimestamp((string)($event['checked_at'] ?? ''))) . '</td>';
+                echo '<td>' . $this->renderMonitoringEventSiteHtml($event) . '</td>';
+                echo '<td>' . esc_html($this->getMonitoringEventTypeLabel((string)($event['type'] ?? ''))) . '</td>';
+                echo '<td>' . esc_html($this->formatMonitoringEventStatus($event)) . '</td>';
+                echo '<td>' . esc_html($this->getMonitoringStatusLabel((string)($event['dns_status'] ?? ''))) . '</td>';
+                echo '<td>' . esc_html($this->getMonitoringStatusLabel((string)($event['http_status'] ?? ''))) . '</td>';
+                echo '<td>' . esc_html($this->formatProcessTimestamp((string)($event['run_finished_at'] ?? ''))) . '</td>';
+                echo '</tr>';
+            }
+
+            echo '</tbody></table>';
+        } else {
+            echo '<p>' . esc_html__('Bisher wurden noch keine auffälligen Monitoring-Ereignisse protokolliert.', 'rrze-multisite-manager') . '</p>';
         }
 
         echo '</section>';
@@ -1009,6 +1050,219 @@ class Settings {
         }
 
         return 900;
+    }
+
+    protected function renderMonitoringRunDetailsHtml(array $run): string {
+        $statusChanges = isset($run['changed_sites']) && is_array($run['changed_sites']) ? $run['changed_sites'] : [];
+        $issueSites = isset($run['issue_sites']) && is_array($run['issue_sites']) ? $run['issue_sites'] : [];
+        $parts = [];
+
+        if (!empty($statusChanges)) {
+            $parts[] = '<div><strong>' . esc_html__('Statuswechsel', 'rrze-multisite-manager') . '</strong></div><ul>' . $this->renderMonitoringRunEventListItems($statusChanges) . '</ul>';
+        }
+
+        if (!empty($issueSites)) {
+            $parts[] = '<div><strong>' . esc_html__('Technische Probleme', 'rrze-multisite-manager') . '</strong></div><ul>' . $this->renderMonitoringRunEventListItems($issueSites) . '</ul>';
+        }
+
+        if (empty($parts)) {
+            return esc_html__('Keine besonderen Auffälligkeiten protokolliert.', 'rrze-multisite-manager');
+        }
+
+        return implode('', $parts);
+    }
+
+    protected function renderMonitoringRunEventListItems(array $events): string {
+        $html = '';
+        $event = [];
+
+        foreach ($events as $event) {
+            if (!is_array($event)) {
+                continue;
+            }
+
+            $html .= '<li>' . $this->renderMonitoringEventSummaryHtml($event) . '</li>';
+        }
+
+        return $html;
+    }
+
+    protected function renderMonitoringEventSummaryHtml(array $event): string {
+        $siteHtml = $this->renderMonitoringEventSiteHtml($event);
+        $summary = $this->formatMonitoringEventStatus($event);
+        $details = [];
+
+        if (!empty($event['dns_status'])) {
+            $details[] = sprintf(
+                __('DNS: %s', 'rrze-multisite-manager'),
+                $this->getMonitoringStatusLabel((string)$event['dns_status'])
+            );
+        }
+
+        if (!empty($event['http_status'])) {
+            $details[] = sprintf(
+                __('HTTP: %s', 'rrze-multisite-manager'),
+                $this->getMonitoringStatusLabel((string)$event['http_status'])
+            );
+        }
+
+        return $siteHtml . ' - ' . esc_html($summary . (!empty($details) ? ' (' . implode(', ', $details) . ')' : ''));
+    }
+
+    protected function collectMonitoringRecentEvents(array $runHistory): array {
+        $events = [];
+        $run = [];
+        $entry = [];
+
+        foreach ($runHistory as $run) {
+            if (!is_array($run)) {
+                continue;
+            }
+
+            foreach (['changed_sites', 'issue_sites'] as $key) {
+                if (empty($run[$key]) || !is_array($run[$key])) {
+                    continue;
+                }
+
+                foreach ($run[$key] as $entry) {
+                    if (!is_array($entry)) {
+                        continue;
+                    }
+
+                    $entry['run_finished_at'] = (string)($run['finished_at'] ?? '');
+                    $events[] = $entry;
+
+                    if (count($events) >= 30) {
+                        break 3;
+                    }
+                }
+            }
+        }
+
+        return $events;
+    }
+
+    protected function renderMonitoringEventSiteHtml(array $event): string {
+        $siteId = (int)($event['site_id'] ?? 0);
+        $label = trim((string)($event['site_label'] ?? ''));
+        $siteUrl = trim((string)($event['site_url'] ?? ''));
+        $detailsUrl = $this->getSiteDetailsPageUrl($siteId);
+        $text = $label !== '' ? $label : $siteUrl;
+
+        if ($text === '') {
+            $text = sprintf(__('Site %d', 'rrze-multisite-manager'), $siteId);
+        }
+
+        $html = $detailsUrl !== ''
+            ? '<a href="' . esc_url($detailsUrl) . '">' . esc_html($text) . '</a>'
+            : esc_html($text);
+
+        if ($siteUrl !== '') {
+            $html .= '<div><code>' . esc_html(untrailingslashit($siteUrl)) . '</code></div>';
+        }
+
+        return $html;
+    }
+
+    protected function formatMonitoringEventStatus(array $event): string {
+        $previous = (string)($event['previous_status'] ?? '');
+        $current = (string)($event['status'] ?? '');
+
+        if (!empty($event['status_changed']) && $previous !== '' && $current !== '') {
+            return sprintf(
+                __('%1$s -> %2$s', 'rrze-multisite-manager'),
+                $this->getOperationalStatusLabel($previous),
+                $this->getOperationalStatusLabel($current)
+            );
+        }
+
+        if ($current !== '') {
+            return $this->getOperationalStatusLabel($current);
+        }
+
+        return __('-', 'rrze-multisite-manager');
+    }
+
+    protected function getMonitoringEventTypeLabel(string $type): string {
+        if ($type === 'status_change') {
+            return __('Statuswechsel', 'rrze-multisite-manager');
+        }
+
+        if ($type === 'dns_issue') {
+            return __('DNS-Problem', 'rrze-multisite-manager');
+        }
+
+        if ($type === 'http_issue') {
+            return __('HTTP-Problem', 'rrze-multisite-manager');
+        }
+
+        return __('Monitoring-Ereignis', 'rrze-multisite-manager');
+    }
+
+    protected function getMonitoringStatusLabel(string $status): string {
+        if ($status === 'ok') {
+            return __('OK', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'missing') {
+            return __('Fehlt', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'timeout') {
+            return __('Timeout', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'pending') {
+            return __('Ausstehend', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'error') {
+            return __('Fehler', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'unknown') {
+            return __('Unbekannt', 'rrze-multisite-manager');
+        }
+
+        return $status !== '' ? $status : __('-', 'rrze-multisite-manager');
+    }
+
+    protected function getOperationalStatusLabel(string $status): string {
+        if ($status === 'healthy') {
+            return __('Technisch erreichbar', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'provisioning') {
+            return __('Einrichtungsphase', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'dns_missing') {
+            return __('DNS fehlt', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'unreachable') {
+            return __('HTTP nicht erreichbar', 'rrze-multisite-manager');
+        }
+
+        if ($status === 'retired') {
+            return __('Stillgelegt', 'rrze-multisite-manager');
+        }
+
+        return $status !== '' ? $status : __('-', 'rrze-multisite-manager');
+    }
+
+    protected function getSiteDetailsPageUrl(int $siteId): string {
+        if ($siteId <= 0) {
+            return '';
+        }
+
+        return add_query_arg(
+            [
+                'page' => (string)($this->config->getMenuSettings()['site_details_slug'] ?? 'rrze-multisite-manager-site-details'),
+                'site_id' => $siteId,
+            ],
+            admin_url('admin.php')
+        );
     }
 
     protected function calculateTimestampDuration(string $startedAt, string $finishedAt): int {
