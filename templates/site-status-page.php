@@ -30,6 +30,7 @@
                 <input type="hidden" name="action" value="rrze_multisite_manager_site_status">
                 <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
                 <input type="hidden" name="status_action" value="<?php echo esc_attr($status_action); ?>">
+                <input type="hidden" name="tab" value="<?php echo esc_attr((string)$overview_tab); ?>">
 
                 <table class="form-table" role="presentation">
                     <tbody>

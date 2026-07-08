@@ -74,6 +74,7 @@ class Dashboard {
         add_action('wp_ajax_rrze_msm_search_themes', [$this, 'ajaxSearchThemes']);
         add_action('admin_post_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('admin_post_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
+        add_action('admin_post_rrze_multisite_manager_site_permanent_delete', [$this, 'handleSitePermanentDelete']);
         add_action('admin_post_rrze_multisite_manager_update_site_monitoring_status', [$this, 'handleSiteMonitoringStatusUpdate']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
@@ -81,6 +82,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('network_admin_edit_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
+        add_action('network_admin_edit_rrze_multisite_manager_site_permanent_delete', [$this, 'handleSitePermanentDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_update_site_monitoring_status', [$this, 'handleSiteMonitoringStatusUpdate']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
@@ -1346,7 +1348,8 @@ class Dashboard {
                 'form_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_site_status'),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
-                'redirect_url' => $this->getSiteOverviewUrl(),
+                'redirect_url' => $this->getSiteOverviewRedirectUrl(),
+                'overview_tab' => $this->getCurrentSiteOverviewTab(),
             ],
             $this
         );
@@ -1511,15 +1514,46 @@ class Dashboard {
         }
 
         $this->metrics->clearCache();
-        $redirectUrl = add_query_arg(
+        $this->metrics->rebuildDashboardData(true);
+        $redirectUrl = $this->getSiteOverviewRedirectUrl(
             [
-                'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
                 'status-updated' => 'true',
-            ],
-            $this->getAdminPageBaseUrl()
+            ]
         );
 
         wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function handleSitePermanentDelete(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $site = $siteId > 0 ? get_site($siteId) : null;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to delete sites.', 'rrze-multisite-manager'));
+        }
+
+        if (!$site instanceof \WP_Site) {
+            wp_die(esc_html__('Ungültige Site.', 'rrze-multisite-manager'));
+        }
+
+        if (is_main_site($siteId)) {
+            wp_die(esc_html__('Die Hauptsite kann nicht endgültig gelöscht werden.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('deleteblog_' . $siteId);
+        wpmu_delete_blog($siteId, true);
+
+        $this->metrics->clearCache();
+        $this->metrics->rebuildDashboardData(true);
+
+        wp_safe_redirect(
+            $this->getSiteOverviewRedirectUrl(
+                [
+                    'status-updated' => 'true',
+                ]
+            )
+        );
         exit;
     }
 
@@ -1904,6 +1938,29 @@ class Dashboard {
             ],
             $this->getAdminPageBaseUrl()
         );
+    }
+
+    protected function getCurrentSiteOverviewTab(): string {
+        $tab = isset($_REQUEST['tab']) ? sanitize_key((string)wp_unslash($_REQUEST['tab'])) : '';
+        $allowedTabs = ['all', 'active', 'archived', 'blocked', 'deleted', 'provisioning', 'dns-missing', 'unreachable'];
+
+        if (!in_array($tab, $allowedTabs, true)) {
+            return 'all';
+        }
+
+        return $tab;
+    }
+
+    protected function getSiteOverviewRedirectUrl(array $args = []): string {
+        $queryArgs = array_merge(
+            [
+                'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                'tab' => $this->getCurrentSiteOverviewTab(),
+            ],
+            $args
+        );
+
+        return add_query_arg($queryArgs, $this->getAdminPageBaseUrl());
     }
 
     public function getEnvironmentOverviewUrl(): string {

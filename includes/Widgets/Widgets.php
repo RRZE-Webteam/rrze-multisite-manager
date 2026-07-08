@@ -825,7 +825,16 @@ abstract class Widgets {
             );
         }
 
-        if ($this->currentUserCanUseNetworkAdminFeatures() && $isRestricted) {
+        if ($this->currentUserCanUseNetworkAdminFeatures() && $isDeleted) {
+            $actions[] = $this->renderSiteActionLink(
+                $this->getSiteStatusSubmitUrl($siteId, 'restore'),
+                __('Wiederherstellen', 'rrze-multisite-manager'),
+                'backup',
+                false,
+                $displayMode
+            );
+            $actions[] = $this->renderPermanentDeleteSiteAction($site, $displayMode);
+        } elseif ($this->currentUserCanUseNetworkAdminFeatures() && $isRestricted) {
             $actions[] = $this->renderSiteActionLink(
                 $this->getSiteStatusSubmitUrl($siteId, 'restore'),
                 __('Wiederherstellen', 'rrze-multisite-manager'),
@@ -840,17 +849,6 @@ abstract class Widgets {
                 false,
                 $displayMode
             );
-        }
-
-        if ($this->currentUserCanUseNetworkAdminFeatures() && $isDeleted) {
-            $actions[] = $this->renderSiteActionLink(
-                $this->getSiteStatusSubmitUrl($siteId, 'restore'),
-                __('Wiederherstellen', 'rrze-multisite-manager'),
-                'backup',
-                false,
-                $displayMode
-            );
-            $actions[] = $this->renderPermanentDeleteSiteAction($site, $displayMode);
         }
 
         return '<div class="rrze-msm-site-actions">' . implode('', $actions) . '</div>';
@@ -1096,11 +1094,15 @@ abstract class Widgets {
 
     protected function getSiteStatusPageUrl(int $siteId, string $statusAction): string {
         return add_query_arg(
-            [
-                'page' => (string)($this->config->getMenuSettings()['site_status_slug'] ?? 'rrze-multisite-manager-site-status'),
-                'site_id' => $siteId,
-                'status_action' => $statusAction,
-            ],
+            array_filter(
+                [
+                    'page' => (string)($this->config->getMenuSettings()['site_status_slug'] ?? 'rrze-multisite-manager-site-status'),
+                    'site_id' => $siteId,
+                    'status_action' => $statusAction,
+                    'tab' => $this->getCurrentSiteOverviewTab(),
+                ],
+                'strlen'
+            ),
             admin_url('admin.php')
         );
     }
@@ -1108,10 +1110,14 @@ abstract class Widgets {
     protected function getSiteStatusSubmitUrl(int $siteId, string $statusAction): string {
         return wp_nonce_url(
             add_query_arg(
-                [
-                    'site_id' => $siteId,
-                    'status_action' => $statusAction,
-                ],
+                array_filter(
+                    [
+                        'site_id' => $siteId,
+                        'status_action' => $statusAction,
+                        'tab' => $this->getCurrentSiteOverviewTab(),
+                    ],
+                    'strlen'
+                ),
                 add_query_arg(
                     [
                         'action' => 'rrze_multisite_manager_site_status',
@@ -1235,9 +1241,36 @@ abstract class Widgets {
         }
 
         return wp_nonce_url(
-            network_admin_url('sites.php?action=confirm&action2=deleteblog&id=' . $siteId),
+            add_query_arg(
+                array_filter(
+                    [
+                        'action' => 'rrze_multisite_manager_site_permanent_delete',
+                        'site_id' => $siteId,
+                        'tab' => $this->getCurrentSiteOverviewTab(),
+                    ],
+                    'strlen'
+                ),
+                admin_url('admin-post.php')
+            ),
             'deleteblog_' . $siteId
         );
+    }
+
+    protected function getCurrentSiteOverviewTab(): string {
+        $page = isset($_GET['page']) ? sanitize_key((string)wp_unslash($_GET['page'])) : '';
+        $tab = isset($_GET['tab']) ? sanitize_key((string)wp_unslash($_GET['tab'])) : '';
+        $siteOverviewSlug = (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview');
+        $allowedTabs = ['all', 'active', 'archived', 'blocked', 'deleted', 'provisioning', 'dns-missing', 'unreachable'];
+
+        if ($page !== $siteOverviewSlug) {
+            return '';
+        }
+
+        if (!in_array($tab, $allowedTabs, true)) {
+            return 'all';
+        }
+
+        return $tab;
     }
 
     protected function renderSiteTableSortButton(string $key, string $label): string {
