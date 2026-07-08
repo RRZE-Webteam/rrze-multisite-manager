@@ -85,7 +85,7 @@ class PluginUsageWidget extends Widgets {
             echo '<th class="rrze-msm-plugin-col-active-sites">' . $this->renderSiteTableSortButton('active-sites', __('Aktive Sites', 'rrze-multisite-manager')) . '</th>';
         }
 
-        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($plugins as $plugin) {
@@ -132,7 +132,7 @@ class PluginUsageWidget extends Widgets {
                 echo '</td>';
             }
 
-            echo '<td><div class="rrze-msm-site-actions">';
+            echo '<td class="rrze-msm-col-actions"><div class="rrze-msm-site-actions">';
 
             if (!empty($plugin['deactivate_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['deactivate_url']))) {
                 if (!empty($plugin['network_active'])) {

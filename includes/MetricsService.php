@@ -2616,6 +2616,10 @@ class MetricsService {
         ];
         $transients = [];
         $cronEvents = [];
+        $loadTheme = !empty($load['theme']);
+        $loadPlugins = !empty($load['plugins']);
+        $loadUsers = !empty($load['users']);
+        $loadImageSizes = !empty($load['image_sizes']);
         $loadContent = !empty($load['content']);
         $loadOptionsSummary = !empty($load['options_summary']);
         $loadOptionValuesGroup = !empty($load['options_values_group']) ? (string)$load['options_values_group'] : '';
@@ -2624,10 +2628,22 @@ class MetricsService {
         $loadCronEvents = !empty($load['cron_events']);
 
         switch_to_blog($siteId);
-        $theme = $this->getCurrentThemeDetails();
-        $plugins = $this->getCurrentSiteActivePlugins();
-        $users = $this->getCurrentSiteUsers();
-        $imageSizes = $this->getCurrentSiteImageSizes($theme, $plugins);
+
+        if ($loadTheme || $loadImageSizes) {
+            $theme = $this->getCurrentThemeDetails();
+        }
+
+        if ($loadPlugins || $loadImageSizes) {
+            $plugins = $this->getCurrentSiteActivePlugins();
+        }
+
+        if ($loadUsers) {
+            $users = $this->getCurrentSiteUsers();
+        }
+
+        if ($loadImageSizes) {
+            $imageSizes = $this->getCurrentSiteImageSizes($theme, $plugins);
+        }
 
         if ($loadContent) {
             $contentTypes = $this->getCurrentSiteContentTypeCounts();

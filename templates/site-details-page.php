@@ -1,4 +1,5 @@
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
+    <?php $site_detail_current_section = !empty($site_detail_current_section) ? (string)$site_detail_current_section : 'overview'; ?>
     <div class="rrze-msm-page-shell">
         <div class="rrze-msm-page-header">
             <div>
@@ -93,6 +94,20 @@
             </section>
 
             <div class="rrze-msm-grid">
+                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Bereiche der Website-Details', 'rrze-multisite-manager'); ?>">
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'overview' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'overview'], $site_details_base_url)); ?>"><?php echo esc_html__('Überblick', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'users' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'users'], $site_details_base_url)); ?>"><?php echo esc_html__('Benutzer', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'theme' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'theme'], $site_details_base_url)); ?>"><?php echo esc_html__('Theme', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'plugins' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'plugins'], $site_details_base_url)); ?>"><?php echo esc_html__('Plugins', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'image-sizes' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'image-sizes'], $site_details_base_url)); ?>"><?php echo esc_html__('Bildgrößen', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'content' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Inhaltstypen', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'options' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'options'], $site_details_base_url) . '#rrze-msm-site-options'); ?>"><?php echo esc_html__('Optionen', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'process' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Prozessdaten', 'rrze-multisite-manager'); ?></a>
+                    </nav>
+                </section>
+
+                <?php if ($site_detail_current_section === 'overview') { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Status und Monitoring', 'rrze-multisite-manager'); ?></h2>
@@ -208,7 +223,9 @@
                         </div>
                     </div>
                 </section>
+                <?php } ?>
 
+                <?php if ($site_detail_current_section === 'users') { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Benutzer', 'rrze-multisite-manager'); ?></h2>
@@ -242,7 +259,9 @@
                     <?php } ?>
                     <p><a class="button button-secondary" href="<?php echo esc_url($site_users_url); ?>"><?php echo esc_html__('Zur Benutzerverwaltung der Site', 'rrze-multisite-manager'); ?></a></p>
                 </section>
+                <?php } ?>
 
+                <?php if ($site_detail_current_section === 'theme') { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Verwendetes Theme', 'rrze-multisite-manager'); ?></h2>
@@ -275,7 +294,9 @@
                         </div>
                     </div>
                 </section>
+                <?php } ?>
 
+                <?php if ($site_detail_current_section === 'plugins') { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Aktive Plugins', 'rrze-multisite-manager'); ?></h2>
@@ -291,7 +312,7 @@
                                     <th><?php echo esc_html__('Autor', 'rrze-multisite-manager'); ?></th>
                                     <th><?php echo esc_html__('Kurzbeschreibung', 'rrze-multisite-manager'); ?></th>
                                     <th><?php echo esc_html__('Status', 'rrze-multisite-manager'); ?></th>
-                                    <th><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
+                                    <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -301,7 +322,7 @@
                                         <td class="rrze-msm-plugin-col-version"><?php echo esc_html((string)$plugin['version']); ?></td>
                                         <td><?php echo esc_html((string)($plugin['author'] ?? '')); ?></td>
                                         <td><?php echo esc_html((string)$plugin['description']); ?></td>
-                                        <td>
+                                        <td class="rrze-msm-col-actions">
                                             <?php if (!empty($plugin['network_active'])) { ?>
                                                 <span class="rrze-msm-badge rrze-msm-badge-info"><?php echo esc_html__('Netzwerkweit aktiv', 'rrze-multisite-manager'); ?></span>
                                             <?php } elseif ((int)($plugin['site_count'] ?? 0) > 0) { ?>
@@ -338,7 +359,9 @@
                     <?php } ?>
                     <p><a class="button button-secondary" href="<?php echo esc_url($site_plugins_url); ?>"><?php echo esc_html__('Zur Plugin-Verwaltung der Site', 'rrze-multisite-manager'); ?></a></p>
                 </section>
+                <?php } ?>
 
+                <?php if ($site_detail_current_section === 'image-sizes') { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Registrierte Bildgrößen', 'rrze-multisite-manager'); ?></h2>
@@ -375,7 +398,9 @@
                         <p><?php echo esc_html__('Für diese Website konnten keine registrierten Bildgrößen ermittelt werden.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>
                 </section>
+                <?php } ?>
 
+                <?php if ($site_detail_current_section === 'content') { ?>
                 <section id="rrze-msm-site-content" class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Inhaltstypen', 'rrze-multisite-manager'); ?></h2>
@@ -393,13 +418,13 @@
                     $blockTemplateTypes = is_array($site_details['block_template_types'] ?? null) ? $site_details['block_template_types'] : [];
                     ?>
                     <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Inhaltstypen', 'rrze-multisite-manager'); ?>">
-                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'overview' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'content_tab' => 'overview'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Übersicht', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-post-types' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'content_tab' => 'custom-post-types'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom Post Types', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'overview' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'overview'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Übersicht', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-post-types' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'custom-post-types'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom Post Types', 'rrze-multisite-manager'); ?></a>
                         <?php if (!empty($customPages)) { ?>
-                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-pages' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'content_tab' => 'custom-pages'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom Pages', 'rrze-multisite-manager'); ?></a>
+                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-pages' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'custom-pages'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom Pages', 'rrze-multisite-manager'); ?></a>
                         <?php } ?>
                         <?php if (!empty($blockTemplateTypes)) { ?>
-                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'block-templates' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'content_tab' => 'block-templates'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Block Vorlagen', 'rrze-multisite-manager'); ?></a>
+                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'block-templates' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'block-templates'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Block Vorlagen', 'rrze-multisite-manager'); ?></a>
                         <?php } ?>
                     </nav>
 
@@ -442,7 +467,7 @@
                                         <th><?php echo esc_html__('Im Request registriert', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
                                         <?php if (!empty($can_manage_network_actions)) { ?>
-                                            <th><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
                                         <?php } ?>
                                     </tr>
                                 </thead>
@@ -455,7 +480,7 @@
                                             <td><?php echo esc_html(!empty($custom_post_type['registered']) ? __('Ja', 'rrze-multisite-manager') : __('Nein', 'rrze-multisite-manager')); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)$custom_post_type['count'])); ?></td>
                                             <?php if (!empty($can_manage_network_actions)) { ?>
-                                                <td>
+                                                <td class="rrze-msm-col-actions">
                                                     <button
                                                         type="button"
                                                         class="button button-secondary rrze-msm-button-danger rrze-msm-open-delete-cpt-modal"
@@ -547,7 +572,9 @@
                         <?php } ?>
                     <?php } ?>
                 </section>
+                <?php } ?>
 
+                <?php if ($site_detail_current_section === 'options') { ?>
                 <section id="rrze-msm-site-options" class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Optionen der Website', 'rrze-multisite-manager'); ?></h2>
@@ -563,7 +590,7 @@
                     <?php if (!empty($site_options_groups) && is_array($site_options_groups)) { ?>
                         <nav class="rrze-msm-option-tabs" aria-label="<?php echo esc_attr__('Options-Gruppen', 'rrze-multisite-manager'); ?>">
                             <?php foreach ($site_options_groups as $site_options_group) { ?>
-                                <a class="rrze-msm-option-tab<?php echo (string)($site_options_group['slug'] ?? '') === (string)$site_options_current_tab ? ' is-active' : ''; ?><?php echo (string)($site_options_group['slug'] ?? '') === 'wordpress-core' ? ' rrze-msm-option-tab-core' : ''; ?><?php echo (string)($site_options_group['slug'] ?? '') === 'fau' ? ' rrze-msm-option-tab-fau' : ''; ?><?php echo (string)($site_options_group['slug'] ?? '') === 'rrze' ? ' rrze-msm-option-tab-rrze' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'options_tab' => (string)$site_options_group['slug']], $site_details_base_url) . '#rrze-msm-site-options'); ?>">
+                                <a class="rrze-msm-option-tab<?php echo (string)($site_options_group['slug'] ?? '') === (string)$site_options_current_tab ? ' is-active' : ''; ?><?php echo (string)($site_options_group['slug'] ?? '') === 'wordpress-core' ? ' rrze-msm-option-tab-core' : ''; ?><?php echo (string)($site_options_group['slug'] ?? '') === 'fau' ? ' rrze-msm-option-tab-fau' : ''; ?><?php echo (string)($site_options_group['slug'] ?? '') === 'rrze' ? ' rrze-msm-option-tab-rrze' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'options', 'options_tab' => (string)$site_options_group['slug']], $site_details_base_url) . '#rrze-msm-site-options'); ?>">
                                     <?php echo esc_html((string)$site_options_group['label']); ?>
                                     <span>(<?php echo esc_html(number_format_i18n((int)($site_options_group['count'] ?? 0))); ?>)</span>
                                 </a>
@@ -592,7 +619,7 @@
                                             <th><?php echo esc_html__('Wert', 'rrze-multisite-manager'); ?></th>
                                             <th><?php echo esc_html__('Autoload', 'rrze-multisite-manager'); ?></th>
                                             <?php if (!empty($can_manage_network_actions) && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
-                                                <th><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
+                                                <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
                                             <?php } ?>
                                         </tr>
                                     </thead>
@@ -608,7 +635,7 @@
                                                 </td>
                                                 <td><?php echo esc_html((string)$site_option['autoload']); ?></td>
                                                 <?php if (!empty($can_manage_network_actions) && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
-                                                    <td>
+                                                    <td class="rrze-msm-col-actions">
                                                         <?php if (empty($site_option['is_core'])) { ?>
                                                             <form method="post" action="<?php echo esc_url($site_option_delete_action); ?>" class="rrze-msm-option-delete-form">
                                                                 <?php wp_nonce_field('rrze_multisite_manager_delete_site_option_' . (int)$site_id . '_' . (string)$site_option['name']); ?>
@@ -632,15 +659,17 @@
                         <p><?php echo esc_html__('Für diese Website wurden keine Optionen ermittelt.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>
                 </section>
+                <?php } ?>
 
+                <?php if ($site_detail_current_section === 'process') { ?>
                 <section id="rrze-msm-site-process" class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Prozessdaten', 'rrze-multisite-manager'); ?></h2>
                     </header>
                     <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Prozessdaten', 'rrze-multisite-manager'); ?>">
-                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'stats' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'process_tab' => 'stats'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Stats', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'transients' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'process_tab' => 'transients'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Transients', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'scheduler' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'process_tab' => 'scheduler'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Scheduler', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'stats' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'stats'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Stats', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'transients' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'transients'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Transients', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'scheduler' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'scheduler'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Scheduler', 'rrze-multisite-manager'); ?></a>
                     </nav>
                     <?php if ($site_process_current_tab === 'stats') { ?>
                         <ul class="rrze-msm-inline-stats">
@@ -699,6 +728,7 @@
                         <?php } ?>
                     <?php } ?>
                 </section>
+                <?php } ?>
             </div>
         <?php } ?>
     </div>

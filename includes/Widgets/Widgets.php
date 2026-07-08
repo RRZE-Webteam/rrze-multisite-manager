@@ -167,7 +167,7 @@ abstract class Widgets {
         echo '<th>' . $this->renderSiteTableSortButton('registered', __('Registriert', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('last-updated', __('Zuletzt aktualisiert', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('admin-email', __('Admin E-Mail', 'rrze-multisite-manager')) . '</th>';
-        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
@@ -182,7 +182,7 @@ abstract class Widgets {
             echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
             echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unbekannt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
-            echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions">' . $this->renderSiteActions($site, $actionMode) . '</td>';
             echo '</tr>';
         }
 
@@ -241,7 +241,7 @@ abstract class Widgets {
         echo '<th>' . esc_html__('Benutzer', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Inhalte', 'rrze-multisite-manager') . '</th>';
         echo '<th class="rrze-msm-col-numeric">' . $this->renderSiteTableSortButton('storage', __('Speicher', 'rrze-multisite-manager')) . '</th>';
-        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
@@ -261,7 +261,7 @@ abstract class Widgets {
             echo '<td>' . $this->renderRoleCounts((int)($site['id'] ?? 0), (array)($site['role_counts'] ?? [])) . '</td>';
             echo '<td>' . $this->renderContentCounts((array)($site['content_counts'] ?? [])) . '</td>';
             echo '<td class="' . esc_attr(trim('rrze-msm-col-numeric ' . $this->getStorageCellClass((array)($site['storage'] ?? [])))) . '">' . $this->renderStorageUsage((array)($site['storage'] ?? [])) . '</td>';
-            echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions">' . $this->renderSiteActions($site, $actionMode) . '</td>';
             echo '</tr>';
         }
 
@@ -321,7 +321,7 @@ abstract class Widgets {
         echo '<th>' . esc_html($statusLabel) . '</th>';
         echo '<th>' . esc_html__('Von', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Notiz', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
@@ -335,7 +335,7 @@ abstract class Widgets {
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site[$statusMetaKey] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusUser((int)($site['status_user_id'] ?? 0)) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['status_note'] ?? '')) . '</td>';
-            echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions">' . $this->renderSiteActions($site, $actionMode) . '</td>';
             echo '</tr>';
         }
 
@@ -392,7 +392,7 @@ abstract class Widgets {
         echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Letzte Prüfung', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Notiz', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
@@ -408,7 +408,7 @@ abstract class Widgets {
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['last_availability_check'] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['monitoring_note'] ?? '')) . '</td>';
-            echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions">' . $this->renderSiteActions($site, $actionMode) . '</td>';
             echo '</tr>';
         }
 
@@ -465,7 +465,7 @@ abstract class Widgets {
         echo '<th>' . esc_html__('Geändert am', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('DNS', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
@@ -481,7 +481,7 @@ abstract class Widgets {
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['operational_status_changed_at'] ?? ''))) . '</td>';
             echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager'))) . '</td>';
-            echo '<td>' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions">' . $this->renderSiteActions($site, $actionMode) . '</td>';
             echo '</tr>';
         }
 

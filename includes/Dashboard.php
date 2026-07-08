@@ -724,18 +724,29 @@ class Dashboard {
 
     public function renderSiteDetailsPage(): void {
         $siteId = isset($_GET['site_id']) ? absint($_GET['site_id']) : 0;
+        $currentSection = isset($_GET['section']) ? sanitize_key((string)$_GET['section']) : 'overview';
         $currentOptionsTab = isset($_GET['options_tab']) ? sanitize_key((string)$_GET['options_tab']) : '';
         $currentContentTab = isset($_GET['content_tab']) ? sanitize_key((string)$_GET['content_tab']) : 'overview';
         $currentProcessTab = isset($_GET['process_tab']) ? sanitize_key((string)$_GET['process_tab']) : 'stats';
+        $validSections = ['overview', 'users', 'theme', 'plugins', 'image-sizes', 'content', 'options', 'process'];
+
+        if (!in_array($currentSection, $validSections, true)) {
+            $currentSection = 'overview';
+        }
+
         $siteDetails = $siteId > 0 ? $this->metrics->getSiteDetails(
             $siteId,
             [
-                'content' => true,
-                'options_summary' => true,
-                'options_values_group' => $currentOptionsTab,
-                'process_stats' => true,
-                'transients' => $currentProcessTab === 'transients',
-                'cron_events' => $currentProcessTab === 'scheduler',
+                'theme' => $currentSection === 'theme',
+                'plugins' => $currentSection === 'plugins',
+                'users' => $currentSection === 'users',
+                'image_sizes' => $currentSection === 'image-sizes',
+                'content' => $currentSection === 'content',
+                'options_summary' => $currentSection === 'options',
+                'options_values_group' => $currentSection === 'options' ? $currentOptionsTab : '',
+                'process_stats' => $currentSection === 'process',
+                'transients' => $currentSection === 'process' && $currentProcessTab === 'transients',
+                'cron_events' => $currentSection === 'process' && $currentProcessTab === 'scheduler',
             ]
         ) : [];
         $siteWidget = null;
@@ -943,6 +954,7 @@ class Dashboard {
                     ? __('Der Betriebsstatus wurde aktualisiert.', 'rrze-multisite-manager')
                     : '',
                 'site_monitoring_history' => is_array($siteDetails['monitoring_history'] ?? null) ? $siteDetails['monitoring_history'] : [],
+                'site_detail_current_section' => $currentSection,
                 'site_detail_section_limit' => 250,
                 'site_users_url' => $siteId > 0 ? get_admin_url($siteId, 'users.php') : '',
                 'site_user_edit_base_url' => $siteId > 0 ? get_admin_url($siteId, 'user-edit.php') : '',
