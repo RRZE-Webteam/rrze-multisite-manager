@@ -35,6 +35,8 @@ class PluginUsageWidget extends Widgets {
         $showNetworkButton = !empty($args['show_network_button']);
         $highlightNetworkPlugins = !empty($args['highlight_network_plugins']);
         $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $actionModeClass = $actionMode === 'text' ? 'rrze-msm-plugin-table-text-actions' : 'rrze-msm-plugin-table-icon-actions';
+        $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $networkPluginsUrl = (string)($args['network_plugins_url'] ?? network_admin_url('plugins.php'));
         $canUseNetworkAdminFeatures = $this->currentUserCanUseNetworkAdminFeatures();
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
@@ -47,7 +49,7 @@ class PluginUsageWidget extends Widgets {
         }
 
         ob_start();
-        echo '<div class="rrze-msm-site-table-wrap rrze-msm-plugin-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-plugin-table-wrap ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
 
@@ -85,7 +87,7 @@ class PluginUsageWidget extends Widgets {
             echo '<th class="rrze-msm-plugin-col-active-sites">' . $this->renderSiteTableSortButton('active-sites', __('Aktive Sites', 'rrze-multisite-manager')) . '</th>';
         }
 
-        echo '<th class="rrze-msm-col-actions">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($plugins as $plugin) {
@@ -132,7 +134,7 @@ class PluginUsageWidget extends Widgets {
                 echo '</td>';
             }
 
-            echo '<td class="rrze-msm-col-actions"><div class="rrze-msm-site-actions">';
+            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '"><div class="rrze-msm-site-actions">';
 
             if (!empty($plugin['deactivate_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['deactivate_url']))) {
                 if (!empty($plugin['network_active'])) {

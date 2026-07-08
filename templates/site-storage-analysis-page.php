@@ -232,13 +232,13 @@
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['largest_files'] as $file_row) { ?>
                                             <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($file_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($file_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($file_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($file_row['modified_timestamp'] ?? 0)); ?>">
-                                            <td class="rrze-msm-col-actions">
+                                            <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                 <?php if (!empty($file_row['media_edit_url'])) { ?>
                                                     <a href="<?php echo esc_url((string)$file_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($file_row['path'] ?? '')); ?></code></a>
                                                 <?php } else { ?>
@@ -310,7 +310,7 @@
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><?php echo esc_html__('Referenzen', 'rrze-multisite-manager'); ?></th>
-                                            <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -320,7 +320,7 @@
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['content_usage_label'] ?? '')); ?></td>
-                                                <td class="rrze-msm-col-actions">
+                                                <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                     <div class="rrze-msm-site-actions">
                                                         <?php if (!empty($orphan_row['file_url'])) { ?>
                                                             <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Datei aufrufen', 'rrze-multisite-manager'); ?></a>
@@ -372,7 +372,7 @@
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -383,7 +383,7 @@
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['modified_label'] ?? '')); ?></td>
-                                                <td class="rrze-msm-col-actions">
+                                                <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                     <div class="rrze-msm-site-actions">
                                                         <?php if (!empty($orphan_row['file_url'])) { ?>
                                                             <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Datei aufrufen', 'rrze-multisite-manager'); ?></a>
@@ -442,7 +442,7 @@
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -453,7 +453,7 @@
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['modified_label'] ?? '')); ?></td>
-                                                <td class="rrze-msm-col-actions">
+                                                <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                     <div class="rrze-msm-site-actions">
                                                         <?php if (!empty($orphan_row['file_url'])) { ?>
                                                             <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Datei aufrufen', 'rrze-multisite-manager'); ?></a>

@@ -312,7 +312,7 @@
                                     <th><?php echo esc_html__('Autor', 'rrze-multisite-manager'); ?></th>
                                     <th><?php echo esc_html__('Kurzbeschreibung', 'rrze-multisite-manager'); ?></th>
                                     <th><?php echo esc_html__('Status', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
+                                    <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -322,7 +322,7 @@
                                         <td class="rrze-msm-plugin-col-version"><?php echo esc_html((string)$plugin['version']); ?></td>
                                         <td><?php echo esc_html((string)($plugin['author'] ?? '')); ?></td>
                                         <td><?php echo esc_html((string)$plugin['description']); ?></td>
-                                        <td class="rrze-msm-col-actions">
+                                        <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                             <?php if (!empty($plugin['network_active'])) { ?>
                                                 <span class="rrze-msm-badge rrze-msm-badge-info"><?php echo esc_html__('Netzwerkweit aktiv', 'rrze-multisite-manager'); ?></span>
                                             <?php } elseif ((int)($plugin['site_count'] ?? 0) > 0) { ?>
@@ -467,7 +467,7 @@
                                         <th><?php echo esc_html__('Im Request registriert', 'rrze-multisite-manager'); ?></th>
                                         <th><?php echo esc_html__('Anzahl', 'rrze-multisite-manager'); ?></th>
                                         <?php if (!empty($can_manage_network_actions)) { ?>
-                                            <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
                                         <?php } ?>
                                     </tr>
                                 </thead>
@@ -480,7 +480,7 @@
                                             <td><?php echo esc_html(!empty($custom_post_type['registered']) ? __('Ja', 'rrze-multisite-manager') : __('Nein', 'rrze-multisite-manager')); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)$custom_post_type['count'])); ?></td>
                                             <?php if (!empty($can_manage_network_actions)) { ?>
-                                                <td class="rrze-msm-col-actions">
+                                                <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                     <button
                                                         type="button"
                                                         class="button button-secondary rrze-msm-button-danger rrze-msm-open-delete-cpt-modal"
@@ -622,7 +622,7 @@
                                             <th><?php echo esc_html__('Wert', 'rrze-multisite-manager'); ?></th>
                                             <th><?php echo esc_html__('Autoload', 'rrze-multisite-manager'); ?></th>
                                             <?php if (!empty($can_manage_network_actions) && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
-                                                <th class="rrze-msm-col-actions"><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
+                                                <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Aktion', 'rrze-multisite-manager'); ?></th>
                                             <?php } ?>
                                         </tr>
                                     </thead>
@@ -638,7 +638,7 @@
                                                 </td>
                                                 <td><?php echo esc_html((string)$site_option['autoload']); ?></td>
                                                 <?php if (!empty($can_manage_network_actions) && (string)($site_options_group['slug'] ?? '') !== 'wordpress-core') { ?>
-                                                    <td class="rrze-msm-col-actions">
+                                                    <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                         <?php if (empty($site_option['is_core'])) { ?>
                                                             <form method="post" action="<?php echo esc_url($site_option_delete_action); ?>" class="rrze-msm-option-delete-form">
                                                                 <?php wp_nonce_field('rrze_multisite_manager_delete_site_option_' . (int)$site_id . '_' . (string)$site_option['name']); ?>

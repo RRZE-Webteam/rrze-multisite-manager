@@ -115,6 +115,28 @@
     color: var(--rrze-msm-text);
 }
 
+.rrze-msm-table th.rrze-msm-col-actions.rrze-msm-col-actions-text,
+.rrze-msm-table td.rrze-msm-col-actions.rrze-msm-col-actions-text {
+    width: 20%;
+    min-width: var(--rrze-msm-actions-text-min-width);
+    white-space: normal;
+}
+
+.rrze-msm-table .rrze-msm-col-actions.rrze-msm-col-actions-text .rrze-msm-site-actions {
+    min-width: var(--rrze-msm-actions-text-min-width);
+}
+
+.rrze-msm-table th.rrze-msm-col-actions.rrze-msm-col-actions-icon,
+.rrze-msm-table td.rrze-msm-col-actions.rrze-msm-col-actions-icon {
+    min-width: var(--rrze-msm-actions-icon-min-width);
+    width: var(--rrze-msm-actions-icon-min-width);
+    white-space: normal;
+}
+
+.rrze-msm-table .rrze-msm-col-actions.rrze-msm-col-actions-icon .rrze-msm-site-actions {
+    min-width: var(--rrze-msm-actions-icon-min-width);
+}
+
 .rrze-msm-site-table-wrap .tablenav {
     display: flex;
     align-items: center;
@@ -310,10 +332,26 @@ td.rrze-msm-plugin-col-active-sites {
     width: auto;
 }
 
-.rrze-msm-plugin-table th:last-child,
-.rrze-msm-plugin-table td:last-child {
-    min-width: 156px;
-    width: 156px;
+.rrze-msm-plugin-table-text-actions .rrze-msm-plugin-table th.rrze-msm-col-actions,
+.rrze-msm-plugin-table-text-actions .rrze-msm-plugin-table td.rrze-msm-col-actions {
+    width: 20%;
+    min-width: var(--rrze-msm-actions-text-min-width);
+    white-space: normal;
+}
+
+.rrze-msm-plugin-table-text-actions .rrze-msm-plugin-table .rrze-msm-col-actions .rrze-msm-site-actions {
+    min-width: var(--rrze-msm-actions-text-min-width);
+}
+
+.rrze-msm-plugin-table-icon-actions .rrze-msm-plugin-table th.rrze-msm-col-actions,
+.rrze-msm-plugin-table-icon-actions .rrze-msm-plugin-table td.rrze-msm-col-actions {
+    min-width: var(--rrze-msm-actions-icon-min-width);
+    width: var(--rrze-msm-actions-icon-min-width);
+    white-space: normal;
+}
+
+.rrze-msm-plugin-table-icon-actions .rrze-msm-plugin-table .rrze-msm-col-actions .rrze-msm-site-actions {
+    min-width: var(--rrze-msm-actions-icon-min-width);
 }
 
 .rrze-msm-plugin-sites-details {

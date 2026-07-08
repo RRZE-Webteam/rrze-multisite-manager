@@ -43,6 +43,8 @@ body.rrze-msm-mode-dark {
     --rrze-msm-neutral-soft: color-mix(in srgb, var(--rrze-msm-status-blocked-bg) 18%, #fff 82%);
     --rrze-msm-widget-border-radius: 5px;
     --rrze-msm-badge-border-radius: 999px;
+    --rrze-msm-actions-text-min-width: 25em;
+    --rrze-msm-actions-icon-min-width: 240px;
 }
 
 .rrze-msm-mode-dark,
