@@ -30,10 +30,23 @@
         <?php } ?>
 
         <?php if (!empty($site_summary)) { ?>
-            <?php if (!empty($orphan_file_deleted)) { ?>
+            <?php if (!empty($orphan_file_deleted_count) || !empty($orphan_file_deleted)) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <div class="notice notice-success inline">
-                        <p><?php echo esc_html(sprintf(__('Datei gelöscht: %s', 'rrze-multisite-manager'), rawurldecode((string)$orphan_file_deleted))); ?></p>
+                        <p>
+                            <?php
+                            if (!empty($orphan_file_deleted_count) && (int)$orphan_file_deleted_count > 1) {
+                                echo esc_html(
+                                    sprintf(
+                                        _n('%d Datei gelöscht.', '%d Dateien gelöscht.', (int)$orphan_file_deleted_count, 'rrze-multisite-manager'),
+                                        (int)$orphan_file_deleted_count
+                                    )
+                                );
+                            } else {
+                                echo esc_html(sprintf(__('Datei gelöscht: %s', 'rrze-multisite-manager'), rawurldecode((string)$orphan_file_deleted)));
+                            }
+                            ?>
+                        </p>
                     </div>
                 </section>
             <?php } ?>
@@ -213,18 +226,18 @@
                                 </div>
                             </div>
                             <table class="widefat striped rrze-msm-table">
-                                <thead>
-                                    <tr>
-                                        <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Datei', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                        <th><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></th>
-                                        <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                        <th><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></th>
-                                        <th><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ((array)$storage_analysis['largest_files'] as $file_row) { ?>
-                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($file_row['path'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($file_row['size_bytes'] ?? 0)); ?>">
+                                    <thead>
+                                        <tr>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Datei', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ((array)$storage_analysis['largest_files'] as $file_row) { ?>
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($file_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($file_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($file_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($file_row['modified_timestamp'] ?? 0)); ?>">
                                             <td>
                                                 <?php if (!empty($file_row['media_edit_url'])) { ?>
                                                     <a href="<?php echo esc_url((string)$file_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($file_row['path'] ?? '')); ?></code></a>
@@ -268,10 +281,15 @@
                         ,
                         <strong><?php echo esc_html((string)($storage_analysis['orphan_total_label'] ?? '')); ?></strong>
                     </p>
+                    <?php if (!empty($storage_analysis['orphan_files_truncated'])) { ?>
+                        <div class="notice notice-warning inline">
+                            <p><?php echo esc_html__('Für die Detailtabellen wurde die Analyse aus Performance-Gründen auf einen größeren, aber dennoch begrenzten Ausschnitt potenziell verwaister Dateien beschränkt.', 'rrze-multisite-manager'); ?></p>
+                        </div>
+                    <?php } ?>
                     <?php if (!empty($storage_analysis['largest_orphan_files'])) { ?>
                         <?php if (!empty($storage_analysis['orphan_files_found_in_content'])) { ?>
-                            <h3><?php echo esc_html__('Manuell in Inhalten oder Metafeldern gefunden', 'rrze-multisite-manager'); ?></h3>
-                            <p><?php echo esc_html__('Diese Dateien sind keine Attachments, werden aber noch irgendwo in Posts, Pages oder deren Metafeldern referenziert.', 'rrze-multisite-manager'); ?></p>
+                            <h3><?php echo esc_html__('Noch über Referenzen oder Code-Registrierung gefunden', 'rrze-multisite-manager'); ?></h3>
+                            <p><?php echo esc_html__('Diese Dateien sind keine Attachments, werden aber noch in Posts, Pages, deren Metafeldern oder über Register-/Enqueue-Aufrufe in aktiven Plugins, MU-Plugins oder dem aktiven Theme referenziert.', 'rrze-multisite-manager'); ?></p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="orphan-files-referenced" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                                 <div class="tablenav top">
                                     <div class="alignleft actions">
@@ -289,7 +307,7 @@
                                     <thead>
                                         <tr>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Datei', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><?php echo esc_html__('Referenzen', 'rrze-multisite-manager'); ?></th>
                                             <th><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
@@ -297,7 +315,7 @@
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['orphan_files_found_in_content'] as $orphan_row) { ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
                                                 <td><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
@@ -306,6 +324,7 @@
                                                     <div class="rrze-msm-site-actions">
                                                         <?php if (!empty($orphan_row['file_url'])) { ?>
                                                             <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Datei aufrufen', 'rrze-multisite-manager'); ?></a>
+                                                            <a class="button button-secondary" href="<?php echo esc_url('https://www.google.com/search?q=' . rawurlencode('"' . (string)$orphan_row['file_url'] . '"')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Bei Google suchen', 'rrze-multisite-manager'); ?></a>
                                                         <?php } ?>
                                                     </div>
                                                 </td>
@@ -317,11 +336,21 @@
                                     <div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Seitennavigation', 'rrze-multisite-manager'); ?>"></div>
                                 </div>
                             </div>
+                        <?php } else { ?>
+                            <h3><?php echo esc_html__('Noch über Referenzen oder Code-Registrierung gefunden', 'rrze-multisite-manager'); ?></h3>
+                            <p><?php echo esc_html__('Für die analysierten potenziell verwaisten Dateien wurden keine Referenzen in Posts, Pages, deren Metafeldern oder über Register-/Enqueue-Aufrufe im aktiven Code gefunden.', 'rrze-multisite-manager'); ?></p>
                         <?php } ?>
 
                         <?php if (!empty($storage_analysis['orphan_files_without_content_matches'])) { ?>
-                            <h3><?php echo esc_html__('Nirgends in Inhalten oder Metafeldern gefunden', 'rrze-multisite-manager'); ?></h3>
-                            <p><?php echo esc_html__('Diese Dateien sind keine Attachments und es wurden auch keine direkten Referenzen in Posts, Pages oder deren Metafeldern gefunden.', 'rrze-multisite-manager'); ?></p>
+                            <h3><?php echo esc_html__('Nirgends in Referenzen oder aktiver Code-Registrierung gefunden', 'rrze-multisite-manager'); ?></h3>
+                            <p><?php echo esc_html__('Diese Dateien sind keine Attachments und es wurden weder direkte Referenzen in Posts, Pages oder deren Metafeldern noch Register-/Enqueue-Aufrufe im aktiven Code gefunden.', 'rrze-multisite-manager'); ?></p>
+                            <form method="post" action="<?php echo esc_url((string)$orphan_file_delete_action); ?>">
+                                <input type="hidden" name="action" value="rrze_multisite_manager_delete_orphan_file">
+                                <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                <?php wp_nonce_field('rrze_multisite_manager_delete_orphan_files_' . $site_id); ?>
+                                <p class="rrze-msm-site-actions">
+                                    <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
+                                </p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="orphan-files-unreferenced" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                                 <div class="tablenav top">
                                     <div class="alignleft actions">
@@ -338,16 +367,18 @@
                                 <table class="widefat striped rrze-msm-table">
                                     <thead>
                                         <tr>
+                                            <th><?php echo esc_html__('Auswahl', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Datei', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['orphan_files_without_content_matches'] as $orphan_row) { ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
+                                                <td><input type="checkbox" name="relative_paths[]" value="<?php echo esc_attr((string)($orphan_row['path'] ?? '')); ?>"></td>
                                                 <td><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
@@ -356,6 +387,7 @@
                                                     <div class="rrze-msm-site-actions">
                                                         <?php if (!empty($orphan_row['file_url'])) { ?>
                                                             <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Datei aufrufen', 'rrze-multisite-manager'); ?></a>
+                                                            <a class="button button-secondary" href="<?php echo esc_url('https://www.google.com/search?q=' . rawurlencode('"' . (string)$orphan_row['file_url'] . '"')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Bei Google suchen', 'rrze-multisite-manager'); ?></a>
                                                             <button
                                                                 type="button"
                                                                 class="button button-primary rrze-msm-open-orphan-file-delete-modal"
@@ -375,9 +407,20 @@
                                     <div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Seitennavigation', 'rrze-multisite-manager'); ?>"></div>
                                 </div>
                             </div>
+                            <p class="rrze-msm-site-actions">
+                                <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
+                            </p>
+                            </form>
                         <?php } ?>
 
                         <?php if (empty($storage_analysis['orphan_files_found_in_content']) && empty($storage_analysis['orphan_files_without_content_matches'])) { ?>
+                            <form method="post" action="<?php echo esc_url((string)$orphan_file_delete_action); ?>">
+                                <input type="hidden" name="action" value="rrze_multisite_manager_delete_orphan_file">
+                                <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                <?php wp_nonce_field('rrze_multisite_manager_delete_orphan_files_' . $site_id); ?>
+                                <p class="rrze-msm-site-actions">
+                                    <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
+                                </p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="orphan-files-fallback" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                                 <div class="tablenav top">
                                     <div class="alignleft actions">
@@ -394,16 +437,18 @@
                                 <table class="widefat striped rrze-msm-table">
                                     <thead>
                                         <tr>
+                                            <th><?php echo esc_html__('Auswahl', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Datei', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Dokumententyp', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                            <th><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Zuletzt geändert', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><?php echo esc_html__('Aktionen', 'rrze-multisite-manager'); ?></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['largest_orphan_files'] as $orphan_row) { ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
+                                                <td><input type="checkbox" name="relative_paths[]" value="<?php echo esc_attr((string)($orphan_row['path'] ?? '')); ?>"></td>
                                                 <td><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
@@ -412,6 +457,7 @@
                                                     <div class="rrze-msm-site-actions">
                                                         <?php if (!empty($orphan_row['file_url'])) { ?>
                                                             <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Datei aufrufen', 'rrze-multisite-manager'); ?></a>
+                                                            <a class="button button-secondary" href="<?php echo esc_url('https://www.google.com/search?q=' . rawurlencode('"' . (string)$orphan_row['file_url'] . '"')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Bei Google suchen', 'rrze-multisite-manager'); ?></a>
                                                             <button
                                                                 type="button"
                                                                 class="button button-primary rrze-msm-open-orphan-file-delete-modal"
@@ -431,6 +477,10 @@
                                     <div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Seitennavigation', 'rrze-multisite-manager'); ?>"></div>
                                 </div>
                             </div>
+                            <p class="rrze-msm-site-actions">
+                                <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
+                            </p>
+                            </form>
                         <?php } ?>
                     <?php } else { ?>
                         <p><?php echo esc_html__('Es wurden keine potenziell verwaisten Dateien erkannt.', 'rrze-multisite-manager'); ?></p>
@@ -451,6 +501,7 @@
                             <input type="hidden" name="site_id" id="rrze-msm-orphan-file-delete-site-id" value="">
                             <input type="hidden" name="relative_path" id="rrze-msm-orphan-file-delete-path" value="">
                             <input type="hidden" name="_wpnonce" id="rrze-msm-orphan-file-delete-nonce" value="">
+                            <div id="rrze-msm-orphan-file-delete-paths"></div>
                             <label class="rrze-msm-modal-checkbox">
                                 <input type="checkbox" id="rrze-msm-orphan-file-delete-confirm">
                                 <span><?php echo esc_html__('Ich verstehe, dass die Datei endgültig gelöscht wird.', 'rrze-multisite-manager'); ?></span>

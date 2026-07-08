@@ -190,6 +190,69 @@ class PluginUsageWidget extends Widgets {
         return (string)ob_get_clean();
     }
 
+    public function renderMissingPluginTable(array $plugins, array $args = []): string {
+        $tableId = sanitize_key((string)($args['table_id'] ?? 'missing-plugin-usage'));
+        $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 20));
+        $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
+        $plugin = [];
+        $option = 0;
+
+        if (empty($plugins)) {
+            return '<p>' . esc_html__('Keine verwaisten Plugin-Einträge vorhanden.', 'rrze-multisite-manager') . '</p>';
+        }
+
+        usort($plugins, [self::class, 'compareMissingPluginRows']);
+
+        ob_start();
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-plugin-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="name" data-sort-direction="asc">';
+        echo '<div class="tablenav top">';
+        echo '<div class="alignleft actions">';
+        echo '<label for="rrze-msm-missing-plugin-search-' . esc_attr($tableId) . '">' . esc_html__('Plugin filtern:', 'rrze-multisite-manager') . '</label>';
+        echo '<input type="search" class="rrze-msm-site-table-search" id="rrze-msm-missing-plugin-search-' . esc_attr($tableId) . '" placeholder="' . esc_attr__('Nach Pluginpfad suchen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Verwaiste Plugins nach Pfad filtern', 'rrze-multisite-manager') . '">';
+        echo '<label for="rrze-msm-missing-plugin-per-page-' . esc_attr($tableId) . '">' . esc_html__('Anzeigen:', 'rrze-multisite-manager') . '</label>';
+        echo '<select class="rrze-msm-site-table-per-page" id="rrze-msm-missing-plugin-per-page-' . esc_attr($tableId) . '">';
+
+        foreach ($perPageOptions as $option) {
+            echo '<option value="' . esc_attr((string)$option) . '"' . selected($option, $defaultPerPage, false) . '>';
+
+            if ($option === $defaultPerPage) {
+                echo esc_html(sprintf(__('Standard (%d)', 'rrze-multisite-manager'), $option));
+            } else {
+                echo esc_html((string)$option);
+            }
+
+            echo '</option>';
+        }
+
+        echo '</select>';
+        echo '</div>';
+        echo '</div>';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-plugin-table">';
+        echo '<thead><tr>';
+        echo '<th>' . esc_html__('Plugin-Datei', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-plugin-col-active-sites">' . esc_html__('Aktive Sites', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Websites', 'rrze-multisite-manager') . '</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ($plugins as $plugin) {
+            echo '<tr';
+            echo ' data-sort-name="' . esc_attr(strtolower((string)($plugin['file'] ?? ''))) . '"';
+            echo ' data-sort-active-sites="' . esc_attr((string)((int)($plugin['site_count'] ?? 0))) . '"';
+            echo '><td><strong><code>' . esc_html((string)($plugin['file'] ?? '')) . '</code></strong></td>';
+            echo '<td class="rrze-msm-plugin-col-active-sites"><strong>' . esc_html(number_format_i18n((int)($plugin['site_count'] ?? 0))) . '</strong></td>';
+            echo '<td>' . $this->renderPluginActiveSitesHtml($plugin) . '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+        echo '<div class="tablenav bottom">';
+        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Seitennavigation', 'rrze-multisite-manager') . '"></div>';
+        echo '</div>';
+        echo '</div>';
+
+        return (string)ob_get_clean();
+    }
+
     protected function getTemplateName(): string {
         return 'plugin-usage-widget';
     }
@@ -213,6 +276,16 @@ class PluginUsageWidget extends Widgets {
 
     protected function isActivePlugin(array $plugin): bool {
         return (int)($plugin['site_count'] ?? 0) > 0;
+    }
+
+    protected static function compareMissingPluginRows(array $left, array $right): int {
+        $siteCountComparison = ((int)($right['site_count'] ?? 0)) <=> ((int)($left['site_count'] ?? 0));
+
+        if ($siteCountComparison !== 0) {
+            return $siteCountComparison;
+        }
+
+        return strnatcasecmp((string)($left['file'] ?? ''), (string)($right['file'] ?? ''));
     }
 
     protected function normalizePluginTableSortKey(string $sortKey): string {
@@ -301,6 +374,8 @@ class PluginUsageWidget extends Widgets {
 
     protected function renderPluginActiveSitesHtml(array $plugin): string {
         $activeSites = is_array($plugin['active_sites'] ?? null) ? $plugin['active_sites'] : [];
+        $isTruncated = !empty($plugin['active_sites_truncated']);
+        $siteCount = (int)($plugin['site_count'] ?? count($activeSites));
         $site = [];
         $perPage = 20;
         $totalPages = (int)ceil(count($activeSites) / $perPage);
@@ -319,6 +394,19 @@ class PluginUsageWidget extends Widgets {
         echo '<p class="rrze-msm-plugin-sites-collapsed"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="false">▼ ' . esc_html__('Websites anzeigen', 'rrze-multisite-manager') . '</button></p>';
         echo '<div class="rrze-msm-plugin-sites-details" hidden>';
         echo '<p class="rrze-msm-plugin-sites-toggle-row"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="true">▲ ' . esc_html__('Websites verbergen', 'rrze-multisite-manager') . '</button></p>';
+
+        if ($isTruncated) {
+            echo '<p class="description">';
+            echo esc_html(
+                sprintf(
+                    __('Es wird eine Vorschau der ersten %1$s von %2$s Websites angezeigt.', 'rrze-multisite-manager'),
+                    number_format_i18n(count($activeSites)),
+                    number_format_i18n($siteCount)
+                )
+            );
+            echo '</p>';
+        }
+
         echo '<ul class="rrze-msm-plugin-sites-list">';
 
         foreach ($activeSites as $site) {

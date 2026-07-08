@@ -188,16 +188,70 @@ function onOrphanFileDeleteButtonClick(event) {
     var modal = document.querySelector('#rrze-msm-orphan-file-delete-modal');
     var target = document.querySelector('#rrze-msm-orphan-file-delete-target');
     var pathInput = document.querySelector('#rrze-msm-orphan-file-delete-path');
+    var pathsContainer = document.querySelector('#rrze-msm-orphan-file-delete-paths');
     var siteInput = document.querySelector('#rrze-msm-orphan-file-delete-site-id');
     var nonceInput = document.querySelector('#rrze-msm-orphan-file-delete-nonce');
     var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
 
-    if (!button || !modal || !target || !pathInput || !siteInput || !nonceInput || !checkbox) {
+    if (!button || !modal || !target || !pathInput || !pathsContainer || !siteInput || !nonceInput || !checkbox) {
         return;
     }
 
     target.textContent = button.getAttribute('data-file-path') || '';
     pathInput.value = button.getAttribute('data-file-path') || '';
+    pathsContainer.innerHTML = '';
+    siteInput.value = button.getAttribute('data-site-id') || '';
+    nonceInput.value = button.getAttribute('data-delete-nonce') || '';
+    checkbox.checked = false;
+    updateOrphanFileDeleteSubmitState();
+    modal.removeAttribute('hidden');
+}
+
+function onOrphanFileBulkDeleteButtonClick(event) {
+    var button = event.currentTarget;
+    var modal = document.querySelector('#rrze-msm-orphan-file-delete-modal');
+    var target = document.querySelector('#rrze-msm-orphan-file-delete-target');
+    var pathInput = document.querySelector('#rrze-msm-orphan-file-delete-path');
+    var pathsContainer = document.querySelector('#rrze-msm-orphan-file-delete-paths');
+    var siteInput = document.querySelector('#rrze-msm-orphan-file-delete-site-id');
+    var nonceInput = document.querySelector('#rrze-msm-orphan-file-delete-nonce');
+    var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
+    var form = null;
+    var checkboxes = [];
+    var i = 0;
+    var hiddenInput = null;
+
+    if (!button || !modal || !target || !pathInput || !pathsContainer || !siteInput || !nonceInput || !checkbox) {
+        return;
+    }
+
+    form = button.closest('form');
+
+    if (!form) {
+        return;
+    }
+
+    checkboxes = form.querySelectorAll('input[name="relative_paths[]"]:checked');
+
+    if (!checkboxes.length) {
+        window.alert('Bitte zuerst mindestens eine Datei auswählen.');
+        return;
+    }
+
+    target.textContent = checkboxes.length === 1
+        ? (checkboxes[0].value || '')
+        : (checkboxes.length + ' Dateien');
+    pathInput.value = '';
+    pathsContainer.innerHTML = '';
+
+    for (i = 0; i < checkboxes.length; i++) {
+        hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'relative_paths[]';
+        hiddenInput.value = checkboxes[i].value || '';
+        pathsContainer.appendChild(hiddenInput);
+    }
+
     siteInput.value = button.getAttribute('data-site-id') || '';
     nonceInput.value = button.getAttribute('data-delete-nonce') || '';
     checkbox.checked = false;
@@ -320,6 +374,7 @@ function initSiteDeleteModal() {
 
 function initOrphanFileDeleteModal() {
     var openButtons = document.querySelectorAll('.rrze-msm-open-orphan-file-delete-modal');
+    var openBulkButtons = document.querySelectorAll('.rrze-msm-open-orphan-file-bulk-delete-modal');
     var closeButtons = document.querySelectorAll('.rrze-msm-close-orphan-file-delete-modal');
     var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
     var submit = document.querySelector('#rrze-msm-orphan-file-delete-submit');
@@ -327,6 +382,10 @@ function initOrphanFileDeleteModal() {
 
     for (i = 0; i < openButtons.length; i++) {
         openButtons[i].addEventListener('click', onOrphanFileDeleteButtonClick);
+    }
+
+    for (i = 0; i < openBulkButtons.length; i++) {
+        openBulkButtons[i].addEventListener('click', onOrphanFileBulkDeleteButtonClick);
     }
 
     for (i = 0; i < closeButtons.length; i++) {

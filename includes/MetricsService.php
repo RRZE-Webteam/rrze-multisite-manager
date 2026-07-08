@@ -23,12 +23,16 @@ class MetricsService {
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
+    protected const STORAGE_ORPHAN_FILES_LIMIT = 500;
     protected const DASHBOARD_LOCK_TTL = 900;
+    protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 100;
     protected ?Settings $settings;
     protected Config $config;
     protected array $siteNameCache = [];
     protected array $siteAdminEmailCache = [];
+    protected array $currentSiteAssetUsageIndexCache = [];
     protected ?array $themeSiteAggregate = null;
+    protected ?int $dashboardSiteCount = null;
 
     public function __construct(?Settings $settings = null, ?Config $config = null) {
         $this->settings = $settings;
@@ -224,6 +228,7 @@ class MetricsService {
         $networkStorageUsage = $this->finalizeDashboardBatchStorageUsage((array)($state['network_storage_usage'] ?? []));
         $pluginUsage = $this->finalizePluginUsageStats(
             (array)($state['plugin_usage']['stats'] ?? []),
+            (array)($state['plugin_usage']['missing_plugins'] ?? []),
             (int)($state['plugin_usage']['total_sites'] ?? 0)
         );
         $editorUsage = $this->finalizeDashboardBatchEditorUsage((array)($state['editor_usage'] ?? []));
@@ -236,6 +241,7 @@ class MetricsService {
             : [
                 'counts' => [],
                 'usage_map' => [],
+                'truncated' => [],
             ];
 
         return [
@@ -3565,7 +3571,7 @@ class MetricsService {
     }
 
     public function getSiteStorageAnalysis(int $siteId): array {
-        $cacheKey = 'rrze_msm_site_storage_analysis_' . $this->getDetailCacheVersion() . '_' . $siteId;
+        $cacheKey = 'rrze_msm_site_storage_analysis_v2_' . $this->getDetailCacheVersion() . '_' . $siteId;
         $cached = get_site_transient($cacheKey);
         $analysis = [];
 
@@ -3820,7 +3826,8 @@ class MetricsService {
                         $modifiedTimestamp,
                         $baseUrl,
                         $attachmentIndex
-                    )
+                    ),
+                    self::STORAGE_ORPHAN_FILES_LIMIT
                 );
             }
 
@@ -3840,7 +3847,7 @@ class MetricsService {
         }
 
         $topConsumers = $this->buildTopStorageConsumers($directoryStats, $largestFiles, $normalizedBaseDir);
-        $classifiedLargestOrphanFiles = $this->classifyCurrentSitePotentialOrphanFiles(array_slice($largestOrphanFiles, 0, 10));
+        $classifiedLargestOrphanFiles = $this->classifyCurrentSitePotentialOrphanFiles($largestOrphanFiles);
 
         return [
             'total_bytes' => $totalBytes,
@@ -3848,7 +3855,8 @@ class MetricsService {
             'total_directories' => $totalDirectories,
             'orphan_file_count' => $orphanFileCount,
             'orphan_total_bytes' => $orphanTotalBytes,
-            'largest_orphan_files' => array_slice($largestOrphanFiles, 0, 10),
+            'largest_orphan_files' => $largestOrphanFiles,
+            'orphan_files_truncated' => $orphanFileCount > self::STORAGE_ORPHAN_FILES_LIMIT,
             'orphan_files_found_in_content' => (array)($classifiedLargestOrphanFiles['found_in_content'] ?? []),
             'orphan_files_without_content_matches' => (array)($classifiedLargestOrphanFiles['without_matches'] ?? []),
             'top_level_directories' => $this->finalizeTopLevelDirectoryStats($topLevelDirectoryStats, $totalBytes),
@@ -4211,6 +4219,9 @@ class MetricsService {
         $post = null;
         $metaRow = null;
         $postId = 0;
+        $codeMatches = [];
+        $codeMatch = [];
+        $codeKey = '';
 
         $needles = $this->buildFileUsageSearchNeedles($fileUrl, $relativePath);
 
@@ -4275,7 +4286,293 @@ class MetricsService {
             $results[$index]['matches_label'] = implode(', ', (array)($resultRow['matches'] ?? []));
         }
 
+        $codeMatches = $this->searchCurrentSiteCodeFileUsageMatches($fileUrl, $relativePath);
+
+        foreach ($codeMatches as $codeMatch) {
+            if (!is_array($codeMatch)) {
+                continue;
+            }
+
+            $codeKey = 'code:' . (string)($codeMatch['key'] ?? md5(wp_json_encode($codeMatch)));
+            $results[$codeKey] = $codeMatch;
+            $results[$codeKey]['matches_label'] = implode(', ', (array)($results[$codeKey]['matches'] ?? []));
+        }
+
         return array_values($results);
+    }
+
+    protected function searchCurrentSiteCodeFileUsageMatches(string $fileUrl, string $relativePath): array {
+        $index = $this->getCurrentSiteAssetUsageIndex();
+        $needles = $this->buildFileUsageCodeSearchNeedles($fileUrl, $relativePath);
+        $results = [];
+        $entry = [];
+        $haystack = '';
+        $needle = '';
+        $matchLabel = '';
+
+        if (empty($index) || empty($needles)) {
+            return [];
+        }
+
+        foreach ($index as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $haystack = mb_strtolower((string)($entry['haystack'] ?? ''));
+
+            if ($haystack === '') {
+                continue;
+            }
+
+            foreach ($needles as $needle) {
+                if ($needle === '' || mb_stripos($haystack, mb_strtolower($needle)) === false) {
+                    continue;
+                }
+
+                $matchLabel = !empty($entry['match_label'])
+                    ? (string)$entry['match_label']
+                    : __('Code-Referenz', 'rrze-multisite-manager');
+
+                $results[] = [
+                    'key' => (string)($entry['key'] ?? md5($haystack)),
+                    'post_id' => 0,
+                    'post_type' => 'code',
+                    'title' => (string)($entry['title'] ?? __('Code-Referenz', 'rrze-multisite-manager')),
+                    'edit_url' => '',
+                    'view_url' => '',
+                    'matches' => [$matchLabel],
+                ];
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    protected function getCurrentSiteAssetUsageIndex(): array {
+        $siteId = get_current_blog_id();
+
+        if ($siteId <= 0) {
+            return [];
+        }
+
+        if (isset($this->currentSiteAssetUsageIndexCache[$siteId]) && is_array($this->currentSiteAssetUsageIndexCache[$siteId])) {
+            return $this->currentSiteAssetUsageIndexCache[$siteId];
+        }
+
+        $this->currentSiteAssetUsageIndexCache[$siteId] = $this->buildCurrentSiteAssetUsageIndex();
+
+        return $this->currentSiteAssetUsageIndexCache[$siteId];
+    }
+
+    protected function buildCurrentSiteAssetUsageIndex(): array {
+        $results = [];
+        $pluginFiles = $this->getCurrentSiteActivePluginFiles();
+        $pluginCatalog = [];
+        $pluginFile = '';
+        $pluginName = '';
+        $themeStylesheet = (string)get_option('stylesheet', '');
+        $theme = null;
+        $muPlugins = [];
+        $muPath = '';
+        $muName = '';
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        $pluginCatalog = get_plugins();
+
+        foreach ($pluginFiles as $pluginFile) {
+            $pluginName = !empty($pluginCatalog[$pluginFile]['Name']) && is_string($pluginCatalog[$pluginFile]['Name'])
+                ? (string)$pluginCatalog[$pluginFile]['Name']
+                : $pluginFile;
+            $results = array_merge(
+                $results,
+                $this->buildAssetUsageIndexEntriesForFiles(
+                    $this->getPluginAnalysisFiles($pluginFile),
+                    sprintf(__('Plugin: %s', 'rrze-multisite-manager'), $pluginName)
+                )
+            );
+        }
+
+        if ($themeStylesheet !== '') {
+            $theme = wp_get_theme($themeStylesheet);
+
+            if ($theme instanceof \WP_Theme && $theme->exists()) {
+                $results = array_merge(
+                    $results,
+                    $this->buildAssetUsageIndexEntriesForFiles(
+                        $this->getThemeAnalysisFiles($themeStylesheet),
+                        sprintf(__('Theme: %s', 'rrze-multisite-manager'), (string)$theme->get('Name'))
+                    )
+                );
+            }
+        }
+
+        if (function_exists('get_mu_plugins')) {
+            $muPlugins = get_mu_plugins();
+
+            foreach ($muPlugins as $muPath => $muData) {
+                $muName = !empty($muData['Name']) && is_string($muData['Name']) ? (string)$muData['Name'] : basename((string)$muPath);
+                $results = array_merge(
+                    $results,
+                    $this->buildAssetUsageIndexEntriesForFiles(
+                        $this->getStandaloneAnalysisFiles((string)$muPath),
+                        sprintf(__('MU-Plugin: %s', 'rrze-multisite-manager'), $muName)
+                    )
+                );
+            }
+        }
+
+        return $results;
+    }
+
+    protected function getCurrentSiteActivePluginFiles(): array {
+        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
+        $activePlugins = get_option('active_plugins', []);
+        $pluginFiles = array_unique(
+            array_merge(
+                array_keys($networkActivePlugins),
+                is_array($activePlugins) ? array_values(array_filter($activePlugins, 'is_string')) : []
+            )
+        );
+
+        sort($pluginFiles, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return array_values($pluginFiles);
+    }
+
+    protected function getStandaloneAnalysisFiles(string $mainFilePath): array {
+        $results = [];
+        $baseDir = '';
+        $iterator = null;
+        $current = null;
+        $pathname = '';
+
+        if ($mainFilePath === '' || !is_file($mainFilePath)) {
+            return [];
+        }
+
+        $results[] = $mainFilePath;
+        $baseDir = dirname($mainFilePath);
+
+        if ($baseDir === '' || !is_dir($baseDir)) {
+            return $results;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(
+                $baseDir,
+                \FilesystemIterator::SKIP_DOTS
+            )
+        );
+
+        foreach ($iterator as $current) {
+            if (!$current instanceof \SplFileInfo || !$current->isFile()) {
+                continue;
+            }
+
+            $pathname = (string)$current->getPathname();
+
+            if ($pathname === $mainFilePath || !$this->isPluginAnalysisFile($pathname)) {
+                continue;
+            }
+
+            $results[] = $pathname;
+        }
+
+        sort($results, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return array_values(array_unique($results));
+    }
+
+    protected function buildAssetUsageIndexEntriesForFiles(array $files, string $providerLabel): array {
+        $results = [];
+        $filePath = '';
+        $source = '';
+        $relevantChunks = [];
+        $chunk = '';
+        $relativeFile = '';
+        $providerPrefix = sanitize_title($providerLabel);
+
+        foreach ($files as $filePath) {
+            if (!is_string($filePath) || $filePath === '' || !is_readable($filePath)) {
+                continue;
+            }
+
+            $source = (string)file_get_contents($filePath);
+
+            if ($source === '') {
+                continue;
+            }
+
+            $relevantChunks = $this->extractAssetUsageRelevantSourceChunks($source);
+
+            if (empty($relevantChunks)) {
+                continue;
+            }
+
+            $relativeFile = basename($filePath);
+
+            foreach ($relevantChunks as $chunk) {
+                $results[] = [
+                    'key' => $providerPrefix . ':' . md5($filePath . '|' . $chunk),
+                    'title' => $providerLabel,
+                    'match_label' => sprintf(
+                        __('Code-Registrierung/Enqueue in %s', 'rrze-multisite-manager'),
+                        $relativeFile
+                    ),
+                    'haystack' => $chunk,
+                ];
+            }
+        }
+
+        return $results;
+    }
+
+    protected function extractAssetUsageRelevantSourceChunks(string $source): array {
+        $matches = [];
+        $chunks = [];
+        $index = 0;
+        $chunk = '';
+        $pattern = '/(?:wp_(?:register|enqueue)_(?:script|style)|wp_add_inline_(?:script|style)|register_block_type)\s*\((?:[^;]|\n){0,4000}?\)\s*;/im';
+
+        if (!preg_match_all($pattern, $source, $matches, PREG_SET_ORDER)) {
+            return [];
+        }
+
+        for ($index = 0; $index < count($matches); $index++) {
+            $chunk = trim((string)($matches[$index][0] ?? ''));
+
+            if ($chunk !== '') {
+                $chunks[] = $chunk;
+            }
+        }
+
+        return array_values(array_unique($chunks));
+    }
+
+    protected function buildFileUsageCodeSearchNeedles(string $fileUrl, string $relativePath): array {
+        $needles = $this->buildFileUsageSearchNeedles($fileUrl, $relativePath);
+        $normalizedRelativePath = $this->normalizeRelativeUploadPath($relativePath);
+        $segments = $normalizedRelativePath !== '' ? explode('/', $normalizedRelativePath) : [];
+        $basename = $normalizedRelativePath !== '' ? basename($normalizedRelativePath) : '';
+        $lastTwoSegments = '';
+
+        if (count($segments) >= 2) {
+            $lastTwoSegments = implode('/', array_slice($segments, -2));
+        }
+
+        foreach ([$basename, $lastTwoSegments] as $extraNeedle) {
+            if (!is_string($extraNeedle) || trim($extraNeedle) === '' || mb_strlen($extraNeedle) < 6) {
+                continue;
+            }
+
+            if (!in_array($extraNeedle, $needles, true)) {
+                $needles[] = $extraNeedle;
+            }
+        }
+
+        return $needles;
     }
 
     protected function deleteCurrentSiteOrphanFile(string $relativePath): array {
@@ -4330,7 +4627,7 @@ class MetricsService {
         if (!empty($this->searchCurrentSiteFileUsageMatches($fileUrl, $normalizedRelativePath))) {
             return [
                 'deleted' => false,
-                'message' => __('Diese Datei wird noch in Inhalten oder Metafeldern referenziert und wird deshalb nicht gelöscht.', 'rrze-multisite-manager'),
+                'message' => __('Diese Datei wird noch in Inhalten, Metafeldern oder in einer Code-Registrierung/Enqueue referenziert und wird deshalb nicht gelöscht.', 'rrze-multisite-manager'),
             ];
         }
 
@@ -4457,10 +4754,10 @@ class MetricsService {
         $topLevelDirectoryStats[$topLevelKey]['file_count']++;
     }
 
-    protected function pushLargestFileEntry(array &$largestFiles, array $entry): void {
+    protected function pushLargestFileEntry(array &$largestFiles, array $entry, int $limit = self::STORAGE_LARGEST_FILES_LIMIT): void {
         $largestFiles[] = $entry;
         usort($largestFiles, [self::class, 'compareStorageEntries']);
-        $largestFiles = array_slice($largestFiles, 0, self::STORAGE_LARGEST_FILES_LIMIT);
+        $largestFiles = array_slice($largestFiles, 0, max(1, $limit));
     }
 
     protected function buildTopStorageConsumers(array $directoryStats, array $largestFiles, string $normalizedBaseDir): array {
@@ -5499,27 +5796,36 @@ class MetricsService {
             return $this->themeSiteAggregate;
         }
 
-        $sites = get_sites([
+        $siteIds = get_sites([
+            'fields' => 'ids',
             'number' => 0,
-            'orderby' => 'domain',
+            'orderby' => 'id',
             'order' => 'ASC',
         ]);
         $aggregate = [
             'counts' => [],
             'usage_map' => [],
+            'truncated' => [],
         ];
-        $site = null;
         $siteId = 0;
+        $site = null;
         $stylesheet = '';
         $siteName = '';
         $siteUrl = '';
 
-        foreach ($sites as $site) {
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            $site = get_site($siteId);
+
             if (!$site instanceof \WP_Site) {
                 continue;
             }
 
-            $siteId = (int)$site->blog_id;
             $siteName = $this->getSiteName($site);
             $siteUrl = get_home_url($siteId, '/');
 
@@ -6073,10 +6379,7 @@ class MetricsService {
     }
 
     protected function getInitialDashboardRefreshBatchState(): array {
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
+        $siteCount = $this->getDashboardSiteCount();
 
         return [
             'started_at' => time(),
@@ -6090,13 +6393,15 @@ class MetricsService {
             'theme_aggregate' => [
                 'counts' => [],
                 'usage_map' => [],
+                'truncated' => [],
             ],
             'plugin_usage' => [
-                'total_sites' => count($siteIds),
+                'total_sites' => $siteCount,
                 'stats' => $this->createBasePluginUsageStats(),
+                'missing_plugins' => [],
             ],
             'editor_usage' => [
-                'total_sites' => count($siteIds),
+                'total_sites' => $siteCount,
                 'classic_sites' => 0,
                 'block_sites' => 0,
                 'classic_everywhere' => isset(((array)get_site_option('active_sitewide_plugins', []))['classic-editor/classic-editor.php']),
@@ -6140,6 +6445,7 @@ class MetricsService {
                 'file' => $pluginFile,
                 'site_count' => 0,
                 'active_sites' => [],
+                'active_sites_truncated' => false,
                 'name' => (string)($pluginData['Name'] ?? $pluginFile),
                 'version' => (string)($pluginData['Version'] ?? 'n/a'),
                 'description' => wp_strip_all_tags((string)($pluginData['Description'] ?? '')),
@@ -6164,46 +6470,63 @@ class MetricsService {
         return $pluginStats;
     }
 
-    protected function accumulatePluginUsageStats(array &$pluginStats, int $siteId, string $siteName, string $siteUrl, array $sitePluginFiles, array $networkActivePlugins = []): void {
+    protected function accumulatePluginUsageStats(array &$pluginStats, array &$missingPlugins, int $siteId, string $siteName, string $siteUrl, array $sitePluginFiles, array $networkActivePlugins = []): void {
         $pluginFile = '';
 
         foreach ($sitePluginFiles as $pluginFile) {
             if (!isset($pluginStats[$pluginFile])) {
-                $pluginStats[$pluginFile] = [
-                    'file' => $pluginFile,
-                    'site_count' => 0,
-                    'active_sites' => [],
-                    'name' => $pluginFile,
-                    'version' => 'n/a',
-                    'description' => '',
-                    'author' => '',
-                    'author_url' => '',
-                    'network_active' => isset($networkActivePlugins[$pluginFile]),
-                    'settings_url' => '',
-                    'details_url' => '',
-                    'deactivate_url' => isset($networkActivePlugins[$pluginFile]) ? $this->getNetworkPluginDeactivateUrl($pluginFile) : '',
-                    'delete_url' => $this->getNetworkPluginDeleteUrl($pluginFile),
-                    'plugin_uri' => '',
-                    'text_domain' => '',
-                    'requires_php' => '',
-                    'requires_wp' => '',
-                    'update_available' => false,
-                    'update_version' => '',
-                    'update_details_url' => '',
-                    'update_url' => '',
-                ];
+                $missingPlugins[$pluginFile] = $this->accumulateMissingPluginUsage(
+                    (array)($missingPlugins[$pluginFile] ?? []),
+                    $pluginFile,
+                    $siteId,
+                    $siteName,
+                    $siteUrl
+                );
+                continue;
             }
 
             $pluginStats[$pluginFile]['site_count']++;
-            $pluginStats[$pluginFile]['active_sites'][] = [
+
+            if (count((array)$pluginStats[$pluginFile]['active_sites']) < $this->getDashboardActiveSitePreviewLimit()) {
+                $pluginStats[$pluginFile]['active_sites'][] = [
+                    'id' => $siteId,
+                    'name' => $siteName,
+                    'url' => $siteUrl,
+                ];
+            } else {
+                $pluginStats[$pluginFile]['active_sites_truncated'] = true;
+            }
+        }
+    }
+
+    protected function accumulateMissingPluginUsage(array $missingPlugin, string $pluginFile, int $siteId, string $siteName, string $siteUrl): array {
+        if (empty($missingPlugin)) {
+            $missingPlugin = [
+                'file' => $pluginFile,
+                'site_count' => 0,
+                'active_sites' => [],
+                'active_sites_truncated' => false,
+            ];
+        }
+
+        $missingPlugin['site_count'] = (int)($missingPlugin['site_count'] ?? 0) + 1;
+
+        if (count((array)$missingPlugin['active_sites']) < $this->getDashboardActiveSitePreviewLimit()) {
+            $missingPlugin['active_sites'][] = [
                 'id' => $siteId,
                 'name' => $siteName,
                 'url' => $siteUrl,
             ];
+        } else {
+            $missingPlugin['active_sites_truncated'] = true;
         }
+
+        $missingPlugin['active_sites'] = $this->sortPluginActiveSites((array)$missingPlugin['active_sites']);
+
+        return $missingPlugin;
     }
 
-    protected function finalizePluginUsageStats(array $pluginStats, int $totalSites): array {
+    protected function finalizePluginUsageStats(array $pluginStats, array $missingPlugins, int $totalSites): array {
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
         $pluginFile = '';
@@ -6212,6 +6535,7 @@ class MetricsService {
 
         foreach ($pluginStats as $pluginFile => $pluginData) {
             $pluginStats[$pluginFile]['active_sites'] = $this->sortPluginActiveSites((array)($pluginData['active_sites'] ?? []));
+            $pluginStats[$pluginFile]['active_sites_truncated'] = !empty($pluginData['active_sites_truncated']);
         }
 
         uasort($pluginStats, [self::class, 'comparePluginUsage']);
@@ -6221,9 +6545,11 @@ class MetricsService {
                 'available_plugins' => $availablePluginCount,
                 'network_active_plugins' => count((array)get_site_option('active_sitewide_plugins', [])),
                 'locally_used_plugins' => $this->countLocallyUsedPlugins($pluginStats),
+                'missing_plugin_entries' => count($missingPlugins),
                 'total_sites' => $totalSites,
             ],
             'plugins' => array_values($pluginStats),
+            'missing_plugins' => array_values($missingPlugins),
             'distribution' => $this->buildPluginUsageDistribution($pluginStats),
             'inactive_plugins' => array_values(
                 array_filter(
@@ -6243,7 +6569,11 @@ class MetricsService {
             $pluginUsageState['total_sites'] = 0;
         }
 
-        $this->accumulatePluginUsageStats($pluginUsageState['stats'], $siteId, $siteName, $siteUrl, $sitePluginFiles, $networkActivePlugins);
+        if (!isset($pluginUsageState['missing_plugins']) || !is_array($pluginUsageState['missing_plugins'])) {
+            $pluginUsageState['missing_plugins'] = [];
+        }
+
+        $this->accumulatePluginUsageStats($pluginUsageState['stats'], $pluginUsageState['missing_plugins'], $siteId, $siteName, $siteUrl, $sitePluginFiles, $networkActivePlugins);
     }
 
     protected function accumulateDashboardBatchThemeUsage(array &$themeAggregate, int $siteId, string $siteName, string $siteUrl, string $stylesheet): void {
@@ -6259,12 +6589,33 @@ class MetricsService {
             $themeAggregate['usage_map'][$stylesheet] = [];
         }
 
+        if (!isset($themeAggregate['truncated'][$stylesheet])) {
+            $themeAggregate['truncated'][$stylesheet] = false;
+        }
+
         $themeAggregate['counts'][$stylesheet]++;
-        $themeAggregate['usage_map'][$stylesheet][] = [
-            'id' => $siteId,
-            'name' => $siteName,
-            'url' => $siteUrl,
-        ];
+
+        if (count($themeAggregate['usage_map'][$stylesheet]) < $this->getDashboardActiveSitePreviewLimit()) {
+            $themeAggregate['usage_map'][$stylesheet][] = [
+                'id' => $siteId,
+                'name' => $siteName,
+                'url' => $siteUrl,
+            ];
+        } else {
+            $themeAggregate['truncated'][$stylesheet] = true;
+        }
+    }
+
+    protected function getDashboardActiveSitePreviewLimit(): int {
+        return self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT;
+    }
+
+    protected function getDashboardSiteCount(): int {
+        if ($this->dashboardSiteCount === null) {
+            $this->dashboardSiteCount = $this->countSites();
+        }
+
+        return $this->dashboardSiteCount;
     }
 
     protected function accumulateDashboardBatchStorageUsage(array &$storageState, int $siteId, string $siteName, array $storage): void {

@@ -30,7 +30,6 @@ class MonitoringService {
     protected const LOCK_KEY = 'rrze_msm_monitoring_lock';
     protected const LOCK_TTL = 900;
     protected const BATCH_SIZE = 20;
-    protected const MAX_RUN_LOG_ENTRIES = 20;
     protected const MAX_SITE_HISTORY_ENTRIES = 10;
     protected const MAX_RUN_EVENT_ENTRIES = 12;
 
@@ -303,7 +302,7 @@ class MonitoringService {
 
         $state['finished_at'] = $finishedAt;
         array_unshift($history, $state);
-        $history = array_slice($history, 0, self::MAX_RUN_LOG_ENTRIES);
+        $history = array_slice($history, 0, $this->getRunLogEntryLimit());
         update_site_option(self::OPTION_RUN_LOG, $history);
         delete_site_option(self::OPTION_RUN_STATE);
     }
@@ -357,6 +356,10 @@ class MonitoringService {
 
     protected function getMonitoringIntervalHours(): int {
         return max(1, min(168, $this->getMonitoringOption('monitoring_monitoring_interval_hours', 6)));
+    }
+
+    protected function getRunLogEntryLimit(): int {
+        return max(5, min(200, $this->getMonitoringOption('monitoring_run_log_entries', 20)));
     }
 
     protected function getProvisioningGraceHours(): int {

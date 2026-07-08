@@ -174,6 +174,7 @@ trait MetricsServicePluginTrait {
             'number' => 0,
         ]);
         $pluginStats = $this->createBasePluginUsageStats();
+        $missingPlugins = [];
         $siteId = 0;
         $activePlugins = [];
         $totalSites = count($siteIds);
@@ -195,6 +196,7 @@ trait MetricsServicePluginTrait {
 
             $this->accumulatePluginUsageStats(
                 $pluginStats,
+                $missingPlugins,
                 (int)$siteId,
                 $this->getSiteNameById((int)$siteId),
                 get_home_url((int)$siteId, '/'),
@@ -203,7 +205,7 @@ trait MetricsServicePluginTrait {
             );
         }
 
-        return $this->finalizePluginUsageStats($pluginStats, $totalSites);
+        return $this->finalizePluginUsageStats($pluginStats, $missingPlugins, $totalSites);
     }
 
     protected function findPluginUsageItem(array $plugins, string $pluginFile): array {

@@ -128,6 +128,7 @@ trait MetricsServiceThemeTrait {
         $themeSiteAggregate = $this->getThemeSiteAggregate();
         $siteCounts = (array)($themeSiteAggregate['counts'] ?? []);
         $siteUsageMap = (array)($themeSiteAggregate['usage_map'] ?? []);
+        $siteUsageTruncated = (array)($themeSiteAggregate['truncated'] ?? []);
         $results = [];
         $stylesheet = '';
         $theme = null;
@@ -152,6 +153,7 @@ trait MetricsServiceThemeTrait {
                 'site_count' => (int)($siteCounts[$stylesheet] ?? 0),
                 'network_enabled' => isset($allowedThemes[$stylesheet]),
                 'active_sites' => (array)($siteUsageMap[$stylesheet] ?? []),
+                'active_sites_truncated' => !empty($siteUsageTruncated[$stylesheet]),
                 'author' => (string)$theme->get('Author'),
                 'author_url' => (string)$theme->get('AuthorURI'),
                 'theme_uri' => (string)$theme->get('ThemeURI'),

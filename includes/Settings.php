@@ -1113,6 +1113,7 @@ class Settings {
         $events = [];
         $run = [];
         $entry = [];
+        $limit = $this->getMonitoringRecentEventLimit();
 
         foreach ($runHistory as $run) {
             if (!is_array($run)) {
@@ -1132,7 +1133,7 @@ class Settings {
                     $entry['run_finished_at'] = (string)($run['finished_at'] ?? '');
                     $events[] = $entry;
 
-                    if (count($events) >= 30) {
+                    if (count($events) >= $limit) {
                         break 3;
                     }
                 }
@@ -1140,6 +1141,10 @@ class Settings {
         }
 
         return $events;
+    }
+
+    protected function getMonitoringRecentEventLimit(): int {
+        return max(10, min(500, (int)$this->getOption('monitoring', 'recent_event_entries', 30)));
     }
 
     protected function renderMonitoringEventSiteHtml(array $event): string {

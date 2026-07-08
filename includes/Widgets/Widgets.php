@@ -1057,6 +1057,8 @@ abstract class Widgets {
 
     protected function renderThemeSitesHtml(array $theme): string {
         $activeSites = is_array($theme['active_sites'] ?? null) ? $theme['active_sites'] : [];
+        $isTruncated = !empty($theme['active_sites_truncated']);
+        $siteCount = (int)($theme['site_count'] ?? count($activeSites));
         $site = [];
         $perPage = 20;
         $totalPages = (int)ceil(count($activeSites) / $perPage);
@@ -1075,6 +1077,19 @@ abstract class Widgets {
         echo '<p class="rrze-msm-plugin-sites-collapsed"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="false">▼ ' . esc_html__('Websites anzeigen', 'rrze-multisite-manager') . '</button></p>';
         echo '<div class="rrze-msm-plugin-sites-details" hidden>';
         echo '<p class="rrze-msm-plugin-sites-toggle-row"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="true">▲ ' . esc_html__('Websites verbergen', 'rrze-multisite-manager') . '</button></p>';
+
+        if ($isTruncated) {
+            echo '<p class="description">';
+            echo esc_html(
+                sprintf(
+                    __('Es wird eine Vorschau der ersten %1$s von %2$s Websites angezeigt.', 'rrze-multisite-manager'),
+                    number_format_i18n(count($activeSites)),
+                    number_format_i18n($siteCount)
+                )
+            );
+            echo '</p>';
+        }
+
         echo '<ul class="rrze-msm-plugin-sites-list">';
 
         foreach ($activeSites as $site) {

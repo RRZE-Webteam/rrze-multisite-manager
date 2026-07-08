@@ -32,6 +32,16 @@
                 </nav>
                 <?php echo $plugin_overview_table; ?>
             </section>
+
+            <?php if (!empty($missing_plugin_table)) { ?>
+                <section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-overview-page-section">
+                    <header class="rrze-msm-widget-header">
+                        <h2><?php echo esc_html__('Nicht mehr vorhandene Plugins in aktiven Datenbankeinträgen', 'rrze-multisite-manager'); ?></h2>
+                        <p><?php echo esc_html__('Diese Plugin-Dateien sind in einzelnen Websites noch als aktiv eingetragen, existieren aber nicht mehr im Plugin-Verzeichnis.', 'rrze-multisite-manager'); ?></p>
+                    </header>
+                    <?php echo $missing_plugin_table; ?>
+                </section>
+            <?php } ?>
         <?php } ?>
     </div>
     <div class="rrze-msm-modal" id="rrze-msm-plugin-deactivate-modal" hidden>

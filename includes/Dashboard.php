@@ -976,6 +976,7 @@ class Dashboard {
                 'site_id' => $siteId,
                 'site_summary' => $siteSummary,
                 'storage_analysis' => $storageAnalysis,
+                'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Website nach Titel oder URL suchen', 'rrze-multisite-manager'),
                 'site_storage_analysis_base_url' => $this->getSiteStorageAnalysisUrl(),
                 'site_details_url' => $siteId > 0 ? $this->getSiteDetailsUrl($siteId) : '',
@@ -983,6 +984,7 @@ class Dashboard {
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
                 'orphan_file_deleted' => isset($_GET['orphan_file_deleted']) ? sanitize_text_field((string)wp_unslash($_GET['orphan_file_deleted'])) : '',
+                'orphan_file_deleted_count' => isset($_GET['orphan_file_deleted_count']) ? absint($_GET['orphan_file_deleted_count']) : 0,
                 'orphan_file_error' => isset($_GET['orphan_file_error']) ? sanitize_text_field((string)wp_unslash($_GET['orphan_file_error'])) : '',
             ],
             $this
@@ -1000,6 +1002,7 @@ class Dashboard {
         $networkPlugins = [];
         $activePlugins = [];
         $inactivePlugins = [];
+        $missingPlugins = [];
         $metricsStatus = [];
         $returnUrl = '';
 
@@ -1011,6 +1014,7 @@ class Dashboard {
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $pluginUsage = is_array($dashboardData['plugin_usage'] ?? null) ? $dashboardData['plugin_usage'] : [];
         $allPlugins = is_array($pluginUsage['plugins'] ?? null) ? $pluginUsage['plugins'] : [];
+        $missingPlugins = is_array($pluginUsage['missing_plugins'] ?? null) ? $pluginUsage['missing_plugins'] : [];
         $widget = new PluginUsageWidget($this->plugin, $this->config);
         $networkPlugins = array_values(
             array_filter(
@@ -1163,6 +1167,16 @@ class Dashboard {
                 'plugin_overview_tabs' => $tabs,
                 'current_tab' => $currentTab,
                 'plugin_overview_table' => !empty($metricsStatus['has_data']) ? ($tables[$currentTab] ?? $tables['all']) : '',
+                'missing_plugin_count' => count($missingPlugins),
+                'missing_plugin_table' => !empty($metricsStatus['has_data']) && !empty($missingPlugins)
+                    ? $widget->renderMissingPluginTable(
+                        $missingPlugins,
+                        [
+                            'table_id' => 'plugin-overview-missing',
+                            'default_per_page' => 20,
+                        ]
+                    )
+                    : '',
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
                 'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus, $returnUrl),
@@ -1334,15 +1348,15 @@ class Dashboard {
         check_admin_referer('rrze_multisite_manager_save_views');
 
         $widgets = $this->getWidgetInstances();
-        $submittedViews = $_POST['views'] ?? [];
-        $newViewName = isset($_POST['new_view_name']) ? sanitize_text_field((string)$_POST['new_view_name']) : '';
+        $submittedViews = isset($_POST['views']) ? wp_unslash($_POST['views']) : [];
+        $newViewName = isset($_POST['new_view_name']) ? sanitize_text_field((string)wp_unslash($_POST['new_view_name'])) : '';
 
         $this->viewManager->saveViews($submittedViews, array_keys($widgets), $newViewName);
 
         $redirectUrl = add_query_arg(
             [
                 'page' => $this->settings->getSettingsSlug(),
-                'tab' => isset($_POST['settings_tab']) ? sanitize_key((string)$_POST['settings_tab']) : 'views',
+                'tab' => isset($_POST['settings_tab']) ? sanitize_key((string)wp_unslash($_POST['settings_tab'])) : 'views',
                 'views-updated' => 'true',
             ],
             $this->getAdminPageBaseUrl()
@@ -1359,8 +1373,8 @@ class Dashboard {
 
         check_ajax_referer('rrze-msm-save-widget-order', 'nonce');
 
-        $view = isset($_POST['view']) ? sanitize_key((string)$_POST['view']) : 'default';
-        $order = isset($_POST['order']) && is_array($_POST['order']) ? $_POST['order'] : [];
+        $view = isset($_POST['view']) ? sanitize_key((string)wp_unslash($_POST['view'])) : 'default';
+        $order = isset($_POST['order']) && is_array($_POST['order']) ? wp_unslash($_POST['order']) : [];
         $widgets = $this->getWidgetInstances();
         $allowedIds = array_keys($widgets);
         $sanitizedOrder = [];
@@ -1434,8 +1448,8 @@ class Dashboard {
     }
 
     public function handleSiteStatusAction(): void {
-        $siteId = isset($_REQUEST['site_id']) ? absint($_REQUEST['site_id']) : 0;
-        $statusAction = isset($_REQUEST['status_action']) ? sanitize_key((string)$_REQUEST['status_action']) : '';
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $statusAction = isset($_REQUEST['status_action']) ? sanitize_key((string)wp_unslash($_REQUEST['status_action'])) : '';
         $note = isset($_POST['status_note']) ? sanitize_textarea_field((string)wp_unslash($_POST['status_note'])) : '';
         $site = $siteId > 0 ? get_site($siteId) : null;
         $isArchived = false;
@@ -1599,27 +1613,69 @@ class Dashboard {
     public function handleOrphanFileDelete(): void {
         $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
         $relativePath = isset($_POST['relative_path']) ? sanitize_text_field((string)wp_unslash($_POST['relative_path'])) : '';
+        $relativePaths = isset($_POST['relative_paths']) && is_array($_POST['relative_paths'])
+            ? array_values(array_filter(array_map('sanitize_text_field', wp_unslash((array)$_POST['relative_paths']))))
+            : [];
         $redirectUrl = $this->getSiteStorageAnalysisUrl($siteId);
         $result = [];
+        $deletedCount = 0;
+        $deletedPaths = [];
+        $errors = [];
+        $path = '';
 
         if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to delete upload files.', 'rrze-multisite-manager'));
         }
 
-        check_admin_referer('rrze_multisite_manager_delete_orphan_file_' . $siteId . '_' . $relativePath);
+        if (!empty($relativePaths)) {
+            check_admin_referer('rrze_multisite_manager_delete_orphan_files_' . $siteId);
+        } else {
+            check_admin_referer('rrze_multisite_manager_delete_orphan_file_' . $siteId . '_' . $relativePath);
+        }
 
-        if ($siteId <= 0 || $relativePath === '') {
+        if ($siteId <= 0 || ($relativePath === '' && empty($relativePaths))) {
             wp_die(esc_html__('Ungültige Datei.', 'rrze-multisite-manager'));
         }
 
-        $result = $this->metrics->deleteSiteOrphanFile($siteId, $relativePath);
+        if (!empty($relativePaths)) {
+            foreach ($relativePaths as $path) {
+                if (!is_string($path) || trim($path) === '') {
+                    continue;
+                }
+
+                $result = $this->metrics->deleteSiteOrphanFile($siteId, $path);
+
+                if (!empty($result['deleted'])) {
+                    $deletedCount++;
+                    $deletedPaths[] = $path;
+                    continue;
+                }
+
+                $errors[] = sprintf(
+                    '%1$s: %2$s',
+                    $path,
+                    (string)($result['message'] ?? __('Die Datei konnte nicht gelöscht werden.', 'rrze-multisite-manager'))
+                );
+            }
+        } else {
+            $result = $this->metrics->deleteSiteOrphanFile($siteId, $relativePath);
+
+            if (!empty($result['deleted'])) {
+                $deletedCount = 1;
+                $deletedPaths[] = $relativePath;
+            } else {
+                $errors[] = (string)($result['message'] ?? __('Die Datei konnte nicht gelöscht werden.', 'rrze-multisite-manager'));
+            }
+        }
+
         $this->metrics->clearCache();
 
-        if (!empty($result['deleted'])) {
+        if ($deletedCount > 0 && empty($errors)) {
             $redirectUrl = add_query_arg(
                 [
                     'site_id' => $siteId,
-                    'orphan_file_deleted' => rawurlencode($relativePath),
+                    'orphan_file_deleted' => $deletedCount === 1 && !empty($deletedPaths[0]) ? rawurlencode((string)$deletedPaths[0]) : '',
+                    'orphan_file_deleted_count' => $deletedCount,
                 ],
                 $this->getSiteStorageAnalysisUrl()
             );
@@ -1627,7 +1683,8 @@ class Dashboard {
             $redirectUrl = add_query_arg(
                 [
                     'site_id' => $siteId,
-                    'orphan_file_error' => rawurlencode((string)($result['message'] ?? __('Die Datei konnte nicht gelöscht werden.', 'rrze-multisite-manager'))),
+                    'orphan_file_deleted_count' => $deletedCount,
+                    'orphan_file_error' => rawurlencode(implode(' | ', array_slice($errors, 0, 5))),
                 ],
                 $this->getSiteStorageAnalysisUrl()
             );
@@ -1717,6 +1774,10 @@ class Dashboard {
         $refresh = isset($_POST['rrze_msm_refresh']) ? sanitize_text_field((string)wp_unslash($_POST['rrze_msm_refresh'])) : '';
 
         if ($refresh !== '1') {
+            return false;
+        }
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             return false;
         }
 
