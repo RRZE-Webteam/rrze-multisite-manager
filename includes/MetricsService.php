@@ -6686,7 +6686,7 @@ class MetricsService {
                     'label' => __('Freier Speicher', 'rrze-multisite-manager'),
                     'value' => $freeBytes,
                     'value_label' => size_format($freeBytes),
-                    'accent' => 'neutral',
+                    'accent' => 'free-storage',
                 ];
             }
         }

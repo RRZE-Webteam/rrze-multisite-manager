@@ -501,12 +501,14 @@ abstract class Widgets {
         $item = [];
         $label = [];
         $sliceLabels = [];
+        $displayPercents = [];
 
         if (empty($items)) {
             return '<p>' . esc_html($emptyMessage) . '</p>';
         }
 
-        $sliceLabels = $this->getPieSliceLabels($items);
+        $displayPercents = $this->getPieDisplayPercents($items);
+        $sliceLabels = $this->getPieSliceLabels($items, $displayPercents);
 
         ob_start();
         echo '<div class="rrze-msm-pie-layout">';
@@ -533,12 +535,12 @@ abstract class Widgets {
         echo '</div>';
         echo '<div class="rrze-msm-pie-legend">';
 
-        foreach ($items as $item) {
+        foreach ($items as $itemIndex => $item) {
             echo '<div class="rrze-msm-pie-legend-item">';
             echo '<span class="rrze-msm-pie-swatch rrze-msm-swatch-' . esc_attr((string)$item['accent']) . '"></span>';
             echo '<div>';
             echo '<strong>' . esc_html((string)$item['label']) . '</strong><br>';
-            echo '<span>' . esc_html((string)($item['value_label'] ?? number_format_i18n((int)$item['value']))) . ' (' . esc_html((string)$item['percent']) . '%)</span>';
+            echo '<span>' . esc_html((string)($item['value_label'] ?? number_format_i18n((int)$item['value']))) . ' (' . esc_html((string)($displayPercents[$itemIndex] ?? 0)) . '%)</span>';
             echo '</div>';
             echo '</div>';
         }
@@ -559,26 +561,42 @@ abstract class Widgets {
         $segments = [];
         $position = 0;
         $item = [];
-        $nextPosition = 0;
+        $nextPosition = 0.0;
         $color = '';
+        $totalValue = 0;
+        $itemValue = 0;
+        $itemPercent = 0.0;
 
-        foreach ($items as $item) {
-            if ((int)($item['value'] ?? 0) <= 0) {
+        foreach ($items as $index => $item) {
+            $itemValue = (int)($item['value'] ?? 0);
+
+            if ($itemValue <= 0) {
+                continue;
+            }
+
+            $totalValue += $itemValue;
+        }
+
+        if ($totalValue <= 0) {
+            return 'conic-gradient(#d0d5dd 0% 100%)';
+        }
+
+        foreach ($items as $index => $item) {
+            $itemValue = (int)($item['value'] ?? 0);
+
+            if ($itemValue <= 0) {
                 continue;
             }
 
             $color = $this->getAccentColor((string)$item['accent']);
-            $nextPosition = min(100, $position + (int)$item['percent']);
-            $segments[] = $color . ' ' . $position . '% ' . $nextPosition . '%';
+            $itemPercent = ($itemValue / $totalValue) * 100;
+            $nextPosition = min(100, $position + $itemPercent);
+            $segments[] = $color . ' ' . round($position, 4) . '% ' . round($nextPosition, 4) . '%';
             $position = $nextPosition;
         }
 
         if (empty($segments)) {
             return 'conic-gradient(#d0d5dd 0% 100%)';
-        }
-
-        if ($position < 100) {
-            $segments[] = '#d0d5dd ' . $position . '% 100%';
         }
 
         return 'conic-gradient(' . implode(', ', $segments) . ')';
@@ -592,6 +610,7 @@ abstract class Widgets {
             'info' => 'var(--rrze-msm-info)',
             'blocked' => 'var(--rrze-msm-status-blocked-visual)',
             'neutral' => 'var(--rrze-msm-neutral)',
+            'free-storage' => 'var(--rrze-msm-storage-free)',
             'theme-1' => '#175cd3',
             'theme-2' => '#137333',
             'theme-3' => '#b26a00',
@@ -603,7 +622,7 @@ abstract class Widgets {
         return $colors[$accent] ?? 'var(--rrze-msm-neutral)';
     }
 
-    protected function getPieSliceLabels(array $items): array {
+    protected function getPieSliceLabels(array $items, array $displayPercents = []): array {
         $labels = [];
         $position = 0.0;
         $item = [];
@@ -613,13 +632,31 @@ abstract class Widgets {
         $radius = 34.0;
         $x = 0.0;
         $y = 0.0;
+        $totalValue = 0;
+        $itemValue = 0;
 
-        foreach ($items as $item) {
-            if ((int)($item['value'] ?? 0) <= 0) {
+        foreach ($items as $index => $item) {
+            $itemValue = (int)($item['value'] ?? 0);
+
+            if ($itemValue <= 0) {
                 continue;
             }
 
-            $percent = (float)($item['percent'] ?? 0);
+            $totalValue += $itemValue;
+        }
+
+        if ($totalValue <= 0) {
+            return [];
+        }
+
+        foreach ($items as $index => $item) {
+            $itemValue = (int)($item['value'] ?? 0);
+
+            if ($itemValue <= 0) {
+                continue;
+            }
+
+            $percent = ($itemValue / $totalValue) * 100;
 
             if ($percent < 8) {
                 $position += $percent;
@@ -632,7 +669,7 @@ abstract class Widgets {
             $y = 50 + ($radius * sin($angle));
 
             $labels[] = [
-                'text' => (string)((int)round($percent)) . '%',
+                'text' => (string)((int)($displayPercents[$index] ?? round($percent))) . '%',
                 'title' => (string)($item['label'] ?? ''),
                 'x' => round($x, 2),
                 'y' => round($y, 2),
@@ -642,6 +679,64 @@ abstract class Widgets {
         }
 
         return $labels;
+    }
+
+    protected function getPieDisplayPercents(array $items): array {
+        $percents = [];
+        $remainders = [];
+        $totalValue = 0;
+        $item = [];
+        $itemValue = 0;
+        $rawPercent = 0.0;
+        $assignedTotal = 0;
+        $remaining = 0;
+
+        foreach ($items as $item) {
+            $itemValue = (int)($item['value'] ?? 0);
+
+            if ($itemValue <= 0) {
+                continue;
+            }
+
+            $totalValue += $itemValue;
+        }
+
+        if ($totalValue <= 0) {
+            return [];
+        }
+
+        foreach ($items as $index => $item) {
+            $itemValue = (int)($item['value'] ?? 0);
+
+            if ($itemValue <= 0) {
+                $percents[$index] = 0;
+                continue;
+            }
+
+            $rawPercent = ($itemValue / $totalValue) * 100;
+            $percents[$index] = (int)floor($rawPercent);
+            $remainders[$index] = $rawPercent - $percents[$index];
+            $assignedTotal += $percents[$index];
+        }
+
+        $remaining = max(0, 100 - $assignedTotal);
+
+        if ($remaining > 0 && !empty($remainders)) {
+            arsort($remainders, SORT_NUMERIC);
+
+            foreach (array_keys($remainders) as $index) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $percents[$index] = (int)($percents[$index] ?? 0) + 1;
+                $remaining--;
+            }
+        }
+
+        ksort($percents);
+
+        return $percents;
     }
 
     protected function renderSiteAdminEmail(string $email): string {

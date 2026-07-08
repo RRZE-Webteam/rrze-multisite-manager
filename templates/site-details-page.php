@@ -509,6 +509,8 @@
                                         <form method="post" action="<?php echo esc_url($site_post_type_delete_action); ?>">
                                             <?php wp_nonce_field('rrze_multisite_manager_delete_post_type_entries_' . (int)$site_id); ?>
                                             <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                            <input type="hidden" name="section" value="content">
+                                            <input type="hidden" name="content_tab" value="custom-post-types">
                                             <input type="hidden" name="post_type" id="rrze-msm-delete-cpt-input" value="">
                                             <input type="hidden" name="confirm_delete" value="1">
                                             <label class="rrze-msm-modal-checkbox">
@@ -605,6 +607,7 @@
                                     <form method="post" action="<?php echo esc_url($site_option_group_delete_action); ?>" class="rrze-msm-option-delete-form">
                                         <?php wp_nonce_field('rrze_multisite_manager_delete_site_option_group_' . (int)$site_id . '_' . (string)$site_options_group['slug']); ?>
                                         <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                        <input type="hidden" name="section" value="options">
                                         <input type="hidden" name="group_key" value="<?php echo esc_attr((string)$site_options_group['slug']); ?>">
                                         <button type="submit" class="button button-secondary rrze-msm-button-danger"><?php echo esc_html__('Gesamte Gruppe löschen', 'rrze-multisite-manager'); ?></button>
                                     </form>
@@ -640,6 +643,7 @@
                                                             <form method="post" action="<?php echo esc_url($site_option_delete_action); ?>" class="rrze-msm-option-delete-form">
                                                                 <?php wp_nonce_field('rrze_multisite_manager_delete_site_option_' . (int)$site_id . '_' . (string)$site_option['name']); ?>
                                                                 <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                                                <input type="hidden" name="section" value="options">
                                                                 <input type="hidden" name="options_tab" value="<?php echo esc_attr((string)$site_options_current_tab); ?>">
                                                                 <input type="hidden" name="option_name" value="<?php echo esc_attr((string)$site_option['name']); ?>">
                                                                 <button type="submit" class="button button-secondary rrze-msm-button-danger"><?php echo esc_html__('Löschen', 'rrze-multisite-manager'); ?></button>

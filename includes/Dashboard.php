@@ -1549,6 +1549,7 @@ class Dashboard {
         $redirectUrl = add_query_arg(
             [
                 'site_id' => $siteId,
+                'section' => 'options',
                 'options_tab' => $optionsTab,
                 'option_deleted' => $optionName,
             ],
@@ -1732,6 +1733,7 @@ class Dashboard {
         $redirectUrl = add_query_arg(
             [
                 'site_id' => $siteId,
+                'section' => 'options',
                 'options_tab' => $groupKey,
                 'option_group_deleted' => $groupKey,
                 'option_group_deleted_count' => $deletedCount,
@@ -1770,6 +1772,7 @@ class Dashboard {
         $redirectUrl = add_query_arg(
             [
                 'site_id' => $siteId,
+                'section' => 'content',
                 'content_tab' => 'custom-post-types',
                 'deleted_post_type' => $postType,
                 'deleted_post_type_count' => $deletedCount,

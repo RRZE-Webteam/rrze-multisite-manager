@@ -29,9 +29,10 @@ class NetworkStorageUsageWidget extends Widgets {
         $storageUsage = is_array($dashboardData['network_storage_usage'] ?? null)
             ? $dashboardData['network_storage_usage']
             : [];
+        $items = is_array($storageUsage['items'] ?? null) ? $storageUsage['items'] : [];
 
         return [
-            'items' => is_array($storageUsage['items'] ?? null) ? $storageUsage['items'] : [],
+            'items' => $this->normalizeStorageUsageItems($items),
             'summary_label' => $this->getSummaryLabel($storageUsage),
             'mode_note' => $this->getModeNote($storageUsage),
             'center_title' => !empty($storageUsage['has_unlimited_site'])
@@ -42,6 +43,24 @@ class NetworkStorageUsageWidget extends Widgets {
                 : (string)($storageUsage['total_max_label'] ?? ''),
             'empty_message' => __('Keine Speicherverbrauchsdaten vorhanden.', 'rrze-multisite-manager'),
         ];
+    }
+
+    protected function normalizeStorageUsageItems(array $items): array {
+        $freeStorageLabel = __('Freier Speicher', 'rrze-multisite-manager');
+        $item = [];
+        $index = 0;
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            if ((string)($item['label'] ?? '') === $freeStorageLabel) {
+                $items[$index]['accent'] = 'free-storage';
+            }
+        }
+
+        return $items;
     }
 
     protected function getSummaryLabel(array $storageUsage): string {
