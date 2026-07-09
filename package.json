@@ -13,8 +13,8 @@
     "version:prod": "node scripts/build-version.js prod",
     "version:release": "node scripts/build-version.js release",
     "dev": "node scripts/build-assets.js dev && npm run version:dev && npm run readme",
-    "build": "node scripts/build-assets.js prod && npm run version:prod && npm run readme",
-    "prod": "npm run build",
+    "build": "node scripts/build-assets.js prod",
+    "prod": "node scripts/build-assets.js prod && npm run version:prod && npm run readme",
     "release": "node scripts/build-assets.js prod && npm run version:release && npm run readme",
     "watch": "node scripts/build-assets.js dev --watch"
   },
