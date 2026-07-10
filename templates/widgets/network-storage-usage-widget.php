@@ -1,5 +1,9 @@
-<?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
+<?php
 // phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal widget markup.
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 ?>
 <section class="rrze-msm-widget <?php echo esc_attr($widget_classes); ?>" data-widget-id="<?php echo esc_attr($widget_id); ?>">
     <div class="rrze-msm-widget-controls">
