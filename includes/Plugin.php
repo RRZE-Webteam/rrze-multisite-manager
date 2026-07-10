@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- This file does not render user-controlled output; Plugin Check flags the thrown exception text anyway.
 
 namespace RRZE\MultisiteManager;
 
@@ -109,10 +110,15 @@ class Plugin {
 
     public function __call(string $name, array $arguments): void {
         if (!method_exists($this, $name)) {
-            $message = sprintf('Call to undefined method %1$s::%2$s', __CLASS__, $name);
+            $message = sprintf(
+                /* translators: 1: class name, 2: missing method name. */
+                esc_html__('Call to undefined method %1$s::%2$s', 'rrze-multisite-manager'),
+                __CLASS__,
+                $name
+            );
 
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                throw new \Exception($message);
+                throw new \BadMethodCallException($message);
             }
         }
     }

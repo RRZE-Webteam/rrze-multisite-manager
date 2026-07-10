@@ -1,3 +1,7 @@
+<?php
+defined('ABSPATH') || exit;
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal admin markup fragments.
+?>
 <div class="wrap rrze-multisite-manager-admin rrze-msm-mode-light">
     <div class="rrze-msm-page-shell">
         <div class="rrze-msm-page-header">

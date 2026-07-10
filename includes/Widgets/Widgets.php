@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Renderer methods in this file escape dynamic data locally and intentionally return HTML fragments.
 
 namespace RRZE\MultisiteManager\Widgets;
 

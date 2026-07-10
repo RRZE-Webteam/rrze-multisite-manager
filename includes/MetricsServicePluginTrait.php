@@ -252,7 +252,11 @@ trait MetricsServicePluginTrait {
 
         if (!empty($plugin['update_available']) && !empty($plugin['update_version'])) {
             $items[] = [
-                'label' => sprintf(__('Update %s verfügbar', 'rrze-multisite-manager'), (string)$plugin['update_version']),
+                'label' => sprintf(
+                    /* translators: %s: available plugin update version. */
+                    __('Update %s verfügbar', 'rrze-multisite-manager'),
+                    (string)$plugin['update_version']
+                ),
                 'accent' => 'info',
             ];
         }

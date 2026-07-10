@@ -54,6 +54,7 @@ class MonitoringService {
             $schedules[$slug] = [
                 'interval' => $this->getMonitoringInterval(),
                 'display' => sprintf(
+                    /* translators: %d: interval in hours for the monitoring schedule. */
                     __('Alle %d Stunden', 'rrze-multisite-manager'),
                     $this->getMonitoringIntervalHours()
                 ),
@@ -468,7 +469,11 @@ class MonitoringService {
             return $label;
         }
 
-        return sprintf(__('Site %d', 'rrze-multisite-manager'), (int)$site->blog_id);
+        return sprintf(
+            /* translators: %d: site ID. */
+            __('Site %d', 'rrze-multisite-manager'),
+            (int)$site->blog_id
+        );
     }
 
     protected function updateOperationalStatus(int $siteId, string $currentStatus, string $nextStatus, string $timestamp, string $source): bool {

@@ -482,6 +482,7 @@ class MetricsService {
             get_current_network_id()
         );
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Aggregated dashboard metric query; result is persisted in the dashboard cache.
         $rows = $wpdb->get_results($sql);
 
         foreach ($rows as $row) {
@@ -2343,6 +2344,7 @@ class MetricsService {
             $days
         );
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lightweight aggregate used for dashboard summary generation and covered by dashboard caching.
         return (int)$wpdb->get_var($sql);
     }
 
@@ -3335,6 +3337,7 @@ class MetricsService {
         $mime = '';
         $count = 0;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Attachment MIME aggregation is not available through a core helper and is cached by the surrounding detail cache.
         $rows = $wpdb->get_results(
             "SELECT post_mime_type, COUNT(ID) AS total
             FROM {$wpdb->posts}
@@ -3512,6 +3515,7 @@ class MetricsService {
             return 0;
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Purpose-built post type count query used in a cached detail context.
         $count = (int)$wpdb->get_var(
             $wpdb->prepare(
                 "SELECT COUNT(ID)
@@ -3528,6 +3532,7 @@ class MetricsService {
     protected function getDistinctPostTypeCounts(): array {
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Distinct post type overview requires direct grouping and is computed inside cached detail generation.
         $rows = $wpdb->get_results(
             "SELECT post_type, COUNT(ID) AS total
             FROM {$wpdb->posts}
@@ -3925,6 +3930,7 @@ class MetricsService {
             $matchCount = count($matches);
             $fileRow['content_usage_count'] = $matchCount;
             $fileRow['content_usage_label'] = sprintf(
+                /* translators: %d: number of content usage matches. */
                 _n('%d Treffer', '%d Treffer', $matchCount, 'rrze-multisite-manager'),
                 $matchCount
             );
@@ -3948,6 +3954,7 @@ class MetricsService {
         global $wpdb;
 
         $index = [];
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Attachment index needs a joined metadata query and is reused within cached storage analysis.
         $rows = $wpdb->get_results(
             "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file, pm_meta.meta_value AS attachment_metadata
             FROM {$wpdb->posts} p
@@ -4164,10 +4171,12 @@ class MetricsService {
                 'type' => $differenceBytes > 0 ? 'warning' : 'info',
                 'message' => $differenceBytes > 0
                     ? sprintf(
+                        /* translators: %s: storage size difference. */
                         __('Das Upload-Verzeichnis ist um %s größer als der von WordPress gemeldete Speicherwert. Das deutet oft auf veraltete Core-Caches oder zusätzliche Dateien im Uploads-Ordner hin.', 'rrze-multisite-manager'),
                         size_format(abs($differenceBytes))
                     )
                     : sprintf(
+                        /* translators: %s: storage size difference. */
                         __('WordPress meldet %s mehr Speicher als im aktuell gescannten Upload-Verzeichnis gefunden wurde. Das deutet oft auf einen veralteten WordPress-Speicherwert hin.', 'rrze-multisite-manager'),
                         size_format(abs($differenceBytes))
                     ),
@@ -4178,6 +4187,7 @@ class MetricsService {
             $warnings[] = [
                 'type' => 'warning',
                 'message' => sprintf(
+                    /* translators: 1: orphan file count, 2: total orphan storage size. */
                     __('Es wurden %1$s potenziell verwaiste Dateien mit zusammen %2$s gefunden. Das sind Dateien im Uploads-Ordner, die aktuell nicht über Attachment-Metadaten referenziert werden.', 'rrze-multisite-manager'),
                     number_format_i18n($orphanFileCount),
                     size_format($orphanTotalBytes)
@@ -4238,6 +4248,11 @@ class MetricsService {
         $codeMatches = [];
         $codeMatch = [];
         $codeKey = '';
+        $contentConditions = [];
+        $contentParams = [];
+        $metaConditions = [];
+        $metaParams = [];
+        $needle = '';
 
         $needles = $this->buildFileUsageSearchNeedles($fileUrl, $relativePath);
 
@@ -4245,8 +4260,23 @@ class MetricsService {
             return [];
         }
 
+        foreach ($needles as $needle) {
+            $contentConditions[] = 'post_content LIKE %s';
+            $contentParams[] = '%' . $wpdb->esc_like($needle) . '%';
+            $metaConditions[] = 'pm.meta_value LIKE %s';
+            $metaParams[] = '%' . $wpdb->esc_like($needle) . '%';
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Placeholder conditions are assembled internally and bound safely via $wpdb->prepare().
         $posts = $wpdb->get_results(
-            $this->prepareContentNeedleQuery($wpdb, $needles)
+            $wpdb->prepare(
+                "SELECT ID, post_type, post_title
+                FROM {$wpdb->posts}
+                WHERE post_type IN ('post', 'page')
+                AND post_status NOT IN ('auto-draft', 'trash')
+                AND (" . implode(' OR ', $contentConditions) . ')',
+                ...$contentParams
+            )
         );
 
         foreach ($posts as $post) {
@@ -4267,8 +4297,17 @@ class MetricsService {
             $seen[$postId . ':content'] = true;
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Placeholder conditions are assembled internally and bound safely via $wpdb->prepare().
         $metaRows = $wpdb->get_results(
-            $this->prepareMetaNeedleQuery($wpdb, $needles)
+            $wpdb->prepare(
+                "SELECT DISTINCT p.ID, p.post_type, p.post_title, pm.meta_key
+                FROM {$wpdb->posts} p
+                INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
+                WHERE p.post_type IN ('post', 'page')
+                AND p.post_status NOT IN ('auto-draft', 'trash')
+                AND (" . implode(' OR ', $metaConditions) . ')',
+                ...$metaParams
+            )
         );
 
         foreach ($metaRows as $metaRow) {
@@ -4291,6 +4330,7 @@ class MetricsService {
 
             if (!isset($seen[$postId . ':meta'])) {
                 $results[$postId]['matches'][] = sprintf(
+                    /* translators: %s: post meta key name. */
                     __('Metafeld: %s', 'rrze-multisite-manager'),
                     (string)($metaRow->meta_key ?? '')
                 );
@@ -4401,13 +4441,14 @@ class MetricsService {
             $pluginName = !empty($pluginCatalog[$pluginFile]['Name']) && is_string($pluginCatalog[$pluginFile]['Name'])
                 ? (string)$pluginCatalog[$pluginFile]['Name']
                 : $pluginFile;
-            $results = array_merge(
-                $results,
-                $this->buildAssetUsageIndexEntriesForFiles(
-                    $this->getPluginAnalysisFiles($pluginFile),
-                    sprintf(__('Plugin: %s', 'rrze-multisite-manager'), $pluginName)
-                )
-            );
+                $results = array_merge(
+                    $results,
+                    $this->buildAssetUsageIndexEntriesForFiles(
+                        $this->getPluginAnalysisFiles($pluginFile),
+                        /* translators: %s: plugin name. */
+                        sprintf(__('Plugin: %s', 'rrze-multisite-manager'), $pluginName)
+                    )
+                );
         }
 
         if ($themeStylesheet !== '') {
@@ -4418,6 +4459,7 @@ class MetricsService {
                     $results,
                     $this->buildAssetUsageIndexEntriesForFiles(
                         $this->getThemeAnalysisFiles($themeStylesheet),
+                        /* translators: %s: theme name. */
                         sprintf(__('Theme: %s', 'rrze-multisite-manager'), (string)$theme->get('Name'))
                     )
                 );
@@ -4433,6 +4475,7 @@ class MetricsService {
                     $results,
                     $this->buildAssetUsageIndexEntriesForFiles(
                         $this->getStandaloneAnalysisFiles((string)$muPath),
+                        /* translators: %s: MU plugin name. */
                         sprintf(__('MU-Plugin: %s', 'rrze-multisite-manager'), $muName)
                     )
                 );
@@ -4534,6 +4577,7 @@ class MetricsService {
                     'key' => $providerPrefix . ':' . md5($filePath . '|' . $chunk),
                     'title' => $providerLabel,
                     'match_label' => sprintf(
+                        /* translators: %s: file name where the asset registration or enqueue was found. */
                         __('Code-Registrierung/Enqueue in %s', 'rrze-multisite-manager'),
                         $relativeFile
                     ),
@@ -4686,47 +4730,6 @@ class MetricsService {
         return $needles;
     }
 
-    protected function prepareContentNeedleQuery(\wpdb $wpdb, array $needles): string {
-        $conditions = [];
-        $params = [];
-        $needle = '';
-
-        foreach ($needles as $needle) {
-            $conditions[] = 'post_content LIKE %s';
-            $params[] = '%' . $wpdb->esc_like($needle) . '%';
-        }
-
-        return $wpdb->prepare(
-            "SELECT ID, post_type, post_title
-            FROM {$wpdb->posts}
-            WHERE post_type IN ('post', 'page')
-            AND post_status NOT IN ('auto-draft', 'trash')
-            AND (" . implode(' OR ', $conditions) . ')',
-            ...$params
-        );
-    }
-
-    protected function prepareMetaNeedleQuery(\wpdb $wpdb, array $needles): string {
-        $conditions = [];
-        $params = [];
-        $needle = '';
-
-        foreach ($needles as $needle) {
-            $conditions[] = 'pm.meta_value LIKE %s';
-            $params[] = '%' . $wpdb->esc_like($needle) . '%';
-        }
-
-        return $wpdb->prepare(
-            "SELECT DISTINCT p.ID, p.post_type, p.post_title, pm.meta_key
-            FROM {$wpdb->posts} p
-            INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
-            WHERE p.post_type IN ('post', 'page')
-            AND p.post_status NOT IN ('auto-draft', 'trash')
-            AND (" . implode(' OR ', $conditions) . ')',
-            ...$params
-        );
-    }
-
     protected function ensureDirectoryStat(array &$directoryStats, string $directoryPath, string $normalizedBaseDir): void {
         $relativePath = '.';
 
@@ -4858,6 +4861,7 @@ class MetricsService {
 
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Options summary needs a full option-name scan and is stored in the section cache.
         $rows = $wpdb->get_results(
             "SELECT option_name
             FROM {$wpdb->options}
@@ -4922,6 +4926,7 @@ class MetricsService {
         $isTruncated = false;
 
         if (!empty($whereData['where'])) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Group-filtered option inspection is cached per site and group.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT option_name, option_value, autoload
@@ -4933,6 +4938,7 @@ class MetricsService {
                 )
             );
         } else {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Full option inspection fallback is cached per site and group.
             $rows = $wpdb->get_results(
                 "SELECT option_name, option_value, autoload
                 FROM {$wpdb->options}
@@ -4985,6 +4991,7 @@ class MetricsService {
 
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Process stats are cached per detail section and require a direct transient count query.
         $transientCount = (int)$wpdb->get_var(
             "SELECT COUNT(option_name)
             FROM {$wpdb->options}
@@ -5031,6 +5038,7 @@ class MetricsService {
 
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transient listing is cached per site detail section.
         $rows = $wpdb->get_results(
             "SELECT option_name, option_value
             FROM {$wpdb->options}
@@ -5210,6 +5218,7 @@ class MetricsService {
 
         switch_to_blog($siteId);
         do {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Batch selection for CPT deletion is necessary and bounded to 100 rows per loop.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT ID
@@ -5256,6 +5265,7 @@ class MetricsService {
         $whereData = $this->getOptionGroupWhereData($groupKey);
 
         if (!empty($whereData['where'])) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Option group selection is a targeted admin delete action.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT option_name
@@ -5266,6 +5276,7 @@ class MetricsService {
                 )
             );
         } else {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Option group fallback selection is a targeted admin delete action.
             $rows = $wpdb->get_results(
                 "SELECT option_name
                 FROM {$wpdb->options}

@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Renderer methods in this file escape dynamic data locally and intentionally return HTML fragments.
 
 namespace RRZE\MultisiteManager\Widgets;
 
@@ -66,7 +67,13 @@ class PluginUsageWidget extends Widgets {
             echo '<option value="' . esc_attr((string)$option) . '"' . selected($option, $defaultPerPage, false) . '>';
 
             if ($option === $defaultPerPage) {
-                echo esc_html(sprintf(__('Standard (%d)', 'rrze-multisite-manager'), $option));
+                echo esc_html(
+                    sprintf(
+                        /* translators: %d: default row count for the plugin table. */
+                        __('Standard (%d)', 'rrze-multisite-manager'),
+                        $option
+                    )
+                );
             } else {
                 echo esc_html((string)$option);
             }
@@ -109,7 +116,13 @@ class PluginUsageWidget extends Widgets {
 
             if (!empty($plugin['update_available']) && !empty($plugin['update_version'])) {
                 echo '<div class="rrze-msm-plugin-update-note">';
-                echo '<strong>' . esc_html(sprintf(__('Neue Version %s verfügbar.', 'rrze-multisite-manager'), (string)$plugin['update_version'])) . '</strong>';
+                echo '<strong>' . esc_html(
+                    sprintf(
+                        /* translators: %s: available plugin version number. */
+                        __('Neue Version %s verfügbar.', 'rrze-multisite-manager'),
+                        (string)$plugin['update_version']
+                    )
+                ) . '</strong>';
                 echo '<div class="rrze-msm-plugin-update-links">';
 
                 if (!empty($plugin['update_details_url'])) {
@@ -218,7 +231,13 @@ class PluginUsageWidget extends Widgets {
             echo '<option value="' . esc_attr((string)$option) . '"' . selected($option, $defaultPerPage, false) . '>';
 
             if ($option === $defaultPerPage) {
-                echo esc_html(sprintf(__('Standard (%d)', 'rrze-multisite-manager'), $option));
+                echo esc_html(
+                    sprintf(
+                        /* translators: %d: default row count for the missing plugin table. */
+                        __('Standard (%d)', 'rrze-multisite-manager'),
+                        $option
+                    )
+                );
             } else {
                 echo esc_html((string)$option);
             }
@@ -356,15 +375,33 @@ class PluginUsageWidget extends Widgets {
         }
 
         if ($textDomain !== '') {
-            $items[] = esc_html(sprintf(__('Textdomain: %s', 'rrze-multisite-manager'), $textDomain));
+            $items[] = esc_html(
+                sprintf(
+                    /* translators: %s: plugin text domain. */
+                    __('Textdomain: %s', 'rrze-multisite-manager'),
+                    $textDomain
+                )
+            );
         }
 
         if ($requiresWp !== '') {
-            $items[] = esc_html(sprintf(__('WP ab: %s', 'rrze-multisite-manager'), $requiresWp));
+            $items[] = esc_html(
+                sprintf(
+                    /* translators: %s: minimum supported WordPress version. */
+                    __('WP ab: %s', 'rrze-multisite-manager'),
+                    $requiresWp
+                )
+            );
         }
 
         if ($requiresPhp !== '') {
-            $items[] = esc_html(sprintf(__('PHP ab: %s', 'rrze-multisite-manager'), $requiresPhp));
+            $items[] = esc_html(
+                sprintf(
+                    /* translators: %s: minimum supported PHP version. */
+                    __('PHP ab: %s', 'rrze-multisite-manager'),
+                    $requiresPhp
+                )
+            );
         }
 
         if (empty($items)) {
@@ -401,6 +438,7 @@ class PluginUsageWidget extends Widgets {
             echo '<p class="description">';
             echo esc_html(
                 sprintf(
+                    /* translators: 1: number of previewed websites, 2: total number of websites. */
                     __('Es wird eine Vorschau der ersten %1$s von %2$s Websites angezeigt.', 'rrze-multisite-manager'),
                     number_format_i18n(count($activeSites)),
                     number_format_i18n($siteCount)
@@ -437,7 +475,14 @@ class PluginUsageWidget extends Widgets {
         if ($totalPages > 1) {
             echo '<div class="rrze-msm-plugin-sites-pagination" data-current-page="1" data-total-pages="' . esc_attr((string)$totalPages) . '">';
             echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="prev" disabled aria-disabled="true"><span aria-hidden="true">‹</span><span class="screen-reader-text">' . esc_html__('Vorherige Seite', 'rrze-multisite-manager') . '</span></button>';
-            echo '<span class="rrze-msm-plugin-sites-page-label">' . esc_html(sprintf(__('Seite %1$d von %2$d', 'rrze-multisite-manager'), 1, $totalPages)) . '</span>';
+            echo '<span class="rrze-msm-plugin-sites-page-label">' . esc_html(
+                sprintf(
+                    /* translators: 1: current page number, 2: total number of pages. */
+                    __('Seite %1$d von %2$d', 'rrze-multisite-manager'),
+                    1,
+                    $totalPages
+                )
+            ) . '</span>';
             echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="next"><span aria-hidden="true">›</span><span class="screen-reader-text">' . esc_html__('Nächste Seite', 'rrze-multisite-manager') . '</span></button>';
             echo '</div>';
         }

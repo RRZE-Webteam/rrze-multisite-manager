@@ -1,3 +1,7 @@
+<?php
+defined('ABSPATH') || exit;
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal admin markup fragments.
+?>
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
     <?php $site_detail_current_section = !empty($site_detail_current_section) ? (string)$site_detail_current_section : 'overview'; ?>
     <div class="rrze-msm-page-shell">

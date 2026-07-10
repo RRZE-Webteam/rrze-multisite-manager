@@ -72,6 +72,7 @@ class NetworkStorageUsageWidget extends Widgets {
 
         if (!empty($storageUsage['has_unlimited_site'])) {
             return sprintf(
+                /* translators: %s: total used storage label. */
                 __('Verwendeter Speicherplatz gesamt: %s', 'rrze-multisite-manager'),
                 $usedLabel !== '' ? $usedLabel : __('Unbekannt', 'rrze-multisite-manager')
             );
@@ -79,6 +80,7 @@ class NetworkStorageUsageWidget extends Widgets {
 
         if ($usedLabel !== '' && $maxLabel !== '' && $percent !== null) {
             return sprintf(
+                /* translators: 1: used storage label, 2: maximum storage label, 3: used percentage. */
                 __('%1$s von %2$s belegt (%3$d%%)', 'rrze-multisite-manager'),
                 $usedLabel,
                 $maxLabel,
@@ -88,6 +90,7 @@ class NetworkStorageUsageWidget extends Widgets {
 
         if ($usedLabel !== '' && $maxLabel !== '') {
             return sprintf(
+                /* translators: 1: used storage label, 2: maximum storage label. */
                 __('%1$s von %2$s belegt', 'rrze-multisite-manager'),
                 $usedLabel,
                 $maxLabel

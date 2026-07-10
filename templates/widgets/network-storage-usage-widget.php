@@ -1,3 +1,6 @@
+<?php if ( ! defined( 'ABSPATH' ) ) exit; ?>
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal widget markup.
+?>
 <section class="rrze-msm-widget <?php echo esc_attr($widget_classes); ?>" data-widget-id="<?php echo esc_attr($widget_id); ?>">
     <div class="rrze-msm-widget-controls">
         <button type="button" class="rrze-msm-widget-move rrze-msm-widget-move-up" data-direction="up" aria-label="<?php echo esc_attr__('Widget nach oben verschieben', 'rrze-multisite-manager'); ?>">&#9650;</button>
@@ -13,5 +16,6 @@
     <?php if ($mode_note !== '') { ?>
         <p><?php echo esc_html($mode_note); ?></p>
     <?php } ?>
-    <?php echo $this->renderPieChart($items, $empty_message, ['center_title' => $center_title ?? '', 'center_value' => $center_value ?? '']); ?>
+    <?php // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Internal trusted renderer output. ?>
+    <?php echo $this->renderPieChart($items, $empty_message, ['center_title' => $center_title ?? '', 'center_value' => $center_value ?? '']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Internal trusted renderer output. ?>
 </section>

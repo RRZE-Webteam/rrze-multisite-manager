@@ -34,6 +34,7 @@ class SummaryWidget extends Widgets {
                     'label' => __('Sites', 'rrze-multisite-manager'),
                     'value' => $summary['total_sites'] ?? 0,
                     'detail' => sprintf(
+                        /* translators: %d: number of active sites. */
                         __('davon %d aktiv', 'rrze-multisite-manager'),
                         (int)($summary['active_sites'] ?? 0)
                     ),
@@ -43,6 +44,7 @@ class SummaryWidget extends Widgets {
                     'label' => __('Benutzer', 'rrze-multisite-manager'),
                     'value' => $summary['total_users'] ?? 0,
                     'detail' => sprintf(
+                        /* translators: %d: number of super administrators. */
                         __('davon %d Superadmins', 'rrze-multisite-manager'),
                         (int)($summary['super_admins'] ?? 0)
                     ),
@@ -52,6 +54,7 @@ class SummaryWidget extends Widgets {
                     'label' => __('Plugins', 'rrze-multisite-manager'),
                     'value' => $summary['total_plugins'] ?? 0,
                     'detail' => sprintf(
+                        /* translators: %d: number of network-active plugins. */
                         __('davon %d netzwerkweit aktiv', 'rrze-multisite-manager'),
                         (int)($summary['network_active_plugins'] ?? 0)
                     ),
@@ -61,6 +64,7 @@ class SummaryWidget extends Widgets {
                     'label' => __('Themes', 'rrze-multisite-manager'),
                     'value' => $summary['total_themes'] ?? 0,
                     'detail' => sprintf(
+                        /* translators: %d: number of network-enabled themes. */
                         __('davon %d netzwerkweit verfügbar', 'rrze-multisite-manager'),
                         (int)($summary['network_enabled_themes'] ?? 0)
                     ),
@@ -72,6 +76,7 @@ class SummaryWidget extends Widgets {
                     'detail' => !empty($summary['has_unlimited_storage_site'])
                         ? __('mindestens eine Site unbegrenzt', 'rrze-multisite-manager')
                         : sprintf(
+                            /* translators: %s: total maximum storage label. */
                             __('von %s', 'rrze-multisite-manager'),
                             (string)($summary['total_storage_max_label'] ?? '')
                         ),

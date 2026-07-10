@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite-Management für WordPress im RRZE-Kontext
- * Version:         1.1.6
+ * Version:         1.1.7
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -59,12 +59,14 @@ function systemRequirements(): string {
 
     if (version_compare(PHP_VERSION, RRZE_PHP_VERSION, '<')) {
         $error = sprintf(
+            /* translators: 1: current PHP version, 2: minimum required PHP version. */
             __('The server is running PHP version %1$s. The plugin requires at least PHP version %2$s.', 'rrze-multisite-manager'),
             PHP_VERSION,
             RRZE_PHP_VERSION
         );
     } elseif (version_compare($GLOBALS['wp_version'], RRZE_WP_VERSION, '<')) {
         $error = sprintf(
+            /* translators: 1: current WordPress version, 2: minimum required WordPress version. */
             __('The server is running WordPress version %1$s. The plugin requires at least WordPress version %2$s.', 'rrze-multisite-manager'),
             $GLOBALS['wp_version'],
             RRZE_WP_VERSION
@@ -106,9 +108,13 @@ function showSystemRequirementNotice(): void {
     $error = (string)($GLOBALS['rrze_multisite_manager_system_requirement_error'] ?? '');
 
     printf(
-        '<div class="notice notice-error"><p>' . __('Plugin %1$s: %2$s', 'rrze-multisite-manager') . '</p></div>',
-        esc_html($pluginName),
-        esc_html($error)
+        '<div class="notice notice-error"><p>%s</p></div>',
+        sprintf(
+            /* translators: 1: plugin name, 2: system requirement error message. */
+            esc_html__('Plugin %1$s: %2$s', 'rrze-multisite-manager'),
+            esc_html($pluginName),
+            esc_html($error)
+        )
     );
 }
 

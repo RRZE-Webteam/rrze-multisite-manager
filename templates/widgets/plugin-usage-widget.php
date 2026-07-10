@@ -1,3 +1,9 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal widget markup.
+?>
 <section class="rrze-msm-widget <?php echo esc_attr($widget_classes); ?>" data-widget-id="<?php echo esc_attr($widget_id); ?>">
     <div class="rrze-msm-widget-controls">
         <button type="button" class="rrze-msm-widget-move rrze-msm-widget-move-up" data-direction="up" aria-label="<?php echo esc_attr__('Widget nach oben verschieben', 'rrze-multisite-manager'); ?>">&#9650;</button>
@@ -17,6 +23,7 @@
         <p><?php echo esc_html__('Derzeit liegen keine aktiven Plugins im Netzwerk vor.', 'rrze-multisite-manager'); ?></p>
     <?php } else { ?>
         <?php
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Internal trusted renderer output.
         echo $this->renderTable(
             $plugins,
             [

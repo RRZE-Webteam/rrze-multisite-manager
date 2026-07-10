@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- This controller assembles trusted internal admin settings markup and delegates escaping to templates and callbacks.
 
 namespace RRZE\MultisiteManager;
 

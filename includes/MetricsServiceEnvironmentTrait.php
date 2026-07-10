@@ -84,7 +84,16 @@ trait MetricsServiceEnvironmentTrait {
                 ['label' => 'upload_max_filesize', 'value' => (string)ini_get('upload_max_filesize')],
                 ['label' => 'post_max_size', 'value' => (string)ini_get('post_max_size')],
                 ['label' => 'max_input_vars', 'value' => (string)ini_get('max_input_vars')],
-                ['label' => __('Standard-Quota pro Site', 'rrze-multisite-manager'), 'value' => $defaultSiteQuota > 0 ? sprintf(__('%d MB', 'rrze-multisite-manager'), $defaultSiteQuota) : __('Nicht gesetzt', 'rrze-multisite-manager')],
+                [
+                    'label' => __('Standard-Quota pro Site', 'rrze-multisite-manager'),
+                    'value' => $defaultSiteQuota > 0
+                        ? sprintf(
+                            /* translators: %d: default site quota in megabytes. */
+                            __('%d MB', 'rrze-multisite-manager'),
+                            $defaultSiteQuota
+                        )
+                        : __('Nicht gesetzt', 'rrze-multisite-manager'),
+                ],
                 ['label' => __('Upload-Prüfung deaktiviert', 'rrze-multisite-manager'), 'value' => defined('UPLOADS') ? __('Konstantenbasiert konfiguriert', 'rrze-multisite-manager') : __('Nein', 'rrze-multisite-manager')],
             ],
         ];
@@ -153,6 +162,7 @@ trait MetricsServiceEnvironmentTrait {
 
         if ($coreUpgradeCount > 0 || $availablePluginUpdates > 0 || $availableThemeUpdates > 0) {
             $warnings[] = sprintf(
+                /* translators: 1: core update count, 2: plugin update count, 3: theme update count. */
                 __('Es stehen Updates an: Core %1$d, Plugins %2$d, Themes %3$d.', 'rrze-multisite-manager'),
                 $coreUpgradeCount,
                 $availablePluginUpdates,
@@ -162,6 +172,7 @@ trait MetricsServiceEnvironmentTrait {
 
         if ((int)($summary['spam_sites'] ?? 0) > 0 || (int)($summary['archived_sites'] ?? 0) > 0 || (int)($summary['deleted_sites'] ?? 0) > 0) {
             $warnings[] = sprintf(
+                /* translators: 1: archived site count, 2: blocked site count, 3: deleted site count. */
                 __('Im Netzwerk gibt es auffällige Site-Status: archiviert %1$d, gesperrt %2$d, zum Löschen markiert %3$d.', 'rrze-multisite-manager'),
                 (int)($summary['archived_sites'] ?? 0),
                 (int)($summary['spam_sites'] ?? 0),
@@ -171,6 +182,7 @@ trait MetricsServiceEnvironmentTrait {
 
         if (!empty($networkStorage['percent']) && (int)$networkStorage['percent'] >= 90) {
             $warnings[] = sprintf(
+                /* translators: %d: network storage usage percentage. */
                 __('Der berechenbare Netzwerkspeicher ist bereits zu %d%% belegt.', 'rrze-multisite-manager'),
                 (int)$networkStorage['percent']
             );

@@ -1,3 +1,4 @@
+<?php if ( ! defined( 'ABSPATH' ) ) { exit; } ?>
 <section class="rrze-msm-widget <?php echo esc_attr($widget_classes); ?>" data-widget-id="<?php echo esc_attr($widget_id); ?>">
     <div class="rrze-msm-widget-controls">
         <button type="button" class="rrze-msm-widget-move rrze-msm-widget-move-up" data-direction="up" aria-label="<?php echo esc_attr__('Widget nach oben verschieben', 'rrze-multisite-manager'); ?>">&#9650;</button>
@@ -12,7 +13,7 @@
     <?php } else { ?>
         <div class="rrze-msm-theme-card-list">
             <?php foreach ($themes as $theme) { ?>
-                <?php echo $this->renderThemeCard((array)$theme); ?>
+                <?php echo wp_kses_post($this->renderThemeCard((array)$theme)); ?>
             <?php } ?>
         </div>
     <?php } ?>
