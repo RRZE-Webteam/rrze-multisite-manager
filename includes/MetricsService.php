@@ -4590,21 +4590,44 @@ class MetricsService {
     }
 
     protected function extractAssetUsageRelevantSourceChunks(string $source): array {
-        $matches = [];
         $chunks = [];
-        $index = 0;
+        $needles = [
+            'wp_register_script',
+            'wp_register_style',
+            'wp_enqueue_script',
+            'wp_enqueue_style',
+            'wp_add_inline_script',
+            'wp_add_inline_style',
+            'register_block_type',
+        ];
+        $lowerSource = strtolower($source);
+        $needle = '';
+        $offset = 0;
+        $position = false;
+        $chunkEnd = 0;
         $chunk = '';
-        $pattern = '/(?:wp_(?:register|enqueue)_(?:script|style)|wp_add_inline_(?:script|style)|register_block_type)\s*\((?:[^;]|\n){0,4000}?\)\s*;/im';
+        $sourceLength = strlen($source);
+        $maxChunkLength = 4000;
 
-        if (!preg_match_all($pattern, $source, $matches, PREG_SET_ORDER)) {
-            return [];
-        }
+        foreach ($needles as $needle) {
+            $offset = 0;
 
-        for ($index = 0; $index < count($matches); $index++) {
-            $chunk = trim((string)($matches[$index][0] ?? ''));
+            while (($position = strpos($lowerSource, $needle, $offset)) !== false) {
+                $chunkEnd = strpos($source, ';', $position);
 
-            if ($chunk !== '') {
-                $chunks[] = $chunk;
+                if ($chunkEnd === false || ($chunkEnd - $position) > $maxChunkLength) {
+                    $chunkEnd = min($position + $maxChunkLength, $sourceLength);
+                } else {
+                    $chunkEnd++;
+                }
+
+                $chunk = trim(substr($source, $position, $chunkEnd - $position));
+
+                if ($chunk !== '') {
+                    $chunks[] = $chunk;
+                }
+
+                $offset = $position + strlen($needle);
             }
         }
 
