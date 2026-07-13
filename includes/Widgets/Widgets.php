@@ -35,7 +35,7 @@ abstract class Widgets {
     }
 
     public function getWidth(): int {
-        return 4;
+        return 6;
     }
 
     public function getLayoutClass(): string {
@@ -506,6 +506,8 @@ abstract class Widgets {
         $gradient = $this->getPieGradient($items);
         $centerTitle = trim((string)($args['center_title'] ?? ''));
         $centerValue = trim((string)($args['center_value'] ?? ''));
+        $chartClass = trim((string)($args['chart_class'] ?? ''));
+        $layoutClass = trim((string)($args['layout_class'] ?? ''));
         $item = [];
         $label = [];
         $sliceLabels = [];
@@ -519,8 +521,8 @@ abstract class Widgets {
         $sliceLabels = $this->getPieSliceLabels($items, $displayPercents);
 
         ob_start();
-        echo '<div class="rrze-msm-pie-layout">';
-        echo '<div class="rrze-msm-pie-chart" style="background: ' . esc_attr($gradient) . ';">';
+        echo '<div class="rrze-msm-pie-layout' . ($layoutClass !== '' ? ' ' . esc_attr($layoutClass) : '') . '">';
+        echo '<div class="rrze-msm-pie-chart' . ($chartClass !== '' ? ' ' . esc_attr($chartClass) : '') . '" style="background: ' . esc_attr($gradient) . ';">';
 
         foreach ($sliceLabels as $label) {
             echo '<span class="rrze-msm-pie-slice-label" style="left:' . esc_attr((string)$label['x']) . '%; top:' . esc_attr((string)$label['y']) . '%;" title="' . esc_attr((string)$label['title']) . '">' . esc_html((string)$label['text']) . '</span>';
@@ -545,10 +547,10 @@ abstract class Widgets {
 
         foreach ($items as $itemIndex => $item) {
             echo '<div class="rrze-msm-pie-legend-item">';
-            echo '<span class="rrze-msm-pie-swatch rrze-msm-swatch-' . esc_attr((string)$item['accent']) . '"></span>';
+            echo '<span class="rrze-msm-pie-swatch" style="background:' . esc_attr($this->getPieItemColor($item)) . ';"></span>';
             echo '<div>';
-            echo '<strong>' . esc_html((string)$item['label']) . '</strong><br>';
-            echo '<span>' . esc_html((string)($item['value_label'] ?? number_format_i18n((int)$item['value']))) . ' (' . esc_html((string)($displayPercents[$itemIndex] ?? 0)) . '%)</span>';
+            echo '<strong>' . esc_html((string)$item['label']) . '</strong>';
+            echo '<span> &mdash; ' . esc_html((string)($item['value_label'] ?? number_format_i18n((int)$item['value']))) . ' (' . esc_html((string)($displayPercents[$itemIndex] ?? 0)) . '%)</span>';
             echo '</div>';
             echo '</div>';
         }
@@ -596,7 +598,7 @@ abstract class Widgets {
                 continue;
             }
 
-            $color = $this->getAccentColor((string)$item['accent']);
+            $color = $this->getPieItemColor($item);
             $itemPercent = ($itemValue / $totalValue) * 100;
             $nextPosition = min(100, $position + $itemPercent);
             $segments[] = $color . ' ' . round($position, 4) . '% ' . round($nextPosition, 4) . '%';
@@ -610,15 +612,26 @@ abstract class Widgets {
         return 'conic-gradient(' . implode(', ', $segments) . ')';
     }
 
+    protected function getPieItemColor(array $item): string {
+        if (!empty($item['color']) && is_string($item['color'])) {
+            return (string)$item['color'];
+        }
+
+        return $this->getAccentColor((string)($item['accent'] ?? 'neutral'));
+    }
+
     protected function getAccentColor(string $accent): string {
         $colors = [
-            'positive' => 'var(--rrze-msm-positive)',
-            'warning' => 'var(--rrze-msm-warning)',
-            'danger' => 'var(--rrze-msm-danger)',
-            'info' => 'var(--rrze-msm-info)',
-            'blocked' => 'var(--rrze-msm-status-blocked-visual)',
-            'neutral' => 'var(--rrze-msm-neutral)',
-            'free-storage' => 'var(--rrze-msm-storage-free)',
+            'positive' => '#28a745',
+            'active' => '#28a745',
+            'warning' => '#ffc107',
+            'archive' => '#ffc107',
+            'danger' => '#dc3545',
+            'delete' => '#dc3545',
+            'info' => '#17a2b8',
+            'blocked' => '#8a94a0',
+            'neutral' => '#343a40',
+            'free-storage' => '#d0d5dd',
             'theme-1' => '#175cd3',
             'theme-2' => '#137333',
             'theme-3' => '#b26a00',
@@ -627,7 +640,7 @@ abstract class Widgets {
             'theme-6' => '#087443',
         ];
 
-        return $colors[$accent] ?? 'var(--rrze-msm-neutral)';
+        return $colors[$accent] ?? '#343a40';
     }
 
     protected function getPieSliceLabels(array $items, array $displayPercents = []): array {

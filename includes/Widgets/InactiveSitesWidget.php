@@ -18,7 +18,7 @@ class InactiveSitesWidget extends Widgets {
     }
 
     public function getWidth(): int {
-        return 8;
+        return 12;
     }
 
     public function getLayoutClass(): string {

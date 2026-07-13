@@ -174,40 +174,9 @@ defined('ABSPATH') || exit;
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Top 10 Speicherplatzverbraucher', 'rrze-multisite-manager'); ?></h2>
-                        <p><?php echo esc_html__('Kombinierte Sicht auf die größten Ordner und Dateien im Upload-Verzeichnis.', 'rrze-multisite-manager'); ?></p>
+                        <p><?php echo esc_html__('Zeigt die zehn größten Speicherplatzverbraucher im Upload-Verzeichnis sowie bei Bedarf einen zusätzlichen Anteil „Sonstige“.', 'rrze-multisite-manager'); ?></p>
                     </header>
-                    <?php if (!empty($storage_analysis['top_consumers'])) { ?>
-                        <table class="widefat striped rrze-msm-table">
-                            <thead>
-                                <tr>
-                                    <th><?php echo esc_html__('Typ', 'rrze-multisite-manager'); ?></th>
-                                    <th><?php echo esc_html__('Pfad', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Dateien', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Größe', 'rrze-multisite-manager'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ((array)$storage_analysis['top_consumers'] as $consumer_row) { ?>
-                                    <tr>
-                                        <td><?php echo esc_html((string)($consumer_row['type'] ?? '') === 'directory' ? __('Ordner', 'rrze-multisite-manager') : __('Datei', 'rrze-multisite-manager')); ?></td>
-                                        <td><code><?php echo esc_html((string)($consumer_row['path'] ?? '')); ?></code></td>
-                                        <td class="rrze-msm-col-numeric">
-                                            <?php
-                                            if ((string)($consumer_row['type'] ?? '') === 'directory') {
-                                                echo esc_html(number_format_i18n((int)($consumer_row['file_count'] ?? 0)));
-                                            } else {
-                                                echo '&mdash;';
-                                            }
-                                            ?>
-                                        </td>
-                                        <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($consumer_row['size_label'] ?? '')); ?></td>
-                                    </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    <?php } else { ?>
-                        <p><?php echo esc_html__('Es konnten keine Speicherplatzverbraucher ermittelt werden.', 'rrze-multisite-manager'); ?></p>
-                    <?php } ?>
+                    <?php echo $top_consumers_pie_chart_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Internal trusted pie chart renderer output. ?>
                 </section>
 
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
@@ -353,6 +322,13 @@ defined('ABSPATH') || exit;
                                 <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
                                 <?php wp_nonce_field('rrze_multisite_manager_delete_orphan_files_' . $site_id); ?>
                                 <p class="rrze-msm-site-actions">
+                                    <button
+                                        type="button"
+                                        class="button button-secondary rrze-msm-toggle-orphan-file-selection"
+                                        data-select-label="<?php echo esc_attr__('Alle auswählen', 'rrze-multisite-manager'); ?>"
+                                        data-unselect-label="<?php echo esc_attr__('Auswahl aufheben', 'rrze-multisite-manager'); ?>">
+                                        <?php echo esc_html__('Alle auswählen', 'rrze-multisite-manager'); ?>
+                                    </button>
                                     <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
                                 </p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="orphan-files-unreferenced" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
@@ -412,6 +388,13 @@ defined('ABSPATH') || exit;
                                 </div>
                             </div>
                             <p class="rrze-msm-site-actions">
+                                <button
+                                    type="button"
+                                    class="button button-secondary rrze-msm-toggle-orphan-file-selection"
+                                    data-select-label="<?php echo esc_attr__('Alle auswählen', 'rrze-multisite-manager'); ?>"
+                                    data-unselect-label="<?php echo esc_attr__('Auswahl aufheben', 'rrze-multisite-manager'); ?>">
+                                    <?php echo esc_html__('Alle auswählen', 'rrze-multisite-manager'); ?>
+                                </button>
                                 <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
                             </p>
                             </form>
@@ -423,6 +406,13 @@ defined('ABSPATH') || exit;
                                 <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
                                 <?php wp_nonce_field('rrze_multisite_manager_delete_orphan_files_' . $site_id); ?>
                                 <p class="rrze-msm-site-actions">
+                                    <button
+                                        type="button"
+                                        class="button button-secondary rrze-msm-toggle-orphan-file-selection"
+                                        data-select-label="<?php echo esc_attr__('Alle auswählen', 'rrze-multisite-manager'); ?>"
+                                        data-unselect-label="<?php echo esc_attr__('Auswahl aufheben', 'rrze-multisite-manager'); ?>">
+                                        <?php echo esc_html__('Alle auswählen', 'rrze-multisite-manager'); ?>
+                                    </button>
                                     <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
                                 </p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="orphan-files-fallback" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
@@ -482,6 +472,13 @@ defined('ABSPATH') || exit;
                                 </div>
                             </div>
                             <p class="rrze-msm-site-actions">
+                                <button
+                                    type="button"
+                                    class="button button-secondary rrze-msm-toggle-orphan-file-selection"
+                                    data-select-label="<?php echo esc_attr__('Alle auswählen', 'rrze-multisite-manager'); ?>"
+                                    data-unselect-label="<?php echo esc_attr__('Auswahl aufheben', 'rrze-multisite-manager'); ?>">
+                                    <?php echo esc_html__('Alle auswählen', 'rrze-multisite-manager'); ?>
+                                </button>
                                 <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Selektierte Dateien löschen', 'rrze-multisite-manager'); ?></button>
                             </p>
                             </form>
@@ -517,6 +514,123 @@ defined('ABSPATH') || exit;
                         </form>
                     </div>
                 </div>
+
+                <script>
+                function rrzeMsmGetOrphanSelectionInputs(form) {
+                    var inputs = [];
+
+                    if (!form) {
+                        return inputs;
+                    }
+
+                    inputs = form.querySelectorAll('input[name="relative_paths[]"]');
+
+                    return Array.prototype.slice.call(inputs);
+                }
+
+                function rrzeMsmUpdateOrphanSelectionButtons(form) {
+                    var buttons = null;
+                    var inputs = [];
+                    var allSelected = false;
+                    var index = 0;
+                    var selectLabel = '';
+                    var unselectLabel = '';
+
+                    if (!form) {
+                        return;
+                    }
+
+                    buttons = form.querySelectorAll('.rrze-msm-toggle-orphan-file-selection');
+                    inputs = rrzeMsmGetOrphanSelectionInputs(form);
+                    allSelected = inputs.length > 0;
+
+                    for (index = 0; index < inputs.length; index++) {
+                        if (!inputs[index].checked) {
+                            allSelected = false;
+                            break;
+                        }
+                    }
+
+                    for (index = 0; index < buttons.length; index++) {
+                        selectLabel = buttons[index].getAttribute('data-select-label') || '';
+                        unselectLabel = buttons[index].getAttribute('data-unselect-label') || '';
+                        buttons[index].textContent = allSelected ? unselectLabel : selectLabel;
+                        buttons[index].setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+                    }
+                }
+
+                function rrzeMsmToggleOrphanSelection(event) {
+                    var button = event.currentTarget;
+                    var form = null;
+                    var inputs = [];
+                    var shouldSelectAll = false;
+                    var index = 0;
+
+                    if (!button) {
+                        return;
+                    }
+
+                    form = button.closest('form');
+
+                    if (!form) {
+                        return;
+                    }
+
+                    inputs = rrzeMsmGetOrphanSelectionInputs(form);
+
+                    for (index = 0; index < inputs.length; index++) {
+                        if (!inputs[index].checked) {
+                            shouldSelectAll = true;
+                            break;
+                        }
+                    }
+
+                    for (index = 0; index < inputs.length; index++) {
+                        inputs[index].checked = shouldSelectAll;
+                    }
+
+                    rrzeMsmUpdateOrphanSelectionButtons(form);
+                }
+
+                function rrzeMsmHandleOrphanSelectionChange(event) {
+                    var input = event.currentTarget;
+                    var form = null;
+
+                    if (!input) {
+                        return;
+                    }
+
+                    form = input.closest('form');
+
+                    if (!form) {
+                        return;
+                    }
+
+                    rrzeMsmUpdateOrphanSelectionButtons(form);
+                }
+
+                function rrzeMsmInitOrphanSelectionToggle() {
+                    var buttons = document.querySelectorAll('.rrze-msm-toggle-orphan-file-selection');
+                    var inputs = document.querySelectorAll('input[name="relative_paths[]"]');
+                    var index = 0;
+                    var form = null;
+
+                    for (index = 0; index < buttons.length; index++) {
+                        buttons[index].addEventListener('click', rrzeMsmToggleOrphanSelection);
+                        form = buttons[index].closest('form');
+
+                        if (form) {
+                            rrzeMsmUpdateOrphanSelectionButtons(form);
+                        }
+                    }
+
+                    for (index = 0; index < inputs.length; index++) {
+                        inputs[index].addEventListener('change', rrzeMsmHandleOrphanSelectionChange);
+                    }
+                }
+
+                document.addEventListener('DOMContentLoaded', rrzeMsmInitOrphanSelectionToggle);
+                </script>
 
             <?php } ?>
         <?php } ?>
