@@ -13,7 +13,6 @@ class Config {
             'constants' => [
                 'plugin_name' => __('RRZE Multisite Manager', 'rrze-multisite-manager'),
                 'textdomain' => 'rrze-multisite-manager',
-                'version' => '0.1.0',
                 'metrics_cache_ttl' => HOUR_IN_SECONDS,
                 'monitoring_schedule_slug' => 'rrze_msm_every_six_hours',
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
