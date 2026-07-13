@@ -8,5 +8,5 @@
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
-    <?php echo wp_kses_post($this->renderMonitoringAlertSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10])); ?>
+    <?php echo $this->renderMonitoringAlertSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10]); ?>
 </section>

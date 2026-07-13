@@ -8,5 +8,5 @@
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
-    <?php echo wp_kses_post($this->renderSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10, 'sort_key' => 'last-updated', 'sort_direction' => 'desc'])); ?>
+    <?php echo $this->renderSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10, 'sort_key' => 'last-updated', 'sort_direction' => 'desc']); ?>
 </section>
