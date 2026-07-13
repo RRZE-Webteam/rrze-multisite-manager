@@ -622,13 +622,16 @@ abstract class Widgets {
 
     protected function getAccentColor(string $accent): string {
         $colors = [
-            'positive' => 'var(--rrze-msm-positive)',
-            'warning' => 'var(--rrze-msm-warning)',
-            'danger' => 'var(--rrze-msm-danger)',
-            'info' => 'var(--rrze-msm-info)',
-            'blocked' => 'var(--rrze-msm-status-blocked-visual)',
-            'neutral' => 'var(--rrze-msm-neutral)',
-            'free-storage' => 'var(--rrze-msm-storage-free)',
+            'positive' => '#28a745',
+            'active' => '#28a745',
+            'warning' => '#ffc107',
+            'archive' => '#ffc107',
+            'danger' => '#dc3545',
+            'delete' => '#dc3545',
+            'info' => '#17a2b8',
+            'blocked' => '#8a94a0',
+            'neutral' => '#343a40',
+            'free-storage' => '#d0d5dd',
             'theme-1' => '#175cd3',
             'theme-2' => '#137333',
             'theme-3' => '#b26a00',
@@ -637,7 +640,7 @@ abstract class Widgets {
             'theme-6' => '#087443',
         ];
 
-        return $colors[$accent] ?? 'var(--rrze-msm-neutral)';
+        return $colors[$accent] ?? '#343a40';
     }
 
     protected function getPieSliceLabels(array $items, array $displayPercents = []): array {
