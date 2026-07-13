@@ -597,6 +597,36 @@ class Dashboard {
                 ),
             ],
         ];
+        $availableTabs = [];
+        $inactiveStatusLabels = [];
+        $tab = [];
+
+        foreach ($tabs as $tab) {
+            if ((string)($tab['slug'] ?? '') === 'all') {
+                $availableTabs[] = $tab;
+                continue;
+            }
+
+            if ((int)($tab['count'] ?? 0) > 0) {
+                $availableTabs[] = $tab;
+                continue;
+            }
+
+            $inactiveStatusLabels[] = (string)($tab['label'] ?? '');
+        }
+
+        $tabs = $availableTabs;
+
+        if ($currentTab !== 'all' && !$this->siteOverviewTabExists($tabs, $currentTab)) {
+            $currentTab = 'all';
+            $returnUrl = add_query_arg(
+                [
+                    'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+                    'tab' => $currentTab,
+                ],
+                $this->getAdminPageBaseUrl()
+            );
+        }
 
         $tabTables = [
             'all' => $widget->renderSiteOverviewTable(
@@ -700,9 +730,22 @@ class Dashboard {
                 'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus, $returnUrl),
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
                 'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
+                'inactive_status_labels' => $inactiveStatusLabels,
             ],
             $this
         );
+    }
+
+    protected function siteOverviewTabExists(array $tabs, string $slug): bool {
+        $tab = [];
+
+        foreach ($tabs as $tab) {
+            if ((string)($tab['slug'] ?? '') === $slug) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function renderEnvironmentOverviewPage(): void {
@@ -771,6 +814,8 @@ class Dashboard {
         }
 
         $siteWidget = new SiteOverviewWidget($this->plugin, $this->config);
+        $optionsGroups = $this->filterVisibleSiteOptionGroups($optionsGroups);
+        $selectedOptionsGroup = $this->filterVisibleSiteOptionGroupDetail($selectedOptionsGroup);
 
         foreach ($optionsGroups as $optionsGroup) {
             if (!is_array($optionsGroup) || empty($optionsGroup['slug'])) {
@@ -1638,6 +1683,10 @@ class Dashboard {
             wp_die(esc_html__('Ungültige Option.', 'rrze-multisite-manager'));
         }
 
+        if ($this->isSiteOptionHiddenForCurrentUser($optionName)) {
+            wp_die(esc_html__('Diese Option ist für dich nicht sichtbar und kann hier nicht gelöscht werden.', 'rrze-multisite-manager'));
+        }
+
         if ($this->metrics->isWordPressCoreOptionName($optionName)) {
             wp_die(esc_html__('WordPress-Core-Optionen können hier nicht gelöscht werden.', 'rrze-multisite-manager'));
         }
@@ -1909,6 +1958,117 @@ class Dashboard {
 
     protected function currentUserCanUseNetworkAdminFeatures(): bool {
         return is_super_admin();
+    }
+
+    protected function getSuperAdminOnlySiteOptions(): array {
+        $visibilitySettings = $this->config->getVisibilitySettings();
+        $optionNames = $visibilitySettings['superadmin_only_site_options'] ?? [];
+
+        if (!is_array($optionNames)) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                array_map(
+                    'strval',
+                    $optionNames
+                ),
+                [$this, 'isNonEmptyString']
+            )
+        );
+    }
+
+    protected function isSiteOptionHiddenForCurrentUser(string $optionName): bool {
+        if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            return false;
+        }
+
+        return in_array($optionName, $this->getSuperAdminOnlySiteOptions(), true);
+    }
+
+    protected function filterVisibleSiteOptionGroups(array $groups): array {
+        $visibleGroups = [];
+        $hiddenCountsByGroup = [];
+        $group = [];
+        $groupKey = '';
+        $hiddenOptionName = '';
+
+        if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            return $groups;
+        }
+
+        foreach ($this->getSuperAdminOnlySiteOptions() as $hiddenOptionName) {
+            $groupKey = $this->metrics->getOptionGroupKeyForName($hiddenOptionName);
+
+            if (!isset($hiddenCountsByGroup[$groupKey])) {
+                $hiddenCountsByGroup[$groupKey] = 0;
+            }
+
+            $hiddenCountsByGroup[$groupKey]++;
+        }
+
+        foreach ($groups as $group) {
+            if (!is_array($group)) {
+                continue;
+            }
+
+            $groupKey = (string)($group['slug'] ?? '');
+
+            if ($groupKey === '') {
+                continue;
+            }
+
+            if (isset($group['count'])) {
+                $group['count'] = max(0, (int)$group['count'] - (int)($hiddenCountsByGroup[$groupKey] ?? 0));
+            }
+
+            if ((int)($group['count'] ?? 0) <= 0 && $groupKey !== 'all') {
+                continue;
+            }
+
+            $visibleGroups[] = $group;
+        }
+
+        return $visibleGroups;
+    }
+
+    protected function filterVisibleSiteOptionGroupDetail(array $group): array {
+        $option = [];
+        $visibleOptions = [];
+        $isSuperadminOnly = false;
+
+        if (empty($group['options']) || !is_array($group['options'])) {
+            return $group;
+        }
+
+        foreach ($group['options'] as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $isSuperadminOnly = $this->isOptionReservedForSuperAdmins((string)($option['name'] ?? ''));
+            $option['is_superadmin_only'] = $isSuperadminOnly;
+
+            if (!$this->currentUserCanUseNetworkAdminFeatures() && $isSuperadminOnly) {
+                continue;
+            }
+
+            $visibleOptions[] = $option;
+        }
+
+        $group['options'] = $visibleOptions;
+        $group['count'] = count($visibleOptions);
+
+        return $group;
+    }
+
+    protected function isNonEmptyString(mixed $value): bool {
+        return is_string($value) && trim($value) !== '';
+    }
+
+    protected function isOptionReservedForSuperAdmins(string $optionName): bool {
+        return in_array($optionName, $this->getSuperAdminOnlySiteOptions(), true);
     }
 
     protected function getAdminPageBaseUrl(): string {

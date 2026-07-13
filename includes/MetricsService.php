@@ -5336,6 +5336,10 @@ class MetricsService {
         return $groupKey === 'wordpress-core';
     }
 
+    public function getOptionGroupKeyForName(string $optionName): string {
+        return $this->getOptionGroupKey($optionName);
+    }
+
     protected function getOptionGroupKey(string $optionName): string {
         $normalized = ltrim($optionName, '_');
         $segments = [];

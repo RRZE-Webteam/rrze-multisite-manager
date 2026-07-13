@@ -632,8 +632,13 @@ defined('ABSPATH') || exit;
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)($site_options_group['options'] ?? []) as $site_option) { ?>
-                                            <tr>
-                                                <td><code><?php echo esc_html((string)$site_option['name']); ?></code></td>
+                                            <tr<?php echo !empty($site_option['is_superadmin_only']) ? ' class="rrze-msm-detail-row-superadmin-option"' : ''; ?>>
+                                                <td>
+                                                    <code><?php echo esc_html((string)$site_option['name']); ?></code>
+                                                    <?php if (!empty($site_option['is_superadmin_only'])) { ?>
+                                                        <span class="rrze-msm-badge rrze-msm-badge-info"><?php echo esc_html__('Nur Superadmin', 'rrze-multisite-manager'); ?></span>
+                                                    <?php } ?>
+                                                </td>
                                                 <td>
                                                     <details class="rrze-msm-option-value">
                                                         <summary><?php echo esc_html__('Wert anzeigen', 'rrze-multisite-manager'); ?></summary>

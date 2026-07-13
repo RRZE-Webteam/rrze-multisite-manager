@@ -37,6 +37,17 @@ class Config {
                 'views_slug' => 'rrze-multisite-manager-views',
                 'settings_slug' => 'rrze-multisite-manager-settings',
             ],
+            'visibility' => [
+                'superadmin_only_site_options' => [
+                    'rrze_settings',
+                    'fau_api',
+                    'fau_api_key',
+                    'rrze_faudir_options',
+                    'rrze_search_settings',
+                    'rrze-jobs',
+                    'rrze-lectures',
+                ],
+            ],
             'settings_sections' => [
                 [
                     'id' => 'dashboard',
@@ -147,6 +158,10 @@ class Config {
 
     public function getMenuSettings(): array {
         return $this->config['menu_settings'];
+    }
+
+    public function getVisibilitySettings(): array {
+        return $this->config['visibility'] ?? [];
     }
 
     public function getMetricsCacheTtl(): int {

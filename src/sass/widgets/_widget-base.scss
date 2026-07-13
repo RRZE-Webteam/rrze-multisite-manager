@@ -246,6 +246,19 @@
     background: color-mix(in srgb, var(--rrze-msm-status-info-bg) 18%, var(--rrze-msm-surface) 82%);
 }
 
+.rrze-msm-detail-row-superadmin-option th,
+.rrze-msm-detail-row-superadmin-option td,
+.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-superadmin-option:nth-child(odd) th,
+.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-superadmin-option:nth-child(odd) td,
+.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-superadmin-option:nth-child(even) th,
+.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-superadmin-option:nth-child(even) td,
+.rrze-msm-table .rrze-msm-detail-row-superadmin-option:nth-child(odd) th,
+.rrze-msm-table .rrze-msm-detail-row-superadmin-option:nth-child(odd) td,
+.rrze-msm-table .rrze-msm-detail-row-superadmin-option:nth-child(even) th,
+.rrze-msm-table .rrze-msm-detail-row-superadmin-option:nth-child(even) td {
+    background: color-mix(in srgb, var(--rrze-msm-status-info-bg) 26%, var(--rrze-msm-surface) 74%);
+}
+
 .rrze-msm-plugin-table td .description {
     display: inline-block;
     margin-top: 4px;

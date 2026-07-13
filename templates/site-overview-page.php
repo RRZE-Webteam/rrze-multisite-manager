@@ -41,6 +41,19 @@ defined('ABSPATH') || exit;
                     <?php } ?>
                 </nav>
                 <?php echo $site_overview_table; ?>
+                <?php if (!empty($inactive_status_labels) && is_array($inactive_status_labels)) { ?>
+                    <p class="description">
+                        <?php
+                        echo esc_html(
+                            sprintf(
+                                /* translators: %s: list of site status labels without matching websites. */
+                                __('Keine Websites sind im Status %s. Daher sind die Filter für diese Statusangaben nicht aktiv.', 'rrze-multisite-manager'),
+                                '"' . implode('", "', array_map('strval', $inactive_status_labels)) . '"'
+                            )
+                        );
+                        ?>
+                    </p>
+                <?php } ?>
             </section>
         <?php } ?>
     </div>
