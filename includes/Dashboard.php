@@ -991,6 +991,7 @@ class Dashboard {
                 'site_id' => $siteId,
                 'site_summary' => $siteSummary,
                 'storage_analysis' => $storageAnalysis,
+                'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Website nach Titel oder URL suchen', 'rrze-multisite-manager'),
                 'site_storage_analysis_base_url' => $this->getSiteStorageAnalysisUrl(),
@@ -1004,6 +1005,69 @@ class Dashboard {
             ],
             $this
         );
+    }
+
+    protected function renderStorageTopConsumersPieChart(array $storageAnalysis): string {
+        $topLevelDirectories = is_array($storageAnalysis['top_level_directories'] ?? null)
+            ? array_values((array)$storageAnalysis['top_level_directories'])
+            : [];
+        $actualBytes = max(0, (int)($storageAnalysis['actual_bytes'] ?? 0));
+        $items = [];
+        $visibleEntries = array_slice($topLevelDirectories, 0, 10);
+        $remainingEntries = array_slice($topLevelDirectories, 10);
+        $remainingBytes = 0;
+        $entry = [];
+        $widget = new SummaryWidget($this->plugin, $this->config);
+        $accents = ['positive', 'info', 'warning', 'danger', 'neutral'];
+        $accentIndex = 0;
+
+        if (empty($topLevelDirectories) || $actualBytes <= 0) {
+            return $widget->renderPieChart([], __('Es konnten keine Speicherplatzverbraucher ermittelt werden.', 'rrze-multisite-manager'));
+        }
+
+        foreach ($visibleEntries as $entry) {
+            $items[] = [
+                'label' => (string)($entry['path'] ?? ''),
+                'value' => max(0, (int)($entry['size_bytes'] ?? 0)),
+                'value_label' => (string)($entry['size_label'] ?? size_format((int)($entry['size_bytes'] ?? 0))),
+                'accent' => $accents[$accentIndex % count($accents)],
+                'color' => $this->getStorageConsumerGradientColor($accentIndex, max(1, count($visibleEntries) + ($remainingBytes > 0 ? 1 : 0))),
+            ];
+            $accentIndex++;
+        }
+
+        foreach ($remainingEntries as $entry) {
+            $remainingBytes += max(0, (int)($entry['size_bytes'] ?? 0));
+        }
+
+        if ($remainingBytes > 0) {
+            $items[] = [
+                'label' => __('Sonstige', 'rrze-multisite-manager'),
+                'value' => $remainingBytes,
+                'value_label' => size_format($remainingBytes),
+                'accent' => 'neutral',
+                'color' => $this->getStorageConsumerGradientColor($accentIndex, max(1, count($visibleEntries) + 1)),
+            ];
+        }
+
+        return $widget->renderPieChart(
+            $items,
+            __('Es konnten keine Speicherplatzverbraucher ermittelt werden.', 'rrze-multisite-manager'),
+            [
+                'center_title' => __('Gesamt', 'rrze-multisite-manager'),
+                'center_value' => (string)($storageAnalysis['actual_label'] ?? size_format($actualBytes)),
+                'chart_class' => 'rrze-msm-storage-analysis-pie-chart',
+                'layout_class' => 'rrze-msm-storage-analysis-pie-layout',
+            ]
+        );
+    }
+
+    protected function getStorageConsumerGradientColor(int $index, int $count): string {
+        $steps = max(1, $count - 1);
+        $ratio = $steps > 0 ? min(1, max(0, $index / $steps)) : 0.0;
+        $red = (int)round(255 * (1 - $ratio));
+
+        return sprintf('#%02x0000', $red);
     }
 
     public function renderPluginOverviewPage(): void {

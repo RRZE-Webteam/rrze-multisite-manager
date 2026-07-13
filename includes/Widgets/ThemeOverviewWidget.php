@@ -18,7 +18,7 @@ class ThemeOverviewWidget extends Widgets {
     }
 
     public function getWidth(): int {
-        return 8;
+        return 12;
     }
 
     protected function getTemplateName(): string {

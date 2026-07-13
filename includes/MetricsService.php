@@ -323,8 +323,12 @@ class MetricsService {
                 'id' => 'dashboard-metrics',
                 'title' => __('Dashboard-Metriken', 'rrze-multisite-manager'),
                 'description' => __('Berechnet die aggregierten Netzwerkkennzahlen für Dashboard sowie Website-, Plugin- und Theme-Übersichten.', 'rrze-multisite-manager'),
-                'interval_hours' => 0,
-                'interval_label' => __('Bei Bedarf nach Änderungen', 'rrze-multisite-manager'),
+                'interval_hours' => round($this->getMetricsRefreshIntervalMinutes() / 60, 2),
+                'interval_label' => sprintf(
+                    /* translators: %d: metrics refresh interval in minutes. */
+                    __('Alle %d Minuten', 'rrze-multisite-manager'),
+                    $this->getMetricsRefreshIntervalMinutes()
+                ),
                 'last_run' => $status['last_run_timestamp'] > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_run_timestamp']) : '',
                 'last_site_count' => (int)$status['last_site_count'],
                 'next_run_timestamp' => (int)($status['next_run_timestamp'] ?? 0),
@@ -6187,9 +6191,14 @@ class MetricsService {
         $generatedAt = (int)($cached['generated_at'] ?? 0);
         $dirty = !empty($cached['dirty']);
         $ttl = max(300, $this->config->getMetricsCacheTtl());
+        $interval = $this->getMetricsRefreshIntervalSeconds();
 
         if ($dirty) {
-            return true;
+            if ($generatedAt <= 0) {
+                return true;
+            }
+
+            return ($generatedAt + $interval) <= time();
         }
 
         if ($generatedAt <= 0) {
@@ -6288,11 +6297,34 @@ class MetricsService {
     }
 
     protected function scheduleDashboardRefresh(int $delay = 60): void {
-        if (wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK)) {
+        $scheduledAt = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+        $cached = $this->getStoredDashboardCache();
+        $generatedAt = (int)($cached['generated_at'] ?? 0);
+        $baseTimestamp = $generatedAt > 0 ? $generatedAt : time();
+        $minimumRunTimestamp = $baseTimestamp + $this->getMetricsRefreshIntervalSeconds();
+        $requestedTimestamp = time() + max(5, $delay);
+        $scheduleTimestamp = max($requestedTimestamp, $minimumRunTimestamp);
+
+        if ($scheduledAt && (int)$scheduledAt > 0) {
             return;
         }
 
-        wp_schedule_single_event(time() + max(5, $delay), self::DASHBOARD_REFRESH_HOOK);
+        wp_schedule_single_event($scheduleTimestamp, self::DASHBOARD_REFRESH_HOOK);
+    }
+
+    protected function getMetricsRefreshIntervalMinutes(): int {
+        $options = get_site_option($this->config->getOptionName(), []);
+        $interval = 60;
+
+        if (is_array($options) && isset($options['monitoring_metrics_interval_minutes'])) {
+            $interval = (int)$options['monitoring_metrics_interval_minutes'];
+        }
+
+        return max(60, min(10080, $interval));
+    }
+
+    protected function getMetricsRefreshIntervalSeconds(): int {
+        return $this->getMetricsRefreshIntervalMinutes() * MINUTE_IN_SECONDS;
     }
 
     protected function acquireDashboardRefreshLock(): bool {

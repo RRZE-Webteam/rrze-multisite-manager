@@ -70,6 +70,15 @@ class Config {
                 ],
                 'monitoring' => [
                     [
+                        'name' => 'metrics_interval_minutes',
+                        'label' => __('Metrics-Intervall in Minuten', 'rrze-multisite-manager'),
+                        'desc' => __('Mindestabstand zwischen automatisch eingeplanten Metrics-Läufen. Manuell gestartete Läufe sind davon nicht betroffen.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 60,
+                        'min' => 60,
+                        'max' => 10080,
+                    ],
+                    [
                         'name' => 'monitoring_interval_hours',
                         'label' => __('Prüfintervall in Stunden', 'rrze-multisite-manager'),
                         'desc' => __('Wie oft der Verfügbarkeitscheck für alle Sites laufen soll.', 'rrze-multisite-manager'),
