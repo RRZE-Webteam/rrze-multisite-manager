@@ -1,0 +1,165 @@
+.rrze-msm-widget-controls {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: inline-flex;
+    gap: 6px;
+    z-index: 3;
+}
+
+.rrze-msm-widget-move {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    background: var(--rrze-msm-surface-alt);
+    color: var(--rrze-msm-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    line-height: 1;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+}
+
+.rrze-msm-widget-move:hover,
+.rrze-msm-widget-move:focus {
+    color: var(--rrze-msm-text);
+    border-color: var(--rrze-msm-info);
+}
+
+.rrze-msm-widget-move:disabled,
+.rrze-msm-widget-move[aria-disabled="true"] {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+}
+
+.rrze-msm-site-action.button.button-small,
+.rrze-msm-site-action-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rrze-msm-site-action-icon.button.button-small,
+.rrze-msm-site-action-state {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    padding: 0;
+}
+
+.rrze-msm-site-action-text.button.button-small {
+    min-height: 42px;
+    min-width: 0;
+    width: auto;
+    padding: 0 14px;
+    text-align: center;
+}
+
+.rrze-msm-site-action.button.button-small {
+    border-color: var(--rrze-msm-border);
+    background: transparent;
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-site-action.button.button-small:hover,
+.rrze-msm-site-action.button.button-small:focus {
+    border-color: var(--rrze-msm-info);
+    background: color-mix(in srgb, var(--rrze-msm-info) 10%, transparent 90%);
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-site-action-blocked.button.button-small {
+    border-color: var(--rrze-msm-danger);
+    background: var(--rrze-msm-danger);
+    color: var(--rrze-msm-danger-text);
+}
+
+.rrze-msm-site-action-blocked.button.button-small:hover,
+.rrze-msm-site-action-blocked.button.button-small:focus {
+    border-color: var(--rrze-msm-danger);
+    background: color-mix(in srgb, var(--rrze-msm-danger) 88%, #000 12%);
+    color: var(--rrze-msm-danger-text);
+}
+
+.rrze-msm-site-action-warning.button.button-small {
+    border-color: var(--rrze-msm-warning);
+    background: var(--rrze-msm-warning);
+    color: var(--rrze-msm-warning-text);
+}
+
+.rrze-msm-site-action-warning.button.button-small:hover,
+.rrze-msm-site-action-warning.button.button-small:focus {
+    border-color: var(--rrze-msm-warning);
+    background: color-mix(in srgb, var(--rrze-msm-warning) 88%, #000 12%);
+    color: var(--rrze-msm-warning-text);
+}
+
+.rrze-msm-site-action-warning.button.button-small .dashicons,
+.rrze-msm-site-action-warning.button.button-small:hover .dashicons,
+.rrze-msm-site-action-warning.button.button-small:focus .dashicons {
+    color: var(--rrze-msm-warning-text);
+}
+
+.rrze-msm-site-action-danger.button.button-small {
+    border-color: var(--rrze-msm-danger);
+    background: var(--rrze-msm-danger);
+    color: var(--rrze-msm-danger-text);
+}
+
+.rrze-msm-site-action-danger.button.button-small:hover,
+.rrze-msm-site-action-danger.button.button-small:focus {
+    border-color: var(--rrze-msm-danger);
+    background: color-mix(in srgb, var(--rrze-msm-danger) 88%, #000 12%);
+    color: var(--rrze-msm-danger-text);
+}
+
+.rrze-msm-site-action-positive.button.button-small {
+    border-color: var(--rrze-msm-positive);
+    background: var(--rrze-msm-positive);
+    color: var(--rrze-msm-positive-text);
+}
+
+.rrze-msm-site-action-positive.button.button-small:hover,
+.rrze-msm-site-action-positive.button.button-small:focus {
+    border-color: var(--rrze-msm-positive);
+    background: color-mix(in srgb, var(--rrze-msm-positive) 88%, #000 12%);
+    color: var(--rrze-msm-positive-text);
+}
+
+.rrze-msm-site-action-info.button.button-small {
+    border-color: var(--rrze-msm-status-info-bg);
+    background: transparent;
+    color: var(--rrze-msm-status-info-bg);
+}
+
+.rrze-msm-site-action-info.button.button-small:hover,
+.rrze-msm-site-action-info.button.button-small:focus {
+    border-color: var(--rrze-msm-status-info-bg);
+    background: color-mix(in srgb, var(--rrze-msm-status-info-bg) 10%, transparent 90%);
+    color: var(--rrze-msm-status-info-bg);
+}
+
+.rrze-msm-site-action .dashicons,
+.rrze-msm-site-action-state .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+}
+
+.rrze-msm-site-action-label {
+    display: inline-block;
+    line-height: 1.2;
+    white-space: nowrap;
+}

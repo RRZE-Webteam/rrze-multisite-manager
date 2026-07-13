@@ -46,3 +46,13 @@ wp-config.php
 # Note: If you wish to whitelist themes,
 # uncomment the next line
 #/wp-content/themes
+
+
+# IDEs and othees
+.DS_Store
+.vscode/sftp.json
+node_modules
+package-lock.json
+nbproject
+*.map
+

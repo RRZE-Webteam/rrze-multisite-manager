@@ -1,0 +1,65 @@
+.rrze-multisite-manager-admin,
+body.rrze-msm-mode-light,
+body.rrze-msm-mode-dark {
+    --rrze-msm-status-active-bg: #28a745;
+    --rrze-msm-status-active-text: #fff;
+    --rrze-msm-status-blocked-bg: #343a40;
+    --rrze-msm-status-blocked-text: #fff;
+    --rrze-msm-status-blocked-visual: #343a40;
+    --rrze-msm-status-archive-bg: #ffc107;
+    --rrze-msm-status-archive-text: #212529;
+    --rrze-msm-status-delete-bg: #dc3545;
+    --rrze-msm-status-delete-text: #fff;
+    --rrze-msm-status-info-bg: #17a2b8;
+    --rrze-msm-status-info-text: #fff;
+    --rrze-msm-tab-all-bg: #007bff;
+    --rrze-msm-tab-all-text: #fff;
+    --rrze-msm-page-bg: #f3f4f6;
+    --rrze-msm-surface: #ffffff;
+    --rrze-msm-surface-alt: #f4f7fb;
+    --rrze-msm-border: #d9e2ec;
+    --rrze-msm-table-border: #d9e2ec;
+    --rrze-msm-text: #1f2933;
+    --rrze-msm-muted: #52606d;
+    --rrze-msm-link: #005fcc;
+    --rrze-msm-link-hover: #004799;
+    --rrze-msm-input-bg: #ffffff;
+    --rrze-msm-input-text: #1f2933;
+    --rrze-msm-input-border: #d9e2ec;
+    --rrze-msm-positive: var(--rrze-msm-status-active-bg);
+    --rrze-msm-positive-text: var(--rrze-msm-status-active-text);
+    --rrze-msm-positive-soft: color-mix(in srgb, var(--rrze-msm-status-active-bg) 18%, #fff 82%);
+    --rrze-msm-warning: var(--rrze-msm-status-archive-bg);
+    --rrze-msm-warning-text: var(--rrze-msm-status-archive-text);
+    --rrze-msm-warning-soft: color-mix(in srgb, var(--rrze-msm-status-archive-bg) 24%, #fff 76%);
+    --rrze-msm-danger: var(--rrze-msm-status-delete-bg);
+    --rrze-msm-danger-text: var(--rrze-msm-status-delete-text);
+    --rrze-msm-danger-soft: color-mix(in srgb, var(--rrze-msm-status-delete-bg) 18%, #fff 82%);
+    --rrze-msm-info: var(--rrze-msm-status-info-bg);
+    --rrze-msm-info-text: var(--rrze-msm-status-info-text);
+    --rrze-msm-info-soft: color-mix(in srgb, var(--rrze-msm-status-info-bg) 18%, #fff 82%);
+    --rrze-msm-neutral: var(--rrze-msm-status-blocked-bg);
+    --rrze-msm-neutral-text: var(--rrze-msm-status-blocked-text);
+    --rrze-msm-neutral-soft: color-mix(in srgb, var(--rrze-msm-status-blocked-bg) 18%, #fff 82%);
+    --rrze-msm-widget-border-radius: 5px;
+    --rrze-msm-badge-border-radius: 999px;
+    --rrze-msm-actions-text-min-width: 25em;
+    --rrze-msm-actions-icon-min-width: 240px;
+}
+
+.rrze-msm-mode-dark,
+body.rrze-msm-mode-dark {
+    --rrze-msm-page-bg: #202428;
+    --rrze-msm-surface: #000000;
+    --rrze-msm-surface-alt: #171a1d;
+    --rrze-msm-border: #30363d;
+    --rrze-msm-table-border: #202428;
+    --rrze-msm-text: #f5f7fa;
+    --rrze-msm-muted: #c2c8d0;
+    --rrze-msm-link: #39ff88;
+    --rrze-msm-link-hover: #7dffb0;
+    --rrze-msm-input-bg: #133222;
+    --rrze-msm-input-text: #eafff1;
+    --rrze-msm-input-border: #2d6a4f;
+    --rrze-msm-status-blocked-visual: #8a94a0;
+}
