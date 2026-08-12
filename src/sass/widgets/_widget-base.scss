@@ -601,6 +601,26 @@ td.rrze-msm-plugin-col-active-sites {
     margin: 0 0 16px;
 }
 
+.rrze-msm-option-edit-form {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.rrze-msm-option-edit-form input[type="text"],
+.rrze-msm-option-edit-form textarea {
+    width: 100%;
+    font-family: monospace;
+}
+
+.rrze-msm-option-edit-form textarea {
+    min-height: 180px;
+}
+
+.rrze-msm-option-save-button[hidden] {
+    display: none;
+}
+
 .rrze-msm-option-value {
     max-width: 100%;
 }
@@ -617,6 +637,8 @@ td.rrze-msm-plugin-col-active-sites {
     border-radius: var(--rrze-msm-widget-border-radius);
     background: var(--rrze-msm-surface-alt);
     color: var(--rrze-msm-text);
+    max-height: 50vh;
+    overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-word;
 }

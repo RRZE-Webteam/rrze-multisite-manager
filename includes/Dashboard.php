@@ -78,6 +78,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_site_permanent_delete', [$this, 'handleSitePermanentDelete']);
         add_action('admin_post_rrze_multisite_manager_update_site_monitoring_status', [$this, 'handleSiteMonitoringStatusUpdate']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
+        add_action('admin_post_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('admin_post_rrze_multisite_manager_delete_orphan_file', [$this, 'handleOrphanFileDelete']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
@@ -86,6 +87,7 @@ class Dashboard {
         add_action('network_admin_edit_rrze_multisite_manager_site_permanent_delete', [$this, 'handleSitePermanentDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_update_site_monitoring_status', [$this, 'handleSiteMonitoringStatusUpdate']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
+        add_action('network_admin_edit_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
     }
@@ -803,6 +805,7 @@ class Dashboard {
         $validOptionTabs = [];
         $optionsGroup = [];
         $optionNotices = [];
+        $optionErrorNotices = [];
         $contentNotices = [];
         $hasCustomPages = false;
         $customPostType = [];
@@ -889,6 +892,20 @@ class Dashboard {
             $optionNotices[] = sprintf(
                 __('Option "%s" wurde gelöscht.', 'rrze-multisite-manager'),
                 sanitize_text_field((string)$_GET['option_deleted'])
+            );
+        }
+
+        if (!empty($_GET['option_updated'])) {
+            $optionNotices[] = sprintf(
+                __('Option "%s" wurde aktualisiert.', 'rrze-multisite-manager'),
+                sanitize_text_field((string)$_GET['option_updated'])
+            );
+        }
+
+        if (!empty($_GET['option_update_failed'])) {
+            $optionErrorNotices[] = sprintf(
+                __('Option "%s" konnte nicht aktualisiert werden. Prüfe besonders, ob serialisierte Rohwerte noch gültig sind.', 'rrze-multisite-manager'),
+                sanitize_text_field((string)$_GET['option_update_failed'])
             );
         }
 
@@ -1009,8 +1026,10 @@ class Dashboard {
                 'site_options_groups' => $optionsGroups,
                 'site_options_current_tab' => $currentOptionsTab,
                 'site_option_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_site_option'),
+                'site_option_update_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_update_site_option'),
                 'site_option_group_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_site_option_group'),
                 'site_options_notice_messages' => $optionNotices,
+                'site_options_error_messages' => $optionErrorNotices,
                 'site_content_current_tab' => $currentContentTab,
                 'site_process_current_tab' => $currentProcessTab,
                 'site_custom_pages' => $customPages,
@@ -1701,6 +1720,82 @@ class Dashboard {
                 'options_tab' => $optionsTab,
                 'option_deleted' => $optionName,
             ],
+            $this->getSiteDetailsUrl()
+        ) . '#rrze-msm-site-options';
+
+        wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function handleSiteOptionUpdate(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        $optionName = isset($_POST['option_name']) ? sanitize_text_field((string)wp_unslash($_POST['option_name'])) : '';
+        $optionsTab = isset($_POST['options_tab']) ? sanitize_key((string)wp_unslash($_POST['options_tab'])) : 'all';
+        $rawValue = isset($_POST['option_raw_value']) ? (string)wp_unslash($_POST['option_raw_value']) : '';
+        $redirectArgs = [
+            'site_id' => $siteId,
+            'section' => 'options',
+            'options_tab' => $optionsTab,
+        ];
+        $redirectUrl = $this->getSiteDetailsUrl($siteId);
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to update site options.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_update_site_option_' . $siteId . '_' . $optionName);
+
+        if ($siteId <= 0 || $optionName === '') {
+            wp_die(esc_html__('Ungültige Option.', 'rrze-multisite-manager'));
+        }
+
+        if ($this->isSiteOptionHiddenForCurrentUser($optionName)) {
+            wp_die(esc_html__('Diese Option ist für dich nicht sichtbar und kann hier nicht bearbeitet werden.', 'rrze-multisite-manager'));
+        }
+
+        if ($this->metrics->isWordPressCoreOptionName($optionName)) {
+            wp_die(esc_html__('WordPress-Core-Optionen können hier nicht bearbeitet werden.', 'rrze-multisite-manager'));
+        }
+
+        if (!$this->metrics->canDecodeEditedOptionValue($rawValue)) {
+            $redirectUrl = add_query_arg(
+                array_merge(
+                    $redirectArgs,
+                    [
+                        'option_update_failed' => $optionName,
+                    ]
+                ),
+                $this->getSiteDetailsUrl()
+            ) . '#rrze-msm-site-options';
+
+            wp_safe_redirect($redirectUrl);
+            exit;
+        }
+
+        if (!$this->metrics->updateSiteOption($siteId, $optionName, $rawValue)) {
+            $redirectUrl = add_query_arg(
+                array_merge(
+                    $redirectArgs,
+                    [
+                        'option_update_failed' => $optionName,
+                    ]
+                ),
+                $this->getSiteDetailsUrl()
+            ) . '#rrze-msm-site-options';
+
+            wp_safe_redirect($redirectUrl);
+            exit;
+        }
+
+        $this->metrics->clearCache();
+
+        $redirectUrl = add_query_arg(
+            array_merge(
+                $redirectArgs,
+                [
+                    'option_updated' => $optionName,
+                ]
+            ),
             $this->getSiteDetailsUrl()
         ) . '#rrze-msm-site-options';
 

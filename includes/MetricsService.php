@@ -4938,7 +4938,7 @@ class MetricsService {
     protected function getCurrentSiteOptionsByGroup(string $groupKey): array {
         $cached = $this->getCachedCurrentSiteDetailSection('options_group', $groupKey);
 
-        if (is_array($cached)) {
+        if (is_array($cached) && $this->isOptionGroupCacheShapeCurrent($cached)) {
             return $cached;
         }
 
@@ -4987,6 +4987,9 @@ class MetricsService {
             $options[] = [
                 'name' => $optionName,
                 'value' => $this->formatOptionValue((string)($row->option_value ?? '')),
+                'raw_value' => (string)($row->option_value ?? ''),
+                'editable_value' => $this->getEditableOptionValue((string)($row->option_value ?? '')),
+                'is_editable' => $this->isEditableOptionValue((string)($row->option_value ?? '')),
                 'autoload' => (string)($row->autoload ?? ''),
                 'is_core' => $this->isWordPressCoreOption($optionName),
             ];
@@ -5007,6 +5010,33 @@ class MetricsService {
         $this->setCachedCurrentSiteDetailSection('options_group', $result, $groupKey);
 
         return $result;
+    }
+
+    protected function isOptionGroupCacheShapeCurrent(array $cached): bool {
+        $options = [];
+        $option = [];
+
+        if (!isset($cached['options']) || !is_array($cached['options'])) {
+            return false;
+        }
+
+        $options = $cached['options'];
+
+        if ($options === []) {
+            return true;
+        }
+
+        foreach ($options as $option) {
+            if (!is_array($option)) {
+                return false;
+            }
+
+            if (!array_key_exists('raw_value', $option) || !array_key_exists('editable_value', $option) || !array_key_exists('is_editable', $option)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     protected function getCurrentSiteProcessStats(): array {
@@ -5212,6 +5242,50 @@ class MetricsService {
         return (bool)$deleted;
     }
 
+    public function updateSiteOption(int $siteId, string $optionName, string $rawValue): bool {
+        $updated = false;
+        $decodedValue = null;
+        $currentRawValue = null;
+        global $wpdb;
+
+        if ($siteId <= 0 || trim($optionName) === '') {
+            return false;
+        }
+
+        switch_to_blog($siteId);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Single option row lookup for explicit admin edit action.
+        $currentRawValue = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT option_value
+                FROM {$wpdb->options}
+                WHERE option_name = %s
+                LIMIT 1",
+                $optionName
+            )
+        );
+        restore_current_blog();
+
+        if (!is_string($currentRawValue)) {
+            return false;
+        }
+
+        if ($currentRawValue === $rawValue) {
+            return true;
+        }
+
+        $decodedValue = $this->decodeEditedOptionValue($rawValue);
+
+        if ($decodedValue['valid'] !== true) {
+            return false;
+        }
+
+        switch_to_blog($siteId);
+        $updated = update_option($optionName, $decodedValue['value']);
+        restore_current_blog();
+
+        return (bool)$updated;
+    }
+
     public function deletePostTypeEntries(int $siteId, string $postType): int {
         global $wpdb;
 
@@ -5340,6 +5414,11 @@ class MetricsService {
         return $this->getOptionGroupKey($optionName);
     }
 
+    public function canDecodeEditedOptionValue(string $rawValue): bool {
+        $decodedValue = $this->decodeEditedOptionValue($rawValue);
+        return $decodedValue['valid'] === true;
+    }
+
     protected function getOptionGroupKey(string $optionName): string {
         $normalized = ltrim($optionName, '_');
         $segments = [];
@@ -5365,6 +5444,70 @@ class MetricsService {
         }
 
         return sanitize_key($firstSegment);
+    }
+
+    protected function decodeEditedOptionValue(string $rawValue): array {
+        $trimmedValue = trim($rawValue);
+        $decodedValue = null;
+
+        if (!is_serialized($trimmedValue)) {
+            return [
+                'valid' => true,
+                'value' => $rawValue,
+            ];
+        }
+
+        if (preg_match('/^(O|C):\d+:/', $trimmedValue) === 1) {
+            return [
+                'valid' => false,
+                'value' => null,
+            ];
+        }
+
+        $decodedValue = @unserialize($trimmedValue, ['allowed_classes' => false]);
+
+        if ($decodedValue === false && $trimmedValue !== 'b:0;') {
+            return [
+                'valid' => false,
+                'value' => null,
+            ];
+        }
+
+        if (is_object($decodedValue)) {
+            return [
+                'valid' => false,
+                'value' => null,
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'value' => $decodedValue,
+        ];
+    }
+
+    protected function isEditableOptionValue(string $rawValue): bool {
+        $decodedValue = maybe_unserialize($rawValue);
+
+        return !is_array($decodedValue) && !is_object($decodedValue);
+    }
+
+    protected function getEditableOptionValue(string $rawValue): string {
+        $value = maybe_unserialize($rawValue);
+
+        if (is_array($value) || is_object($value)) {
+            return '';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if ($value === null) {
+            return 'null';
+        }
+
+        return (string)$value;
     }
 
     protected function getOptionGroupLabel(string $groupKey, string $optionName = ''): string {
@@ -5590,10 +5733,6 @@ class MetricsService {
 
         if (!is_string($formatted) || $formatted === '') {
             return __('(leer)', 'rrze-multisite-manager');
-        }
-
-        if (mb_strlen($formatted) > 4000) {
-            return mb_substr($formatted, 0, 4000) . "\n…";
         }
 
         return $formatted;

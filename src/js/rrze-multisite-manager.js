@@ -1510,6 +1510,66 @@ function initPluginSitesPagers() {
     }
 }
 
+function updateOptionEditFormState(form) {
+    var field = null;
+    var submit = null;
+    var initialValue = '';
+    var currentValue = '';
+
+    if (!form) {
+        return;
+    }
+
+    field = form.querySelector('input[name="option_raw_value"], textarea[name="option_raw_value"]');
+    submit = form.querySelector('.rrze-msm-option-save-button');
+
+    if (!field || !submit) {
+        return;
+    }
+
+    initialValue = form.getAttribute('data-initial-value') || '';
+    currentValue = field.value || '';
+
+    if (currentValue !== initialValue) {
+        submit.hidden = false;
+        return;
+    }
+
+    submit.hidden = true;
+}
+
+function onOptionEditFieldChange(event) {
+    var field = event.currentTarget;
+    var form = null;
+
+    if (!field) {
+        return;
+    }
+
+    form = field.closest('.rrze-msm-option-edit-form');
+    updateOptionEditFormState(form);
+}
+
+function initOptionEditForms() {
+    var forms = document.querySelectorAll('.rrze-msm-option-edit-form');
+    var form = null;
+    var field = null;
+    var i = 0;
+
+    for (i = 0; i < forms.length; i++) {
+        form = forms[i];
+        field = form.querySelector('input[name="option_raw_value"], textarea[name="option_raw_value"]');
+
+        if (!field) {
+            continue;
+        }
+
+        field.addEventListener('input', onOptionEditFieldChange);
+        field.addEventListener('change', onOptionEditFieldChange);
+        updateOptionEditFormState(form);
+    }
+}
+
 function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = '';
@@ -1537,6 +1597,7 @@ function initRrzeMultisiteManager() {
     initPluginSitesTextToggles();
     initPluginSitesPagers();
     initReadmeToggles();
+    initOptionEditForms();
 }
 
 document.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);

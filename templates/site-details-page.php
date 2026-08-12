@@ -593,6 +593,13 @@ defined('ABSPATH') || exit;
                             <?php } ?>
                         </div>
                     <?php } ?>
+                    <?php if (!empty($site_options_error_messages)) { ?>
+                        <div class="notice notice-error inline">
+                            <?php foreach ($site_options_error_messages as $site_options_error_message) { ?>
+                                <p><?php echo esc_html((string)$site_options_error_message); ?></p>
+                            <?php } ?>
+                        </div>
+                    <?php } ?>
                     <?php if (!empty($site_options_groups) && is_array($site_options_groups)) { ?>
                         <nav class="rrze-msm-option-tabs" aria-label="<?php echo esc_attr__('Options-Gruppen', 'rrze-multisite-manager'); ?>">
                             <?php foreach ($site_options_groups as $site_options_group) { ?>
@@ -642,7 +649,26 @@ defined('ABSPATH') || exit;
                                                 <td>
                                                     <details class="rrze-msm-option-value">
                                                         <summary><?php echo esc_html__('Wert anzeigen', 'rrze-multisite-manager'); ?></summary>
-                                                        <pre><?php echo esc_html((string)$site_option['value']); ?></pre>
+                                                        <?php if (!empty($can_manage_network_actions) && empty($site_option['is_core']) && !empty($site_option['is_editable'])) { ?>
+                                                            <form method="post" action="<?php echo esc_url($site_option_update_action); ?>" class="rrze-msm-option-edit-form" data-initial-value="<?php echo esc_attr((string)($site_option['editable_value'] ?? '')); ?>">
+                                                                <?php wp_nonce_field('rrze_multisite_manager_update_site_option_' . (int)$site_id . '_' . (string)$site_option['name']); ?>
+                                                                <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                                                <input type="hidden" name="section" value="options">
+                                                                <input type="hidden" name="options_tab" value="<?php echo esc_attr((string)$site_options_current_tab); ?>">
+                                                                <input type="hidden" name="option_name" value="<?php echo esc_attr((string)$site_option['name']); ?>">
+                                                                <label for="<?php echo esc_attr('rrze-msm-option-edit-' . md5((string)$site_option['name'])); ?>">
+                                                                    <?php echo esc_html__('Rohwert der Option', 'rrze-multisite-manager'); ?>
+                                                                </label>
+                                                                <input id="<?php echo esc_attr('rrze-msm-option-edit-' . md5((string)$site_option['name'])); ?>" type="text" name="option_raw_value" value="<?php echo esc_attr((string)($site_option['editable_value'] ?? '')); ?>">
+                                                                <p class="description"><?php echo esc_html__('Hier wird der Rohwert der Option direkt aus der Datenbank bearbeitet.', 'rrze-multisite-manager'); ?></p>
+                                                                <button type="submit" class="button button-secondary rrze-msm-option-save-button" hidden><?php echo esc_html__('Änderung speichern', 'rrze-multisite-manager'); ?></button>
+                                                            </form>
+                                                        <?php } else { ?>
+                                                            <pre><?php echo esc_html((string)$site_option['value']); ?></pre>
+                                                            <?php if (empty($site_option['is_core'])) { ?>
+                                                                <p class="description"><?php echo esc_html__('Dieser Wert ist nicht direkt bearbeitbar.', 'rrze-multisite-manager'); ?></p>
+                                                            <?php } ?>
+                                                        <?php } ?>
                                                     </details>
                                                 </td>
                                                 <td><?php echo esc_html((string)$site_option['autoload']); ?></td>
