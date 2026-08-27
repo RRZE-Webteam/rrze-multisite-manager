@@ -3,6 +3,7 @@
 var rrzeMsmSiteSearchTimer = 0;
 var rrzeMsmPluginSearchTimer = 0;
 var rrzeMsmThemeSearchTimer = 0;
+var rrzeMsmStorageAnalysisTimer = 0;
 var rrzeMsmSearchDelay = 250;
 
 function getAdminConfig() {
@@ -1570,6 +1571,278 @@ function initOptionEditForms() {
     }
 }
 
+function getStorageAnalysisRunner() {
+    return document.querySelector('#rrze-msm-storage-analysis-runner');
+}
+
+function getStorageAnalysisFeedback() {
+    return document.querySelector('#rrze-msm-storage-analysis-feedback');
+}
+
+function setStorageAnalysisFeedback(message, type) {
+    var feedback = getStorageAnalysisFeedback();
+    var className = 'notice notice-info inline';
+
+    if (!feedback) {
+        return;
+    }
+
+    if (type === 'error') {
+        className = 'notice notice-error inline';
+    } else if (type === 'success') {
+        className = 'notice notice-success inline';
+    }
+
+    if (!message) {
+        feedback.innerHTML = '';
+        feedback.setAttribute('hidden', 'hidden');
+        return;
+    }
+
+    feedback.innerHTML = '<div class="' + className + '"><p>' + escapeHtml(message) + '</p></div>';
+    feedback.removeAttribute('hidden');
+}
+
+function updateStorageAnalysisButtons(runner, baseStatus, orphanStatus, hasCachedAnalysis) {
+    var baseButton = null;
+    var orphanButton = null;
+    var baseRunning = false;
+    var orphanRunning = false;
+
+    if (!runner) {
+        return;
+    }
+
+    baseButton = runner.querySelector('.rrze-msm-start-storage-analysis');
+    orphanButton = runner.querySelector('.rrze-msm-start-storage-orphan-analysis');
+    baseRunning = baseStatus === 'running';
+    orphanRunning = orphanStatus === 'running';
+
+    if (baseButton) {
+        baseButton.disabled = baseRunning || orphanRunning;
+        baseButton.textContent = baseRunning ? 'Analyse läuft ...' : (hasCachedAnalysis ? 'Analyse aktualisieren' : 'Analyse starten');
+    }
+
+    if (orphanButton) {
+        orphanButton.disabled = baseRunning || orphanRunning || !hasCachedAnalysis;
+        orphanButton.textContent = orphanRunning ? 'Verwaist-Prüfung läuft ...' : 'Verwaist-Prüfung starten';
+    }
+}
+
+function updateStorageAnalysisRunnerStatus(status) {
+    var runner = getStorageAnalysisRunner();
+    var baseMessage = null;
+    var orphanMessage = null;
+    var baseStatus = {};
+    var orphanStatus = {};
+    var hasCachedAnalysis = false;
+
+    if (!runner || !status) {
+        return;
+    }
+
+    baseMessage = document.querySelector('#rrze-msm-storage-analysis-base-message');
+    orphanMessage = document.querySelector('#rrze-msm-storage-analysis-orphan-message');
+    baseStatus = status.base || {};
+    orphanStatus = status.orphan || {};
+    hasCachedAnalysis = Boolean(status.has_cached_analysis);
+
+    runner.setAttribute('data-base-status', String(baseStatus.status || 'idle'));
+    runner.setAttribute('data-orphan-status', String(orphanStatus.status || 'idle'));
+
+    if (baseMessage && baseStatus.message) {
+        baseMessage.textContent = String(baseStatus.message || '');
+    }
+
+    if (orphanMessage && orphanStatus.message) {
+        orphanMessage.textContent = String(orphanStatus.message || '');
+    }
+
+    updateStorageAnalysisButtons(
+        runner,
+        String(baseStatus.status || 'idle'),
+        String(orphanStatus.status || 'idle'),
+        hasCachedAnalysis
+    );
+}
+
+function scheduleStorageAnalysisRun(operation) {
+    if (rrzeMsmStorageAnalysisTimer) {
+        window.clearTimeout(rrzeMsmStorageAnalysisTimer);
+        rrzeMsmStorageAnalysisTimer = 0;
+    }
+
+    rrzeMsmStorageAnalysisTimer = window.setTimeout(function () {
+        runStorageAnalysisOperation(operation, false);
+    }, 350);
+}
+
+function getStorageAnalysisRequestData(operation, siteId, restart) {
+    var config = getAdminConfig();
+    var action = '';
+    var nonce = '';
+
+    if (!config) {
+        return null;
+    }
+
+    if (operation === 'orphan') {
+        action = 'rrze_msm_run_site_storage_orphan_analysis';
+        nonce = String(config.siteStorageOrphanAnalysisNonce || '');
+    } else {
+        action = 'rrze_msm_run_site_storage_analysis';
+        nonce = String(config.siteStorageAnalysisNonce || '');
+    }
+
+    return {
+        url: String(config.ajaxUrl || '') +
+            '?action=' + encodeURIComponent(action) +
+            '&nonce=' + encodeURIComponent(nonce) +
+            '&site_id=' + encodeURIComponent(String(siteId || '0')) +
+            '&restart=' + (restart ? '1' : '0')
+    };
+}
+
+function reloadCurrentPage() {
+    window.location.reload();
+}
+
+function handleStorageAnalysisResponse(operation, payload) {
+    var config = getAdminConfig();
+    var status = payload && payload.status ? payload.status : null;
+    var phaseStatus = '';
+
+    if (status) {
+        updateStorageAnalysisRunnerStatus(status);
+    }
+
+    if (operation === 'orphan') {
+        phaseStatus = String(((status && status.orphan) ? status.orphan.status : '') || '');
+    } else {
+        phaseStatus = String(((status && status.base) ? status.base.status : '') || '');
+    }
+
+    if (phaseStatus === 'running') {
+        scheduleStorageAnalysisRun(operation);
+        return;
+    }
+
+    if (phaseStatus === 'complete') {
+        setStorageAnalysisFeedback(String((config && config.siteStorageAnalysisCompleted) || ''), 'success');
+        window.setTimeout(reloadCurrentPage, 500);
+        return;
+    }
+
+    if (payload && payload.message) {
+        setStorageAnalysisFeedback(String(payload.message || ''), payload.success === false ? 'error' : 'info');
+    }
+}
+
+function runStorageAnalysisOperation(operation, restart) {
+    var runner = getStorageAnalysisRunner();
+    var requestData = null;
+    var siteId = 0;
+    var config = getAdminConfig();
+    var hasCachedAnalysis = false;
+
+    if (!runner || !config) {
+        return;
+    }
+
+    siteId = parseInt(String(runner.getAttribute('data-site-id') || '0'), 10);
+
+    if (isNaN(siteId) || siteId < 1) {
+        return;
+    }
+
+    requestData = getStorageAnalysisRequestData(operation, siteId, restart);
+    hasCachedAnalysis = String(runner.getAttribute('data-base-status') || 'idle') === 'complete'
+        || String(runner.getAttribute('data-orphan-status') || 'idle') === 'complete';
+
+    if (!requestData) {
+        return;
+    }
+
+    updateStorageAnalysisButtons(
+        runner,
+        operation === 'base' ? 'running' : String(runner.getAttribute('data-base-status') || 'idle'),
+        operation === 'orphan' ? 'running' : String(runner.getAttribute('data-orphan-status') || 'idle'),
+        hasCachedAnalysis
+    );
+    setStorageAnalysisFeedback('', 'info');
+
+    fetch(requestData.url, { credentials: 'same-origin' })
+        .then(function (response) {
+            return response.json();
+        })
+        .then(function (response) {
+            if (!response || response.success !== true || !response.data) {
+                setStorageAnalysisFeedback(String((config && config.siteStorageAnalysisFailed) || ''), 'error');
+                return;
+            }
+
+            handleStorageAnalysisResponse(operation, response.data || {});
+        })
+        .catch(function () {
+            setStorageAnalysisFeedback(String((config && config.siteStorageAnalysisFailed) || ''), 'error');
+        });
+}
+
+function onStartStorageAnalysisClick(event) {
+    event.preventDefault();
+    runStorageAnalysisOperation('base', true);
+}
+
+function onStartStorageOrphanAnalysisClick(event) {
+    event.preventDefault();
+    runStorageAnalysisOperation('orphan', true);
+}
+
+function initStorageAnalysisRunner() {
+    var runner = getStorageAnalysisRunner();
+    var baseButton = null;
+    var orphanButton = null;
+    var baseStatus = '';
+    var orphanStatus = '';
+    var hasCachedAnalysis = false;
+    var shouldAutoStart = false;
+
+    if (!runner) {
+        return;
+    }
+
+    baseButton = runner.querySelector('.rrze-msm-start-storage-analysis');
+    orphanButton = runner.querySelector('.rrze-msm-start-storage-orphan-analysis');
+    baseStatus = String(runner.getAttribute('data-base-status') || 'idle');
+    orphanStatus = String(runner.getAttribute('data-orphan-status') || 'idle');
+    shouldAutoStart = runner.getAttribute('data-auto-start') === '1';
+    hasCachedAnalysis = baseStatus === 'complete' || orphanStatus === 'complete';
+
+    if (baseButton) {
+        baseButton.addEventListener('click', onStartStorageAnalysisClick);
+    }
+
+    if (orphanButton) {
+        orphanButton.addEventListener('click', onStartStorageOrphanAnalysisClick);
+    }
+
+    updateStorageAnalysisButtons(runner, baseStatus, orphanStatus, hasCachedAnalysis);
+
+    if (shouldAutoStart && baseStatus === 'idle' && !hasCachedAnalysis) {
+        runStorageAnalysisOperation('base', true);
+        return;
+    }
+
+    if (baseStatus === 'running') {
+        scheduleStorageAnalysisRun('base');
+        return;
+    }
+
+    if (orphanStatus === 'running') {
+        scheduleStorageAnalysisRun('orphan');
+    }
+}
+
 function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = '';
@@ -1598,6 +1871,7 @@ function initRrzeMultisiteManager() {
     initPluginSitesPagers();
     initReadmeToggles();
     initOptionEditForms();
+    initStorageAnalysisRunner();
 }
 
 document.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);

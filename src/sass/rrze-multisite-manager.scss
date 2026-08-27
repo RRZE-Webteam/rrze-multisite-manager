@@ -302,6 +302,32 @@ body.rrze-msm-mode-dark {
     margin: 0;
 }
 
+.rrze-msm-storage-analysis-runner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 18px;
+    align-items: start;
+}
+
+.rrze-msm-storage-analysis-state {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.rrze-msm-storage-analysis-state h3 {
+    margin: 0;
+    color: var(--rrze-msm-text);
+}
+
+.rrze-msm-storage-analysis-state .description {
+    margin: 0;
+}
+
+.rrze-msm-storage-analysis-feedback {
+    grid-column: 1 / -1;
+}
+
 .rrze-msm-mode-dark .rrze-multisite-manager-admin .button:not(.rrze-msm-site-action):not(.rrze-msm-button-danger),
 .rrze-msm-mode-dark .rrze-multisite-manager-admin .button-secondary:not(.rrze-msm-site-action):not(.rrze-msm-button-danger) {
     background: var(--rrze-msm-surface);

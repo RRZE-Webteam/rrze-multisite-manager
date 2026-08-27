@@ -24,6 +24,8 @@ class MetricsService {
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ORPHAN_FILES_LIMIT = 500;
+    protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
+    protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
     protected const DASHBOARD_LOCK_TTL = 900;
     protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 100;
     protected ?Settings $settings;
@@ -3596,30 +3598,99 @@ class MetricsService {
     }
 
     public function getSiteStorageAnalysis(int $siteId): array {
-        $cacheKey = 'rrze_msm_site_storage_analysis_v2_' . $this->getDetailCacheVersion() . '_' . $siteId;
-        $cached = get_site_transient($cacheKey);
-        $analysis = [];
+        if ($siteId <= 0) {
+            return [];
+        }
+
+        return $this->getCachedSiteStorageAnalysis($siteId);
+    }
+
+    public function getCachedSiteStorageAnalysis(int $siteId): array {
+        $cached = [];
 
         if ($siteId <= 0) {
             return [];
         }
 
-        if (
-            is_array($cached)
-            && !empty($cached)
-            && array_key_exists('orphan_files_found_in_content', $cached)
-            && array_key_exists('orphan_files_without_content_matches', $cached)
-        ) {
-            return $cached;
+        $cached = get_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
+
+        if (!is_array($cached) || empty($cached)) {
+            return [];
+        }
+
+        return $cached;
+    }
+
+    public function getSiteStorageAnalysisProcessStatus(int $siteId): array {
+        $cachedAnalysis = $this->getCachedSiteStorageAnalysis($siteId);
+        $baseState = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+        $orphanState = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        $status = [
+            'site_id' => $siteId,
+            'has_cached_analysis' => !empty($cachedAnalysis),
+            'cached_generated_at' => is_string($cachedAnalysis['generated_at'] ?? null) ? (string)$cachedAnalysis['generated_at'] : '',
+            'base' => $this->getDefaultSiteStorageAnalysisBaseStatus(),
+            'orphan' => $this->getDefaultSiteStorageAnalysisOrphanStatus(),
+        ];
+
+        if (is_array($baseState) && !empty($baseState)) {
+            $status['base'] = $this->buildSiteStorageAnalysisBaseStatusFromState($baseState);
+        } elseif (!empty($cachedAnalysis)) {
+            $status['base']['status'] = 'complete';
+            $status['base']['message'] = __('Es liegt bereits eine abgeschlossene Speicheranalyse vor.', 'rrze-multisite-manager');
+            $status['base']['finished_at'] = is_string($cachedAnalysis['generated_at'] ?? null) ? (string)$cachedAnalysis['generated_at'] : '';
+        }
+
+        if (is_array($orphanState) && !empty($orphanState)) {
+            $status['orphan'] = $this->buildSiteStorageAnalysisOrphanStatusFromState($orphanState);
+        } elseif (!empty($cachedAnalysis) && (($cachedAnalysis['orphan_analysis_state'] ?? '') === 'complete')) {
+            $status['orphan']['status'] = 'complete';
+            $status['orphan']['message'] = __('Die Verwaist-Prüfung ist abgeschlossen.', 'rrze-multisite-manager');
+            $status['orphan']['finished_at'] = is_string($cachedAnalysis['orphan_analysis_generated_at'] ?? null)
+                ? (string)$cachedAnalysis['orphan_analysis_generated_at']
+                : (is_string($cachedAnalysis['generated_at'] ?? null) ? (string)$cachedAnalysis['generated_at'] : '');
+        } elseif (!empty($cachedAnalysis)) {
+            $status['orphan']['status'] = 'idle';
+            $status['orphan']['message'] = __('Die Basisanalyse ist vorhanden. Die Verwaist-Prüfung kann bei Bedarf separat gestartet werden.', 'rrze-multisite-manager');
+        }
+
+        return $status;
+    }
+
+    public function runSiteStorageAnalysisBatch(int $siteId, bool $restart = false): array {
+        $status = [];
+
+        if ($siteId <= 0) {
+            return [
+                'success' => false,
+                'message' => __('Ungültige Website.', 'rrze-multisite-manager'),
+                'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+            ];
         }
 
         switch_to_blog($siteId);
-        $analysis = $this->buildCurrentSiteStorageAnalysis();
+        $status = $this->runCurrentSiteStorageAnalysisBatch($siteId, $restart);
         restore_current_blog();
 
-        set_site_transient($cacheKey, $analysis, $this->getDetailCacheTtl());
+        return $status;
+    }
 
-        return $analysis;
+    public function runSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false): array {
+        $status = [];
+
+        if ($siteId <= 0) {
+            return [
+                'success' => false,
+                'message' => __('Ungültige Website.', 'rrze-multisite-manager'),
+                'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+            ];
+        }
+
+        switch_to_blog($siteId);
+        $status = $this->runCurrentSiteStorageOrphanAnalysisBatch($siteId, $restart);
+        restore_current_blog();
+
+        return $status;
     }
 
     protected function buildCurrentSiteStorageAnalysis(): array {
@@ -3720,6 +3791,585 @@ class MetricsService {
             'summary_rows' => $summary,
             'warnings' => $warnings,
             'generated_at' => current_time('mysql', true),
+            'orphan_analysis_state' => 'complete',
+            'orphan_analysis_generated_at' => current_time('mysql', true),
+        ];
+    }
+
+    protected function runCurrentSiteStorageAnalysisBatch(int $siteId, bool $restart = false): array {
+        $state = [];
+
+        if ($restart) {
+            delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+            delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        }
+
+        $state = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+
+        if (!is_array($state) || empty($state) || $restart) {
+            $state = $this->initializeCurrentSiteStorageAnalysisBaseState($siteId);
+
+            if (($state['status'] ?? '') === 'error') {
+                set_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId), $state, $this->getDetailCacheTtl());
+
+                return [
+                    'success' => false,
+                    'message' => (string)($state['message'] ?? ''),
+                    'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+                ];
+            }
+        }
+
+        if (($state['status'] ?? '') !== 'running') {
+            return [
+                'success' => true,
+                'message' => (string)($state['message'] ?? ''),
+                'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+            ];
+        }
+
+        $state = $this->processCurrentSiteStorageAnalysisBaseState($state);
+
+        if (
+            empty($state['queue_directories'])
+            && empty($state['queue_files'])
+            && ($state['status'] ?? '') === 'running'
+        ) {
+            $this->finalizeCurrentSiteStorageAnalysisBaseState($siteId, $state);
+        } else {
+            set_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId), $state, $this->getDetailCacheTtl());
+        }
+
+        return [
+            'success' => true,
+            'message' => (string)($state['message'] ?? ''),
+            'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+        ];
+    }
+
+    protected function runCurrentSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false): array {
+        $analysis = $this->getCachedSiteStorageAnalysis($siteId);
+        $state = [];
+
+        if (empty($analysis)) {
+            return [
+                'success' => false,
+                'message' => __('Vor der Verwaist-Prüfung muss zuerst die Basisanalyse abgeschlossen werden.', 'rrze-multisite-manager'),
+                'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+            ];
+        }
+
+        if ($restart) {
+            delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        }
+
+        $state = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+
+        if (!is_array($state) || empty($state) || $restart) {
+            $state = $this->initializeCurrentSiteStorageAnalysisOrphanState($analysis);
+        }
+
+        if (($state['status'] ?? '') !== 'running') {
+            return [
+                'success' => true,
+                'message' => (string)($state['message'] ?? ''),
+                'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+            ];
+        }
+
+        $state = $this->processCurrentSiteStorageAnalysisOrphanState($state);
+
+        if ((int)($state['current_index'] ?? 0) >= (int)($state['total'] ?? 0)) {
+            $this->finalizeCurrentSiteStorageAnalysisOrphanState($siteId, $analysis, $state);
+        } else {
+            set_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId), $state, $this->getDetailCacheTtl());
+        }
+
+        return [
+            'success' => true,
+            'message' => (string)($state['message'] ?? ''),
+            'status' => $this->getSiteStorageAnalysisProcessStatus($siteId),
+        ];
+    }
+
+    protected function initializeCurrentSiteStorageAnalysisBaseState(int $siteId): array {
+        $uploadDir = wp_get_upload_dir();
+        $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
+        $baseUrl = is_array($uploadDir) && !empty($uploadDir['baseurl']) ? (string)$uploadDir['baseurl'] : '';
+        $excludedTopLevelDirectories = $this->getExcludedUploadTopLevelDirectoriesForCurrentSite();
+        $normalizedBaseDir = trailingslashit(wp_normalize_path($baseDir));
+
+        if ($baseDir === '' || !is_dir($baseDir)) {
+            return [
+                'status' => 'error',
+                'message' => __('Das Upload-Verzeichnis dieser Website konnte nicht gefunden werden.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        if (!is_readable($baseDir)) {
+            return [
+                'status' => 'error',
+                'message' => __('Das Upload-Verzeichnis dieser Website ist nicht lesbar.', 'rrze-multisite-manager'),
+            ];
+        }
+
+        delete_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
+
+        return [
+            'site_id' => $siteId,
+            'status' => 'running',
+            'message' => __('Speicheranalyse wird ausgeführt.', 'rrze-multisite-manager'),
+            'started_at' => current_time('mysql', true),
+            'updated_at' => current_time('mysql', true),
+            'finished_at' => '',
+            'upload_basedir' => $baseDir,
+            'upload_baseurl' => $baseUrl,
+            'normalized_base_dir' => $normalizedBaseDir,
+            'excluded_top_level_directories' => $excludedTopLevelDirectories,
+            'queue_directories' => ['.'],
+            'queue_files' => [],
+            'processed_steps' => 0,
+            'processed_files' => 0,
+            'processed_directories' => 0,
+            'total_bytes' => 0,
+            'orphan_file_count' => 0,
+            'orphan_total_bytes' => 0,
+            'top_level_directory_stats' => [],
+            'largest_files' => [],
+            'largest_orphan_files' => [],
+        ];
+    }
+
+    protected function processCurrentSiteStorageAnalysisBaseState(array $state): array {
+        $attachmentIndex = $this->getCurrentSiteStorageAnalysisAttachmentIndex();
+        $referencedFiles = array_fill_keys(array_keys($attachmentIndex), true);
+        $processedInBatch = 0;
+        $currentDirectory = '';
+        $currentFile = '';
+
+        while (
+            $processedInBatch < self::STORAGE_ANALYSIS_BATCH_SIZE
+            && (
+                !empty($state['queue_files'])
+                || !empty($state['queue_directories'])
+            )
+        ) {
+            if (!empty($state['queue_files'])) {
+                $currentFile = (string)array_shift($state['queue_files']);
+                $this->processCurrentSiteStorageAnalysisFile($state, $currentFile, $attachmentIndex, $referencedFiles);
+                $processedInBatch++;
+                continue;
+            }
+
+            $currentDirectory = (string)array_shift($state['queue_directories']);
+            $this->processCurrentSiteStorageAnalysisDirectory($state, $currentDirectory);
+            $processedInBatch++;
+        }
+
+        $state['processed_steps'] = (int)($state['processed_steps'] ?? 0) + $processedInBatch;
+        $state['updated_at'] = current_time('mysql', true);
+        $state['message'] = sprintf(
+            /* translators: 1: scanned files, 2: scanned directories. */
+            __('Es wurden bereits %1$s Dateien und %2$s Ordner verarbeitet.', 'rrze-multisite-manager'),
+            number_format_i18n((int)($state['processed_files'] ?? 0)),
+            number_format_i18n((int)($state['processed_directories'] ?? 0))
+        );
+
+        return $state;
+    }
+
+    protected function processCurrentSiteStorageAnalysisDirectory(array &$state, string $relativeDirectory): void {
+        $normalizedRelativeDirectory = $relativeDirectory === '' ? '.' : $relativeDirectory;
+        $absoluteDirectory = $this->getCurrentSiteStorageAbsolutePathFromRelative($state, $normalizedRelativeDirectory);
+        $entries = [];
+        $entryName = '';
+        $entryRelativePath = '';
+        $entryAbsolutePath = '';
+
+        if ($absoluteDirectory === '' || !is_dir($absoluteDirectory) || !is_readable($absoluteDirectory)) {
+            return;
+        }
+
+        if ($normalizedRelativeDirectory !== '.') {
+            $state['processed_directories'] = (int)($state['processed_directories'] ?? 0) + 1;
+        }
+
+        $entries = scandir($absoluteDirectory);
+
+        if (!is_array($entries)) {
+            return;
+        }
+
+        foreach ($entries as $entryName) {
+            if ($entryName === '.' || $entryName === '..') {
+                continue;
+            }
+
+            $entryRelativePath = $normalizedRelativeDirectory === '.'
+                ? $entryName
+                : trim($normalizedRelativeDirectory, '/') . '/' . $entryName;
+
+            if ($this->shouldExcludeUploadRelativePath($entryRelativePath, (array)($state['excluded_top_level_directories'] ?? []))) {
+                continue;
+            }
+
+            $entryAbsolutePath = $this->getCurrentSiteStorageAbsolutePathFromRelative($state, $entryRelativePath);
+
+            if ($entryAbsolutePath === '' || is_link($entryAbsolutePath)) {
+                continue;
+            }
+
+            if (is_dir($entryAbsolutePath)) {
+                $state['queue_directories'][] = $entryRelativePath;
+                continue;
+            }
+
+            if (is_file($entryAbsolutePath)) {
+                $state['queue_files'][] = $entryRelativePath;
+            }
+        }
+    }
+
+    protected function processCurrentSiteStorageAnalysisFile(array &$state, string $relativePath, array $attachmentIndex, array $referencedFiles): void {
+        $absolutePath = $this->getCurrentSiteStorageAbsolutePathFromRelative($state, $relativePath);
+        $sizeBytes = 0;
+        $modifiedTimestamp = 0;
+        $entry = [];
+
+        if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
+            return;
+        }
+
+        $sizeBytes = (int)@filesize($absolutePath);
+        $modifiedTimestamp = (int)@filemtime($absolutePath);
+        $entry = $this->buildStorageFileEntry($relativePath, max(0, $sizeBytes), $modifiedTimestamp, (string)($state['upload_baseurl'] ?? ''), $attachmentIndex);
+
+        $state['processed_files'] = (int)($state['processed_files'] ?? 0) + 1;
+        $state['total_bytes'] = (int)($state['total_bytes'] ?? 0) + max(0, $sizeBytes);
+        $this->addToTopLevelDirectoryStats($state['top_level_directory_stats'], $this->getTopLevelDirectoryKey($relativePath), $sizeBytes);
+        $this->pushLargestFileEntry($state['largest_files'], $entry);
+
+        if ($this->isPotentiallyOrphanUploadFile($relativePath, $referencedFiles)) {
+            $state['orphan_file_count'] = (int)($state['orphan_file_count'] ?? 0) + 1;
+            $state['orphan_total_bytes'] = (int)($state['orphan_total_bytes'] ?? 0) + max(0, $sizeBytes);
+            $this->pushLargestFileEntry($state['largest_orphan_files'], $entry, self::STORAGE_ORPHAN_FILES_LIMIT);
+        }
+    }
+
+    protected function finalizeCurrentSiteStorageAnalysisBaseState(int $siteId, array &$state): void {
+        $wordpressStorage = $this->getSiteStorageUsage();
+        $actualBytes = (int)($state['total_bytes'] ?? 0);
+        $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
+        $scan = [
+            'total_bytes' => $actualBytes,
+            'total_files' => (int)($state['processed_files'] ?? 0),
+            'total_directories' => (int)($state['processed_directories'] ?? 0),
+            'orphan_file_count' => (int)($state['orphan_file_count'] ?? 0),
+            'orphan_total_bytes' => (int)($state['orphan_total_bytes'] ?? 0),
+            'largest_orphan_files' => (array)($state['largest_orphan_files'] ?? []),
+            'orphan_files_truncated' => (int)($state['orphan_file_count'] ?? 0) > self::STORAGE_ORPHAN_FILES_LIMIT,
+            'orphan_files_found_in_content' => [],
+            'orphan_files_without_content_matches' => [],
+            'top_level_directories' => $this->finalizeTopLevelDirectoryStats((array)($state['top_level_directory_stats'] ?? []), $actualBytes),
+            'top_consumers' => $this->buildTopStorageConsumersFromTopLevelStats(
+                (array)($state['top_level_directory_stats'] ?? []),
+                (array)($state['largest_files'] ?? []),
+                $actualBytes
+            ),
+            'largest_files' => array_slice((array)($state['largest_files'] ?? []), 0, self::STORAGE_LARGEST_FILES_LIMIT),
+        ];
+
+        set_site_transient(
+            $this->getSiteStorageAnalysisCacheKey($siteId),
+            $this->buildStorageAnalysisPayload(
+                (string)($state['upload_basedir'] ?? ''),
+                (string)($state['upload_baseurl'] ?? ''),
+                $wordpressStorage,
+                $scan,
+                current_time('mysql', true),
+                'idle',
+                ''
+            ),
+            $this->getDetailCacheTtl()
+        );
+
+        $state['status'] = 'complete';
+        $state['finished_at'] = current_time('mysql', true);
+        $state['updated_at'] = $state['finished_at'];
+        $state['message'] = __('Die Basisanalyse ist abgeschlossen. Die Verwaist-Prüfung kann nun separat gestartet werden.', 'rrze-multisite-manager');
+        set_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId), $state, $this->getDetailCacheTtl());
+        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+    }
+
+    protected function initializeCurrentSiteStorageAnalysisOrphanState(array $analysis): array {
+        $candidates = is_array($analysis['largest_orphan_files'] ?? null) ? array_values((array)$analysis['largest_orphan_files']) : [];
+
+        return [
+            'status' => 'running',
+            'message' => __('Verwaist-Prüfung wird ausgeführt.', 'rrze-multisite-manager'),
+            'started_at' => current_time('mysql', true),
+            'updated_at' => current_time('mysql', true),
+            'finished_at' => '',
+            'current_index' => 0,
+            'total' => count($candidates),
+            'candidates' => $candidates,
+            'found_in_content' => [],
+            'without_matches' => [],
+        ];
+    }
+
+    protected function processCurrentSiteStorageAnalysisOrphanState(array $state): array {
+        $index = (int)($state['current_index'] ?? 0);
+        $processed = 0;
+        $candidate = [];
+        $matches = [];
+        $matchCount = 0;
+
+        while (
+            $processed < self::STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE
+            && $index < (int)($state['total'] ?? 0)
+        ) {
+            $candidate = is_array($state['candidates'][$index] ?? null) ? (array)$state['candidates'][$index] : [];
+
+            if (!empty($candidate)) {
+                $matches = $this->searchCurrentSiteFileUsageMatches(
+                    is_string($candidate['file_url'] ?? null) ? (string)$candidate['file_url'] : '',
+                    is_string($candidate['path'] ?? null) ? (string)$candidate['path'] : ''
+                );
+                $matchCount = count($matches);
+                $candidate['content_usage_count'] = $matchCount;
+                $candidate['content_usage_label'] = sprintf(
+                    _n('%d Treffer', '%d Treffer', $matchCount, 'rrze-multisite-manager'),
+                    $matchCount
+                );
+
+                if ($matchCount > 0) {
+                    $candidate['content_usage_results'] = $matches;
+                    $state['found_in_content'][] = $candidate;
+                } else {
+                    $state['without_matches'][] = $candidate;
+                }
+            }
+
+            $index++;
+            $processed++;
+        }
+
+        $state['current_index'] = $index;
+        $state['updated_at'] = current_time('mysql', true);
+        $state['message'] = sprintf(
+            /* translators: 1: processed candidates, 2: total candidates. */
+            __('Es wurden %1$s von %2$s potenziell verwaisten Dateien geprüft.', 'rrze-multisite-manager'),
+            number_format_i18n($index),
+            number_format_i18n((int)($state['total'] ?? 0))
+        );
+
+        return $state;
+    }
+
+    protected function finalizeCurrentSiteStorageAnalysisOrphanState(int $siteId, array $analysis, array &$state): void {
+        $analysis['orphan_files_found_in_content'] = array_values((array)($state['found_in_content'] ?? []));
+        $analysis['orphan_files_without_content_matches'] = array_values((array)($state['without_matches'] ?? []));
+        $analysis['orphan_analysis_state'] = 'complete';
+        $analysis['orphan_analysis_generated_at'] = current_time('mysql', true);
+        $analysis['generated_at'] = current_time('mysql', true);
+        set_site_transient($this->getSiteStorageAnalysisCacheKey($siteId), $analysis, $this->getDetailCacheTtl());
+
+        $state['status'] = 'complete';
+        $state['finished_at'] = current_time('mysql', true);
+        $state['updated_at'] = $state['finished_at'];
+        $state['message'] = __('Die Verwaist-Prüfung ist abgeschlossen.', 'rrze-multisite-manager');
+        set_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId), $state, $this->getDetailCacheTtl());
+    }
+
+    protected function buildStorageAnalysisPayload(
+        string $baseDir,
+        string $baseUrl,
+        array $wordpressStorage,
+        array $scan,
+        string $generatedAt,
+        string $orphanAnalysisState = 'complete',
+        string $orphanAnalysisGeneratedAt = ''
+    ): array {
+        $actualBytes = (int)($scan['total_bytes'] ?? 0);
+        $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
+        $warnings = $this->buildStorageAnalysisWarnings($differenceBytes, $actualBytes, $wordpressStorage, $scan);
+        $summary = [
+            [
+                'label' => __('WordPress gemeldet', 'rrze-multisite-manager'),
+                'value' => (string)($wordpressStorage['used_label'] ?? ''),
+            ],
+            [
+                'label' => __('Im Upload-Verzeichnis gefunden', 'rrze-multisite-manager'),
+                'value' => size_format($actualBytes),
+            ],
+            [
+                'label' => __('Differenz', 'rrze-multisite-manager'),
+                'value' => ($differenceBytes >= 0 ? '+' : '-') . size_format(abs($differenceBytes)),
+            ],
+            [
+                'label' => __('Dateien', 'rrze-multisite-manager'),
+                'value' => number_format_i18n((int)($scan['total_files'] ?? 0)),
+            ],
+            [
+                'label' => __('Dateien laut Datenbank referenziert', 'rrze-multisite-manager'),
+                'value' => number_format_i18n(count($this->getCurrentSiteReferencedUploadFiles())),
+            ],
+            [
+                'label' => __('Ordner', 'rrze-multisite-manager'),
+                'value' => number_format_i18n((int)($scan['total_directories'] ?? 0)),
+            ],
+            [
+                'label' => __('Potenziell verwaiste Dateien', 'rrze-multisite-manager'),
+                'value' => number_format_i18n((int)($scan['orphan_file_count'] ?? 0)),
+            ],
+            [
+                'label' => __('Analysezeitpunkt', 'rrze-multisite-manager'),
+                'value' => $this->formatDate($generatedAt),
+            ],
+        ];
+
+        return [
+            'upload_basedir' => $baseDir,
+            'upload_baseurl' => $baseUrl,
+            'wordpress_storage' => $wordpressStorage,
+            'actual_bytes' => $actualBytes,
+            'actual_label' => size_format($actualBytes),
+            'difference_bytes' => $differenceBytes,
+            'difference_label' => ($differenceBytes >= 0 ? '+' : '-') . size_format(abs($differenceBytes)),
+            'total_files' => (int)($scan['total_files'] ?? 0),
+            'total_directories' => (int)($scan['total_directories'] ?? 0),
+            'orphan_file_count' => (int)($scan['orphan_file_count'] ?? 0),
+            'orphan_total_bytes' => (int)($scan['orphan_total_bytes'] ?? 0),
+            'orphan_total_label' => size_format((int)($scan['orphan_total_bytes'] ?? 0)),
+            'largest_orphan_files' => (array)($scan['largest_orphan_files'] ?? []),
+            'orphan_files_truncated' => !empty($scan['orphan_files_truncated']),
+            'orphan_files_found_in_content' => (array)($scan['orphan_files_found_in_content'] ?? []),
+            'orphan_files_without_content_matches' => (array)($scan['orphan_files_without_content_matches'] ?? []),
+            'top_level_directories' => (array)($scan['top_level_directories'] ?? []),
+            'top_consumers' => (array)($scan['top_consumers'] ?? []),
+            'largest_files' => (array)($scan['largest_files'] ?? []),
+            'summary_rows' => $summary,
+            'warnings' => $warnings,
+            'generated_at' => $generatedAt,
+            'orphan_analysis_state' => $orphanAnalysisState,
+            'orphan_analysis_generated_at' => $orphanAnalysisGeneratedAt,
+        ];
+    }
+
+    protected function getCurrentSiteStorageAbsolutePathFromRelative(array $state, string $relativePath): string {
+        $normalizedBaseDir = (string)($state['normalized_base_dir'] ?? '');
+        $normalizedRelativePath = trim($this->normalizeRelativeUploadPath($relativePath), '/');
+
+        if ($normalizedBaseDir === '') {
+            return '';
+        }
+
+        if ($normalizedRelativePath === '' || $normalizedRelativePath === '.') {
+            return rtrim($normalizedBaseDir, '/');
+        }
+
+        return $normalizedBaseDir . $normalizedRelativePath;
+    }
+
+    protected function buildTopStorageConsumersFromTopLevelStats(array $topLevelDirectoryStats, array $largestFiles, int $totalBytes): array {
+        $directoryEntries = array_values($topLevelDirectoryStats);
+        $entry = [];
+        $entries = [];
+
+        foreach ($directoryEntries as $index => $entry) {
+            $directoryEntries[$index]['type'] = 'directory';
+            $directoryEntries[$index]['size_label'] = size_format((int)($entry['size_bytes'] ?? 0));
+            $directoryEntries[$index]['percent'] = $totalBytes > 0
+                ? (int)round((((int)($entry['size_bytes'] ?? 0)) / $totalBytes) * 100)
+                : 0;
+        }
+
+        usort($directoryEntries, [self::class, 'compareStorageEntries']);
+        $entries = array_merge(array_slice($directoryEntries, 0, 10), array_slice($largestFiles, 0, 10));
+        usort($entries, [self::class, 'compareStorageEntries']);
+
+        return array_slice($entries, 0, 10);
+    }
+
+    protected function getCurrentSiteStorageAnalysisAttachmentIndex(): array {
+        $siteId = get_current_blog_id();
+        $cacheKey = 'rrze_msm_site_storage_attachment_index_' . $this->getDetailCacheVersion() . '_' . $siteId;
+        $cached = get_site_transient($cacheKey);
+        $index = [];
+
+        if (is_array($cached) && !empty($cached)) {
+            return $cached;
+        }
+
+        $index = $this->getCurrentSiteUploadAttachmentIndex();
+        set_site_transient($cacheKey, $index, $this->getDetailCacheTtl());
+
+        return $index;
+    }
+
+    protected function clearCurrentSiteStorageAnalysisCaches(): void {
+        $siteId = get_current_blog_id();
+
+        if ($siteId <= 0) {
+            return;
+        }
+
+        delete_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
+        delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        delete_site_transient('rrze_msm_site_storage_attachment_index_' . $this->getDetailCacheVersion() . '_' . $siteId);
+    }
+
+    protected function getSiteStorageAnalysisCacheKey(int $siteId): string {
+        return 'rrze_msm_site_storage_analysis_v3_' . $this->getDetailCacheVersion() . '_' . $siteId;
+    }
+
+    protected function getSiteStorageAnalysisBaseStateKey(int $siteId): string {
+        return 'rrze_msm_site_storage_analysis_base_state_' . $this->getDetailCacheVersion() . '_' . $siteId;
+    }
+
+    protected function getSiteStorageAnalysisOrphanStateKey(int $siteId): string {
+        return 'rrze_msm_site_storage_analysis_orphan_state_' . $this->getDetailCacheVersion() . '_' . $siteId;
+    }
+
+    protected function getDefaultSiteStorageAnalysisBaseStatus(): array {
+        return [
+            'status' => 'idle',
+            'message' => __('Noch keine Basisanalyse vorhanden.', 'rrze-multisite-manager'),
+            'processed_files' => 0,
+            'processed_directories' => 0,
+            'finished_at' => '',
+        ];
+    }
+
+    protected function getDefaultSiteStorageAnalysisOrphanStatus(): array {
+        return [
+            'status' => 'idle',
+            'message' => __('Noch keine Verwaist-Prüfung vorhanden.', 'rrze-multisite-manager'),
+            'processed' => 0,
+            'total' => 0,
+            'finished_at' => '',
+        ];
+    }
+
+    protected function buildSiteStorageAnalysisBaseStatusFromState(array $state): array {
+        return [
+            'status' => (string)($state['status'] ?? 'idle'),
+            'message' => (string)($state['message'] ?? ''),
+            'processed_files' => (int)($state['processed_files'] ?? 0),
+            'processed_directories' => (int)($state['processed_directories'] ?? 0),
+            'finished_at' => is_string($state['finished_at'] ?? null) ? (string)$state['finished_at'] : '',
+        ];
+    }
+
+    protected function buildSiteStorageAnalysisOrphanStatusFromState(array $state): array {
+        return [
+            'status' => (string)($state['status'] ?? 'idle'),
+            'message' => (string)($state['message'] ?? ''),
+            'processed' => (int)($state['current_index'] ?? 0),
+            'total' => (int)($state['total'] ?? 0),
+            'finished_at' => is_string($state['finished_at'] ?? null) ? (string)$state['finished_at'] : '',
         ];
     }
 
@@ -4731,6 +5381,8 @@ class MetricsService {
                 'message' => __('Die Datei konnte nicht gelöscht werden.', 'rrze-multisite-manager'),
             ];
         }
+
+        $this->clearCurrentSiteStorageAnalysisCaches();
 
         return [
             'deleted' => true,

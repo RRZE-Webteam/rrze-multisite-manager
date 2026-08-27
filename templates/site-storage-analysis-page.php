@@ -34,6 +34,15 @@ defined('ABSPATH') || exit;
         <?php } ?>
 
         <?php if (!empty($site_summary)) { ?>
+            <?php
+            $baseStatus = is_array($storage_analysis_status['base'] ?? null) ? (array)$storage_analysis_status['base'] : [];
+            $orphanStatus = is_array($storage_analysis_status['orphan'] ?? null) ? (array)$storage_analysis_status['orphan'] : [];
+            $hasCachedAnalysis = !empty($storage_analysis_status['has_cached_analysis']);
+            $baseState = (string)($baseStatus['status'] ?? 'idle');
+            $orphanState = (string)($orphanStatus['status'] ?? 'idle');
+            $orphanAnalysisComplete = (($storage_analysis['orphan_analysis_state'] ?? '') === 'complete');
+            $showBatchHint = empty($auto_start_storage_analysis);
+            ?>
             <?php if (!empty($orphan_file_deleted_count) || !empty($orphan_file_deleted)) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <div class="notice notice-success inline">
@@ -102,13 +111,53 @@ defined('ABSPATH') || exit;
                 </div>
             </section>
 
+            <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                <header class="rrze-msm-widget-header">
+                    <h2><?php echo esc_html__('Analyse-Status', 'rrze-multisite-manager'); ?></h2>
+                    <?php if ($showBatchHint) { ?>
+                        <p><?php echo esc_html__('Große Upload-Verzeichnisse werden in kleinen Browser-Batches analysiert.', 'rrze-multisite-manager'); ?></p>
+                    <?php } ?>
+                </header>
+                <div
+                    id="rrze-msm-storage-analysis-runner"
+                    class="rrze-msm-storage-analysis-runner"
+                    data-site-id="<?php echo esc_attr((string)$site_id); ?>"
+                    data-base-status="<?php echo esc_attr($baseState); ?>"
+                    data-orphan-status="<?php echo esc_attr($orphanState); ?>"
+                    data-auto-start="<?php echo esc_attr(!empty($auto_start_storage_analysis) ? '1' : '0'); ?>">
+                    <div class="rrze-msm-storage-analysis-state">
+                        <h3><?php echo esc_html__('Basisanalyse', 'rrze-multisite-manager'); ?></h3>
+                        <p id="rrze-msm-storage-analysis-base-message"><?php echo esc_html((string)($baseStatus['message'] ?? __('Noch keine Basisanalyse vorhanden.', 'rrze-multisite-manager'))); ?></p>
+                        <?php if (!empty($baseStatus['finished_at'])) { ?>
+                            <p class="description"><?php echo esc_html(sprintf(__('Letzter Abschluss: %s', 'rrze-multisite-manager'), mysql2date(get_option('date_format') . ' ' . get_option('time_format'), (string)$baseStatus['finished_at'], true))); ?></p>
+                        <?php } elseif (!empty($storage_analysis_status['cached_generated_at'])) { ?>
+                            <p class="description"><?php echo esc_html(sprintf(__('Letzter Stand: %s', 'rrze-multisite-manager'), mysql2date(get_option('date_format') . ' ' . get_option('time_format'), (string)$storage_analysis_status['cached_generated_at'], true))); ?></p>
+                        <?php } ?>
+                        <p class="rrze-msm-site-actions">
+                            <button type="button" class="button button-secondary rrze-msm-start-storage-analysis"><?php echo esc_html($hasCachedAnalysis ? __('Analyse aktualisieren', 'rrze-multisite-manager') : __('Analyse starten', 'rrze-multisite-manager')); ?></button>
+                        </p>
+                    </div>
+                    <div class="rrze-msm-storage-analysis-state">
+                        <h3><?php echo esc_html__('Verwaist-Prüfung', 'rrze-multisite-manager'); ?></h3>
+                        <p id="rrze-msm-storage-analysis-orphan-message"><?php echo esc_html((string)($orphanStatus['message'] ?? __('Noch keine Verwaist-Prüfung vorhanden.', 'rrze-multisite-manager'))); ?></p>
+                        <?php if (!empty($orphanStatus['finished_at'])) { ?>
+                            <p class="description"><?php echo esc_html(sprintf(__('Letzter Abschluss: %s', 'rrze-multisite-manager'), mysql2date(get_option('date_format') . ' ' . get_option('time_format'), (string)$orphanStatus['finished_at'], true))); ?></p>
+                        <?php } ?>
+                        <p class="rrze-msm-site-actions">
+                            <button type="button" class="button button-secondary rrze-msm-start-storage-orphan-analysis" <?php disabled(!$hasCachedAnalysis); ?>><?php echo esc_html__('Verwaist-Prüfung starten', 'rrze-multisite-manager'); ?></button>
+                        </p>
+                    </div>
+                    <div id="rrze-msm-storage-analysis-feedback" class="rrze-msm-storage-analysis-feedback" hidden></div>
+                </div>
+            </section>
+
             <?php if (!empty($storage_analysis['error'])) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <div class="notice notice-error inline">
                         <p><?php echo esc_html((string)$storage_analysis['error']); ?></p>
                     </div>
                 </section>
-            <?php } else { ?>
+            <?php } elseif (!empty($storage_analysis_ready)) { ?>
                 <?php if (!empty($storage_analysis['warnings'])) { ?>
                     <section class="rrze-msm-widget rrze-msm-widget-span-12">
                         <?php foreach ((array)$storage_analysis['warnings'] as $warning_row) { ?>
@@ -260,7 +309,7 @@ defined('ABSPATH') || exit;
                         </div>
                     <?php } ?>
                     <?php if (!empty($storage_analysis['largest_orphan_files'])) { ?>
-                        <?php if (!empty($storage_analysis['orphan_files_found_in_content'])) { ?>
+                        <?php if ($orphanAnalysisComplete && !empty($storage_analysis['orphan_files_found_in_content'])) { ?>
                             <h3><?php echo esc_html__('Noch über Referenzen oder Code-Registrierung gefunden', 'rrze-multisite-manager'); ?></h3>
                             <p><?php echo esc_html__('Diese Dateien sind keine Attachments, werden aber noch in Posts, Pages, deren Metafeldern oder über Register-/Enqueue-Aufrufe in aktiven Plugins, MU-Plugins oder dem aktiven Theme referenziert.', 'rrze-multisite-manager'); ?></p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="orphan-files-referenced" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
@@ -309,12 +358,16 @@ defined('ABSPATH') || exit;
                                     <div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Seitennavigation', 'rrze-multisite-manager'); ?>"></div>
                                 </div>
                             </div>
-                        <?php } else { ?>
+                        <?php } elseif ($orphanAnalysisComplete) { ?>
                             <h3><?php echo esc_html__('Noch über Referenzen oder Code-Registrierung gefunden', 'rrze-multisite-manager'); ?></h3>
                             <p><?php echo esc_html__('Für die analysierten potenziell verwaisten Dateien wurden keine Referenzen in Posts, Pages, deren Metafeldern oder über Register-/Enqueue-Aufrufe im aktiven Code gefunden.', 'rrze-multisite-manager'); ?></p>
+                        <?php } else { ?>
+                            <div class="notice notice-info inline">
+                                <p><?php echo esc_html__('Die Basisanalyse hat nur Kandidaten gesammelt. Starte jetzt die Verwaist-Prüfung, damit Referenzen in Inhalten, Metafeldern und aktivem Code wirklich geprüft werden.', 'rrze-multisite-manager'); ?></p>
+                            </div>
                         <?php } ?>
 
-                        <?php if (!empty($storage_analysis['orphan_files_without_content_matches'])) { ?>
+                        <?php if ($orphanAnalysisComplete && !empty($storage_analysis['orphan_files_without_content_matches'])) { ?>
                             <h3><?php echo esc_html__('Nirgends in Referenzen oder aktiver Code-Registrierung gefunden', 'rrze-multisite-manager'); ?></h3>
                             <p><?php echo esc_html__('Diese Dateien sind keine Attachments und es wurden weder direkte Referenzen in Posts, Pages oder deren Metafeldern noch Register-/Enqueue-Aufrufe im aktiven Code gefunden.', 'rrze-multisite-manager'); ?></p>
                             <form method="post" action="<?php echo esc_url((string)$orphan_file_delete_action); ?>">
@@ -487,6 +540,13 @@ defined('ABSPATH') || exit;
                         <p><?php echo esc_html__('Es wurden keine potenziell verwaisten Dateien erkannt.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>
                 </section>
+            <?php } else { ?>
+                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <div class="notice notice-info inline">
+                        <p><?php echo esc_html__('Für diese Website liegt noch keine abgeschlossene Speicheranalyse vor. Starte die Basisanalyse oben. Sobald sie fertig ist, erscheinen hier die Detailtabellen.', 'rrze-multisite-manager'); ?></p>
+                    </div>
+                </section>
+            <?php } ?>
 
                 <div class="rrze-msm-modal" id="rrze-msm-orphan-file-delete-modal" hidden>
                     <div class="rrze-msm-modal-backdrop rrze-msm-close-orphan-file-delete-modal"></div>
@@ -632,7 +692,6 @@ defined('ABSPATH') || exit;
                 document.addEventListener('DOMContentLoaded', rrzeMsmInitOrphanSelectionToggle);
                 </script>
 
-            <?php } ?>
         <?php } ?>
     </div>
 </div>

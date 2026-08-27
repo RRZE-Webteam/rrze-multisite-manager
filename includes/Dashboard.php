@@ -47,6 +47,7 @@ class Dashboard {
     protected const META_LAST_DNS_OK_AT = 'rrze_msm_last_dns_ok_at';
     protected const META_LAST_HTTP_OK_AT = 'rrze_msm_last_http_ok_at';
     protected const META_MONITORING_NOTE = 'rrze_msm_monitoring_note';
+    protected const STORAGE_ANALYSIS_AUTO_START_THRESHOLD = 104857600;
 
     public function __construct(Plugin $plugin, Settings $settings) {
         $this->plugin = $plugin;
@@ -73,6 +74,9 @@ class Dashboard {
         add_action('wp_ajax_rrze_msm_search_sites', [$this, 'ajaxSearchSites']);
         add_action('wp_ajax_rrze_msm_search_plugins', [$this, 'ajaxSearchPlugins']);
         add_action('wp_ajax_rrze_msm_search_themes', [$this, 'ajaxSearchThemes']);
+        add_action('wp_ajax_rrze_msm_run_site_storage_analysis', [$this, 'ajaxRunSiteStorageAnalysis']);
+        add_action('wp_ajax_rrze_msm_run_site_storage_orphan_analysis', [$this, 'ajaxRunSiteStorageOrphanAnalysis']);
+        add_action('wp_ajax_rrze_msm_get_site_storage_analysis_status', [$this, 'ajaxGetSiteStorageAnalysisStatus']);
         add_action('admin_post_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('admin_post_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
         add_action('admin_post_rrze_multisite_manager_site_permanent_delete', [$this, 'handleSitePermanentDelete']);
@@ -285,14 +289,14 @@ class Dashboard {
 
         wp_enqueue_style(
             'rrze-multisite-manager-admin',
-            $this->plugin->getUrl('assets/css/rrze-multisite-manager.css'),
+            $this->plugin->getUrl('build/css/rrze-multisite-manager.css'),
             [],
             $this->plugin->getVersion()
         );
 
         wp_enqueue_script(
             'rrze-multisite-manager-admin',
-            $this->plugin->getUrl('assets/js/rrze-multisite-manager.js'),
+            $this->plugin->getUrl('build/js/rrze-multisite-manager.js'),
             ['jquery', 'jquery-ui-sortable'],
             $this->plugin->getVersion(),
             true
@@ -321,6 +325,11 @@ class Dashboard {
                 'themeSearchNonce' => wp_create_nonce('rrze-msm-search-themes'),
                 'themeSearchMinLength' => 3,
                 'themeSearchNoResults' => __('Keine Themes gefunden.', 'rrze-multisite-manager'),
+                'siteStorageAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-analysis'),
+                'siteStorageOrphanAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-orphan-analysis'),
+                'siteStorageStatusNonce' => wp_create_nonce('rrze-msm-site-storage-status'),
+                'siteStorageAnalysisCompleted' => __('Die Speicheranalyse ist abgeschlossen. Die Seite wird neu geladen.', 'rrze-multisite-manager'),
+                'siteStorageAnalysisFailed' => __('Die Speicheranalyse konnte nicht abgeschlossen werden.', 'rrze-multisite-manager'),
             ]
         );
     }
@@ -1043,11 +1052,15 @@ class Dashboard {
     public function renderSiteStorageAnalysisPage(): void {
         $siteId = isset($_GET['site_id']) ? absint($_GET['site_id']) : 0;
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
-        $storageAnalysis = $siteId > 0 ? $this->metrics->getSiteStorageAnalysis($siteId) : [];
+        $storageAnalysis = $siteId > 0 ? $this->metrics->getCachedSiteStorageAnalysis($siteId) : [];
+        $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId) : [];
+        $autoStartStorageAnalysis = false;
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
         }
+
+        $autoStartStorageAnalysis = $this->shouldAutoStartSiteStorageAnalysis($siteSummary, $storageAnalysis, $storageAnalysisStatus);
 
         echo $this->template->render(
             'site-storage-analysis-page',
@@ -1055,6 +1068,9 @@ class Dashboard {
                 'site_id' => $siteId,
                 'site_summary' => $siteSummary,
                 'storage_analysis' => $storageAnalysis,
+                'storage_analysis_status' => $storageAnalysisStatus,
+                'storage_analysis_ready' => !empty($storageAnalysis) && empty($storageAnalysis['error']),
+                'auto_start_storage_analysis' => $autoStartStorageAnalysis,
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Website nach Titel oder URL suchen', 'rrze-multisite-manager'),
@@ -1069,6 +1085,22 @@ class Dashboard {
             ],
             $this
         );
+    }
+
+    protected function shouldAutoStartSiteStorageAnalysis(array $siteSummary, array $storageAnalysis, array $storageAnalysisStatus): bool {
+        $usedBytes = (int)($siteSummary['storage']['used_bytes'] ?? 0);
+        $hasCachedAnalysis = !empty($storageAnalysis);
+        $baseStatus = (string)($storageAnalysisStatus['base']['status'] ?? 'idle');
+
+        if ($hasCachedAnalysis || $baseStatus === 'running') {
+            return false;
+        }
+
+        if ($usedBytes <= 0) {
+            return false;
+        }
+
+        return $usedBytes <= self::STORAGE_ANALYSIS_AUTO_START_THRESHOLD;
     }
 
     protected function renderStorageTopConsumersPieChart(array $storageAnalysis): string {
@@ -1587,6 +1619,60 @@ class Dashboard {
         wp_send_json_success(
             [
                 'results' => $this->metrics->searchThemes($searchTerm, 20),
+            ]
+        );
+    }
+
+    public function ajaxRunSiteStorageAnalysis(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $restart = !empty($_REQUEST['restart']);
+        $result = [];
+
+        if (!$this->currentUserCanAccessManager()) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-site-storage-analysis', 'nonce');
+        $result = $this->metrics->runSiteStorageAnalysisBatch($siteId, $restart);
+
+        if (empty($result['success'])) {
+            wp_send_json_error($result, 400);
+        }
+
+        wp_send_json_success($result);
+    }
+
+    public function ajaxRunSiteStorageOrphanAnalysis(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $restart = !empty($_REQUEST['restart']);
+        $result = [];
+
+        if (!$this->currentUserCanAccessManager()) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-site-storage-orphan-analysis', 'nonce');
+        $result = $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId, $restart);
+
+        if (empty($result['success'])) {
+            wp_send_json_error($result, 400);
+        }
+
+        wp_send_json_success($result);
+    }
+
+    public function ajaxGetSiteStorageAnalysisStatus(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+
+        if (!$this->currentUserCanAccessManager()) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-site-storage-status', 'nonce');
+
+        wp_send_json_success(
+            [
+                'status' => $this->metrics->getSiteStorageAnalysisProcessStatus($siteId),
             ]
         );
     }
