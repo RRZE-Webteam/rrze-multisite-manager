@@ -10,11 +10,11 @@ class OperationalStatusWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Betriebsstatus von Websites', 'rrze-multisite-manager');
+        return __('Operational status of websites', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Verteilung der eigenen MSM-Betriebszustände aller Websites im Netzwerk.', 'rrze-multisite-manager');
+        return __('Distribution of MSM operational states across all websites in the network.', 'rrze-multisite-manager');
     }
 
     public function getLayoutClass(): string {
@@ -28,7 +28,7 @@ class OperationalStatusWidget extends Widgets {
     protected function getTemplateData(array $dashboardData): array {
         return [
             'items' => $dashboardData['operational_status_distribution'] ?? [],
-            'empty_message' => __('Keine Betriebsstatusdaten vorhanden.', 'rrze-multisite-manager'),
+            'empty_message' => __('No operational status data available.', 'rrze-multisite-manager'),
         ];
     }
 }

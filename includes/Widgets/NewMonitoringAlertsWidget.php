@@ -10,11 +10,11 @@ class NewMonitoringAlertsWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Neue Monitoring-Warnungen', 'rrze-multisite-manager');
+        return __('New monitoring alerts', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Websites, die seit dem letzten Monitoring-Lauf neu in einen technischen Problemstatus gewechselt sind.', 'rrze-multisite-manager');
+        return __('Websites that have newly changed to a technical problem status since the last monitoring run.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

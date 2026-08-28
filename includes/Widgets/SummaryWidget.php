@@ -10,11 +10,11 @@ class SummaryWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Kernzahlen', 'rrze-multisite-manager');
+        return __('Key figures', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Der schnelle Einstieg für diese Multisite.', 'rrze-multisite-manager');
+        return __('A quick overview for this multisite.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {
@@ -35,17 +35,17 @@ class SummaryWidget extends Widgets {
                     'value' => $summary['total_sites'] ?? 0,
                     'detail' => sprintf(
                         /* translators: %d: number of active sites. */
-                        __('davon %d aktiv', 'rrze-multisite-manager'),
+                        __('of which %d active', 'rrze-multisite-manager'),
                         (int)($summary['active_sites'] ?? 0)
                     ),
                     'accent' => 'neutral',
                 ],
                 [
-                    'label' => __('Benutzer', 'rrze-multisite-manager'),
+                    'label' => __('Users', 'rrze-multisite-manager'),
                     'value' => $summary['total_users'] ?? 0,
                     'detail' => sprintf(
                         /* translators: %d: number of super administrators. */
-                        __('davon %d Superadmins', 'rrze-multisite-manager'),
+                        __('of which %d super admins', 'rrze-multisite-manager'),
                         (int)($summary['super_admins'] ?? 0)
                     ),
                     'accent' => 'positive',
@@ -55,7 +55,7 @@ class SummaryWidget extends Widgets {
                     'value' => $summary['total_plugins'] ?? 0,
                     'detail' => sprintf(
                         /* translators: %d: number of network-active plugins. */
-                        __('davon %d netzwerkweit aktiv', 'rrze-multisite-manager'),
+                        __('of which %d are network-active', 'rrze-multisite-manager'),
                         (int)($summary['network_active_plugins'] ?? 0)
                     ),
                     'accent' => 'neutral',
@@ -65,19 +65,19 @@ class SummaryWidget extends Widgets {
                     'value' => $summary['total_themes'] ?? 0,
                     'detail' => sprintf(
                         /* translators: %d: number of network-enabled themes. */
-                        __('davon %d netzwerkweit verfügbar', 'rrze-multisite-manager'),
+                        __('of which %d are network-enabled', 'rrze-multisite-manager'),
                         (int)($summary['network_enabled_themes'] ?? 0)
                     ),
                     'accent' => 'warning',
                 ],
                 [
-                    'label' => __('Speicherbelegung', 'rrze-multisite-manager'),
+                    'label' => __('Storage usage', 'rrze-multisite-manager'),
                     'value' => (string)($summary['total_storage_used_label'] ?? ''),
                     'detail' => !empty($summary['has_unlimited_storage_site'])
-                        ? __('mindestens eine Site unbegrenzt', 'rrze-multisite-manager')
+                        ? __('at least one site is unlimited', 'rrze-multisite-manager')
                         : sprintf(
                             /* translators: %s: total maximum storage label. */
-                            __('von %s', 'rrze-multisite-manager'),
+                            __('of %s', 'rrze-multisite-manager'),
                             (string)($summary['total_storage_max_label'] ?? '')
                         ),
                     'accent' => 'info',

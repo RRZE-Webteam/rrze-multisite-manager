@@ -168,7 +168,7 @@ class ViewManager {
             ],
             'all_widgets' => [
                 'slug' => 'all_widgets',
-                'label' => __('Alle Widgets', 'rrze-multisite-manager'),
+                'label' => __('All widgets', 'rrze-multisite-manager'),
                 'widgets' => $availableWidgetIds,
                 'system' => true,
             ],
@@ -196,7 +196,7 @@ class ViewManager {
 
     protected function sanitizeViewLabel(string $label): string {
         $label = sanitize_text_field($label);
-        return $label === '' ? __('Neue Ansicht', 'rrze-multisite-manager') : $label;
+        return $label === '' ? __('New view', 'rrze-multisite-manager') : $label;
     }
 
     protected function mergeSystemWidgets(array $storedWidgets, array $defaultWidgets): array {

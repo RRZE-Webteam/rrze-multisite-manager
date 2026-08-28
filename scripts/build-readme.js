@@ -54,7 +54,7 @@ function buildReadme(pkg) {
 
     var license = getString(pkg, 'license', '');
     var licenseUri = getString(pkg, 'licenseurl', '');
-    var textDomain = getString(pkg, 'textDomain', getString(pkg, 'textdomain', ''));
+    var textDomain = getString(pkg, 'textdomain', '');
 
     var githubURL = getString(repository, 'url', '');
     var githubIssue = getString(repository, 'issues', '');

@@ -10,11 +10,11 @@ class ArchivedSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Websites mit Status Archiv', 'rrze-multisite-manager');
+        return __('Websites with archive status', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Archivierte Websites inklusive Zeitpunkt, ausführendem Benutzer und optionaler Notiz.', 'rrze-multisite-manager');
+        return __('Archived websites including timestamp, executing user, and optional note.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

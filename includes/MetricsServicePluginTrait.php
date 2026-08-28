@@ -154,8 +154,8 @@ trait MetricsServicePluginTrait {
                 'taxonomies' => $analysis['taxonomies'],
                 'image_sizes' => $analysis['image_sizes'],
                 'provided_hooks' => $analysis['provided_hooks'],
-                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
-                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
+                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Not available.', 'rrze-multisite-manager'),
+                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'main_file_path' => $this->getPluginAbsolutePath($pluginFile),
             ]
         );
@@ -235,17 +235,17 @@ trait MetricsServicePluginTrait {
 
         if (!empty($plugin['network_active'])) {
             $items[] = [
-                'label' => __('Netzwerkweit aktiv', 'rrze-multisite-manager'),
+                'label' => __('Network-active', 'rrze-multisite-manager'),
                 'accent' => 'info',
             ];
         } elseif ((int)($plugin['site_count'] ?? 0) > 0) {
             $items[] = [
-                'label' => __('Auf Websites aktiv', 'rrze-multisite-manager'),
+                'label' => __('Active on websites', 'rrze-multisite-manager'),
                 'accent' => 'active',
             ];
         } else {
             $items[] = [
-                'label' => __('Nicht aktiviert', 'rrze-multisite-manager'),
+                'label' => __('Not activated', 'rrze-multisite-manager'),
                 'accent' => 'archive',
             ];
         }
@@ -254,7 +254,7 @@ trait MetricsServicePluginTrait {
             $items[] = [
                 'label' => sprintf(
                     /* translators: %s: available plugin update version. */
-                    __('Update %s verfügbar', 'rrze-multisite-manager'),
+                    __('Update %s available', 'rrze-multisite-manager'),
                     (string)$plugin['update_version']
                 ),
                 'accent' => 'info',

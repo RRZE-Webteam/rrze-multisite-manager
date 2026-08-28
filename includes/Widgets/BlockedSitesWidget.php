@@ -10,11 +10,11 @@ class BlockedSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Gesperrte Websites', 'rrze-multisite-manager');
+        return __('Blocked websites', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Websites mit gesetztem Status „Gesperrt“ inklusive Zeitpunkt, ausführendem Benutzer und Notiz.', 'rrze-multisite-manager');
+        return __('Websites with status "Blocked", including timestamp, executing user, and note.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

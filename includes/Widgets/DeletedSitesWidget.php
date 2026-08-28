@@ -10,11 +10,11 @@ class DeletedSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Zum Löschen markierte Sites', 'rrze-multisite-manager');
+        return __('Sites marked for deletion', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Diese Instanzen sind bereits als gelöscht markiert.', 'rrze-multisite-manager');
+        return __('These instances are already marked as deleted.', 'rrze-multisite-manager');
     }
 
     public function getLayoutClass(): string {

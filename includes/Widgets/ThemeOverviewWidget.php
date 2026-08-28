@@ -10,11 +10,11 @@ class ThemeOverviewWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Theme-Überblick', 'rrze-multisite-manager');
+        return __('Theme overview', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Installierte Themes mit Version, Anzahl verwendender Sites und Netzwerkfreigabe.', 'rrze-multisite-manager');
+        return __('Installed themes with version, number of using sites, and network availability.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

@@ -11,11 +11,11 @@ class PluginUsageWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Plugin-Überblick', 'rrze-multisite-manager');
+        return __('Plugin overview', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Erste Auswertung der lokal verfügbaren und im Netzwerk verwendeten Plugins.', 'rrze-multisite-manager');
+        return __('Initial evaluation of locally available plugins and plugins used in the network.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {
@@ -46,7 +46,7 @@ class PluginUsageWidget extends Widgets {
         $mainRowClasses = [];
 
         if (empty($plugins)) {
-            return '<p>' . esc_html__('Keine Einträge vorhanden.', 'rrze-multisite-manager') . '</p>';
+            return '<p>' . esc_html__('No entries available.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
@@ -55,12 +55,12 @@ class PluginUsageWidget extends Widgets {
         echo '<div class="alignleft actions">';
 
         if ($showNetworkButton && $canUseNetworkAdminFeatures) {
-            echo '<a class="button" href="' . esc_url($networkPluginsUrl) . '">' . esc_html__('Plugin-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '</a>';
+            echo '<a class="button" href="' . esc_url($networkPluginsUrl) . '">' . esc_html__('Open network plugin management', 'rrze-multisite-manager') . '</a>';
         }
 
-        echo '<label for="rrze-msm-plugin-search-' . esc_attr($tableId) . '">' . esc_html__('Plugin filtern:', 'rrze-multisite-manager') . '</label>';
-        echo '<input type="search" class="rrze-msm-site-table-search" id="rrze-msm-plugin-search-' . esc_attr($tableId) . '" placeholder="' . esc_attr__('Nach Pluginname suchen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Plugins nach Namen filtern', 'rrze-multisite-manager') . '">';
-        echo '<label for="rrze-msm-plugin-per-page-' . esc_attr($tableId) . '">' . esc_html__('Anzeigen:', 'rrze-multisite-manager') . '</label>';
+        echo '<label for="rrze-msm-plugin-search-' . esc_attr($tableId) . '">' . esc_html__('Filter plugins:', 'rrze-multisite-manager') . '</label>';
+        echo '<input type="search" class="rrze-msm-site-table-search" id="rrze-msm-plugin-search-' . esc_attr($tableId) . '" placeholder="' . esc_attr__('Search by plugin name', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Filter plugins by name', 'rrze-multisite-manager') . '">';
+        echo '<label for="rrze-msm-plugin-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label>';
         echo '<select class="rrze-msm-site-table-per-page" id="rrze-msm-plugin-per-page-' . esc_attr($tableId) . '">';
 
         foreach ($perPageOptions as $option) {
@@ -70,7 +70,7 @@ class PluginUsageWidget extends Widgets {
                 echo esc_html(
                     sprintf(
                         /* translators: %d: default row count for the plugin table. */
-                        __('Standard (%d)', 'rrze-multisite-manager'),
+                        __('Default (%d)', 'rrze-multisite-manager'),
                         $option
                     )
                 );
@@ -91,10 +91,10 @@ class PluginUsageWidget extends Widgets {
         echo '<th>' . $this->renderSiteTableSortButton('author', __('Info', 'rrze-multisite-manager')) . '</th>';
 
         if ($showActiveSites) {
-            echo '<th class="rrze-msm-plugin-col-active-sites">' . $this->renderSiteTableSortButton('active-sites', __('Aktive Sites', 'rrze-multisite-manager')) . '</th>';
+            echo '<th class="rrze-msm-plugin-col-active-sites">' . $this->renderSiteTableSortButton('active-sites', __('Active sites', 'rrze-multisite-manager')) . '</th>';
         }
 
-        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Aktionen', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Actions', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($plugins as $plugin) {
@@ -119,7 +119,7 @@ class PluginUsageWidget extends Widgets {
                 echo '<strong>' . esc_html(
                     sprintf(
                         /* translators: %s: available plugin version number. */
-                        __('Neue Version %s verfügbar.', 'rrze-multisite-manager'),
+                        __('New version %s available.', 'rrze-multisite-manager'),
                         (string)$plugin['update_version']
                     )
                 ) . '</strong>';
@@ -130,7 +130,7 @@ class PluginUsageWidget extends Widgets {
                 }
 
                 if (!empty($plugin['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['update_url']))) {
-                    echo '<a href="' . esc_url((string)$plugin['update_url']) . '">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</a>';
+                    echo '<a href="' . esc_url((string)$plugin['update_url']) . '">' . esc_html__('Update', 'rrze-multisite-manager') . '</a>';
                 }
 
                 echo '</div>';
@@ -152,7 +152,7 @@ class PluginUsageWidget extends Widgets {
             if (!empty($plugin['deactivate_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['deactivate_url']))) {
                 if (!empty($plugin['network_active'])) {
                     echo $this->renderPluginActionButton(
-                        __('Netzwerkweit deaktivieren', 'rrze-multisite-manager'),
+                        __('Deactivate network-wide', 'rrze-multisite-manager'),
                         'minus',
                         'warning',
                         [
@@ -164,7 +164,7 @@ class PluginUsageWidget extends Widgets {
                 } else {
                     echo $this->renderPluginActionLink(
                         (string)($plugin['deactivate_url'] ?? ''),
-                        __('Deaktivieren', 'rrze-multisite-manager'),
+                    __('Deactivate', 'rrze-multisite-manager'),
                         'no-alt',
                         'danger',
                         $actionMode
@@ -175,7 +175,7 @@ class PluginUsageWidget extends Widgets {
             if (!empty($plugin['settings_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$plugin['settings_url']))) {
                 echo $this->renderPluginActionLink(
                     (string)($plugin['settings_url'] ?? ''),
-                    __('Einstellungen', 'rrze-multisite-manager'),
+                    __('Settings', 'rrze-multisite-manager'),
                     'admin-tools',
                     '',
                     $actionMode
@@ -185,7 +185,7 @@ class PluginUsageWidget extends Widgets {
             if ($canUseNetworkAdminFeatures && !empty($plugin['delete_url'])) {
                 echo $this->renderPluginActionLink(
                     (string)($plugin['delete_url'] ?? ''),
-                    __('Löschen', 'rrze-multisite-manager'),
+                    __('Delete', 'rrze-multisite-manager'),
                     'trash',
                     'danger',
                     $actionMode
@@ -198,7 +198,7 @@ class PluginUsageWidget extends Widgets {
 
         echo '</tbody></table>';
         echo '<div class="tablenav bottom">';
-        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Seitennavigation', 'rrze-multisite-manager') . '"></div>';
+        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '"></div>';
         echo '</div>';
         echo '</div>';
 
@@ -213,7 +213,7 @@ class PluginUsageWidget extends Widgets {
         $option = 0;
 
         if (empty($plugins)) {
-            return '<p>' . esc_html__('Keine verwaisten Plugin-Einträge vorhanden.', 'rrze-multisite-manager') . '</p>';
+            return '<p>' . esc_html__('No orphaned plugin entries available.', 'rrze-multisite-manager') . '</p>';
         }
 
         usort($plugins, [self::class, 'compareMissingPluginRows']);
@@ -222,9 +222,9 @@ class PluginUsageWidget extends Widgets {
         echo '<div class="rrze-msm-site-table-wrap rrze-msm-plugin-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="name" data-sort-direction="asc">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
-        echo '<label for="rrze-msm-missing-plugin-search-' . esc_attr($tableId) . '">' . esc_html__('Plugin filtern:', 'rrze-multisite-manager') . '</label>';
-        echo '<input type="search" class="rrze-msm-site-table-search" id="rrze-msm-missing-plugin-search-' . esc_attr($tableId) . '" placeholder="' . esc_attr__('Nach Pluginpfad suchen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Verwaiste Plugins nach Pfad filtern', 'rrze-multisite-manager') . '">';
-        echo '<label for="rrze-msm-missing-plugin-per-page-' . esc_attr($tableId) . '">' . esc_html__('Anzeigen:', 'rrze-multisite-manager') . '</label>';
+        echo '<label for="rrze-msm-missing-plugin-search-' . esc_attr($tableId) . '">' . esc_html__('Filter plugins:', 'rrze-multisite-manager') . '</label>';
+        echo '<input type="search" class="rrze-msm-site-table-search" id="rrze-msm-missing-plugin-search-' . esc_attr($tableId) . '" placeholder="' . esc_attr__('Search by plugin path', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Filter orphaned plugins by path', 'rrze-multisite-manager') . '">';
+        echo '<label for="rrze-msm-missing-plugin-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label>';
         echo '<select class="rrze-msm-site-table-per-page" id="rrze-msm-missing-plugin-per-page-' . esc_attr($tableId) . '">';
 
         foreach ($perPageOptions as $option) {
@@ -234,7 +234,7 @@ class PluginUsageWidget extends Widgets {
                 echo esc_html(
                     sprintf(
                         /* translators: %d: default row count for the missing plugin table. */
-                        __('Standard (%d)', 'rrze-multisite-manager'),
+                        __('Default (%d)', 'rrze-multisite-manager'),
                         $option
                     )
                 );
@@ -250,8 +250,8 @@ class PluginUsageWidget extends Widgets {
         echo '</div>';
         echo '<table class="widefat striped rrze-msm-table rrze-msm-plugin-table">';
         echo '<thead><tr>';
-        echo '<th>' . esc_html__('Plugin-Datei', 'rrze-multisite-manager') . '</th>';
-        echo '<th class="rrze-msm-plugin-col-active-sites">' . esc_html__('Aktive Sites', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Plugin file', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-plugin-col-active-sites">' . esc_html__('Active sites', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Websites', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
@@ -267,7 +267,7 @@ class PluginUsageWidget extends Widgets {
 
         echo '</tbody></table>';
         echo '<div class="tablenav bottom">';
-        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Seitennavigation', 'rrze-multisite-manager') . '"></div>';
+        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '"></div>';
         echo '</div>';
         echo '</div>';
 
@@ -371,14 +371,14 @@ class PluginUsageWidget extends Widgets {
         if ($detailsUrl !== '') {
             $items[] = '<a href="' . esc_url($detailsUrl) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Details', 'rrze-multisite-manager') . '</a>';
         } elseif ($pluginUri !== '') {
-            $items[] = '<a href="' . esc_url($pluginUri) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Plugin-Seite', 'rrze-multisite-manager') . '</a>';
+            $items[] = '<a href="' . esc_url($pluginUri) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Plugin page', 'rrze-multisite-manager') . '</a>';
         }
 
         if ($textDomain !== '') {
             $items[] = esc_html(
                 sprintf(
                     /* translators: %s: plugin text domain. */
-                    __('Textdomain: %s', 'rrze-multisite-manager'),
+                    __('Text domain: %s', 'rrze-multisite-manager'),
                     $textDomain
                 )
             );
@@ -388,7 +388,7 @@ class PluginUsageWidget extends Widgets {
             $items[] = esc_html(
                 sprintf(
                     /* translators: %s: minimum supported WordPress version. */
-                    __('WP ab: %s', 'rrze-multisite-manager'),
+                    __('WP from: %s', 'rrze-multisite-manager'),
                     $requiresWp
                 )
             );
@@ -398,7 +398,7 @@ class PluginUsageWidget extends Widgets {
             $items[] = esc_html(
                 sprintf(
                     /* translators: %s: minimum supported PHP version. */
-                    __('PHP ab: %s', 'rrze-multisite-manager'),
+                    __('PHP from: %s', 'rrze-multisite-manager'),
                     $requiresPhp
                 )
             );
@@ -430,16 +430,16 @@ class PluginUsageWidget extends Widgets {
 
         ob_start();
         echo '<div class="rrze-msm-plugin-sites-inline" data-plugin-sites-id="' . esc_attr($toggleId) . '">';
-        echo '<p class="rrze-msm-plugin-sites-collapsed"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="false">▼ ' . esc_html__('Websites anzeigen', 'rrze-multisite-manager') . '</button></p>';
+        echo '<p class="rrze-msm-plugin-sites-collapsed"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="false">▼ ' . esc_html__('Show websites', 'rrze-multisite-manager') . '</button></p>';
         echo '<div class="rrze-msm-plugin-sites-details" hidden>';
-        echo '<p class="rrze-msm-plugin-sites-toggle-row"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="true">▲ ' . esc_html__('Websites verbergen', 'rrze-multisite-manager') . '</button></p>';
+        echo '<p class="rrze-msm-plugin-sites-toggle-row"><button type="button" class="button-link rrze-msm-plugin-sites-toggle-text" data-plugin-sites-id="' . esc_attr($toggleId) . '" aria-expanded="true">▲ ' . esc_html__('Hide websites', 'rrze-multisite-manager') . '</button></p>';
 
         if ($isTruncated) {
             echo '<p class="description">';
             echo esc_html(
                 sprintf(
                     /* translators: 1: number of previewed websites, 2: total number of websites. */
-                    __('Es wird eine Vorschau der ersten %1$s von %2$s Websites angezeigt.', 'rrze-multisite-manager'),
+                    __('A preview of the first %1$s of %2$s websites is shown.', 'rrze-multisite-manager'),
                     number_format_i18n(count($activeSites)),
                     number_format_i18n($siteCount)
                 )
@@ -474,16 +474,16 @@ class PluginUsageWidget extends Widgets {
 
         if ($totalPages > 1) {
             echo '<div class="rrze-msm-plugin-sites-pagination" data-current-page="1" data-total-pages="' . esc_attr((string)$totalPages) . '">';
-            echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="prev" disabled aria-disabled="true"><span aria-hidden="true">‹</span><span class="screen-reader-text">' . esc_html__('Vorherige Seite', 'rrze-multisite-manager') . '</span></button>';
+            echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="prev" disabled aria-disabled="true"><span aria-hidden="true">‹</span><span class="screen-reader-text">' . esc_html__('Previous page', 'rrze-multisite-manager') . '</span></button>';
             echo '<span class="rrze-msm-plugin-sites-page-label">' . esc_html(
                 sprintf(
                     /* translators: 1: current page number, 2: total number of pages. */
-                    __('Seite %1$d von %2$d', 'rrze-multisite-manager'),
+                    __('Page %1$d of %2$d', 'rrze-multisite-manager'),
                     1,
                     $totalPages
                 )
             ) . '</span>';
-            echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="next"><span aria-hidden="true">›</span><span class="screen-reader-text">' . esc_html__('Nächste Seite', 'rrze-multisite-manager') . '</span></button>';
+            echo '<button type="button" class="button button-small rrze-msm-plugin-sites-page" data-direction="next"><span aria-hidden="true">›</span><span class="screen-reader-text">' . esc_html__('Next page', 'rrze-multisite-manager') . '</span></button>';
             echo '</div>';
         }
 

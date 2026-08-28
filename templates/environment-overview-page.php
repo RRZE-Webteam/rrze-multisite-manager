@@ -6,8 +6,8 @@ defined('ABSPATH') || exit;
     <div class="rrze-msm-page-shell">
         <div class="rrze-msm-page-header">
             <div>
-                <h1><?php echo esc_html__('Umgebung', 'rrze-multisite-manager'); ?></h1>
-                <p><?php echo esc_html__('Kuratierte Betriebs- und Umgebungsdaten des gesamten Multisite-Netzwerks.', 'rrze-multisite-manager'); ?></p>
+                <h1><?php echo esc_html__('Environment', 'rrze-multisite-manager'); ?></h1>
+                <p><?php echo esc_html__('Curated operational and environment data for the entire multisite network.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
                 <button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="<?php echo esc_attr($mode_class === 'rrze-msm-mode-dark' ? 'light' : 'dark'); ?>">
@@ -19,7 +19,7 @@ defined('ABSPATH') || exit;
         <?php if (!empty($environment_overview['warnings']) && is_array($environment_overview['warnings'])) { ?>
             <section class="rrze-msm-widget rrze-msm-widget-span-12">
                 <header class="rrze-msm-widget-header">
-                    <h2><?php echo esc_html__('Auffälligkeiten', 'rrze-multisite-manager'); ?></h2>
+                    <h2><?php echo esc_html__('Issues', 'rrze-multisite-manager'); ?></h2>
                 </header>
                 <div class="notice notice-warning inline">
                     <?php foreach ($environment_overview['warnings'] as $warning) { ?>
@@ -37,12 +37,12 @@ defined('ABSPATH') || exit;
                             <h2><?php echo esc_html((string)($section['title'] ?? '')); ?></h2>
                         </header>
                         <div class="rrze-msm-environment-table-wrap">
-                            <table class="widefat striped rrze-msm-table">
+                            <table class="striped rrze-msm-datatable">
                                 <tbody>
                                     <?php foreach ((array)($section['rows'] ?? []) as $row) { ?>
                                         <tr>
                                             <th><?php echo esc_html((string)($row['label'] ?? '')); ?></th>
-                                            <td<?php echo !empty($row['numeric']) ? ' class="rrze-msm-col-numeric"' : ''; ?>>
+                                            <td>
                                                 <?php if (!empty($row['code'])) { ?>
                                                     <code><?php echo esc_html((string)($row['value'] ?? '')); ?></code>
                                                 <?php } else { ?>

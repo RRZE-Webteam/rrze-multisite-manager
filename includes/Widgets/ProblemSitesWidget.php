@@ -10,11 +10,11 @@ class ProblemSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Problematische Websites', 'rrze-multisite-manager');
+        return __('Problematic websites', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Websites mit Einrichtungsstatus, fehlendem DNS oder technischer Nichterreichbarkeit.', 'rrze-multisite-manager');
+        return __('Websites with provisioning status, missing DNS, or technical unreachability.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

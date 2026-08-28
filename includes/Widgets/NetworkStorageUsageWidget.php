@@ -10,11 +10,11 @@ class NetworkStorageUsageWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Speicherbelegung des Netzwerks', 'rrze-multisite-manager');
+        return __('Network storage usage', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Summierte Speicherbelegung aller Websites im Netzwerk.', 'rrze-multisite-manager');
+        return __('Summed storage usage of all websites in the network.', 'rrze-multisite-manager');
     }
 
     public function getLayoutClass(): string {
@@ -36,17 +36,17 @@ class NetworkStorageUsageWidget extends Widgets {
             'summary_label' => $this->getSummaryLabel($storageUsage),
             'mode_note' => $this->getModeNote($storageUsage),
             'center_title' => !empty($storageUsage['has_unlimited_site'])
-                ? __('Verwendet', 'rrze-multisite-manager')
-                : __('Maximal', 'rrze-multisite-manager'),
+                ? __('Used', 'rrze-multisite-manager')
+                : __('Maximum', 'rrze-multisite-manager'),
             'center_value' => !empty($storageUsage['has_unlimited_site'])
                 ? (string)($storageUsage['total_used_label'] ?? '')
                 : (string)($storageUsage['total_max_label'] ?? ''),
-            'empty_message' => __('Keine Speicherverbrauchsdaten vorhanden.', 'rrze-multisite-manager'),
+            'empty_message' => __('No storage usage data available.', 'rrze-multisite-manager'),
         ];
     }
 
     protected function normalizeStorageUsageItems(array $items): array {
-        $freeStorageLabel = __('Freier Speicher', 'rrze-multisite-manager');
+        $freeStorageLabel = __('Free storage', 'rrze-multisite-manager');
         $item = [];
         $index = 0;
 
@@ -73,15 +73,15 @@ class NetworkStorageUsageWidget extends Widgets {
         if (!empty($storageUsage['has_unlimited_site'])) {
             return sprintf(
                 /* translators: %s: total used storage label. */
-                __('Verwendeter Speicherplatz gesamt: %s', 'rrze-multisite-manager'),
-                $usedLabel !== '' ? $usedLabel : __('Unbekannt', 'rrze-multisite-manager')
+                __('Total used storage space: %s', 'rrze-multisite-manager'),
+                $usedLabel !== '' ? $usedLabel : __('Unknown', 'rrze-multisite-manager')
             );
         }
 
         if ($usedLabel !== '' && $maxLabel !== '' && $percent !== null) {
             return sprintf(
                 /* translators: 1: used storage label, 2: maximum storage label, 3: used percentage. */
-                __('%1$s von %2$s belegt (%3$d%%)', 'rrze-multisite-manager'),
+                __('%1$s of %2$s used (%3$d%%)', 'rrze-multisite-manager'),
                 $usedLabel,
                 $maxLabel,
                 $percent
@@ -91,7 +91,7 @@ class NetworkStorageUsageWidget extends Widgets {
         if ($usedLabel !== '' && $maxLabel !== '') {
             return sprintf(
                 /* translators: 1: used storage label, 2: maximum storage label. */
-                __('%1$s von %2$s belegt', 'rrze-multisite-manager'),
+                __('%1$s of %2$s used', 'rrze-multisite-manager'),
                 $usedLabel,
                 $maxLabel
             );
@@ -102,9 +102,9 @@ class NetworkStorageUsageWidget extends Widgets {
 
     protected function getModeNote(array $storageUsage): string {
         if (empty($storageUsage['has_unlimited_site'])) {
-            return __('Die Tortengrafik zeigt die belegten Speicheranteile je Website bezogen auf die gesamte verfügbare Speicherkapazität des Netzwerks.', 'rrze-multisite-manager');
+            return __('The pie chart shows the used storage share per website relative to the total available storage capacity of the network.', 'rrze-multisite-manager');
         }
 
-        return __('Mindestens eine Website hat unbegrenzten Speicherplatz. Daher zeigt die Tortengrafik nur die Verteilung des aktuell verwendeten Speicherplatzes je Website.', 'rrze-multisite-manager');
+        return __('At least one website has unlimited storage. Therefore, the pie chart shows only the distribution of currently used storage per website.', 'rrze-multisite-manager');
     }
 }

@@ -10,11 +10,11 @@ class SiteOverviewWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Site-Übersicht', 'rrze-multisite-manager');
+        return __('Site overview', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Erweiterte Übersicht über Sites, Benutzer, Inhalte und Speicherverbrauch.', 'rrze-multisite-manager');
+        return __('Extended overview of sites, users, content, and storage usage.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

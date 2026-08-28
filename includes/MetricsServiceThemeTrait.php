@@ -111,8 +111,8 @@ trait MetricsServiceThemeTrait {
                 'block_patterns' => (array)($analysis['block_patterns'] ?? []),
                 'image_sizes' => (array)($analysis['image_sizes'] ?? []),
                 'provided_hooks' => (array)($analysis['provided_hooks'] ?? []),
-                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
-                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Nicht verfügbar.', 'rrze-multisite-manager'),
+                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Not available.', 'rrze-multisite-manager'),
+                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'main_file_path' => $this->getThemeMainFilePath($stylesheet),
             ]
         );
