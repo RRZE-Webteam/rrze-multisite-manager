@@ -670,7 +670,7 @@ class MonitoringService {
             [
                 'timeout' => 8,
                 'redirection' => 5,
-                'user-agent' => 'RRZE Multisite Manager Availability Monitor',
+                'user-agent' => $this->config->getMonitoringUserAgent(),
             ]
         );
         $statusCode = 0;
@@ -690,7 +690,7 @@ class MonitoringService {
                     'timeout' => 8,
                     'redirection' => 5,
                     'limit_response_size' => 1024,
-                    'user-agent' => 'RRZE Multisite Manager Availability Monitor',
+                    'user-agent' => $this->config->getMonitoringUserAgent(),
                 ]
             );
 
@@ -722,7 +722,7 @@ class MonitoringService {
                     'timeout' => 8,
                     'redirection' => 5,
                     'limit_response_size' => 1024,
-                    'user-agent' => 'RRZE Multisite Manager Availability Monitor',
+                    'user-agent' => $this->config->getMonitoringUserAgent(),
                 ]
             );
 

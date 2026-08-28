@@ -5330,7 +5330,21 @@ class MetricsService {
     }
 
     protected function normalizeRelativeUploadPath(string $path): string {
-        $normalized = ltrim(wp_normalize_path($path), '/');
+        $normalized = trim(wp_normalize_path($path), '/');
+        $segments = [];
+        $segment = '';
+
+        if ($normalized === '') {
+            return '';
+        }
+
+        $segments = explode('/', $normalized);
+
+        foreach ($segments as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                return '';
+            }
+        }
 
         return $normalized;
     }

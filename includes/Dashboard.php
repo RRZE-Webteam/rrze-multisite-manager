@@ -2086,7 +2086,7 @@ class Dashboard {
         $errors = [];
         $path = '';
 
-        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
+        if (!$this->currentUserCanDeleteSiteStorageFiles($siteId)) {
             wp_die(esc_html__('You are not allowed to delete upload files.', 'rrze-multisite-manager'));
         }
 
@@ -2288,6 +2288,17 @@ class Dashboard {
 
     protected function currentUserCanAccessSiteStorageAnalysis(int $siteId): bool {
         if ($this->currentUserCanAccessManager()) {
+            return true;
+        }
+
+        return $siteId > 0
+            && $siteId === get_current_blog_id()
+            && current_user_can('manage_options')
+            && current_user_can('upload_files');
+    }
+
+    protected function currentUserCanDeleteSiteStorageFiles(int $siteId): bool {
+        if ($this->currentUserCanUseNetworkAdminFeatures()) {
             return true;
         }
 

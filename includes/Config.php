@@ -17,6 +17,7 @@ class Config {
                 'monitoring_schedule_slug' => 'rrze_msm_every_six_hours',
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
                 'monitoring_hook' => 'rrze_msm_check_site_availability',
+                'monitoring_user_agent' => 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)',
             ],
             'menu_settings' => [
                 'page_title' => __('RRZE Multisite Manager', 'rrze-multisite-manager'),
@@ -179,6 +180,10 @@ class Config {
 
     public function getMonitoringHook(): string {
         return (string)($this->config['constants']['monitoring_hook'] ?? 'rrze_msm_check_site_availability');
+    }
+
+    public function getMonitoringUserAgent(): string {
+        return (string)($this->config['constants']['monitoring_user_agent'] ?? 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)');
     }
 
     public function getSections(): array {
