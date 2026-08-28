@@ -17,6 +17,8 @@ body.rrze-msm-mode-dark {
   --rrze-msm-page-bg: #f3f4f6;
   --rrze-msm-surface: #ffffff;
   --rrze-msm-surface-alt: #f4f7fb;
+  --rrze-msm-subtab-bg: #e2e8f0;
+  --rrze-msm-subtab-border: #94a3b8;
   --rrze-msm-border: #d9e2ec;
   --rrze-msm-table-border: #d9e2ec;
   --rrze-msm-text: #1f2933;
@@ -52,6 +54,8 @@ body.rrze-msm-mode-dark {
   --rrze-msm-page-bg: #202428;
   --rrze-msm-surface: #000000;
   --rrze-msm-surface-alt: #171a1d;
+  --rrze-msm-subtab-bg: #242a30;
+  --rrze-msm-subtab-border: #4b5563;
   --rrze-msm-border: #30363d;
   --rrze-msm-table-border: #202428;
   --rrze-msm-text: #f5f7fa;
@@ -1057,16 +1061,36 @@ td.rrze-msm-plugin-col-active-sites {
   margin: 0 0 16px;
 }
 
-.rrze-msm-subtab {
+a.rrze-msm-subtab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 9px 13px;
-  border: 1px solid var(--rrze-msm-border);
+  border: 1px solid var(--rrze-msm-subtab-border);
   border-radius: var(--rrze-msm-widget-border-radius);
-  background: var(--rrze-msm-surface-alt);
+  background: var(--rrze-msm-subtab-bg);
   color: var(--rrze-msm-text);
   text-decoration: none;
+}
+
+/* WordPress admin link styles must not make inactive tabs look like plain page links. */
+body.rrze-msm-mode-light .rrze-multisite-manager-admin a.rrze-msm-subtab {
+  background-color: #cbd5e1 !important;
+  border-color: #64748b !important;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active,
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:visited,
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:hover,
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:focus,
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:active {
+  background: var(--rrze-msm-status-info-bg) !important;
+  border-color: var(--rrze-msm-status-info-bg) !important;
+  color: var(--rrze-msm-status-info-text) !important;
+}
+
+a.rrze-msm-subtab:visited {
+  color: var(--rrze-msm-text);
 }
 
 .rrze-msm-subtab:hover,
@@ -1075,6 +1099,42 @@ td.rrze-msm-plugin-col-active-sites {
   background: var(--rrze-msm-status-info-bg);
   color: var(--rrze-msm-status-info-text);
   border-color: var(--rrze-msm-status-info-bg);
+}
+
+a.rrze-msm-subtab:hover,
+a.rrze-msm-subtab:focus,
+a.rrze-msm-subtab.is-active,
+a.rrze-msm-subtab:hover:visited,
+a.rrze-msm-subtab:focus:visited,
+a.rrze-msm-subtab.is-active:visited {
+  color: var(--rrze-msm-status-info-text);
+}
+
+.rrze-msm-media-metadata-preview {
+  display: block;
+  width: auto;
+  max-width: 200px;
+  height: auto;
+  max-height: 160px;
+}
+
+.rrze-msm-media-metadata-status {
+  text-align: center;
+}
+
+.rrze-msm-media-metadata-status .dashicons {
+  width: auto;
+  height: auto;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.rrze-msm-media-metadata-present {
+  color: var(--rrze-msm-status-active-bg);
+}
+
+.rrze-msm-media-metadata-missing {
+  color: var(--rrze-msm-status-delete-bg);
 }
 
 .rrze-msm-inline-stats {

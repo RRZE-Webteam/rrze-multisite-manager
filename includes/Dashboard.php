@@ -65,6 +65,7 @@ class Dashboard {
 
         add_action('admin_menu', [$this, 'registerMenu'], 999);
         add_action('network_admin_menu', [$this, 'registerNetworkMenu'], 999);
+        add_action('admin_init', [$this, 'continueSiteMediaMetadataAnalysis']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
         add_action('admin_bar_menu', [$this, 'addAdminBarMenu'], 35);
         add_action('admin_head', [$this, 'printAdminBarStyles']);
@@ -76,6 +77,7 @@ class Dashboard {
         add_action('wp_ajax_rrze_msm_search_themes', [$this, 'ajaxSearchThemes']);
         add_action('wp_ajax_rrze_msm_run_site_storage_analysis', [$this, 'ajaxRunSiteStorageAnalysis']);
         add_action('wp_ajax_rrze_msm_run_site_storage_orphan_analysis', [$this, 'ajaxRunSiteStorageOrphanAnalysis']);
+        add_action('wp_ajax_rrze_msm_run_site_media_metadata_analysis', [$this, 'ajaxRunSiteMediaMetadataAnalysis']);
         add_action('wp_ajax_rrze_msm_get_site_storage_analysis_status', [$this, 'ajaxGetSiteStorageAnalysisStatus']);
         add_action('admin_post_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('admin_post_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
@@ -84,6 +86,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
         add_action('admin_post_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
+        add_action('admin_post_rrze_multisite_manager_run_site_media_metadata_analysis', [$this, 'handleSiteMediaMetadataAnalysis']);
         add_action('admin_post_rrze_multisite_manager_delete_orphan_file', [$this, 'handleOrphanFileDelete']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
@@ -112,6 +115,7 @@ class Dashboard {
         $siteDetailsSlug = (string)($menuSettings['site_details_slug'] ?? 'rrze-multisite-manager-site-details');
         $siteStorageAnalysisSlug = (string)($menuSettings['site_storage_analysis_slug'] ?? 'rrze-multisite-manager-site-storage-analysis');
         $siteStatusSlug = (string)($menuSettings['site_status_slug'] ?? 'rrze-multisite-manager-site-status');
+        $monitoringSlug = (string)($menuSettings['monitoring_slug'] ?? 'rrze-multisite-manager-monitoring');
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
         $settingsSlug = $this->settings->getSettingsSlug();
 
@@ -141,8 +145,8 @@ class Dashboard {
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
             $this->pageHooks[] = add_submenu_page(
                 $parentSlug,
-                __('Umgebung', 'rrze-multisite-manager'),
-                __('Umgebung', 'rrze-multisite-manager'),
+                __('Environment', 'rrze-multisite-manager'),
+                __('Environment', 'rrze-multisite-manager'),
                 $capability,
                 $environmentOverviewSlug,
                 [$this, 'renderEnvironmentOverviewPage']
@@ -151,8 +155,8 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Website-Übersicht', 'rrze-multisite-manager'),
-            __('Website-Übersicht', 'rrze-multisite-manager'),
+            __('Website Overview', 'rrze-multisite-manager'),
+            __('Website Overview', 'rrze-multisite-manager'),
             $capability,
             $siteOverviewSlug,
             [$this, 'renderSiteOverviewPage']
@@ -160,8 +164,8 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Website-Details', 'rrze-multisite-manager'),
-            __('Website-Details', 'rrze-multisite-manager'),
+            __('Website Details', 'rrze-multisite-manager'),
+            __('Website Details', 'rrze-multisite-manager'),
             $capability,
             $siteDetailsSlug,
             [$this, 'renderSiteDetailsPage']
@@ -169,8 +173,8 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Speicheranalyse', 'rrze-multisite-manager'),
-            __('Speicheranalyse', 'rrze-multisite-manager'),
+            __('Storage Analysis', 'rrze-multisite-manager'),
+            __('Storage Analysis', 'rrze-multisite-manager'),
             $capability,
             $siteStorageAnalysisSlug,
             [$this, 'renderSiteStorageAnalysisPage']
@@ -178,8 +182,8 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Plugin-Übersicht', 'rrze-multisite-manager'),
-            __('Plugin-Übersicht', 'rrze-multisite-manager'),
+            __('Plugin Overview', 'rrze-multisite-manager'),
+            __('Plugin Overview', 'rrze-multisite-manager'),
             $capability,
             $pluginOverviewSlug,
             [$this, 'renderPluginOverviewPage']
@@ -187,8 +191,8 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Plugin-Details', 'rrze-multisite-manager'),
-            __('Plugin-Details', 'rrze-multisite-manager'),
+            __('Plugin Details', 'rrze-multisite-manager'),
+            __('Plugin Details', 'rrze-multisite-manager'),
             $capability,
             $pluginDetailsSlug,
             [$this, 'renderPluginDetailsPage']
@@ -196,8 +200,8 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Theme-Übersicht', 'rrze-multisite-manager'),
-            __('Theme-Übersicht', 'rrze-multisite-manager'),
+            __('Theme Overview', 'rrze-multisite-manager'),
+            __('Theme Overview', 'rrze-multisite-manager'),
             $capability,
             $themeOverviewSlug,
             [$this, 'renderThemeOverviewPage']
@@ -205,8 +209,8 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Theme-Details', 'rrze-multisite-manager'),
-            __('Theme-Details', 'rrze-multisite-manager'),
+            __('Theme Details', 'rrze-multisite-manager'),
+            __('Theme Details', 'rrze-multisite-manager'),
             $capability,
             $themeDetailsSlug,
             [$this, 'renderThemeDetailsPage']
@@ -214,14 +218,23 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             null,
-            __('Site-Status ändern', 'rrze-multisite-manager'),
-            __('Site-Status ändern', 'rrze-multisite-manager'),
+            __('Change site status', 'rrze-multisite-manager'),
+            __('Change site status', 'rrze-multisite-manager'),
             $capability,
             $siteStatusSlug,
             [$this, 'renderSiteStatusPage']
         );
 
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            $this->pageHooks[] = add_submenu_page(
+                $parentSlug,
+                __('Monitoring', 'rrze-multisite-manager'),
+                __('Monitoring', 'rrze-multisite-manager'),
+                $capability,
+                $monitoringSlug,
+                [$this->settings, 'renderMonitoringPage']
+            );
+
             $settingsPage = add_submenu_page(
                 $parentSlug,
                 __('Settings', 'rrze-multisite-manager'),
@@ -319,17 +332,25 @@ class Dashboard {
                 'pluginDetailsBaseUrl' => $this->getPluginDetailsUrl(),
                 'themeDetailsBaseUrl' => $this->getThemeDetailsUrl(),
                 'siteSearchMinLength' => 3,
-                'siteSearchNoResults' => __('Keine Websites gefunden.', 'rrze-multisite-manager'),
+                'siteSearchNoResults' => __('No websites found.', 'rrze-multisite-manager'),
                 'pluginSearchMinLength' => 3,
-                'pluginSearchNoResults' => __('Keine Plugins gefunden.', 'rrze-multisite-manager'),
+                'pluginSearchNoResults' => __('No plugins found.', 'rrze-multisite-manager'),
                 'themeSearchNonce' => wp_create_nonce('rrze-msm-search-themes'),
                 'themeSearchMinLength' => 3,
-                'themeSearchNoResults' => __('Keine Themes gefunden.', 'rrze-multisite-manager'),
+                'themeSearchNoResults' => __('No themes found.', 'rrze-multisite-manager'),
                 'siteStorageAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-analysis'),
                 'siteStorageOrphanAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-orphan-analysis'),
+                'siteMediaMetadataAnalysisNonce' => wp_create_nonce('rrze-msm-site-media-metadata-analysis'),
                 'siteStorageStatusNonce' => wp_create_nonce('rrze-msm-site-storage-status'),
-                'siteStorageAnalysisCompleted' => __('Die Speicheranalyse ist abgeschlossen. Die Seite wird neu geladen.', 'rrze-multisite-manager'),
-                'siteStorageAnalysisFailed' => __('Die Speicheranalyse konnte nicht abgeschlossen werden.', 'rrze-multisite-manager'),
+                'siteStorageAnalysisCompleted' => __('The storage analysis is complete. The page is being reloaded.', 'rrze-multisite-manager'),
+                'siteStorageAnalysisFailed' => __('The storage analysis could not be completed.', 'rrze-multisite-manager'),
+                'selectFileFirst' => __('Please select at least one file first.', 'rrze-multisite-manager'),
+                'selectedFiles' => __('selected files', 'rrze-multisite-manager'),
+                'storageAnalysisRunning' => __('Analysis running ...', 'rrze-multisite-manager'),
+                'storageAnalysisRefresh' => __('Refresh analysis', 'rrze-multisite-manager'),
+                'storageAnalysisStart' => __('Start analysis', 'rrze-multisite-manager'),
+                'storageOrphanAnalysisRunning' => __('Orphan check running ...', 'rrze-multisite-manager'),
+                'storageOrphanAnalysisStart' => __('Start orphan check', 'rrze-multisite-manager'),
             ]
         );
     }
@@ -441,9 +462,9 @@ class Dashboard {
         $targetUrl = $this->getMainSiteDashboardUrl();
 
         echo '<div class="wrap">';
-        echo '<h1>' . esc_html__('Weiterleitung zum Multisite Manager', 'rrze-multisite-manager') . '</h1>';
-        echo '<p>' . esc_html__('Du wirst zur Hauptinstanz des Multisite Managers weitergeleitet.', 'rrze-multisite-manager') . '</p>';
-        echo '<p><a class="button button-primary" href="' . esc_url($targetUrl) . '">' . esc_html__('Jetzt zum Multisite Manager wechseln', 'rrze-multisite-manager') . '</a></p>';
+        echo '<h1>' . esc_html__('Redirecting to the Multisite Manager', 'rrze-multisite-manager') . '</h1>';
+        echo '<p>' . esc_html__('You are being redirected to the main instance of the Multisite Manager.', 'rrze-multisite-manager') . '</p>';
+        echo '<p><a class="button button-primary" href="' . esc_url($targetUrl) . '">' . esc_html__('Switch to the Multisite Manager now', 'rrze-multisite-manager') . '</a></p>';
         echo '<meta http-equiv="refresh" content="0;url=' . esc_url($targetUrl) . '">';
         echo '<script>window.location.replace(' . wp_json_encode($targetUrl) . ');</script>';
         echo '</div>';
@@ -505,7 +526,7 @@ class Dashboard {
         $tabs = [
             [
                 'slug' => 'all',
-                'label' => __('Alle Websites', 'rrze-multisite-manager'),
+                'label' => __('All websites', 'rrze-multisite-manager'),
                 'count' => (int)($summary['total_sites'] ?? 0),
                 'class' => 'rrze-msm-tab-all',
                 'url' => add_query_arg(
@@ -518,7 +539,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'active',
-                'label' => __('Aktive Websites', 'rrze-multisite-manager'),
+                'label' => __('Active websites', 'rrze-multisite-manager'),
                 'count' => (int)($summary['active_sites'] ?? 0),
                 'class' => 'rrze-msm-tab-positive',
                 'url' => add_query_arg(
@@ -531,7 +552,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'archived',
-                'label' => __('Archivierte Websites', 'rrze-multisite-manager'),
+                'label' => __('Archived websites', 'rrze-multisite-manager'),
                 'count' => (int)($summary['archived_sites'] ?? 0),
                 'class' => 'rrze-msm-tab-warning',
                 'url' => add_query_arg(
@@ -544,7 +565,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'blocked',
-                'label' => __('Gesperrte Websites', 'rrze-multisite-manager'),
+                'label' => __('Blocked websites', 'rrze-multisite-manager'),
                 'count' => (int)($summary['spam_sites'] ?? 0),
                 'class' => 'rrze-msm-tab-gold',
                 'url' => add_query_arg(
@@ -557,7 +578,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'deleted',
-                'label' => __('Zu löschende Sites', 'rrze-multisite-manager'),
+                'label' => __('Sites to be deleted', 'rrze-multisite-manager'),
                 'count' => (int)($summary['deleted_sites'] ?? 0),
                 'class' => 'rrze-msm-tab-danger',
                 'url' => add_query_arg(
@@ -570,7 +591,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'provisioning',
-                'label' => __('Einrichtung läuft', 'rrze-multisite-manager'),
+                'label' => __('Provisioning in progress', 'rrze-multisite-manager'),
                 'count' => count((array)($dashboardData['provisioning_sites'] ?? [])),
                 'class' => 'rrze-msm-tab-info',
                 'url' => add_query_arg(
@@ -583,7 +604,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'dns-missing',
-                'label' => __('DNS fehlt', 'rrze-multisite-manager'),
+                'label' => __('DNS missing', 'rrze-multisite-manager'),
                 'count' => count((array)($dashboardData['dns_missing_sites'] ?? [])),
                 'class' => 'rrze-msm-tab-danger',
                 'url' => add_query_arg(
@@ -596,7 +617,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'unreachable',
-                'label' => __('Technisch nicht erreichbar', 'rrze-multisite-manager'),
+                'label' => __('Technically unreachable', 'rrze-multisite-manager'),
                 'count' => count((array)($dashboardData['unreachable_sites'] ?? [])),
                 'class' => 'rrze-msm-tab-gold',
                 'url' => add_query_arg(
@@ -877,10 +898,10 @@ class Dashboard {
 
         if (!empty($siteDetails['is_archived'])) {
             $statusSections[] = [
-                'title' => __('Archiviert', 'rrze-multisite-manager'),
-                'date_label' => __('Archiviert seit', 'rrze-multisite-manager'),
+                'title' => __('Archived', 'rrze-multisite-manager'),
+                'date_label' => __('Archived since', 'rrze-multisite-manager'),
                 'date_value' => $this->formatStatusDate((string)($siteDetails['archived_at'] ?? '')),
-                'user_label' => __('Archiviert von', 'rrze-multisite-manager'),
+                'user_label' => __('Archived by', 'rrze-multisite-manager'),
                 'user_value' => $this->getStatusUserLabel($siteDetails),
                 'note' => (string)($siteDetails['status_note'] ?? ''),
             ];
@@ -888,10 +909,10 @@ class Dashboard {
 
         if (!empty($siteDetails['is_spam'])) {
             $statusSections[] = [
-                'title' => __('Gesperrt', 'rrze-multisite-manager'),
-                'date_label' => __('Gesperrt seit', 'rrze-multisite-manager'),
+                'title' => __('Blocked', 'rrze-multisite-manager'),
+                'date_label' => __('Blocked since', 'rrze-multisite-manager'),
                 'date_value' => $this->formatStatusDate((string)($siteDetails['spam_at'] ?? '')),
-                'user_label' => __('Gesperrt von', 'rrze-multisite-manager'),
+                'user_label' => __('Blocked by', 'rrze-multisite-manager'),
                 'user_value' => $this->getStatusUserLabel($siteDetails),
                 'note' => (string)($siteDetails['status_note'] ?? ''),
             ];
@@ -899,28 +920,28 @@ class Dashboard {
 
         if (!empty($_GET['option_deleted'])) {
             $optionNotices[] = sprintf(
-                __('Option "%s" wurde gelöscht.', 'rrze-multisite-manager'),
+                __('Option "%s" was deleted.', 'rrze-multisite-manager'),
                 sanitize_text_field((string)$_GET['option_deleted'])
             );
         }
 
         if (!empty($_GET['option_updated'])) {
             $optionNotices[] = sprintf(
-                __('Option "%s" wurde aktualisiert.', 'rrze-multisite-manager'),
+                __('Option "%s" was updated.', 'rrze-multisite-manager'),
                 sanitize_text_field((string)$_GET['option_updated'])
             );
         }
 
         if (!empty($_GET['option_update_failed'])) {
             $optionErrorNotices[] = sprintf(
-                __('Option "%s" konnte nicht aktualisiert werden. Prüfe besonders, ob serialisierte Rohwerte noch gültig sind.', 'rrze-multisite-manager'),
+                __('Option "%s" could not be updated. In particular, check whether serialized raw values are still valid.', 'rrze-multisite-manager'),
                 sanitize_text_field((string)$_GET['option_update_failed'])
             );
         }
 
         if (!empty($_GET['option_group_deleted'])) {
             $optionNotices[] = sprintf(
-                __('%1$d Optionen aus der Gruppe "%2$s" wurden gelöscht.', 'rrze-multisite-manager'),
+                __('%1$d options from group "%2$s" were deleted.', 'rrze-multisite-manager'),
                 absint($_GET['option_group_deleted_count'] ?? 0),
                 sanitize_text_field((string)$_GET['option_group_deleted'])
             );
@@ -928,7 +949,7 @@ class Dashboard {
 
         if (!empty($_GET['deleted_post_type'])) {
             $contentNotices[] = sprintf(
-                __('%1$d Einträge des Custom Post Types "%2$s" wurden endgültig gelöscht.', 'rrze-multisite-manager'),
+                __('%1$d entries of custom post type "%2$s" were permanently deleted.', 'rrze-multisite-manager'),
                 absint($_GET['deleted_post_type_count'] ?? 0),
                 sanitize_text_field((string)$_GET['deleted_post_type'])
             );
@@ -946,7 +967,7 @@ class Dashboard {
                 'site_customizer_url' => $siteId > 0 ? get_admin_url($siteId, 'customize.php') : '',
                 'site_menus_url' => $siteId > 0 ? get_admin_url($siteId, 'nav-menus.php') : '',
                 'site_editor_url' => $siteId > 0 && !empty($siteDetails['theme']['is_block_theme']) ? get_admin_url($siteId, 'site-editor.php') : '',
-                'site_search_placeholder' => __('Website nach Titel oder URL suchen', 'rrze-multisite-manager'),
+                'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
                 'site_details_base_url' => $this->getSiteDetailsUrl(),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
@@ -959,73 +980,73 @@ class Dashboard {
                 'status_sections' => $statusSections,
                 'site_monitoring_rows' => [
                     [
-                        'label' => __('Betriebsstatus', 'rrze-multisite-manager'),
-                        'value' => (string)($siteDetails['operational_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager')),
+                        'label' => __('Operational status', 'rrze-multisite-manager'),
+                        'value' => (string)($siteDetails['operational_status_label'] ?? __('Not set', 'rrze-multisite-manager')),
                     ],
                     [
-                        'label' => __('Quelle des Betriebsstatus', 'rrze-multisite-manager'),
+                        'label' => __('Source of operational status', 'rrze-multisite-manager'),
                         'value' => !empty($siteDetails['operational_status_source']) && (string)$siteDetails['operational_status_source'] === 'manual'
-                            ? __('Manuell gesetzt', 'rrze-multisite-manager')
-                            : __('Automatisch / nicht gesetzt', 'rrze-multisite-manager'),
+                            ? __('Set manually', 'rrze-multisite-manager')
+                            : __('Automatic / not set', 'rrze-multisite-manager'),
                     ],
                     [
-                        'label' => __('Vorheriger Betriebsstatus', 'rrze-multisite-manager'),
+                        'label' => __('Previous operational status', 'rrze-multisite-manager'),
                         'value' => trim((string)($siteDetails['previous_operational_status_label'] ?? '')) !== ''
                             ? (string)$siteDetails['previous_operational_status_label']
-                            : __('Nicht gesetzt', 'rrze-multisite-manager'),
+                            : __('Not set', 'rrze-multisite-manager'),
                     ],
                     [
-                        'label' => __('Betriebsstatus geändert am', 'rrze-multisite-manager'),
+                        'label' => __('Operational status changed on', 'rrze-multisite-manager'),
                         'value' => $this->formatStatusDate((string)($siteDetails['operational_status_changed_at'] ?? '')),
                     ],
                     [
-                        'label' => __('DNS-Status', 'rrze-multisite-manager'),
-                        'value' => (string)($siteDetails['dns_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager')),
+                        'label' => __('DNS status', 'rrze-multisite-manager'),
+                        'value' => (string)($siteDetails['dns_status_label'] ?? __('Not set', 'rrze-multisite-manager')),
                     ],
                     [
-                        'label' => __('HTTP-Status', 'rrze-multisite-manager'),
-                        'value' => (string)($siteDetails['http_status_label'] ?? __('Nicht gesetzt', 'rrze-multisite-manager')),
+                        'label' => __('HTTP status', 'rrze-multisite-manager'),
+                        'value' => (string)($siteDetails['http_status_label'] ?? __('Not set', 'rrze-multisite-manager')),
                     ],
                     [
-                        'label' => __('Letzte Verfügbarkeitsprüfung', 'rrze-multisite-manager'),
+                        'label' => __('Last availability check', 'rrze-multisite-manager'),
                         'value' => $this->formatStatusDate((string)($siteDetails['last_availability_check'] ?? '')),
                     ],
                     [
-                        'label' => __('Zuletzt DNS erfolgreich', 'rrze-multisite-manager'),
+                        'label' => __('Last DNS success', 'rrze-multisite-manager'),
                         'value' => $this->formatStatusDate((string)($siteDetails['last_dns_ok_at'] ?? '')),
                     ],
                     [
-                        'label' => __('Zuletzt DNS fehlerhaft', 'rrze-multisite-manager'),
+                        'label' => __('Last DNS failure', 'rrze-multisite-manager'),
                         'value' => $this->formatStatusDate((string)($siteDetails['last_dns_error_at'] ?? '')),
                     ],
                     [
-                        'label' => __('DNS-Fehlversuche in Folge', 'rrze-multisite-manager'),
+                        'label' => __('Consecutive DNS failures', 'rrze-multisite-manager'),
                         'value' => (string)number_format_i18n((int)($siteDetails['dns_failure_count'] ?? 0)),
                     ],
                     [
-                        'label' => __('Zuletzt HTTP erfolgreich', 'rrze-multisite-manager'),
+                        'label' => __('Last HTTP success', 'rrze-multisite-manager'),
                         'value' => $this->formatStatusDate((string)($siteDetails['last_http_ok_at'] ?? '')),
                     ],
                     [
-                        'label' => __('Zuletzt HTTP fehlerhaft', 'rrze-multisite-manager'),
+                        'label' => __('Last HTTP failure', 'rrze-multisite-manager'),
                         'value' => $this->formatStatusDate((string)($siteDetails['last_http_error_at'] ?? '')),
                     ],
                     [
-                        'label' => __('HTTP-Fehlversuche in Folge', 'rrze-multisite-manager'),
+                        'label' => __('Consecutive HTTP failures', 'rrze-multisite-manager'),
                         'value' => (string)number_format_i18n((int)($siteDetails['http_failure_count'] ?? 0)),
                     ],
                     [
-                        'label' => __('Monitoring-Notiz', 'rrze-multisite-manager'),
+                        'label' => __('Monitoring note', 'rrze-multisite-manager'),
                         'value' => trim((string)($siteDetails['monitoring_note'] ?? '')) !== ''
                             ? (string)$siteDetails['monitoring_note']
-                            : __('Keine Notiz', 'rrze-multisite-manager'),
+                            : __('No note', 'rrze-multisite-manager'),
                     ],
                 ],
                 'can_manage_network_actions' => $this->currentUserCanUseNetworkAdminFeatures(),
                 'site_monitoring_update_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_update_site_monitoring_status'),
                 'site_monitoring_operational_options' => $this->getOperationalStatusOptions(),
                 'site_monitoring_notice_message' => !empty($_GET['monitoring-status-updated'])
-                    ? __('Der Betriebsstatus wurde aktualisiert.', 'rrze-multisite-manager')
+                    ? __('The operational status has been updated.', 'rrze-multisite-manager')
                     : '',
                 'site_monitoring_history' => is_array($siteDetails['monitoring_history'] ?? null) ? $siteDetails['monitoring_history'] : [],
                 'site_detail_current_section' => $currentSection,
@@ -1051,13 +1072,23 @@ class Dashboard {
 
     public function renderSiteStorageAnalysisPage(): void {
         $siteId = isset($_GET['site_id']) ? absint($_GET['site_id']) : 0;
+        $debugAttachmentId = isset($_GET['debug_attachment_id']) ? absint($_GET['debug_attachment_id']) : 0;
+        $storageTab = isset($_GET['storage_tab']) ? sanitize_key((string)wp_unslash($_GET['storage_tab'])) : 'analysis';
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
         $storageAnalysis = $siteId > 0 ? $this->metrics->getCachedSiteStorageAnalysis($siteId) : [];
         $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId) : [];
+        $attachmentDebug = ($siteId > 0 && $debugAttachmentId > 0) ? $this->metrics->getSiteStorageAttachmentDebug($siteId, $debugAttachmentId) : [];
+        $mediaMetadataAnalysis = $siteId > 0 ? $this->metrics->getSiteMediaMetadataAnalysis($siteId) : [];
+        $orphanFileDeleteNotice = [];
         $autoStartStorageAnalysis = false;
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        if ($siteId > 0 && !empty($_GET['orphan_file_delete_notice'])) {
+            $orphanFileDeleteNotice = get_site_transient('rrze_msm_orphan_file_delete_notice_' . get_current_user_id() . '_' . $siteId);
+            delete_site_transient('rrze_msm_orphan_file_delete_notice_' . get_current_user_id() . '_' . $siteId);
         }
 
         $autoStartStorageAnalysis = $this->shouldAutoStartSiteStorageAnalysis($siteSummary, $storageAnalysis, $storageAnalysisStatus);
@@ -1066,6 +1097,9 @@ class Dashboard {
             'site-storage-analysis-page',
             [
                 'site_id' => $siteId,
+                'debug_attachment_id' => $debugAttachmentId,
+                'attachment_debug' => $attachmentDebug,
+                'media_metadata_analysis' => $mediaMetadataAnalysis,
                 'site_summary' => $siteSummary,
                 'storage_analysis' => $storageAnalysis,
                 'storage_analysis_status' => $storageAnalysisStatus,
@@ -1073,7 +1107,7 @@ class Dashboard {
                 'auto_start_storage_analysis' => $autoStartStorageAnalysis,
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
-                'site_search_placeholder' => __('Website nach Titel oder URL suchen', 'rrze-multisite-manager'),
+                'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
                 'site_storage_analysis_base_url' => $this->getSiteStorageAnalysisUrl(),
                 'site_details_url' => $siteId > 0 ? $this->getSiteDetailsUrl($siteId) : '',
                 'site_media_library_url' => $siteId > 0 ? get_admin_url($siteId, 'upload.php') : '',
@@ -1082,6 +1116,7 @@ class Dashboard {
                 'orphan_file_deleted' => isset($_GET['orphan_file_deleted']) ? sanitize_text_field((string)wp_unslash($_GET['orphan_file_deleted'])) : '',
                 'orphan_file_deleted_count' => isset($_GET['orphan_file_deleted_count']) ? absint($_GET['orphan_file_deleted_count']) : 0,
                 'orphan_file_error' => isset($_GET['orphan_file_error']) ? sanitize_text_field((string)wp_unslash($_GET['orphan_file_error'])) : '',
+                'orphan_file_delete_notice' => is_array($orphanFileDeleteNotice) ? $orphanFileDeleteNotice : [],
             ],
             $this
         );
@@ -1118,7 +1153,7 @@ class Dashboard {
         $accentIndex = 0;
 
         if (empty($topLevelDirectories) || $actualBytes <= 0) {
-            return $widget->renderPieChart([], __('Es konnten keine Speicherplatzverbraucher ermittelt werden.', 'rrze-multisite-manager'));
+            return $widget->renderPieChart([], __('No storage consumers could be determined.', 'rrze-multisite-manager'));
         }
 
         foreach ($visibleEntries as $entry) {
@@ -1138,7 +1173,7 @@ class Dashboard {
 
         if ($remainingBytes > 0) {
             $items[] = [
-                'label' => __('Sonstige', 'rrze-multisite-manager'),
+                'label' => __('Other', 'rrze-multisite-manager'),
                 'value' => $remainingBytes,
                 'value_label' => size_format($remainingBytes),
                 'accent' => 'neutral',
@@ -1148,9 +1183,9 @@ class Dashboard {
 
         return $widget->renderPieChart(
             $items,
-            __('Es konnten keine Speicherplatzverbraucher ermittelt werden.', 'rrze-multisite-manager'),
+            __('No storage consumers could be determined.', 'rrze-multisite-manager'),
             [
-                'center_title' => __('Gesamt', 'rrze-multisite-manager'),
+                'center_title' => __('Total', 'rrze-multisite-manager'),
                 'center_value' => (string)($storageAnalysis['actual_label'] ?? size_format($actualBytes)),
                 'chart_class' => 'rrze-msm-storage-analysis-pie-chart',
                 'layout_class' => 'rrze-msm-storage-analysis-pie-layout',
@@ -1225,7 +1260,7 @@ class Dashboard {
         $tabs = [
             [
                 'slug' => 'all',
-                'label' => __('Alle Plugins', 'rrze-multisite-manager'),
+                'label' => __('All plugins', 'rrze-multisite-manager'),
                 'count' => count($allPlugins),
                 'class' => 'rrze-msm-tab-all',
                 'url' => add_query_arg(
@@ -1238,7 +1273,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'network',
-                'label' => __('Netzwerkplugins', 'rrze-multisite-manager'),
+                'label' => __('Network plugins', 'rrze-multisite-manager'),
                 'count' => count($networkPlugins),
                 'class' => 'rrze-msm-tab-info',
                 'url' => add_query_arg(
@@ -1251,7 +1286,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'active',
-                'label' => __('Aktivierte Plugins', 'rrze-multisite-manager'),
+                'label' => __('Active plugins', 'rrze-multisite-manager'),
                 'count' => count($activePlugins),
                 'class' => 'rrze-msm-tab-positive',
                 'url' => add_query_arg(
@@ -1264,7 +1299,7 @@ class Dashboard {
             ],
             [
                 'slug' => 'inactive',
-                'label' => __('Nicht aktivierte Plugins', 'rrze-multisite-manager'),
+                'label' => __('Inactive plugins', 'rrze-multisite-manager'),
                 'count' => count($inactivePlugins),
                 'class' => 'rrze-msm-tab-gold',
                 'url' => add_query_arg(
@@ -1375,7 +1410,7 @@ class Dashboard {
             [
                 'plugin_file' => $pluginFile,
                 'plugin_details' => $pluginDetails,
-                'plugin_search_placeholder' => __('Plugin nach Name suchen', 'rrze-multisite-manager'),
+                'plugin_search_placeholder' => __('Search plugin by name', 'rrze-multisite-manager'),
                 'plugin_details_base_url' => $this->getPluginDetailsUrl(),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
@@ -1444,7 +1479,7 @@ class Dashboard {
                 'theme_stylesheet' => $stylesheet,
                 'theme_details' => $themeDetails,
                 'theme_widget' => $themeWidget,
-                'theme_search_placeholder' => __('Theme nach Name suchen', 'rrze-multisite-manager'),
+                'theme_search_placeholder' => __('Search theme by name', 'rrze-multisite-manager'),
                 'theme_details_base_url' => $this->getThemeDetailsUrl(),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
@@ -1482,11 +1517,11 @@ class Dashboard {
         }
 
         if (!$site instanceof \WP_Site || !in_array($statusAction, $allowedActions, true)) {
-            wp_die(esc_html__('Ungültige Status-Aktion.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid status action.', 'rrze-multisite-manager'));
         }
 
         if (is_main_site($siteId)) {
-            wp_die(esc_html__('Die Hauptsite kann nicht auf diese Weise geändert werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('The main site cannot be changed in this way.', 'rrze-multisite-manager'));
         }
 
         $siteName = $this->getSiteName($site);
@@ -1500,11 +1535,11 @@ class Dashboard {
                 'site_url' => get_home_url($siteId, '/'),
                 'status_action' => $statusAction,
                 'status_action_label' => $statusAction === 'archive'
-                    ? __('Archivieren', 'rrze-multisite-manager')
-                    : __('Sperren', 'rrze-multisite-manager'),
+                    ? __('Archive', 'rrze-multisite-manager')
+                    : __('Block', 'rrze-multisite-manager'),
                 'status_action_description' => $statusAction === 'archive'
-                    ? __('Setzt den Site-Status auf archiviert.', 'rrze-multisite-manager')
-                    : __('Setzt den Site-Status auf gesperrt.', 'rrze-multisite-manager'),
+                    ? __('Sets the site status to archived.', 'rrze-multisite-manager')
+                    : __('Sets the site status to blocked.', 'rrze-multisite-manager'),
                 'current_note' => $currentNote,
                 'form_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_site_status'),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
@@ -1661,6 +1696,74 @@ class Dashboard {
         wp_send_json_success($result);
     }
 
+    public function ajaxRunSiteMediaMetadataAnalysis(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $restart = !empty($_REQUEST['restart']);
+        $result = [];
+
+        if (!$this->currentUserCanAccessManager()) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-site-media-metadata-analysis', 'nonce');
+        $result = $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restart);
+
+        if (empty($result['success'])) {
+            wp_send_json_error($result, 400);
+        }
+
+        wp_send_json_success($result);
+    }
+
+    public function handleSiteMediaMetadataAnalysis(): void {
+        $siteId = isset($_POST['site_id']) ? absint(wp_unslash($_POST['site_id'])) : 0;
+        $restart = !empty($_POST['restart']);
+
+        if (!$this->currentUserCanAccessManager()) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze-msm-site-media-metadata-analysis', 'rrze_msm_site_media_metadata_nonce');
+        $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restart);
+
+        wp_safe_redirect($this->getSiteMediaMetadataAnalysisContinuationUrl($siteId));
+        exit;
+    }
+
+    public function continueSiteMediaMetadataAnalysis(): void {
+        $siteId = isset($_GET['rrze_msm_media_metadata_site_id'])
+            ? absint(wp_unslash($_GET['rrze_msm_media_metadata_site_id']))
+            : 0;
+        $result = [];
+
+        if ($siteId <= 0 || empty($_GET['rrze_msm_continue_media_metadata'])) {
+            return;
+        }
+
+        if (!$this->currentUserCanAccessManager()) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze-msm-site-media-metadata-analysis', 'rrze_msm_media_metadata_nonce');
+        $result = $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId);
+
+        if (($result['analysis']['status'] ?? '') === 'running') {
+            wp_safe_redirect($this->getSiteMediaMetadataAnalysisContinuationUrl($siteId));
+            exit;
+        }
+
+        wp_safe_redirect(
+            add_query_arg(
+                [
+                    'site_id' => $siteId,
+                    'storage_tab' => 'missing-metadata',
+                ],
+                $this->getSiteStorageAnalysisUrl()
+            )
+        );
+        exit;
+    }
+
     public function ajaxGetSiteStorageAnalysisStatus(): void {
         $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
 
@@ -1692,7 +1795,7 @@ class Dashboard {
         }
 
         if (!$site instanceof \WP_Site) {
-            wp_die(esc_html__('Ungültige Site.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid site.', 'rrze-multisite-manager'));
         }
 
         $isArchived = ((int)$site->archived === 1);
@@ -1700,32 +1803,32 @@ class Dashboard {
         $isDeleted = ((int)$site->deleted === 1);
 
         if (is_main_site($siteId) && in_array($statusAction, ['archive', 'spam', 'delete'], true)) {
-            wp_die(esc_html__('Die Hauptsite kann nicht auf diese Weise geändert werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('The main site cannot be changed in this way.', 'rrze-multisite-manager'));
         }
 
         if (in_array($statusAction, ['archive', 'spam'], true)) {
             if ($isArchived || $isSpam || (int)$site->deleted === 1) {
-                wp_die(esc_html__('Diese Site kann in ihrem aktuellen Status nicht so geändert werden.', 'rrze-multisite-manager'));
+                wp_die(esc_html__('This site cannot be changed this way in its current status.', 'rrze-multisite-manager'));
             }
 
             check_admin_referer('rrze_multisite_manager_site_status_' . $statusAction . '_' . $siteId);
             $this->applySiteStatus($siteId, $statusAction, $note);
         } elseif ($statusAction === 'restore') {
             if (!$isArchived && !$isSpam && !$isDeleted) {
-                wp_die(esc_html__('Nur archivierte, gesperrte oder zum Löschen markierte Sites können wiederhergestellt werden.', 'rrze-multisite-manager'));
+                wp_die(esc_html__('Only archived, blocked, or deletion-marked sites can be restored.', 'rrze-multisite-manager'));
             }
 
             check_admin_referer('rrze_multisite_manager_site_status_restore_' . $siteId);
             $this->restoreSiteStatus($siteId);
         } elseif ($statusAction === 'delete') {
             if (!$isArchived && !$isSpam) {
-                wp_die(esc_html__('Nur archivierte oder gesperrte Sites können zum Löschen markiert werden.', 'rrze-multisite-manager'));
+                wp_die(esc_html__('Only archived or blocked sites can be marked for deletion.', 'rrze-multisite-manager'));
             }
 
             check_admin_referer('rrze_multisite_manager_site_status_delete_' . $siteId);
             update_blog_status($siteId, 'deleted', 1);
         } else {
-            wp_die(esc_html__('Ungültige Status-Aktion.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid status action.', 'rrze-multisite-manager'));
         }
 
         $this->metrics->clearCache();
@@ -1749,11 +1852,11 @@ class Dashboard {
         }
 
         if (!$site instanceof \WP_Site) {
-            wp_die(esc_html__('Ungültige Site.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid site.', 'rrze-multisite-manager'));
         }
 
         if (is_main_site($siteId)) {
-            wp_die(esc_html__('Die Hauptsite kann nicht endgültig gelöscht werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('The main site cannot be permanently deleted.', 'rrze-multisite-manager'));
         }
 
         check_admin_referer('deleteblog_' . $siteId);
@@ -1785,15 +1888,15 @@ class Dashboard {
         check_admin_referer('rrze_multisite_manager_delete_site_option_' . $siteId . '_' . $optionName);
 
         if ($siteId <= 0 || $optionName === '') {
-            wp_die(esc_html__('Ungültige Option.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid option.', 'rrze-multisite-manager'));
         }
 
         if ($this->isSiteOptionHiddenForCurrentUser($optionName)) {
-            wp_die(esc_html__('Diese Option ist für dich nicht sichtbar und kann hier nicht gelöscht werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('This option is not visible to you and cannot be deleted here.', 'rrze-multisite-manager'));
         }
 
         if ($this->metrics->isWordPressCoreOptionName($optionName)) {
-            wp_die(esc_html__('WordPress-Core-Optionen können hier nicht gelöscht werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('WordPress core options cannot be deleted here.', 'rrze-multisite-manager'));
         }
 
         $this->metrics->deleteSiteOption($siteId, $optionName);
@@ -1832,15 +1935,15 @@ class Dashboard {
         check_admin_referer('rrze_multisite_manager_update_site_option_' . $siteId . '_' . $optionName);
 
         if ($siteId <= 0 || $optionName === '') {
-            wp_die(esc_html__('Ungültige Option.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid option.', 'rrze-multisite-manager'));
         }
 
         if ($this->isSiteOptionHiddenForCurrentUser($optionName)) {
-            wp_die(esc_html__('Diese Option ist für dich nicht sichtbar und kann hier nicht bearbeitet werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('This option is not visible to you and cannot be edited here.', 'rrze-multisite-manager'));
         }
 
         if ($this->metrics->isWordPressCoreOptionName($optionName)) {
-            wp_die(esc_html__('WordPress-Core-Optionen können hier nicht bearbeitet werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('WordPress core options cannot be edited here.', 'rrze-multisite-manager'));
         }
 
         if (!$this->metrics->canDecodeEditedOptionValue($rawValue)) {
@@ -1905,11 +2008,11 @@ class Dashboard {
         check_admin_referer('rrze_multisite_manager_update_site_monitoring_status_' . $siteId);
 
         if ($siteId <= 0 || !get_site($siteId) instanceof \WP_Site) {
-            wp_die(esc_html__('Ungültige Site.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid site.', 'rrze-multisite-manager'));
         }
 
         if (!in_array($operationalStatus, $allowedStatuses, true)) {
-            wp_die(esc_html__('Ungültiger Betriebsstatus.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid operational status.', 'rrze-multisite-manager'));
         }
 
         $currentStatus = (string)get_site_meta($siteId, self::META_OPERATIONAL_STATUS, true);
@@ -1958,6 +2061,9 @@ class Dashboard {
         $relativePaths = isset($_POST['relative_paths']) && is_array($_POST['relative_paths'])
             ? array_values(array_filter(array_map('sanitize_text_field', wp_unslash((array)$_POST['relative_paths']))))
             : [];
+        $attachmentIds = isset($_POST['attachment_ids']) && is_array($_POST['attachment_ids'])
+            ? array_values(array_filter(array_map('absint', wp_unslash((array)$_POST['attachment_ids']))))
+            : [];
         $redirectUrl = $this->getSiteStorageAnalysisUrl($siteId);
         $result = [];
         $deletedCount = 0;
@@ -1969,14 +2075,14 @@ class Dashboard {
             wp_die(esc_html__('You are not allowed to delete upload files.', 'rrze-multisite-manager'));
         }
 
-        if (!empty($relativePaths)) {
+        if (!empty($relativePaths) || !empty($attachmentIds)) {
             check_admin_referer('rrze_multisite_manager_delete_orphan_files_' . $siteId);
         } else {
             check_admin_referer('rrze_multisite_manager_delete_orphan_file_' . $siteId . '_' . $relativePath);
         }
 
-        if ($siteId <= 0 || ($relativePath === '' && empty($relativePaths))) {
-            wp_die(esc_html__('Ungültige Datei.', 'rrze-multisite-manager'));
+        if ($siteId <= 0 || ($relativePath === '' && empty($relativePaths) && empty($attachmentIds))) {
+            wp_die(esc_html__('Invalid file.', 'rrze-multisite-manager'));
         }
 
         if (!empty($relativePaths)) {
@@ -1996,7 +2102,27 @@ class Dashboard {
                 $errors[] = sprintf(
                     '%1$s: %2$s',
                     $path,
-                    (string)($result['message'] ?? __('Die Datei konnte nicht gelöscht werden.', 'rrze-multisite-manager'))
+                    (string)($result['message'] ?? __('The file could not be deleted.', 'rrze-multisite-manager'))
+                );
+            }
+        } elseif (!empty($attachmentIds)) {
+            foreach ($attachmentIds as $attachmentId) {
+                if ($attachmentId <= 0) {
+                    continue;
+                }
+
+                $result = $this->metrics->deleteSiteUnusedAttachment($siteId, $attachmentId);
+
+                if (!empty($result['deleted'])) {
+                    $deletedCount++;
+                    $deletedPaths[] = (string)($result['path'] ?? $attachmentId);
+                    continue;
+                }
+
+                $errors[] = sprintf(
+                    '%1$s: %2$s',
+                    (string)$attachmentId,
+                    (string)($result['message'] ?? __('The media library entry could not be deleted.', 'rrze-multisite-manager'))
                 );
             }
         } else {
@@ -2006,20 +2132,28 @@ class Dashboard {
                 $deletedCount = 1;
                 $deletedPaths[] = $relativePath;
             } else {
-                $errors[] = (string)($result['message'] ?? __('Die Datei konnte nicht gelöscht werden.', 'rrze-multisite-manager'));
+                $errors[] = (string)($result['message'] ?? __('The file could not be deleted.', 'rrze-multisite-manager'));
             }
         }
 
-        $this->metrics->clearCache();
+        if ($deletedCount > 0) {
+            set_site_transient(
+                'rrze_msm_orphan_file_delete_notice_' . get_current_user_id() . '_' . $siteId,
+                [
+                    'count' => $deletedCount,
+                    'files' => array_values(array_slice($deletedPaths, 0, 10)),
+                ],
+                5 * MINUTE_IN_SECONDS
+            );
+        }
 
         if ($deletedCount > 0 && empty($errors)) {
             $redirectUrl = add_query_arg(
                 [
                     'site_id' => $siteId,
-                    'orphan_file_deleted' => $deletedCount === 1 && !empty($deletedPaths[0]) ? rawurlencode((string)$deletedPaths[0]) : '',
-                    'orphan_file_deleted_count' => $deletedCount,
+                    'orphan_file_delete_notice' => '1',
                 ],
-                $this->getSiteStorageAnalysisUrl()
+                $this->getSiteStorageAnalysisUrl() . '#rrze-msm-unused-attachments'
             );
         } else {
             $redirectUrl = add_query_arg(
@@ -2049,11 +2183,11 @@ class Dashboard {
         check_admin_referer('rrze_multisite_manager_delete_site_option_group_' . $siteId . '_' . $groupKey);
 
         if ($siteId <= 0 || $groupKey === '') {
-            wp_die(esc_html__('Ungültige Options-Gruppe.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid option group.', 'rrze-multisite-manager'));
         }
 
         if ($this->metrics->isWordPressCoreOptionGroup($groupKey)) {
-            wp_die(esc_html__('Die WordPress-Core-Gruppe kann hier nicht gelöscht werden.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('The WordPress core group cannot be deleted here.', 'rrze-multisite-manager'));
         }
 
         $deletedCount = $this->metrics->deleteSiteOptionGroup($siteId, $groupKey);
@@ -2088,11 +2222,11 @@ class Dashboard {
         check_admin_referer('rrze_multisite_manager_delete_post_type_entries_' . $siteId);
 
         if ($siteId <= 0 || $postType === '') {
-            wp_die(esc_html__('Ungültiger Custom Post Type.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('Invalid custom post type.', 'rrze-multisite-manager'));
         }
 
         if ($confirmDelete !== '1') {
-            wp_die(esc_html__('Die Sicherheitsbestätigung fehlt.', 'rrze-multisite-manager'));
+            wp_die(esc_html__('The security confirmation is missing.', 'rrze-multisite-manager'));
         }
 
         $deletedCount = $this->metrics->deletePostTypeEntries($siteId, $postType);
@@ -2402,6 +2536,22 @@ class Dashboard {
         return add_query_arg($args, $this->getAdminPageBaseUrl());
     }
 
+    protected function getSiteMediaMetadataAnalysisContinuationUrl(int $siteId): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'site_id' => $siteId,
+                    'storage_tab' => 'missing-metadata',
+                    'rrze_msm_continue_media_metadata' => '1',
+                    'rrze_msm_media_metadata_site_id' => $siteId,
+                ],
+                $this->getSiteStorageAnalysisUrl()
+            ),
+            'rrze-msm-site-media-metadata-analysis',
+            'rrze_msm_media_metadata_nonce'
+        );
+    }
+
     public function getPluginDetailsUrl(string $pluginFile = ''): string {
         $args = [
             'page' => (string)($this->config->getMenuSettings()['plugin_details_slug'] ?? 'rrze-multisite-manager-plugin-details'),
@@ -2580,26 +2730,26 @@ class Dashboard {
 
         if (!empty($pluginDetails['deactivate_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['deactivate_url']))) {
             if (!empty($pluginDetails['network_active'])) {
-                $html .= '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-site-action-text rrze-msm-open-plugin-deactivate-modal" data-plugin-name="' . esc_attr((string)($pluginDetails['name'] ?? '')) . '" data-deactivate-url="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Netzwerkweit deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit deaktivieren', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Netzwerkweit deaktivieren', 'rrze-multisite-manager') . '</span></button>';
+                $html .= '<button type="button" class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-site-action-text rrze-msm-open-plugin-deactivate-modal" data-plugin-name="' . esc_attr((string)($pluginDetails['name'] ?? '')) . '" data-deactivate-url="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Deactivate network-wide', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Deactivate network-wide', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Deactivate network-wide', 'rrze-multisite-manager') . '</span></button>';
             } else {
-                $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Deaktivieren', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Deaktivieren', 'rrze-multisite-manager') . '</span></a>';
+                $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['deactivate_url']) . '" title="' . esc_attr__('Deactivate', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Deactivate', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Deactivate', 'rrze-multisite-manager') . '</span></a>';
             }
         }
 
         if (!empty($pluginDetails['settings_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['settings_url']))) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['settings_url']) . '" title="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Einstellungen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Einstellungen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['settings_url']) . '" title="' . esc_attr__('Settings', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Settings', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Settings', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if ($pluginCheckUrl !== '') {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($pluginCheckUrl) . '" title="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Plugin prüfen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Plugin prüfen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($pluginCheckUrl) . '" title="' . esc_attr__('Check plugin', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Check plugin', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Check plugin', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if (!empty($pluginDetails['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['update_url']))) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['update_url']) . '" title="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Aktualisieren', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['update_url']) . '" title="' . esc_attr__('Update', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Update', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Update', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if ($canUseNetworkAdminFeatures && !empty($pluginDetails['delete_url'])) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['delete_url']) . '" title="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Löschen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Löschen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['delete_url']) . '" title="' . esc_attr__('Delete', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Delete', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Delete', 'rrze-multisite-manager') . '</span></a>';
         }
 
         $html .= '</div>';
@@ -2616,7 +2766,7 @@ class Dashboard {
         }
 
         $html .= '<p class="rrze-msm-plugin-status-update">';
-        $html .= '<strong>' . esc_html(sprintf(__('Neue Version %s verfügbar.', 'rrze-multisite-manager'), (string)$pluginDetails['update_version'])) . '</strong>';
+        $html .= '<strong>' . esc_html(sprintf(__('New version %s available.', 'rrze-multisite-manager'), (string)$pluginDetails['update_version'])) . '</strong>';
 
         if (!empty($pluginDetails['update_details_url']) || !empty($pluginDetails['update_url'])) {
             $html .= ' ';
@@ -2631,7 +2781,7 @@ class Dashboard {
         }
 
         if (!empty($pluginDetails['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['update_url']))) {
-            $html .= '<a href="' . esc_url((string)$pluginDetails['update_url']) . '">' . esc_html__('Aktualisieren', 'rrze-multisite-manager') . '</a>';
+            $html .= '<a href="' . esc_url((string)$pluginDetails['update_url']) . '">' . esc_html__('Update', 'rrze-multisite-manager') . '</a>';
         }
 
         $html .= '</p>';
@@ -2649,7 +2799,7 @@ class Dashboard {
         $networkThemesUrl = network_admin_url('themes.php');
         $siteCount = (int)($themeDetails['site_count'] ?? 0);
 
-        $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($networkThemesUrl) . '" title="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Theme-Verwaltung im Netzwerk öffnen', 'rrze-multisite-manager') . '</span></a>';
+        $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($networkThemesUrl) . '" title="' . esc_attr__('Open network theme management', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Open network theme management', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Open network theme management', 'rrze-multisite-manager') . '</span></a>';
 
         if ($stylesheet === '') {
             $html .= '</div>';
@@ -2657,13 +2807,13 @@ class Dashboard {
         }
 
         if (!empty($themeDetails['network_enabled'])) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkDisableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Netzwerkfreigabe entziehen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkDisableUrl($stylesheet)) . '" title="' . esc_attr__('Disable network-wide', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Disable network-wide', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Disable network-wide', 'rrze-multisite-manager') . '</span></a>';
         } else {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-positive rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkEnableUrl($stylesheet)) . '" title="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Netzwerkweit freigeben', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-positive rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkEnableUrl($stylesheet)) . '" title="' . esc_attr__('Enable network-wide', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Enable network-wide', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Enable network-wide', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if (empty($themeDetails['network_enabled']) && $siteCount === 0) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url($this->getThemeDeleteUrl($stylesheet)) . '" title="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Theme löschen', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Theme löschen', 'rrze-multisite-manager') . '</span></a>';
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url($this->getThemeDeleteUrl($stylesheet)) . '" title="' . esc_attr__('Delete theme', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Delete theme', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Delete theme', 'rrze-multisite-manager') . '</span></a>';
         }
 
         $html .= '</div>';
@@ -2763,12 +2913,12 @@ class Dashboard {
             return sprintf(__('User-ID %d', 'rrze-multisite-manager'), $userId);
         }
 
-        return __('Unbekannt', 'rrze-multisite-manager');
+        return __('Unknown', 'rrze-multisite-manager');
     }
 
     protected function formatStatusDate(string $dateValue): string {
         if ($dateValue === '' || $dateValue === '0000-00-00 00:00:00') {
-            return __('Nicht gesetzt', 'rrze-multisite-manager');
+            return __('Not set', 'rrze-multisite-manager');
         }
 
         return get_date_from_gmt($dateValue, get_option('date_format') . ' ' . get_option('time_format'));
@@ -2777,20 +2927,20 @@ class Dashboard {
     protected function renderMetricsStatusNoticeHtml(array $status, string $returnUrl): string {
         $lastRunLabel = !empty($status['last_run_timestamp'])
             ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$status['last_run_timestamp'])
-            : __('Noch nie', 'rrze-multisite-manager');
+            : __('Never', 'rrze-multisite-manager');
         $nextRunLabel = !empty($status['next_run_timestamp'])
             ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$status['next_run_timestamp'])
-            : __('Noch nicht geplant', 'rrze-multisite-manager');
+            : __('Not scheduled yet', 'rrze-multisite-manager');
         $noticeClass = !empty($status['has_data']) ? 'notice-info' : 'notice-warning';
         $message = '';
         $html = '';
 
         if (empty($status['has_data'])) {
-            $message = __('Für diese Ansicht liegen noch keine vorberechneten Kennzahlen vor. Die Daten werden erst im nächsten Metrics-Lauf des Schedulers erzeugt.', 'rrze-multisite-manager');
+            $message = __('There are no precomputed metrics for this view yet. The data will only be generated in the scheduler\'s next metrics run.', 'rrze-multisite-manager');
         } elseif (!empty($status['is_running'])) {
-            $message = __('Die Kennzahlen werden gerade im Hintergrund aktualisiert. Bis zum Abschluss werden noch die zuletzt verfügbaren Daten angezeigt.', 'rrze-multisite-manager');
+            $message = __('The metrics are currently being updated in the background. Until completion, the most recently available data is still shown.', 'rrze-multisite-manager');
         } elseif (!empty($status['needs_refresh'])) {
-            $message = __('Die angezeigten Kennzahlen sind veraltet. Eine Aktualisierung wurde für den nächsten Metrics-Lauf eingeplant.', 'rrze-multisite-manager');
+            $message = __('The displayed metrics are outdated. A refresh has been scheduled for the next metrics run.', 'rrze-multisite-manager');
         }
 
         if ($message === '') {
@@ -2799,14 +2949,14 @@ class Dashboard {
 
         $html .= '<div class="notice ' . esc_attr($noticeClass) . ' inline">';
         $html .= '<p>' . esc_html($message) . '</p>';
-        $html .= '<p><strong>' . esc_html__('Letzter Metrics-Lauf:', 'rrze-multisite-manager') . '</strong> ' . esc_html($lastRunLabel) . '<br>';
-        $html .= '<strong>' . esc_html__('Nächster Metrics-Lauf:', 'rrze-multisite-manager') . '</strong> ' . esc_html($nextRunLabel);
+        $html .= '<p><strong>' . esc_html__('Last metrics run:', 'rrze-multisite-manager') . '</strong> ' . esc_html($lastRunLabel) . '<br>';
+        $html .= '<strong>' . esc_html__('Next metrics run:', 'rrze-multisite-manager') . '</strong> ' . esc_html($nextRunLabel);
 
         if (!empty($status['batch_total'])) {
-            $html .= '<br><strong>' . esc_html__('Batch-Fortschritt:', 'rrze-multisite-manager') . '</strong> '
+            $html .= '<br><strong>' . esc_html__('Batch progress:', 'rrze-multisite-manager') . '</strong> '
                 . esc_html(
                     sprintf(
-                        __('%1$s von %2$s Websites', 'rrze-multisite-manager'),
+                        __('%1$s of %2$s websites', 'rrze-multisite-manager'),
                         number_format_i18n((int)($status['batch_offset'] ?? 0)),
                         number_format_i18n((int)($status['batch_total'] ?? 0))
                     )
@@ -2819,7 +2969,7 @@ class Dashboard {
             $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_metrics')) . '">';
             $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($returnUrl) . '">';
             $html .= wp_nonce_field('rrze_multisite_manager_refresh_metrics', '_wpnonce', true, false);
-            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Jetzt trotzdem aktualisieren', 'rrze-multisite-manager') . '</button>';
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Update now anyway', 'rrze-multisite-manager') . '</button>';
             $html .= '</form>';
         }
 
@@ -2830,12 +2980,12 @@ class Dashboard {
 
     protected function getOperationalStatusOptions(): array {
         return [
-            '' => __('Nicht gesetzt / automatisch', 'rrze-multisite-manager'),
-            'provisioning' => __('Einrichtung läuft', 'rrze-multisite-manager'),
-            'healthy' => __('Technisch erreichbar', 'rrze-multisite-manager'),
-            'dns_missing' => __('DNS fehlt', 'rrze-multisite-manager'),
-            'unreachable' => __('Technisch nicht erreichbar', 'rrze-multisite-manager'),
-            'retired' => __('Außer Betrieb', 'rrze-multisite-manager'),
+            '' => __('Not set / automatic', 'rrze-multisite-manager'),
+            'provisioning' => __('Provisioning in progress', 'rrze-multisite-manager'),
+            'healthy' => __('Technically reachable', 'rrze-multisite-manager'),
+            'dns_missing' => __('DNS missing', 'rrze-multisite-manager'),
+            'unreachable' => __('Technically unreachable', 'rrze-multisite-manager'),
+            'retired' => __('Out of service', 'rrze-multisite-manager'),
         ];
     }
 

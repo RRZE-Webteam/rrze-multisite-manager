@@ -10,11 +10,11 @@ class RecentlyUpdatedSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Zuletzt aktualisierte Sites', 'rrze-multisite-manager');
+        return __('Recently updated sites', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Sites mit den zuletzt geänderten Posts, Pages oder Medien.', 'rrze-multisite-manager');
+        return __('Sites with the most recently changed posts, pages, or media.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

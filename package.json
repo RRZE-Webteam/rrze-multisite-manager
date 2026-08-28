@@ -1,11 +1,11 @@
 {
   "name": "rrze-multisite-manager",
   "title": "RRZE Multisite Manager",
-  "version": "1.1.15-1",
-  "description": "Multisite-Management für WordPress",
+  "version": "1.1.15-48",
+  "description": "Multisite management for WordPress",
+  "tags": "Plugin, WordPress, Multisite, RRZE, FAU",
   "main": "rrze-multisite-manager.php",
   "textdomain": "rrze-multisite-manager",
-  "textDomain": "rrze-multisite-manager",
   "private": true,
   "scripts": {
     "readme": "node scripts/build-readme.js",
@@ -40,7 +40,6 @@
   },
   "license": "GNU General Public License v3",
   "licenseurl": "http://www.gnu.org/licenses/gpl-3.0.html",
-  "tags": "Plugin, WordPress, Multisite, RRZE, FAU",
   "devDependencies": {
     "sass": "^1.94.2"
   },

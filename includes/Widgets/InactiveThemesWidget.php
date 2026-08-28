@@ -10,11 +10,11 @@ class InactiveThemesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Nicht aktivierte Themes', 'rrze-multisite-manager');
+        return __('Inactive themes', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Installierte Themes, die auf keiner Website des Netzwerks verwendet werden.', 'rrze-multisite-manager');
+        return __('Installed themes that are not used on any website in the network.', 'rrze-multisite-manager');
     }
 
     public function getLayoutClass(): string {

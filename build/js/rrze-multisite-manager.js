@@ -5,12 +5,20 @@
   var rrzeMsmPluginSearchTimer = 0;
   var rrzeMsmThemeSearchTimer = 0;
   var rrzeMsmStorageAnalysisTimer = 0;
+  var rrzeMsmMediaMetadataAnalysisTimer = 0;
   var rrzeMsmSearchDelay = 250;
   function getAdminConfig() {
     if (typeof window.rrzeMultisiteManagerAdmin === "undefined") {
       return null;
     }
     return window.rrzeMultisiteManagerAdmin;
+  }
+  function getAdminI18nString(key, fallback) {
+    var config = getAdminConfig();
+    if (config && typeof config[key] === "string" && config[key] !== "") {
+      return config[key];
+    }
+    return fallback;
   }
   function submitViewForm() {
     var form = document.querySelector(".rrze-msm-view-form");
@@ -172,29 +180,32 @@
     var siteInput = document.querySelector("#rrze-msm-orphan-file-delete-site-id");
     var nonceInput = document.querySelector("#rrze-msm-orphan-file-delete-nonce");
     var checkbox = document.querySelector("#rrze-msm-orphan-file-delete-confirm");
-    var form = null;
     var checkboxes = [];
+    var candidates = [];
     var i = 0;
     var hiddenInput = null;
+    var selectionName = "";
     if (!button || !modal || !target || !pathInput || !pathsContainer || !siteInput || !nonceInput || !checkbox) {
       return;
     }
-    form = button.closest("form");
-    if (!form) {
-      return;
+    selectionName = button.getAttribute("data-selection-name") || "relative_paths[]";
+    candidates = document.getElementsByName(selectionName);
+    for (i = 0; i < candidates.length; i++) {
+      if (candidates[i].checked) {
+        checkboxes.push(candidates[i]);
+      }
     }
-    checkboxes = form.querySelectorAll('input[name="relative_paths[]"]:checked');
     if (!checkboxes.length) {
-      window.alert("Bitte zuerst mindestens eine Datei ausw\xE4hlen.");
+      window.alert(getAdminI18nString("selectFileFirst", "Please select at least one file first."));
       return;
     }
-    target.textContent = checkboxes.length === 1 ? checkboxes[0].value || "" : checkboxes.length + " Dateien";
+    target.textContent = checkboxes.length === 1 ? checkboxes[0].value || "" : checkboxes.length + " " + getAdminI18nString("selectedFiles", "selected files");
     pathInput.value = "";
     pathsContainer.innerHTML = "";
     for (i = 0; i < checkboxes.length; i++) {
       hiddenInput = document.createElement("input");
       hiddenInput.type = "hidden";
-      hiddenInput.name = "relative_paths[]";
+      hiddenInput.name = checkboxes[i].name || "relative_paths[]";
       hiddenInput.value = checkboxes[i].value || "";
       pathsContainer.appendChild(hiddenInput);
     }
@@ -203,6 +214,41 @@
     checkbox.checked = false;
     updateOrphanFileDeleteSubmitState();
     modal.removeAttribute("hidden");
+  }
+  function onUnusedAttachmentDeleteButtonClick(event) {
+    var button = event.currentTarget;
+    var modal = document.querySelector("#rrze-msm-orphan-file-delete-modal");
+    var target = document.querySelector("#rrze-msm-orphan-file-delete-target");
+    var pathInput = document.querySelector("#rrze-msm-orphan-file-delete-path");
+    var pathsContainer = document.querySelector("#rrze-msm-orphan-file-delete-paths");
+    var siteInput = document.querySelector("#rrze-msm-orphan-file-delete-site-id");
+    var nonceInput = document.querySelector("#rrze-msm-orphan-file-delete-nonce");
+    var checkbox = document.querySelector("#rrze-msm-orphan-file-delete-confirm");
+    var hiddenInput = null;
+    if (!button || !modal || !target || !pathInput || !pathsContainer || !siteInput || !nonceInput || !checkbox) {
+      return;
+    }
+    target.textContent = button.getAttribute("data-file-path") || "";
+    pathInput.value = "";
+    pathsContainer.innerHTML = "";
+    hiddenInput = document.createElement("input");
+    hiddenInput.type = "hidden";
+    hiddenInput.name = "attachment_ids[]";
+    hiddenInput.value = button.getAttribute("data-attachment-id") || "";
+    pathsContainer.appendChild(hiddenInput);
+    siteInput.value = button.getAttribute("data-site-id") || "";
+    nonceInput.value = button.getAttribute("data-delete-nonce") || "";
+    checkbox.checked = false;
+    updateOrphanFileDeleteSubmitState();
+    modal.removeAttribute("hidden");
+  }
+  function onUnusedAttachmentDeleteDelegatedClick(event) {
+    var button = event.target.closest(".rrze-msm-open-unused-attachment-delete-modal");
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    onUnusedAttachmentDeleteButtonClick({ currentTarget: button });
   }
   function onCloseDeleteCptModalClick(event) {
     event.preventDefault();
@@ -306,6 +352,7 @@
     for (i = 0; i < openBulkButtons.length; i++) {
       openBulkButtons[i].addEventListener("click", onOrphanFileBulkDeleteButtonClick);
     }
+    document.addEventListener("click", onUnusedAttachmentDeleteDelegatedClick);
     for (i = 0; i < closeButtons.length; i++) {
       closeButtons[i].addEventListener("click", onCloseOrphanFileDeleteModalClick);
     }
@@ -531,7 +578,7 @@
     return "desc";
   }
   function getSiteTableSortType(key) {
-    if (key === "registered" || key === "last-updated" || key === "storage" || key === "active-sites") {
+    if (key === "registered" || key === "last-updated" || key === "storage" || key === "active-sites" || key === "missing") {
       return "number";
     }
     return "string";
@@ -1260,11 +1307,11 @@
     orphanRunning = orphanStatus === "running";
     if (baseButton) {
       baseButton.disabled = baseRunning || orphanRunning;
-      baseButton.textContent = baseRunning ? "Analyse l\xE4uft ..." : hasCachedAnalysis ? "Analyse aktualisieren" : "Analyse starten";
+      baseButton.textContent = baseRunning ? getAdminI18nString("storageAnalysisRunning", "Analysis running ...") : hasCachedAnalysis ? getAdminI18nString("storageAnalysisRefresh", "Refresh analysis") : getAdminI18nString("storageAnalysisStart", "Start analysis");
     }
     if (orphanButton) {
       orphanButton.disabled = baseRunning || orphanRunning || !hasCachedAnalysis;
-      orphanButton.textContent = orphanRunning ? "Verwaist-Pr\xFCfung l\xE4uft ..." : "Verwaist-Pr\xFCfung starten";
+      orphanButton.textContent = orphanRunning ? getAdminI18nString("storageOrphanAnalysisRunning", "Orphan check running ...") : getAdminI18nString("storageOrphanAnalysisStart", "Start orphan check");
     }
   }
   function updateStorageAnalysisRunnerStatus(status) {
@@ -1325,7 +1372,9 @@
     };
   }
   function reloadCurrentPage() {
-    window.location.reload();
+    var url = new URL(window.location.href);
+    url.searchParams.set("rrze_msm_refresh", String(Date.now()));
+    window.location.replace(url.toString());
   }
   function handleStorageAnalysisResponse(operation, payload) {
     var config = getAdminConfig();
@@ -1433,6 +1482,120 @@
       scheduleStorageAnalysisRun("orphan");
     }
   }
+  function getMediaMetadataAnalysisRunner() {
+    return document.querySelector("#rrze-msm-media-metadata-runner");
+  }
+  function runScheduledMediaMetadataAnalysis() {
+    runMediaMetadataAnalysis(false);
+  }
+  function scheduleMediaMetadataAnalysis() {
+    if (rrzeMsmMediaMetadataAnalysisTimer) {
+      window.clearTimeout(rrzeMsmMediaMetadataAnalysisTimer);
+    }
+    rrzeMsmMediaMetadataAnalysisTimer = window.setTimeout(runScheduledMediaMetadataAnalysis, 350);
+  }
+  function parseMediaMetadataAnalysisResponse(response) {
+    return response.json();
+  }
+  function handleMediaMetadataAnalysisFailure() {
+    var message = document.querySelector("#rrze-msm-media-metadata-message");
+    var runner = getMediaMetadataAnalysisRunner();
+    var button = runner ? runner.querySelector(".rrze-msm-start-media-metadata-analysis") : null;
+    if (message) {
+      message.textContent = getAdminI18nString("siteStorageAnalysisFailed", "The storage analysis could not be completed.");
+    }
+    if (button) {
+      button.disabled = false;
+    }
+  }
+  function handleMediaMetadataAnalysisResponse(response) {
+    var payload = response && response.data ? response.data : {};
+    var analysis = payload.analysis || {};
+    var runner = getMediaMetadataAnalysisRunner();
+    var message = document.querySelector("#rrze-msm-media-metadata-message");
+    var button = runner ? runner.querySelector(".rrze-msm-start-media-metadata-analysis") : null;
+    if (!response || response.success !== true || !runner) {
+      if (message && payload && payload.message) {
+        message.textContent = String(payload.message);
+      } else {
+        handleMediaMetadataAnalysisFailure();
+      }
+      if (button) {
+        button.disabled = false;
+      }
+      return;
+    }
+    runner.setAttribute("data-status", String(analysis.status || "idle"));
+    if (message) {
+      message.textContent = String(analysis.message || payload.message || "");
+    }
+    if (analysis.status === "running") {
+      scheduleMediaMetadataAnalysis();
+      return;
+    }
+    if (analysis.status === "complete") {
+      window.setTimeout(reloadCurrentPage, 300);
+      return;
+    }
+    if (button) {
+      button.disabled = false;
+    }
+  }
+  function runMediaMetadataAnalysis(restart) {
+    var runner = getMediaMetadataAnalysisRunner();
+    var config = getAdminConfig();
+    var siteId = 0;
+    var url = "";
+    var message = null;
+    var button = null;
+    if (!runner || !config) {
+      return;
+    }
+    siteId = parseInt(String(runner.getAttribute("data-site-id") || "0"), 10);
+    if (isNaN(siteId) || siteId < 1) {
+      return;
+    }
+    message = runner.querySelector("#rrze-msm-media-metadata-message");
+    button = runner.querySelector(".rrze-msm-start-media-metadata-analysis");
+    if (message) {
+      message.textContent = getAdminI18nString("storageAnalysisRunning", "Analysis running ...");
+    }
+    if (button) {
+      button.disabled = true;
+    }
+    url = String(config.ajaxUrl || "") + "?action=rrze_msm_run_site_media_metadata_analysis&nonce=" + encodeURIComponent(String(config.siteMediaMetadataAnalysisNonce || "")) + "&site_id=" + encodeURIComponent(String(siteId)) + "&restart=" + (restart ? "1" : "0");
+    fetch(url, { credentials: "same-origin" }).then(function(response) {
+      if (!response.ok) {
+        throw new Error("The request could not be completed.");
+      }
+      return parseMediaMetadataAnalysisResponse(response);
+    }).then(handleMediaMetadataAnalysisResponse).catch(handleMediaMetadataAnalysisFailure);
+  }
+  function onStartMediaMetadataAnalysisClick(event) {
+    event.preventDefault();
+    runMediaMetadataAnalysis(true);
+  }
+  function onMediaMetadataAnalysisDelegatedClick(event) {
+    var target = event.target;
+    var button = null;
+    if (!target || typeof target.closest !== "function") {
+      return;
+    }
+    button = target.closest(".rrze-msm-start-media-metadata-analysis");
+    if (!button) {
+      return;
+    }
+    onStartMediaMetadataAnalysisClick(event);
+  }
+  function initMediaMetadataAnalysisRunner() {
+    var runner = getMediaMetadataAnalysisRunner();
+    if (!runner) {
+      return;
+    }
+    if (runner.getAttribute("data-status") === "running") {
+      scheduleMediaMetadataAnalysis();
+    }
+  }
   function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = "";
@@ -1459,7 +1622,9 @@
     initReadmeToggles();
     initOptionEditForms();
     initStorageAnalysisRunner();
+    initMediaMetadataAnalysisRunner();
   }
+  document.addEventListener("click", onMediaMetadataAnalysisDelegatedClick);
   document.addEventListener("DOMContentLoaded", initRrzeMultisiteManager);
 })();
 //# sourceMappingURL=rrze-multisite-manager.js.map

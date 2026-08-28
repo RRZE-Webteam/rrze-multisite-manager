@@ -10,11 +10,11 @@ class InactivePluginsWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Nicht aktivierte Plugins', 'rrze-multisite-manager');
+        return __('Inactive plugins', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Installierte Plugins, die auf keiner Website des Netzwerks aktiv genutzt werden.', 'rrze-multisite-manager');
+        return __('Installed plugins that are not actively used on any website in the network.', 'rrze-multisite-manager');
     }
 
     public function getLayoutClass(): string {

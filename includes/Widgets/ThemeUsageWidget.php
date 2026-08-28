@@ -10,11 +10,11 @@ class ThemeUsageWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Theme-Nutzung', 'rrze-multisite-manager');
+        return __('Theme usage', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Verteilung der aktuell auf Sites genutzten Themes.', 'rrze-multisite-manager');
+        return __('Distribution of themes currently used on sites.', 'rrze-multisite-manager');
     }
 
     public function getLayoutClass(): string {
@@ -28,7 +28,7 @@ class ThemeUsageWidget extends Widgets {
     protected function getTemplateData(array $dashboardData): array {
         return [
             'items' => $dashboardData['theme_usage'] ?? [],
-            'empty_message' => __('Keine Theme-Nutzungsdaten vorhanden.', 'rrze-multisite-manager'),
+            'empty_message' => __('No theme usage data available.', 'rrze-multisite-manager'),
         ];
     }
 }

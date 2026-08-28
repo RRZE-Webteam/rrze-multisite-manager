@@ -11,7 +11,7 @@ defined('ABSPATH') || exit;
             </div>
             <div class="rrze-msm-header-controls">
                 <a href="<?php echo esc_url($redirect_url); ?>" class="button button-secondary">
-                    <?php echo esc_html__('Zur Website-Übersicht', 'rrze-multisite-manager'); ?>
+                    <?php echo esc_html__('Back to website overview', 'rrze-multisite-manager'); ?>
                 </a>
                 <button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="<?php echo esc_attr($mode_class === 'rrze-msm-mode-dark' ? 'light' : 'dark'); ?>">
                     <?php echo esc_html($mode_toggle_label); ?>
@@ -40,11 +40,11 @@ defined('ABSPATH') || exit;
                     <tbody>
                         <tr>
                             <th scope="row">
-                                <label for="rrze-msm-status-note"><?php echo esc_html__('Notiz für Superadmins', 'rrze-multisite-manager'); ?></label>
+                                <label for="rrze-msm-status-note"><?php echo esc_html__('Note for super admins', 'rrze-multisite-manager'); ?></label>
                             </th>
                             <td>
                                 <textarea id="rrze-msm-status-note" name="status_note" rows="6" class="large-text"><?php echo esc_textarea((string)$current_note); ?></textarea>
-                                <p class="description"><?php echo esc_html__('Optionale interne Notiz zum Statuswechsel. Diese Notiz wird beim Wiederherstellen wieder geleert.', 'rrze-multisite-manager'); ?></p>
+                                <p class="description"><?php echo esc_html__('Optional internal note for the status change. This note will be cleared again when restoring.', 'rrze-multisite-manager'); ?></p>
                             </td>
                         </tr>
                     </tbody>

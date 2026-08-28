@@ -10,11 +10,11 @@ class InactiveSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Sites mit langer Nichtnutzung', 'rrze-multisite-manager');
+        return __('Sites with long inactivity', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Sites mit der längsten Inaktivität bei Posts, Pages oder Medien.', 'rrze-multisite-manager');
+        return __('Sites with the longest inactivity for posts, pages, or media.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

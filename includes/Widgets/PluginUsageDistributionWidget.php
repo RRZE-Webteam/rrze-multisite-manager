@@ -10,11 +10,11 @@ class PluginUsageDistributionWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Plugin-Nutzung', 'rrze-multisite-manager');
+        return __('Plugin usage', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Prozentuale Verteilung, wie häufig Plugins auf allen Websites des Netzwerks genutzt werden.', 'rrze-multisite-manager');
+        return __('Percentage distribution of how often plugins are used across all websites in the network.', 'rrze-multisite-manager');
     }
 
     protected function getTemplateName(): string {
@@ -26,7 +26,7 @@ class PluginUsageDistributionWidget extends Widgets {
 
         return [
             'items' => $pluginUsage['distribution'] ?? [],
-            'empty_message' => __('Keine Plugin-Nutzungsdaten vorhanden.', 'rrze-multisite-manager'),
+            'empty_message' => __('No plugin usage data available.', 'rrze-multisite-manager'),
         ];
     }
 }

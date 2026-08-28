@@ -10,11 +10,11 @@ class RecentSitesWidget extends Widgets {
     }
 
     public function getTitle(): string {
-        return __('Zuletzt erstellte Sites', 'rrze-multisite-manager');
+        return __('Most recently created sites', 'rrze-multisite-manager');
     }
 
     public function getDescription(): string {
-        return __('Die neuesten Instanzen im Netzwerk inklusive Status und Erstellzeitpunkt.', 'rrze-multisite-manager');
+        return __('The newest instances in the network, including status and creation date.', 'rrze-multisite-manager');
     }
 
     public function getWidth(): int {

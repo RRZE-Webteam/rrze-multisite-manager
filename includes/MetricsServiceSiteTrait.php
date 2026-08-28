@@ -185,27 +185,27 @@ trait MetricsServiceSiteTrait {
         $totalSites = max(1, array_sum($siteBuckets));
         $rows = [
             [
-                'label' => __('Aktiv und öffentlich', 'rrze-multisite-manager'),
+                'label' => __('Active and public', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['active_public'],
                 'accent' => 'positive',
             ],
             [
-                'label' => __('Aktiv, Suchmaschinen ausgeschlossen', 'rrze-multisite-manager'),
+                'label' => __('Active, excluded from search engines', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['active_private'],
                 'accent' => 'info',
             ],
             [
-                'label' => __('Archiviert', 'rrze-multisite-manager'),
+                'label' => __('Archived', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['archived'],
                 'accent' => 'warning',
             ],
             [
-                'label' => __('Gesperrt', 'rrze-multisite-manager'),
+                'label' => __('Blocked', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['spam'],
                 'accent' => 'blocked',
             ],
             [
-                'label' => __('Zum Löschen markiert', 'rrze-multisite-manager'),
+                'label' => __('Marked for deletion', 'rrze-multisite-manager'),
                 'value' => (int)$siteBuckets['deleted'],
                 'accent' => 'danger',
             ],
@@ -224,32 +224,32 @@ trait MetricsServiceSiteTrait {
         $totalSites = max(1, array_sum($statusBuckets));
         $rows = [
             [
-                'label' => __('Nicht gesetzt / automatisch', 'rrze-multisite-manager'),
+                'label' => __('Not set / automatic', 'rrze-multisite-manager'),
                 'value' => (int)$statusBuckets['automatic'],
                 'accent' => 'theme-1',
             ],
             [
-                'label' => __('Technisch erreichbar', 'rrze-multisite-manager'),
+                'label' => __('Technically reachable', 'rrze-multisite-manager'),
                 'value' => (int)$statusBuckets['healthy'],
                 'accent' => 'positive',
             ],
             [
-                'label' => __('Einrichtung läuft', 'rrze-multisite-manager'),
+                'label' => __('Provisioning in progress', 'rrze-multisite-manager'),
                 'value' => (int)$statusBuckets['provisioning'],
                 'accent' => 'info',
             ],
             [
-                'label' => __('DNS fehlt', 'rrze-multisite-manager'),
+                'label' => __('DNS missing', 'rrze-multisite-manager'),
                 'value' => (int)$statusBuckets['dns_missing'],
                 'accent' => 'danger',
             ],
             [
-                'label' => __('Technisch nicht erreichbar', 'rrze-multisite-manager'),
+                'label' => __('Technically unreachable', 'rrze-multisite-manager'),
                 'value' => (int)$statusBuckets['unreachable'],
                 'accent' => 'warning',
             ],
             [
-                'label' => __('Außer Betrieb', 'rrze-multisite-manager'),
+                'label' => __('Out of service', 'rrze-multisite-manager'),
                 'value' => (int)$statusBuckets['retired'],
                 'accent' => 'neutral',
             ],

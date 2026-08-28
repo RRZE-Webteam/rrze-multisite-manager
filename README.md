@@ -45,6 +45,23 @@ Das Plugin stellt einen Multisite Manager fuer Superadmins und freigegebene Webs
 * Metrics-Intervalle und Batch-Verhalten
 * Status- und Betriebsinformationen fuer Websites
 
+## Translations
+
+Die Uebersetzungen liegen im Verzeichnis `languages/`.
+
+Empfohlener Ablauf fuer Entwickler:
+
+* POT-Datei neu erzeugen, z.B. mit WP-CLI:
+  `wp i18n make-pot . languages/rrze-multisite-manager.pot --domain=rrze-multisite-manager --exclude=node_modules,build,.git`
+* Vorhandene `.po`-Dateien aktualisieren und daraus die zugehoerigen `.mo`-Dateien kompilieren
+* Alternativ kann fuer die Pflege von `.po`- und `.mo`-Dateien auch Loco Translate verwendet werden
+
+Wichtig:
+
+* Im Code stehen die Original-Strings in englischer Sprache
+* Deutsch und weitere Sprachen werden ueber die Sprachdateien bereitgestellt
+* Generierte Sprachdateien sollten bei String-Aenderungen zusammen mit dem Code aktualisiert werden
+
 ## Multisite behavior
 
 Dieses Plugin ist als Netzwerk-Plugin fuer WordPress Multisite ausgelegt.

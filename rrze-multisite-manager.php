@@ -3,8 +3,8 @@
 /**
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
- * Description:     Multisite-Management für WordPress im RRZE-Kontext
- * Version:         1.1.15-1
+ * Description:     Multisite management for WordPress in the RRZE context
+ * Version:         1.1.15-48
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -46,8 +46,8 @@ function autoload(string $class): void {
 const RRZE_PHP_VERSION = '8.3';
 const RRZE_WP_VERSION = '6.9.4';
 
-add_action('init', __NAMESPACE__ . '\loadTextdomain');
-add_action('plugins_loaded', __NAMESPACE__ . '\loaded');
+add_action('plugins_loaded', __NAMESPACE__ . '\loadTextdomain', 1);
+add_action('plugins_loaded', __NAMESPACE__ . '\loaded', 5);
 register_deactivation_hook(__FILE__, __NAMESPACE__ . '\deactivate');
 
 function loadTextdomain(): void {
