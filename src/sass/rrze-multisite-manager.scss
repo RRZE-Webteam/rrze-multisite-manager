@@ -23,6 +23,16 @@ body.rrze-msm-mode-dark {
     color: var(--rrze-msm-link-hover);
 }
 
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:not(.button):not(.button-secondary):not(.button-link):visited,
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:not(.button):not(.button-secondary):not(.button-link):hover,
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:not(.button):not(.button-secondary):not(.button-link):focus,
+.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:not(.button):not(.button-secondary):not(.button-link):active {
+    background: var(--rrze-msm-status-info-bg) !important;
+    border-color: var(--rrze-msm-status-info-bg) !important;
+    color: var(--rrze-msm-status-info-text) !important;
+}
+
 .rrze-msm-page-shell {
     background: var(--rrze-msm-page-bg);
     border-radius: var(--rrze-msm-widget-border-radius);

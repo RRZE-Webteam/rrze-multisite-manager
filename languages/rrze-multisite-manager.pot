@@ -3588,6 +3588,9 @@ msgstr ""
 msgid "Missing metadata"
 msgstr ""
 
+msgid "Checks media library entries for missing accessibility and descriptive metadata."
+msgstr ""
+
 msgid "Images with missing metadata"
 msgstr ""
 

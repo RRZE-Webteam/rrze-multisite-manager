@@ -739,7 +739,7 @@ function getSiteTableSortDirection(wrapper) {
 }
 
 function getSiteTableSortType(key) {
-    if (key === 'registered' || key === 'last-updated' || key === 'storage' || key === 'active-sites' || key === 'missing') {
+    if (key === 'registered' || key === 'last-updated' || key === 'modified' || key === 'storage' || key === 'active-sites' || key === 'missing') {
         return 'number';
     }
 
@@ -2005,7 +2005,7 @@ function runMediaMetadataAnalysis(restart) {
     message = runner.querySelector('#rrze-msm-media-metadata-message');
     button = runner.querySelector('.rrze-msm-start-media-metadata-analysis');
 
-    if (message) {
+    if (restart && message) {
         message.textContent = getAdminI18nString('storageAnalysisRunning', 'Analysis running ...');
     }
 

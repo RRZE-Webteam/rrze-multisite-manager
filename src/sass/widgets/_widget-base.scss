@@ -464,16 +464,46 @@ td.rrze-msm-plugin-col-active-sites {
     overflow-x: auto;
 }
 
-.rrze-msm-environment-table-wrap .rrze-msm-table {
-    min-width: 760px;
+.rrze-msm-datatable {
+    width: max-content;
+    max-width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--rrze-msm-table-border);
 }
 
-.rrze-msm-environment-table-wrap .rrze-msm-table td {
+.rrze-msm-datatable th,
+.rrze-msm-datatable td {
+    padding: 8px 10px;
+    text-align: left !important;
+    vertical-align: top;
+    color: var(--rrze-msm-text);
+    border: 1px solid var(--rrze-msm-table-border);
+}
+
+.rrze-msm-datatable.striped > tbody > :nth-child(odd) th,
+.rrze-msm-datatable.striped > tbody > :nth-child(odd) td {
+    background: var(--rrze-msm-surface-alt);
+}
+
+.rrze-msm-datatable.striped > tbody > :nth-child(even) th,
+.rrze-msm-datatable.striped > tbody > :nth-child(even) td {
+    background: var(--rrze-msm-surface);
+}
+
+.rrze-msm-environment-table-wrap .rrze-msm-datatable th:first-child {
+    min-width: 16rem;
+}
+
+.rrze-msm-environment-table-wrap .rrze-msm-datatable td {
+    min-width: 15ch;
+}
+
+.rrze-msm-environment-table-wrap .rrze-msm-datatable td {
     overflow-wrap: anywhere;
     word-break: break-word;
 }
 
-.rrze-msm-environment-table-wrap .rrze-msm-table code {
+.rrze-msm-environment-table-wrap .rrze-msm-datatable code {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
@@ -806,16 +836,6 @@ body.rrze-msm-mode-light .rrze-multisite-manager-admin a.rrze-msm-subtab {
     border-color: #64748b !important;
 }
 
-.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active,
-.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:visited,
-.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:hover,
-.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:focus,
-.rrze-multisite-manager-admin a.rrze-msm-subtab.is-active:active {
-    background: var(--rrze-msm-status-info-bg) !important;
-    border-color: var(--rrze-msm-status-info-bg) !important;
-    color: var(--rrze-msm-status-info-text) !important;
-}
-
 a.rrze-msm-subtab:visited {
     color: var(--rrze-msm-text);
 }
@@ -840,9 +860,9 @@ a.rrze-msm-subtab.is-active:visited {
 .rrze-msm-media-metadata-preview {
     display: block;
     width: auto;
-    max-width: 200px;
+    max-width: 150px;
     height: auto;
-    max-height: 160px;
+    max-height: 120px;
 }
 
 .rrze-msm-media-metadata-status {
@@ -857,11 +877,11 @@ a.rrze-msm-subtab.is-active:visited {
 }
 
 .rrze-msm-media-metadata-present {
-    color: var(--rrze-msm-status-active-bg);
+    color: var(--rrze-msm-status-active-bg) !important;
 }
 
 .rrze-msm-media-metadata-missing {
-    color: var(--rrze-msm-status-delete-bg);
+    color: var(--rrze-msm-status-delete-bg) !important;
 }
 
 .rrze-msm-inline-stats {

@@ -63,13 +63,13 @@ $metadataTables = [
                     <table class="widefat striped rrze-msm-table">
                         <thead><tr>
                             <?php if ($category === 'images') { ?><th><?php echo esc_html__('Preview', 'rrze-multisite-manager'); ?></th><?php } ?>
-                            <th><?php echo esc_html__('Name', 'rrze-multisite-manager'); ?></th>
+                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Name', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                             <?php foreach ((array)$table['fields'] as $fieldLabel) { ?><th class="rrze-msm-media-metadata-status"><?php echo esc_html((string)$fieldLabel); ?></th><?php } ?>
-                            <th><?php echo esc_html__('Last modified', 'rrze-multisite-manager'); ?></th>
+                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Last modified', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                         </tr></thead>
                         <tbody>
                             <?php foreach ((array)$metadataResults[$category] as $entry) { ?>
-                                <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($entry['title'] ?? ''))); ?>" data-sort-missing="<?php echo esc_attr((string)($entry['missing_count'] ?? 0)); ?>">
+                                <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($entry['title'] ?? ''))); ?>" data-sort-missing="<?php echo esc_attr((string)($entry['missing_count'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($entry['modified_timestamp'] ?? 0)); ?>">
                                     <?php if ($category === 'images') { ?><td><?php if (!empty($entry['preview_url'])) { ?><a href="<?php echo esc_url((string)$entry['media_edit_url']); ?>"><img class="rrze-msm-media-metadata-preview" src="<?php echo esc_url((string)$entry['preview_url']); ?>" alt=""></a><?php } ?></td><?php } ?>
                                     <td><?php if (!empty($entry['media_edit_url'])) { ?><a href="<?php echo esc_url((string)$entry['media_edit_url']); ?>"><?php echo esc_html((string)($entry['title'] ?? '')); ?></a><?php } else { echo esc_html((string)($entry['title'] ?? '')); } ?></td>
                                     <?php foreach (array_keys((array)$table['fields']) as $fieldName) { ?><td class="rrze-msm-media-metadata-status"><?php if (!empty($entry['fields'][$fieldName])) { ?><span class="dashicons dashicons-yes-alt rrze-msm-media-metadata-present"><span class="screen-reader-text"><?php echo esc_html__('Available', 'rrze-multisite-manager'); ?></span></span><?php } else { ?><span class="dashicons dashicons-dismiss rrze-msm-media-metadata-missing"><span class="screen-reader-text"><?php echo esc_html__('Missing', 'rrze-multisite-manager'); ?></span></span><?php } ?></td><?php } ?>

@@ -37,12 +37,12 @@ defined('ABSPATH') || exit;
                             <h2><?php echo esc_html((string)($section['title'] ?? '')); ?></h2>
                         </header>
                         <div class="rrze-msm-environment-table-wrap">
-                            <table class="widefat striped rrze-msm-table">
+                            <table class="striped rrze-msm-datatable">
                                 <tbody>
                                     <?php foreach ((array)($section['rows'] ?? []) as $row) { ?>
                                         <tr>
                                             <th><?php echo esc_html((string)($row['label'] ?? '')); ?></th>
-                                            <td<?php echo !empty($row['numeric']) ? ' class="rrze-msm-col-numeric"' : ''; ?>>
+                                            <td>
                                                 <?php if (!empty($row['code'])) { ?>
                                                     <code><?php echo esc_html((string)($row['value'] ?? '')); ?></code>
                                                 <?php } else { ?>

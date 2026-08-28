@@ -10,7 +10,7 @@ defined('ABSPATH') || exit;
                 <p><?php echo esc_html__('Diagnosis of the storage usage of a single website based on its uploads directory.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
-                <?php if (!empty($site_summary)) { ?>
+                <?php if (empty($site_storage_analysis_is_site_context) && !empty($site_summary)) { ?>
                     <div class="rrze-msm-site-header-search">
                         <label class="screen-reader-text" for="rrze-msm-site-search"><?php echo esc_html__('Search website', 'rrze-multisite-manager'); ?></label>
                         <input id="rrze-msm-site-search" class="regular-text" type="search" placeholder="<?php echo esc_attr($site_search_placeholder); ?>" autocomplete="off">
@@ -72,10 +72,12 @@ defined('ABSPATH') || exit;
                         <?php } ?>
                     </div>
                     <div class="rrze-msm-site-details-meta">
-                        <div class="rrze-msm-site-details-meta-item">
-                            <strong><?php echo esc_html__('Website details', 'rrze-multisite-manager'); ?></strong>
-                            <div class="rrze-msm-site-actions">
+                    <div class="rrze-msm-site-details-meta-item">
+                        <strong><?php echo esc_html__('Website details', 'rrze-multisite-manager'); ?></strong>
+                        <div class="rrze-msm-site-actions">
+                            <?php if (!empty($site_details_url)) { ?>
                                 <a class="button button-secondary" href="<?php echo esc_url($site_details_url); ?>"><?php echo esc_html__('Back to website details', 'rrze-multisite-manager'); ?></a>
+                            <?php } ?>
                                 <?php if (!empty($site_media_library_url)) { ?>
                                     <a class="button button-secondary" href="<?php echo esc_url($site_media_library_url); ?>"><?php echo esc_html__('Website media library', 'rrze-multisite-manager'); ?></a>
                                 <?php } ?>
@@ -166,7 +168,7 @@ defined('ABSPATH') || exit;
                         <h2><?php echo esc_html__('Overview', 'rrze-multisite-manager'); ?></h2>
                         <p><?php echo esc_html__('Compares the storage value reported by WordPress with the upload directory that was actually scanned.', 'rrze-multisite-manager'); ?></p>
                     </header>
-                    <table class="widefat striped rrze-msm-table">
+                    <table class="striped rrze-msm-datatable">
                         <tbody>
                             <?php foreach ((array)($storage_analysis['summary_rows'] ?? []) as $summary_row) { ?>
                                 <?php $summary_label = (string)($summary_row['label'] ?? ''); ?>
@@ -178,14 +180,16 @@ defined('ABSPATH') || exit;
                                     <td><?php echo esc_html((string)($summary_row['value'] ?? '')); ?></td>
                                 </tr>
                             <?php } ?>
-                            <tr>
-                                <th><?php echo esc_html__('Uploads URL', 'rrze-multisite-manager'); ?></th>
-                                <td><code><?php echo esc_html((string)($storage_analysis['upload_baseurl'] ?? '')); ?></code></td>
-                            </tr>
-                            <tr>
-                                <th><?php echo esc_html__('Uploads directory', 'rrze-multisite-manager'); ?></th>
-                                <td><code><?php echo esc_html((string)($storage_analysis['upload_basedir'] ?? '')); ?></code></td>
-                            </tr>
+                            <?php if (is_super_admin()) { ?>
+                                <tr>
+                                    <th><?php echo esc_html__('Uploads URL', 'rrze-multisite-manager'); ?></th>
+                                    <td><code><?php echo esc_html((string)($storage_analysis['upload_baseurl'] ?? '')); ?></code></td>
+                                </tr>
+                                <tr>
+                                    <th><?php echo esc_html__('Uploads directory', 'rrze-multisite-manager'); ?></th>
+                                    <td><code><?php echo esc_html((string)($storage_analysis['upload_basedir'] ?? '')); ?></code></td>
+                                </tr>
+                            <?php } ?>
                         </tbody>
                     </table>
                 </section>

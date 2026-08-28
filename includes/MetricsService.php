@@ -3905,6 +3905,7 @@ class MetricsService {
             'preview_url' => $category === 'images' || str_starts_with((string)($row->post_mime_type ?? ''), 'image/') ? (string)wp_get_attachment_image_url($attachmentId, 'medium') : '',
             'media_edit_url' => get_edit_post_link($attachmentId, ''),
             'modified' => (string)($row->post_modified_gmt ?? ''),
+            'modified_timestamp' => $this->parseDateToTimestamp((string)($row->post_modified_gmt ?? '')),
             'modified_label' => $this->formatDate((string)($row->post_modified_gmt ?? '')),
             'fields' => $fields,
             'missing_count' => $missingCount,

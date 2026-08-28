@@ -32,6 +32,7 @@ class Config {
                 'theme_details_slug' => 'rrze-multisite-manager-theme-details',
                 'site_details_slug' => 'rrze-multisite-manager-site-details',
                 'site_storage_analysis_slug' => 'rrze-multisite-manager-site-storage-analysis',
+                'site_storage_analysis_media_slug' => 'rrze-multisite-manager-media-storage-analysis',
                 'site_status_slug' => 'rrze-multisite-manager-site-status',
                 'monitoring_slug' => 'rrze-multisite-manager-monitoring',
                 'views_slug' => 'rrze-multisite-manager-views',

@@ -114,10 +114,21 @@ class Dashboard {
         $themeDetailsSlug = (string)($menuSettings['theme_details_slug'] ?? 'rrze-multisite-manager-theme-details');
         $siteDetailsSlug = (string)($menuSettings['site_details_slug'] ?? 'rrze-multisite-manager-site-details');
         $siteStorageAnalysisSlug = (string)($menuSettings['site_storage_analysis_slug'] ?? 'rrze-multisite-manager-site-storage-analysis');
+        $siteStorageAnalysisMediaSlug = (string)($menuSettings['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis');
         $siteStatusSlug = (string)($menuSettings['site_status_slug'] ?? 'rrze-multisite-manager-site-status');
         $monitoringSlug = (string)($menuSettings['monitoring_slug'] ?? 'rrze-multisite-manager-monitoring');
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
         $settingsSlug = $this->settings->getSettingsSlug();
+
+        if (!is_network_admin() && current_user_can('manage_options') && current_user_can('upload_files')) {
+            $this->pageHooks[] = add_media_page(
+                __('Storage Analysis', 'rrze-multisite-manager'),
+                __('Storage Analysis', 'rrze-multisite-manager'),
+                'manage_options',
+                $siteStorageAnalysisMediaSlug,
+                [$this, 'renderSiteStorageAnalysisPage']
+            );
+        }
 
         if (is_network_admin() || !$this->currentUserCanAccessManager()) {
             return;
@@ -1071,7 +1082,10 @@ class Dashboard {
     }
 
     public function renderSiteStorageAnalysisPage(): void {
-        $siteId = isset($_GET['site_id']) ? absint($_GET['site_id']) : 0;
+        $isSiteMediaContext = $this->isCurrentSiteStorageAnalysisMediaPage();
+        $siteId = $isSiteMediaContext
+            ? get_current_blog_id()
+            : (isset($_GET['site_id']) ? absint($_GET['site_id']) : 0);
         $debugAttachmentId = isset($_GET['debug_attachment_id']) ? absint($_GET['debug_attachment_id']) : 0;
         $storageTab = isset($_GET['storage_tab']) ? sanitize_key((string)wp_unslash($_GET['storage_tab'])) : 'analysis';
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
@@ -1082,7 +1096,7 @@ class Dashboard {
         $orphanFileDeleteNotice = [];
         $autoStartStorageAnalysis = false;
 
-        if (!$this->currentUserCanAccessManager()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
         }
 
@@ -1108,8 +1122,9 @@ class Dashboard {
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
-                'site_storage_analysis_base_url' => $this->getSiteStorageAnalysisUrl(),
-                'site_details_url' => $siteId > 0 ? $this->getSiteDetailsUrl($siteId) : '',
+                'site_storage_analysis_base_url' => $isSiteMediaContext ? $this->getCurrentSiteStorageAnalysisUrl() : $this->getSiteStorageAnalysisUrl(),
+                'site_storage_analysis_is_site_context' => $isSiteMediaContext,
+                'site_details_url' => !$isSiteMediaContext && $siteId > 0 ? $this->getSiteDetailsUrl($siteId) : '',
                 'site_media_library_url' => $siteId > 0 ? get_admin_url($siteId, 'upload.php') : '',
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
@@ -1663,7 +1678,7 @@ class Dashboard {
         $restart = !empty($_REQUEST['restart']);
         $result = [];
 
-        if (!$this->currentUserCanAccessManager()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_send_json_error(['message' => 'forbidden'], 403);
         }
 
@@ -1682,7 +1697,7 @@ class Dashboard {
         $restart = !empty($_REQUEST['restart']);
         $result = [];
 
-        if (!$this->currentUserCanAccessManager()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_send_json_error(['message' => 'forbidden'], 403);
         }
 
@@ -1701,7 +1716,7 @@ class Dashboard {
         $restart = !empty($_REQUEST['restart']);
         $result = [];
 
-        if (!$this->currentUserCanAccessManager()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_send_json_error(['message' => 'forbidden'], 403);
         }
 
@@ -1719,7 +1734,7 @@ class Dashboard {
         $siteId = isset($_POST['site_id']) ? absint(wp_unslash($_POST['site_id'])) : 0;
         $restart = !empty($_POST['restart']);
 
-        if (!$this->currentUserCanAccessManager()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
         }
 
@@ -1740,7 +1755,7 @@ class Dashboard {
             return;
         }
 
-        if (!$this->currentUserCanAccessManager()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
         }
 
@@ -1758,7 +1773,7 @@ class Dashboard {
                     'site_id' => $siteId,
                     'storage_tab' => 'missing-metadata',
                 ],
-                $this->getSiteStorageAnalysisUrl()
+                $this->getSiteStorageAnalysisRedirectUrl($siteId)
             )
         );
         exit;
@@ -1767,7 +1782,7 @@ class Dashboard {
     public function ajaxGetSiteStorageAnalysisStatus(): void {
         $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
 
-        if (!$this->currentUserCanAccessManager()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_send_json_error(['message' => 'forbidden'], 403);
         }
 
@@ -2064,14 +2079,14 @@ class Dashboard {
         $attachmentIds = isset($_POST['attachment_ids']) && is_array($_POST['attachment_ids'])
             ? array_values(array_filter(array_map('absint', wp_unslash((array)$_POST['attachment_ids']))))
             : [];
-        $redirectUrl = $this->getSiteStorageAnalysisUrl($siteId);
+        $redirectUrl = $this->getSiteStorageAnalysisRedirectUrl($siteId);
         $result = [];
         $deletedCount = 0;
         $deletedPaths = [];
         $errors = [];
         $path = '';
 
-        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_die(esc_html__('You are not allowed to delete upload files.', 'rrze-multisite-manager'));
         }
 
@@ -2153,7 +2168,7 @@ class Dashboard {
                     'site_id' => $siteId,
                     'orphan_file_delete_notice' => '1',
                 ],
-                $this->getSiteStorageAnalysisUrl() . '#rrze-msm-unused-attachments'
+                $this->getSiteStorageAnalysisRedirectUrl($siteId) . '#rrze-msm-unused-attachments'
             );
         } else {
             $redirectUrl = add_query_arg(
@@ -2162,7 +2177,7 @@ class Dashboard {
                     'orphan_file_deleted_count' => $deletedCount,
                     'orphan_file_error' => rawurlencode(implode(' | ', array_slice($errors, 0, 5))),
                 ],
-                $this->getSiteStorageAnalysisUrl()
+                $this->getSiteStorageAnalysisRedirectUrl($siteId)
             );
         }
 
@@ -2269,6 +2284,17 @@ class Dashboard {
 
     protected function currentUserCanAccessManager(): bool {
         return current_user_can((string)($this->config->getMenuSettings()['capability'] ?? 'rrze_multisite_manager_access'));
+    }
+
+    protected function currentUserCanAccessSiteStorageAnalysis(int $siteId): bool {
+        if ($this->currentUserCanAccessManager()) {
+            return true;
+        }
+
+        return $siteId > 0
+            && $siteId === get_current_blog_id()
+            && current_user_can('manage_options')
+            && current_user_can('upload_files');
     }
 
     protected function currentUserCanUseNetworkAdminFeatures(): bool {
@@ -2536,19 +2562,56 @@ class Dashboard {
         return add_query_arg($args, $this->getAdminPageBaseUrl());
     }
 
+    protected function getCurrentSiteStorageAnalysisUrl(): string {
+        return add_query_arg(
+            [
+                'page' => (string)($this->config->getMenuSettings()['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis'),
+            ],
+            admin_url('upload.php')
+        );
+    }
+
+    protected function getSiteStorageAnalysisRedirectUrl(int $siteId): string {
+        if ($siteId === get_current_blog_id() && $this->isSiteStorageAnalysisMediaReferer()) {
+            return $this->getCurrentSiteStorageAnalysisUrl();
+        }
+
+        return $this->getSiteStorageAnalysisUrl($siteId);
+    }
+
+    protected function isCurrentSiteStorageAnalysisMediaPage(): bool {
+        $page = isset($_GET['page']) ? sanitize_key((string)wp_unslash($_GET['page'])) : '';
+        $mediaSlug = (string)($this->config->getMenuSettings()['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis');
+
+        return $page === $mediaSlug;
+    }
+
+    protected function isSiteStorageAnalysisMediaReferer(): bool {
+        $referer = wp_get_referer();
+        $query = '';
+        $args = [];
+        $mediaSlug = (string)($this->config->getMenuSettings()['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis');
+
+        if (!is_string($referer) || $referer === '') {
+            return false;
+        }
+
+        $query = (string)wp_parse_url($referer, PHP_URL_QUERY);
+        parse_str($query, $args);
+
+        return ($args['page'] ?? '') === $mediaSlug;
+    }
+
     protected function getSiteMediaMetadataAnalysisContinuationUrl(int $siteId): string {
-        return wp_nonce_url(
-            add_query_arg(
-                [
-                    'site_id' => $siteId,
-                    'storage_tab' => 'missing-metadata',
-                    'rrze_msm_continue_media_metadata' => '1',
-                    'rrze_msm_media_metadata_site_id' => $siteId,
-                ],
-                $this->getSiteStorageAnalysisUrl()
-            ),
-            'rrze-msm-site-media-metadata-analysis',
-            'rrze_msm_media_metadata_nonce'
+        return add_query_arg(
+            [
+                'site_id' => $siteId,
+                'storage_tab' => 'missing-metadata',
+                'rrze_msm_continue_media_metadata' => '1',
+                'rrze_msm_media_metadata_site_id' => $siteId,
+                'rrze_msm_media_metadata_nonce' => wp_create_nonce('rrze-msm-site-media-metadata-analysis'),
+            ],
+            $this->getSiteStorageAnalysisRedirectUrl($siteId)
         );
     }
 
