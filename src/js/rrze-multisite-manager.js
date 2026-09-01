@@ -698,7 +698,9 @@ function getSiteTablePerPage(wrapper) {
     var perPage = 0;
 
     if (!select) {
-        return 10;
+        perPage = parseInt(wrapper.getAttribute('data-default-per-page') || '10', 10);
+
+        return isNaN(perPage) || perPage < 1 ? 10 : perPage;
     }
 
     perPage = parseInt(select.value, 10);
@@ -739,7 +741,7 @@ function getSiteTableSortDirection(wrapper) {
 }
 
 function getSiteTableSortType(key) {
-    if (key === 'registered' || key === 'last-updated' || key === 'modified' || key === 'storage' || key === 'active-sites' || key === 'missing') {
+    if (key === 'registered' || key === 'last-updated' || key === 'modified' || key === 'files' || key === 'size' || key === 'share' || key === 'storage' || key === 'active-sites' || key === 'missing') {
         return 'number';
     }
 
@@ -748,6 +750,20 @@ function getSiteTableSortType(key) {
 
 function getSiteTableSortValue(row, key) {
     return row.getAttribute('data-sort-' + key) || '';
+}
+
+function getSiteTableNumericSortValue(row, key) {
+    var rawValue = String(getSiteTableSortValue(row, key)).trim();
+    var numericValue = 0;
+
+    rawValue = rawValue.replace(/\s+/g, '').replace(',', '.');
+    numericValue = Number(rawValue);
+
+    if (!Number.isFinite(numericValue)) {
+        return 0;
+    }
+
+    return numericValue;
 }
 
 function sortSiteTableRows(wrapper, rows) {
@@ -761,7 +777,14 @@ function sortSiteTableRows(wrapper, rows) {
         var comparison = 0;
 
         if (sortType === 'number') {
-            comparison = parseInt(leftValue || '0', 10) - parseInt(rightValue || '0', 10);
+            leftValue = getSiteTableNumericSortValue(left, sortKey);
+            rightValue = getSiteTableNumericSortValue(right, sortKey);
+
+            if (leftValue > rightValue) {
+                comparison = 1;
+            } else if (leftValue < rightValue) {
+                comparison = -1;
+            }
         } else {
             comparison = String(leftValue).localeCompare(String(rightValue), 'de', { sensitivity: 'base' });
         }
@@ -887,12 +910,16 @@ function onSiteTableClick(event) {
     var wrapper = event.currentTarget;
     var currentSortKey = '';
     var nextDirection = 'asc';
+    var requestedDirection = 'asc';
 
     if (sortButton) {
         currentSortKey = getSiteTableSortKey(wrapper);
+        requestedDirection = sortButton.getAttribute('data-sort-direction') === 'desc' ? 'desc' : 'asc';
 
         if ((sortButton.getAttribute('data-sort-key') || '') === currentSortKey) {
             nextDirection = getSiteTableSortDirection(wrapper) === 'asc' ? 'desc' : 'asc';
+        } else {
+            nextDirection = requestedDirection;
         }
 
         wrapper.setAttribute('data-sort-key', sortButton.getAttribute('data-sort-key') || 'name');

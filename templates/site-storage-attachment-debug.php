@@ -17,15 +17,29 @@ defined('ABSPATH') || exit;
     <?php if (!empty($attachment_debug['error'])) { ?>
         <div class="notice notice-error inline"><p><?php echo esc_html((string)$attachment_debug['error']); ?></p></div>
     <?php } elseif (!empty($attachment_debug)) { ?>
-        <table class="widefat striped rrze-msm-table">
+        <table class="striped rrze-msm-datatable">
             <tbody>
                 <tr><th><?php echo esc_html__('Attachment ID', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)($attachment_debug['attachment_id'] ?? '')); ?></td></tr>
+                <tr><th><?php echo esc_html__('Media type', 'rrze-multisite-manager'); ?></th><td><code><?php echo esc_html((string)($attachment_debug['mime_type'] ?? '')); ?></code></td></tr>
                 <tr><th><?php echo esc_html__('Attachment exists', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(!empty($attachment_debug['exists']) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')); ?></td></tr>
                 <tr><th><?php echo esc_html__('Title', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)($attachment_debug['title'] ?? '')); ?></td></tr>
+                <?php if (!empty($attachment_debug['is_image'])) { ?>
+                    <tr><th><?php echo esc_html__('Alternative text', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(trim((string)($attachment_debug['metadata_fields']['alternative_text'] ?? '')) !== '' ? (string)$attachment_debug['metadata_fields']['alternative_text'] : __('Not set', 'rrze-multisite-manager')); ?></td></tr>
+                    <tr><th><?php echo esc_html__('Caption', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(trim((string)($attachment_debug['metadata_fields']['caption'] ?? '')) !== '' ? (string)$attachment_debug['metadata_fields']['caption'] : __('Not set', 'rrze-multisite-manager')); ?></td></tr>
+                    <tr><th><?php echo esc_html__('Description', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(trim((string)($attachment_debug['metadata_fields']['description'] ?? '')) !== '' ? (string)$attachment_debug['metadata_fields']['description'] : __('Not set', 'rrze-multisite-manager')); ?></td></tr>
+                <?php } else { ?>
+                    <tr><th><?php echo esc_html__('Short description', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(trim((string)($attachment_debug['metadata_fields']['short_description'] ?? '')) !== '' ? (string)$attachment_debug['metadata_fields']['short_description'] : __('Not set', 'rrze-multisite-manager')); ?></td></tr>
+                    <tr><th><?php echo esc_html__('Description', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(trim((string)($attachment_debug['metadata_fields']['description'] ?? '')) !== '' ? (string)$attachment_debug['metadata_fields']['description'] : __('Not set', 'rrze-multisite-manager')); ?></td></tr>
+                    <?php foreach ((array)($attachment_debug['document_metadata'] ?? []) as $document_metadata_label => $document_metadata_value) { ?>
+                        <tr><th><?php echo esc_html((string)$document_metadata_label); ?></th><td><?php echo esc_html((string)$document_metadata_value); ?></td></tr>
+                    <?php } ?>
+                <?php } ?>
+                <?php foreach ((array)($attachment_debug['image_metadata'] ?? []) as $image_metadata_label => $image_metadata_value) { ?>
+                    <tr><th><?php echo esc_html((string)$image_metadata_label); ?></th><td><?php echo esc_html((string)$image_metadata_value); ?></td></tr>
+                <?php } ?>
                 <tr><th><?php echo esc_html__('Attached file', 'rrze-multisite-manager'); ?></th><td><code><?php echo esc_html((string)($attachment_debug['attached_file'] ?? '')); ?></code></td></tr>
                 <tr><th><?php echo esc_html__('Normalized path', 'rrze-multisite-manager'); ?></th><td><code><?php echo esc_html((string)($attachment_debug['normalized_path'] ?? '')); ?></code></td></tr>
                 <tr><th><?php echo esc_html__('File URL', 'rrze-multisite-manager'); ?></th><td><?php if (!empty($attachment_debug['file_url'])) { ?><a href="<?php echo esc_url((string)$attachment_debug['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html((string)$attachment_debug['file_url']); ?></a><?php } ?></td></tr>
-                <tr><th><?php echo esc_html__('MIME type', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)($attachment_debug['mime_type'] ?? '')); ?></td></tr>
                 <tr><th><?php echo esc_html__('File exists in uploads', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(!empty($attachment_debug['file_exists']) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')); ?></td></tr>
                 <tr><th><?php echo esc_html__('Attachment metadata available', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(!empty($attachment_debug['has_attachment_metadata']) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')); ?></td></tr>
                 <tr><th><?php echo esc_html__('Image size variants in metadata', 'rrze-multisite-manager'); ?></th><td class="rrze-msm-col-numeric"><?php echo esc_html((string)($attachment_debug['metadata_size_variants'] ?? 0)); ?></td></tr>

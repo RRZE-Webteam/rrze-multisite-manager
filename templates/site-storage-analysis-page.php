@@ -49,6 +49,20 @@ defined('ABSPATH') || exit;
             $missingMetadataTabUrl = add_query_arg(['site_id' => (int)$site_id, 'storage_tab' => 'missing-metadata'], $site_storage_analysis_base_url);
             $usedAttachmentFilesRendered = false;
             $siteStorageMegabytes = (int)round((int)($site_summary['storage']['used_bytes'] ?? 0) / MB_IN_BYTES);
+            $unregisteredImageSizeVariants = (array)($storage_analysis['largest_unregistered_image_size_variants'] ?? []);
+            $unregisteredImageSizeVariantResults = array_merge(
+                (array)($storage_analysis['unregistered_image_size_variants_found_in_content'] ?? []),
+                (array)($storage_analysis['unregistered_image_size_variants_without_content_matches'] ?? [])
+            );
+            $unregisteredImageSizeVariantResultsByPath = [];
+
+            foreach ($unregisteredImageSizeVariantResults as $unregisteredImageSizeVariantResult) {
+                if (!is_array($unregisteredImageSizeVariantResult) || empty($unregisteredImageSizeVariantResult['path'])) {
+                    continue;
+                }
+
+                $unregisteredImageSizeVariantResultsByPath[(string)$unregisteredImageSizeVariantResult['path']] = $unregisteredImageSizeVariantResult;
+            }
             ?>
             <?php if (!empty($orphan_file_error)) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
@@ -97,8 +111,8 @@ defined('ABSPATH') || exit;
 
             <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Storage analysis sections', 'rrze-multisite-manager'); ?>">
                 <a class="rrze-msm-subtab<?php echo $storageTab === 'analysis' ? ' is-active' : ''; ?>" href="<?php echo esc_url($analysisTabUrl); ?>"><?php echo esc_html__('Analysis', 'rrze-multisite-manager'); ?></a>
-                <a class="rrze-msm-subtab<?php echo $storageTab === 'debug' ? ' is-active' : ''; ?>" href="<?php echo esc_url($debugTabUrl); ?>"><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></a>
                 <a class="rrze-msm-subtab<?php echo $storageTab === 'missing-metadata' ? ' is-active' : ''; ?>" href="<?php echo esc_url($missingMetadataTabUrl); ?>"><?php echo esc_html__('Missing metadata', 'rrze-multisite-manager'); ?></a>
+                <a class="rrze-msm-subtab<?php echo $storageTab === 'debug' ? ' is-active' : ''; ?>" href="<?php echo esc_url($debugTabUrl); ?>"><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></a>
             </nav>
 
             <?php if ($storageTab === 'debug') { ?>
@@ -262,26 +276,29 @@ defined('ABSPATH') || exit;
                         <p><?php echo esc_html__('Shows which top-level folders in the uploads area consume how much storage.', 'rrze-multisite-manager'); ?></p>
                     </header>
                     <?php if (!empty($storage_analysis['top_level_directories'])) { ?>
-                        <table class="widefat striped rrze-msm-table">
-                            <thead>
-                                <tr>
-                                    <th><?php echo esc_html__('Folders', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Files', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-col-numeric"><?php echo esc_html__('Share', 'rrze-multisite-manager'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ((array)$storage_analysis['top_level_directories'] as $directory_row) { ?>
+                        <div class="rrze-msm-site-table-wrap" data-table-id="top-level-directories" data-default-per-page="1000" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
+                            <table class="widefat striped rrze-msm-table">
+                                <thead>
                                     <tr>
-                                        <td><code><?php echo esc_html((string)($directory_row['path'] ?? '')); ?></code></td>
-                                        <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)($directory_row['file_count'] ?? 0))); ?></td>
-                                        <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($directory_row['size_label'] ?? '')); ?></td>
-                                        <td class="rrze-msm-col-numeric"><?php echo esc_html(sprintf(__('%d%%', 'rrze-multisite-manager'), (int)($directory_row['percent'] ?? 0))); ?></td>
+                                        <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Folders', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                        <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="files" data-sort-direction="desc"><span><?php echo esc_html__('Files', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                        <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                        <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="share" data-sort-direction="desc"><span><?php echo esc_html__('Share', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                     </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ((array)$storage_analysis['top_level_directories'] as $directory_row) { ?>
+                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($directory_row['path'] ?? ''))); ?>" data-sort-files="<?php echo esc_attr((string)($directory_row['file_count'] ?? 0)); ?>" data-sort-size="<?php echo esc_attr((string)($directory_row['size_bytes'] ?? 0)); ?>" data-sort-share="<?php echo esc_attr((string)($directory_row['percent'] ?? 0)); ?>">
+                                            <td><code><?php echo esc_html((string)($directory_row['path'] ?? '')); ?></code></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)($directory_row['file_count'] ?? 0))); ?></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($directory_row['size_label'] ?? '')); ?></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html(sprintf(__('%d%%', 'rrze-multisite-manager'), (int)($directory_row['percent'] ?? 0))); ?></td>
+                                        </tr>
+                                    <?php } ?>
+                                </tbody>
+                            </table>
+                            <div class="tablenav bottom"><div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Pagination', 'rrze-multisite-manager'); ?>"></div></div>
+                        </div>
                     <?php } else { ?>
                         <p><?php echo esc_html__('No usable folder data was found in the uploads directory.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>
@@ -317,6 +334,7 @@ defined('ABSPATH') || exit;
                             <table class="widefat striped rrze-msm-table">
                                     <thead>
                                         <tr>
+                                            <th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
@@ -326,7 +344,16 @@ defined('ABSPATH') || exit;
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['largest_files'] as $file_row) { ?>
+                                            <?php $fileAttachmentId = (int)($file_row['attachment_id'] ?? 0); ?>
+                                            <?php $fileAttachmentDetailsUrl = $fileAttachmentId > 0 ? add_query_arg('debug_attachment_id', $fileAttachmentId, $debugTabUrl) : ''; ?>
                                             <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($file_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($file_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($file_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($file_row['modified_timestamp'] ?? 0)); ?>">
+                                            <td class="rrze-msm-col-numeric">
+                                                <?php if ($fileAttachmentDetailsUrl !== '') { ?>
+                                                    <a href="<?php echo esc_url($fileAttachmentDetailsUrl); ?>"><?php echo esc_html((string)$fileAttachmentId); ?></a>
+                                                <?php } else { ?>
+                                                    &mdash;
+                                                <?php } ?>
+                                            </td>
                                             <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                 <?php if (!empty($file_row['media_edit_url'])) { ?>
                                                     <a href="<?php echo esc_url((string)$file_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($file_row['path'] ?? '')); ?></code></a>
@@ -367,10 +394,12 @@ defined('ABSPATH') || exit;
                         </header>
                         <div class="rrze-msm-site-table-wrap" data-table-id="used-attachment-files" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                             <table class="widefat striped rrze-msm-table">
-                                <thead><tr><th><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></th><th class="rrze-msm-col-numeric"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th></tr></thead>
+                                <thead><tr><th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></th><th class="rrze-msm-col-numeric"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th></tr></thead>
                                 <tbody>
                                     <?php foreach ((array)$storage_analysis['used_attachment_files'] as $orphan_row) { ?>
+                                        <?php $attachmentDetailsUrl = add_query_arg('debug_attachment_id', (int)($orphan_row['attachment_id'] ?? 0), $debugTabUrl); ?>
                                         <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                            <td class="rrze-msm-col-numeric"><a href="<?php echo esc_url($attachmentDetailsUrl); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a></td>
                                             <td><?php if (!empty($orphan_row['media_edit_url'])) { ?><a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></a><?php } else { ?><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code><?php } ?></td>
                                             <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
@@ -396,6 +425,62 @@ defined('ABSPATH') || exit;
                         ,
                         <strong><?php echo esc_html((string)($storage_analysis['combined_flagged_total_label'] ?? '')); ?></strong>
                     </p>
+                    <?php if (!empty($unregisteredImageSizeVariants)) { ?>
+                        <h3><?php echo esc_html__('Image variants from no longer registered sizes', 'rrze-multisite-manager'); ?></h3>
+                        <p>
+                            <?php echo esc_html(sprintf(
+                                /* translators: 1: file count, 2: storage size. */
+                                __('%1$s image variants (%2$s) were found in attachment metadata whose image-size slug is no longer registered by WordPress, the active theme, or active plugins.', 'rrze-multisite-manager'),
+                                number_format_i18n((int)($storage_analysis['unregistered_image_size_variant_count'] ?? 0)),
+                                (string)($storage_analysis['unregistered_image_size_variant_total_label'] ?? '')
+                            )); ?>
+                        </p>
+                        <?php if (!empty($storage_analysis['unregistered_image_size_variants_truncated'])) { ?>
+                            <div class="notice notice-warning inline">
+                                <p><?php echo esc_html__('For performance reasons, this list is limited to the largest detected image variants.', 'rrze-multisite-manager'); ?></p>
+                            </div>
+                        <?php } ?>
+                        <?php if (!$orphanAnalysisComplete) { ?>
+                            <div class="notice notice-info inline">
+                                <p><?php echo esc_html__('Complete the orphan check to verify whether these image variant URLs are still referenced in content, meta fields, or active code.', 'rrze-multisite-manager'); ?></p>
+                            </div>
+                        <?php } ?>
+                        <div class="rrze-msm-site-table-wrap" data-table-id="unregistered-image-size-variants" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
+                            <table class="widefat striped rrze-msm-table">
+                                <thead>
+                                    <tr>
+                                        <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><?php echo esc_html__('File', 'rrze-multisite-manager'); ?><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                        <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="image-size" data-sort-direction="asc"><?php echo esc_html__('Former image size', 'rrze-multisite-manager'); ?><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                        <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                        <th class="rrze-msm-col-numeric"><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($unregisteredImageSizeVariants as $unregisteredImageSizeVariant) { ?>
+                                        <?php
+                                        $unregisteredImageSizeVariantPath = (string)($unregisteredImageSizeVariant['path'] ?? '');
+                                        $unregisteredImageSizeVariantResult = is_array($unregisteredImageSizeVariantResultsByPath[$unregisteredImageSizeVariantPath] ?? null)
+                                            ? $unregisteredImageSizeVariantResultsByPath[$unregisteredImageSizeVariantPath]
+                                            : $unregisteredImageSizeVariant;
+                                        ?>
+                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower($unregisteredImageSizeVariantPath)); ?>" data-sort-image-size="<?php echo esc_attr(mb_strtolower((string)($unregisteredImageSizeVariant['image_size_slug'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($unregisteredImageSizeVariant['size_bytes'] ?? 0)); ?>">
+                                            <td>
+                                                <?php if (!empty($unregisteredImageSizeVariant['media_edit_url'])) { ?>
+                                                    <a href="<?php echo esc_url((string)$unregisteredImageSizeVariant['media_edit_url']); ?>"><code><?php echo esc_html($unregisteredImageSizeVariantPath); ?></code></a>
+                                                <?php } else { ?>
+                                                    <code><?php echo esc_html($unregisteredImageSizeVariantPath); ?></code>
+                                                <?php } ?>
+                                            </td>
+                                            <td><code><?php echo esc_html((string)($unregisteredImageSizeVariant['image_size_slug'] ?? '')); ?></code></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($unregisteredImageSizeVariant['size_label'] ?? '')); ?></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo $orphanAnalysisComplete ? esc_html((string)($unregisteredImageSizeVariantResult['content_usage_label'] ?? '')) : esc_html__('Not checked yet', 'rrze-multisite-manager'); ?></td>
+                                        </tr>
+                                    <?php } ?>
+                                </tbody>
+                            </table>
+                            <div class="tablenav bottom"><div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Pagination', 'rrze-multisite-manager'); ?>"></div></div>
+                        </div>
+                    <?php } ?>
                     <?php if (!empty($storage_analysis['orphan_files_truncated'])) { ?>
                         <div class="notice notice-warning inline">
                             <p><?php echo esc_html__('For performance reasons, the analysis for the detail tables was limited to a larger but still bounded subset of potentially orphaned files.', 'rrze-multisite-manager'); ?></p>
