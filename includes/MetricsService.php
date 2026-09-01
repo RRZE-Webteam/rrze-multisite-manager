@@ -4011,6 +4011,13 @@ class MetricsService {
             'largest_orphan_files' => (array)($scan['largest_orphan_files'] ?? []),
             'orphan_files_found_in_content' => (array)($scan['orphan_files_found_in_content'] ?? []),
             'orphan_files_without_content_matches' => (array)($scan['orphan_files_without_content_matches'] ?? []),
+            'unregistered_image_size_variant_count' => (int)($scan['unregistered_image_size_variant_count'] ?? 0),
+            'unregistered_image_size_variant_total_bytes' => (int)($scan['unregistered_image_size_variant_total_bytes'] ?? 0),
+            'unregistered_image_size_variant_total_label' => $this->formatStorageAnalysisSize((int)($scan['unregistered_image_size_variant_total_bytes'] ?? 0)),
+            'largest_unregistered_image_size_variants' => (array)($scan['largest_unregistered_image_size_variants'] ?? []),
+            'unregistered_image_size_variants_truncated' => !empty($scan['unregistered_image_size_variants_truncated']),
+            'unregistered_image_size_variants_found_in_content' => (array)($scan['unregistered_image_size_variants_found_in_content'] ?? []),
+            'unregistered_image_size_variants_without_content_matches' => (array)($scan['unregistered_image_size_variants_without_content_matches'] ?? []),
             'unused_attachment_file_count' => (int)($scan['unused_attachment_file_count'] ?? 0),
             'unused_attachment_files' => (array)($scan['unused_attachment_files'] ?? []),
             'top_level_directories' => (array)($scan['top_level_directories'] ?? []),
@@ -4110,6 +4117,7 @@ class MetricsService {
         if (
             (int)($state['current_index'] ?? 0) >= (int)($state['total'] ?? 0)
             && (int)($state['attachment_index'] ?? 0) >= count((array)($state['attachment_candidates'] ?? []))
+            && (int)($state['unregistered_image_size_variant_index'] ?? 0) >= count((array)($state['unregistered_image_size_variant_candidates'] ?? []))
         ) {
             $this->finalizeCurrentSiteStorageAnalysisOrphanState($siteId, $analysis, $state);
         } else {
@@ -4165,9 +4173,12 @@ class MetricsService {
             'total_bytes' => 0,
             'orphan_file_count' => 0,
             'orphan_total_bytes' => 0,
+            'unregistered_image_size_variant_count' => 0,
+            'unregistered_image_size_variant_total_bytes' => 0,
             'top_level_directory_stats' => [],
             'largest_files' => [],
             'largest_orphan_files' => [],
+            'largest_unregistered_image_size_variants' => [],
         ];
     }
 
@@ -4285,6 +4296,12 @@ class MetricsService {
             $state['orphan_total_bytes'] = (int)($state['orphan_total_bytes'] ?? 0) + max(0, $sizeBytes);
             $this->pushLargestFileEntry($state['largest_orphan_files'], $entry, self::STORAGE_ORPHAN_FILES_LIMIT);
         }
+
+        if ($this->isUnregisteredImageSizeVariant($relativePath, $attachmentIndex)) {
+            $state['unregistered_image_size_variant_count'] = (int)($state['unregistered_image_size_variant_count'] ?? 0) + 1;
+            $state['unregistered_image_size_variant_total_bytes'] = (int)($state['unregistered_image_size_variant_total_bytes'] ?? 0) + max(0, $sizeBytes);
+            $this->pushLargestFileEntry($state['largest_unregistered_image_size_variants'], $entry, self::STORAGE_ORPHAN_FILES_LIMIT);
+        }
     }
 
     protected function finalizeCurrentSiteStorageAnalysisBaseState(int $siteId, array &$state): void {
@@ -4297,6 +4314,12 @@ class MetricsService {
             'total_directories' => (int)($state['processed_directories'] ?? 0),
             'orphan_file_count' => (int)($state['orphan_file_count'] ?? 0),
             'orphan_total_bytes' => (int)($state['orphan_total_bytes'] ?? 0),
+            'unregistered_image_size_variant_count' => (int)($state['unregistered_image_size_variant_count'] ?? 0),
+            'unregistered_image_size_variant_total_bytes' => (int)($state['unregistered_image_size_variant_total_bytes'] ?? 0),
+            'largest_unregistered_image_size_variants' => (array)($state['largest_unregistered_image_size_variants'] ?? []),
+            'unregistered_image_size_variants_truncated' => (int)($state['unregistered_image_size_variant_count'] ?? 0) > self::STORAGE_ORPHAN_FILES_LIMIT,
+            'unregistered_image_size_variants_found_in_content' => [],
+            'unregistered_image_size_variants_without_content_matches' => [],
             'largest_orphan_files' => (array)($state['largest_orphan_files'] ?? []),
             'orphan_files_truncated' => (int)($state['orphan_file_count'] ?? 0) > self::STORAGE_ORPHAN_FILES_LIMIT,
             'orphan_files_found_in_content' => [],
@@ -4350,6 +4373,10 @@ class MetricsService {
             'attachment_index' => 0,
             'used_attachments' => [],
             'unused_attachments' => [],
+            'unregistered_image_size_variant_candidates' => (array)($analysis['largest_unregistered_image_size_variants'] ?? []),
+            'unregistered_image_size_variant_index' => 0,
+            'unregistered_image_size_variants_found_in_content' => [],
+            'unregistered_image_size_variants_without_content_matches' => [],
         ];
     }
 
@@ -4362,12 +4389,16 @@ class MetricsService {
         $attachmentCandidates = [];
         $attachmentIndex = 0;
         $attachmentCandidate = [];
+        $unregisteredImageSizeCandidates = [];
+        $unregisteredImageSizeIndex = 0;
+        $unregisteredImageSizeCandidate = [];
 
         while (
             $processed < self::STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE
             && (
                 $index < (int)($state['total'] ?? 0)
                 || (int)($state['attachment_index'] ?? 0) < count((array)($state['attachment_candidates'] ?? []))
+                || (int)($state['unregistered_image_size_variant_index'] ?? 0) < count((array)($state['unregistered_image_size_variant_candidates'] ?? []))
             )
         ) {
             if ($index < (int)($state['total'] ?? 0)) {
@@ -4400,32 +4431,66 @@ class MetricsService {
             }
 
             $attachmentCandidates = (array)($state['attachment_candidates'] ?? []);
-            $attachmentIndex = (int)($state['attachment_index'] ?? 0);
-            $attachmentCandidate = is_array($attachmentCandidates[$attachmentIndex] ?? null) ? (array)$attachmentCandidates[$attachmentIndex] : [];
 
-            if (!empty($attachmentCandidate)) {
+            if ((int)($state['attachment_index'] ?? 0) < count($attachmentCandidates)) {
+                $attachmentIndex = (int)($state['attachment_index'] ?? 0);
+                $attachmentCandidate = is_array($attachmentCandidates[$attachmentIndex] ?? null) ? (array)$attachmentCandidates[$attachmentIndex] : [];
+
+                if (!empty($attachmentCandidate)) {
+                    $matches = $this->searchCurrentSiteFileUsageMatches(
+                        is_string($attachmentCandidate['file_url'] ?? null) ? (string)$attachmentCandidate['file_url'] : '',
+                        is_string($attachmentCandidate['path'] ?? null) ? (string)$attachmentCandidate['path'] : '',
+                        (int)($attachmentCandidate['attachment_id'] ?? 0),
+                        false
+                    );
+                    $matchCount = count($matches);
+                    $attachmentCandidate['content_usage_count'] = $matchCount;
+                    $attachmentCandidate['content_usage_label'] = sprintf(
+                        _n('%d matches', '%d matches', $matchCount, 'rrze-multisite-manager'),
+                        $matchCount
+                    );
+
+                    if ($matchCount > 0) {
+                        $attachmentCandidate['content_usage_results'] = $matches;
+                        $state['used_attachments'][] = $attachmentCandidate;
+                    } else {
+                        $state['unused_attachments'][] = $attachmentCandidate;
+                    }
+                }
+
+                $state['attachment_index'] = $attachmentIndex + 1;
+                $processed++;
+                continue;
+            }
+
+            $unregisteredImageSizeCandidates = (array)($state['unregistered_image_size_variant_candidates'] ?? []);
+            $unregisteredImageSizeIndex = (int)($state['unregistered_image_size_variant_index'] ?? 0);
+            $unregisteredImageSizeCandidate = is_array($unregisteredImageSizeCandidates[$unregisteredImageSizeIndex] ?? null)
+                ? (array)$unregisteredImageSizeCandidates[$unregisteredImageSizeIndex]
+                : [];
+
+            if (!empty($unregisteredImageSizeCandidate)) {
                 $matches = $this->searchCurrentSiteFileUsageMatches(
-                    is_string($attachmentCandidate['file_url'] ?? null) ? (string)$attachmentCandidate['file_url'] : '',
-                    is_string($attachmentCandidate['path'] ?? null) ? (string)$attachmentCandidate['path'] : '',
-                    (int)($attachmentCandidate['attachment_id'] ?? 0),
-                    false
+                    is_string($unregisteredImageSizeCandidate['file_url'] ?? null) ? (string)$unregisteredImageSizeCandidate['file_url'] : '',
+                    is_string($unregisteredImageSizeCandidate['path'] ?? null) ? (string)$unregisteredImageSizeCandidate['path'] : '',
+                    (int)($unregisteredImageSizeCandidate['attachment_id'] ?? 0)
                 );
                 $matchCount = count($matches);
-                $attachmentCandidate['content_usage_count'] = $matchCount;
-                $attachmentCandidate['content_usage_label'] = sprintf(
+                $unregisteredImageSizeCandidate['content_usage_count'] = $matchCount;
+                $unregisteredImageSizeCandidate['content_usage_label'] = sprintf(
                     _n('%d matches', '%d matches', $matchCount, 'rrze-multisite-manager'),
                     $matchCount
                 );
 
                 if ($matchCount > 0) {
-                    $attachmentCandidate['content_usage_results'] = $matches;
-                    $state['used_attachments'][] = $attachmentCandidate;
+                    $unregisteredImageSizeCandidate['content_usage_results'] = $matches;
+                    $state['unregistered_image_size_variants_found_in_content'][] = $unregisteredImageSizeCandidate;
                 } else {
-                    $state['unused_attachments'][] = $attachmentCandidate;
+                    $state['unregistered_image_size_variants_without_content_matches'][] = $unregisteredImageSizeCandidate;
                 }
             }
 
-            $state['attachment_index'] = $attachmentIndex + 1;
+            $state['unregistered_image_size_variant_index'] = $unregisteredImageSizeIndex + 1;
             $processed++;
         }
 
@@ -4434,8 +4499,8 @@ class MetricsService {
         $state['message'] = sprintf(
             /* translators: 1: processed candidates, 2: total candidates. */
             __('%1$s of %2$s potentially orphaned files have been checked.', 'rrze-multisite-manager'),
-            number_format_i18n($index + (int)($state['attachment_index'] ?? 0)),
-            number_format_i18n((int)($state['total'] ?? 0) + count((array)($state['attachment_candidates'] ?? [])))
+            number_format_i18n($index + (int)($state['attachment_index'] ?? 0) + (int)($state['unregistered_image_size_variant_index'] ?? 0)),
+            number_format_i18n((int)($state['total'] ?? 0) + count((array)($state['attachment_candidates'] ?? [])) + count((array)($state['unregistered_image_size_variant_candidates'] ?? [])))
         );
 
         return $state;
@@ -4452,6 +4517,8 @@ class MetricsService {
         $analysis['unused_attachment_files'] = $unusedAttachmentFiles;
         $analysis['unused_attachment_file_count'] = count($unusedAttachmentFiles);
         $analysis['unused_attachment_total_bytes'] = $this->sumStorageEntriesSize($unusedAttachmentFiles);
+        $analysis['unregistered_image_size_variants_found_in_content'] = array_values((array)($state['unregistered_image_size_variants_found_in_content'] ?? []));
+        $analysis['unregistered_image_size_variants_without_content_matches'] = array_values((array)($state['unregistered_image_size_variants_without_content_matches'] ?? []));
         $analysis['combined_flagged_file_count'] = (int)($analysis['orphan_file_count'] ?? 0) + count($unusedAttachmentFiles);
         $analysis['combined_flagged_total_bytes'] = (int)($analysis['orphan_total_bytes'] ?? 0) + (int)$analysis['unused_attachment_total_bytes'];
         $analysis['orphan_analysis_state'] = 'complete';
@@ -4620,7 +4687,7 @@ class MetricsService {
 
     protected function getCurrentSiteStorageAnalysisAttachmentIndex(): array {
         $siteId = get_current_blog_id();
-        $cacheKey = 'rrze_msm_site_storage_attachment_index_' . $this->getDetailCacheVersion() . '_' . $siteId;
+        $cacheKey = 'rrze_msm_site_storage_attachment_index_v2_' . $this->getDetailCacheVersion() . '_' . $siteId;
         $cached = get_site_transient($cacheKey);
         $index = [];
 
@@ -4644,7 +4711,7 @@ class MetricsService {
         delete_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
         delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
         delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
-        delete_site_transient('rrze_msm_site_storage_attachment_index_' . $this->getDetailCacheVersion() . '_' . $siteId);
+        delete_site_transient('rrze_msm_site_storage_attachment_index_v2_' . $this->getDetailCacheVersion() . '_' . $siteId);
     }
 
     protected function getSiteStorageAnalysisCacheKey(int $siteId): string {
@@ -4953,6 +5020,7 @@ class MetricsService {
         $metadata = [];
         $attachmentId = 0;
         $baseEntry = [];
+        $registeredImageSizeSlugs = $this->getCurrentSiteRegisteredImageSizeSlugs();
 
         foreach ($rows as $row) {
             $attachmentId = (int)($row->ID ?? 0);
@@ -4977,7 +5045,7 @@ class MetricsService {
                 continue;
             }
 
-            $this->collectAttachmentIndexPathsFromMetadata($index, $baseEntry, $metadata);
+            $this->collectAttachmentIndexPathsFromMetadata($index, $baseEntry, $metadata, $registeredImageSizeSlugs);
         }
 
         return $index;
@@ -5203,11 +5271,13 @@ class MetricsService {
         return $summaryLabels;
     }
 
-    protected function collectAttachmentIndexPathsFromMetadata(array &$index, array $baseEntry, array $metadata): void {
+    protected function collectAttachmentIndexPathsFromMetadata(array &$index, array $baseEntry, array $metadata, array $registeredImageSizeSlugs = []): void {
         $baseFile = '';
         $baseDir = '';
         $sizes = [];
         $sizeRow = [];
+        $sizeSlug = '';
+        $sizeEntry = [];
         $originalImage = '';
 
         if (!empty($metadata['file']) && is_string($metadata['file'])) {
@@ -5222,17 +5292,23 @@ class MetricsService {
 
         $sizes = is_array($metadata['sizes'] ?? null) ? $metadata['sizes'] : [];
 
-        foreach ($sizes as $sizeRow) {
+        foreach ($sizes as $sizeSlug => $sizeRow) {
             if (!is_array($sizeRow) || empty($sizeRow['file']) || !is_string($sizeRow['file'])) {
                 continue;
             }
 
+            $sizeEntry = $baseEntry;
+            $sizeEntry['image_size_slug'] = is_string($sizeSlug) ? $sizeSlug : '';
+            $sizeEntry['is_unregistered_image_size'] = str_starts_with((string)($baseEntry['mime_type'] ?? ''), 'image/')
+                && $sizeEntry['image_size_slug'] !== ''
+                && !isset($registeredImageSizeSlugs[$sizeEntry['image_size_slug']]);
+
             if ($baseDir !== '') {
-                $index[$this->normalizeRelativeUploadPath($baseDir . '/' . (string)$sizeRow['file'])] = $baseEntry;
+                $index[$this->normalizeRelativeUploadPath($baseDir . '/' . (string)$sizeRow['file'])] = $sizeEntry;
                 continue;
             }
 
-            $index[$this->normalizeRelativeUploadPath((string)$sizeRow['file'])] = $baseEntry;
+            $index[$this->normalizeRelativeUploadPath((string)$sizeRow['file'])] = $sizeEntry;
         }
 
         $originalImage = !empty($metadata['original_image']) && is_string($metadata['original_image'])
@@ -5278,6 +5354,8 @@ class MetricsService {
             'media_edit_url' => is_string($attachmentEntry['media_edit_url'] ?? null) ? (string)$attachmentEntry['media_edit_url'] : '',
             'attachment_id' => (int)($attachmentEntry['attachment_id'] ?? 0),
             'mime_type' => $mimeType,
+            'image_size_slug' => is_string($attachmentEntry['image_size_slug'] ?? null) ? (string)$attachmentEntry['image_size_slug'] : '',
+            'is_unregistered_image_size' => !empty($attachmentEntry['is_unregistered_image_size']),
             'type_label' => !empty($attachmentEntry['type_label'])
                 ? (string)$attachmentEntry['type_label']
                 : $this->getStorageFileTypeLabel($normalizedRelativePath, $mimeType),
@@ -5362,6 +5440,35 @@ class MetricsService {
         }
 
         return true;
+    }
+
+    protected function isUnregisteredImageSizeVariant(string $relativePath, array $attachmentIndex): bool {
+        $normalizedPath = $this->normalizeRelativeUploadPath($relativePath);
+        $attachmentEntry = is_array($attachmentIndex[$normalizedPath] ?? null) ? $attachmentIndex[$normalizedPath] : [];
+
+        return !empty($attachmentEntry['is_unregistered_image_size']);
+    }
+
+    protected function getCurrentSiteRegisteredImageSizeSlugs(): array {
+        $registeredSizes = function_exists('wp_get_registered_image_subsizes')
+            ? wp_get_registered_image_subsizes()
+            : [];
+        $registeredSizeSlugs = [];
+        $sizeSlug = '';
+
+        if (empty($registeredSizes) && function_exists('get_intermediate_image_sizes')) {
+            $registeredSizes = array_fill_keys((array)get_intermediate_image_sizes(), []);
+        }
+
+        foreach (array_keys((array)$registeredSizes) as $sizeSlug) {
+            if (!is_string($sizeSlug) || $sizeSlug === '') {
+                continue;
+            }
+
+            $registeredSizeSlugs[$sizeSlug] = true;
+        }
+
+        return $registeredSizeSlugs;
     }
 
     protected function getStorageFileTypeLabel(string $relativePath, string $mimeType = ''): string {
@@ -5627,6 +5734,9 @@ class MetricsService {
     protected function getCurrentSiteStorageAttachmentDebug(int $attachmentId): array {
         $attachment = get_post($attachmentId);
         $attachedFile = (string)get_post_meta($attachmentId, '_wp_attached_file', true);
+        $mimeType = $attachment instanceof \WP_Post ? (string)$attachment->post_mime_type : '';
+        $isImage = str_starts_with($mimeType, 'image/');
+        $metadataFields = [];
         $normalizedPath = $this->normalizeRelativeUploadPath($attachedFile);
         $metadata = maybe_unserialize(get_post_meta($attachmentId, '_wp_attachment_metadata', true));
         $uploadDir = wp_get_upload_dir();
@@ -5685,6 +5795,19 @@ class MetricsService {
             );
         }
 
+        if ($isImage) {
+            $metadataFields = [
+                'alternative_text' => (string)get_post_meta($attachmentId, '_wp_attachment_image_alt', true),
+                'caption' => $attachment instanceof \WP_Post ? (string)$attachment->post_excerpt : '',
+                'description' => $attachment instanceof \WP_Post ? (string)$attachment->post_content : '',
+            ];
+        } else {
+            $metadataFields = [
+                'short_description' => $attachment instanceof \WP_Post ? (string)$attachment->post_excerpt : '',
+                'description' => $attachment instanceof \WP_Post ? (string)$attachment->post_content : '',
+            ];
+        }
+
         return [
             'attachment_id' => $attachmentId,
             'exists' => $attachment instanceof \WP_Post,
@@ -5694,7 +5817,11 @@ class MetricsService {
             'absolute_path' => $absolutePath,
             'file_exists' => $absolutePath !== '' ? is_file($absolutePath) : false,
             'file_url' => $normalizedPath !== '' ? trailingslashit($baseUrl) . ltrim($normalizedPath, '/') : '',
-            'mime_type' => $attachment instanceof \WP_Post ? (string)$attachment->post_mime_type : '',
+            'mime_type' => $mimeType,
+            'is_image' => $isImage,
+            'metadata_fields' => $metadataFields,
+            'image_metadata' => $isImage && is_array($metadata) ? $this->getAttachmentImageMetadataForDebug($metadata) : [],
+            'document_metadata' => !$isImage && is_array($metadata) ? $this->getAttachmentNonImageMetadataForDebug($metadata) : [],
             'has_attachment_metadata' => is_array($metadata),
             'metadata_size_variants' => is_array($metadata) && is_array($metadata['sizes'] ?? null) ? count($metadata['sizes']) : 0,
             'in_attachment_candidates' => !empty($candidateEntry),
@@ -5708,6 +5835,130 @@ class MetricsService {
             'match_count_without_code' => count($matchesWithoutCode),
             'match_count_with_code' => count($matchesWithCode),
         ];
+    }
+
+    protected function getAttachmentImageMetadataForDebug(array $metadata): array {
+        $imageMetadata = is_array($metadata['image_meta'] ?? null) ? (array)$metadata['image_meta'] : [];
+        $results = [];
+        $width = max(0, (int)($metadata['width'] ?? 0));
+        $height = max(0, (int)($metadata['height'] ?? 0));
+        $fieldMap = [
+            'camera' => __('Camera', 'rrze-multisite-manager'),
+            'aperture' => __('Aperture', 'rrze-multisite-manager'),
+            'focal_length' => __('Focal length', 'rrze-multisite-manager'),
+            'iso' => __('ISO sensitivity', 'rrze-multisite-manager'),
+            'shutter_speed' => __('Shutter speed', 'rrze-multisite-manager'),
+            'orientation' => __('Orientation', 'rrze-multisite-manager'),
+            'credit' => __('Credit', 'rrze-multisite-manager'),
+            'copyright' => __('Copyright', 'rrze-multisite-manager'),
+            'title' => __('EXIF title', 'rrze-multisite-manager'),
+            'caption' => __('EXIF caption', 'rrze-multisite-manager'),
+            'keywords' => __('Keywords', 'rrze-multisite-manager'),
+        ];
+        $fieldKey = '';
+        $label = '';
+        $value = null;
+        $values = [];
+
+        if ($width > 0 && $height > 0) {
+            $results[__('Image dimensions', 'rrze-multisite-manager')] = $width . ' x ' . $height . ' px';
+        }
+
+        if (!empty($imageMetadata['created_timestamp']) && is_numeric($imageMetadata['created_timestamp'])) {
+            $results[__('Date taken', 'rrze-multisite-manager')] = $this->formatTimestamp((int)$imageMetadata['created_timestamp']);
+        }
+
+        foreach ($fieldMap as $fieldKey => $label) {
+            $value = $imageMetadata[$fieldKey] ?? null;
+
+            if (is_array($value)) {
+                $values = array_filter($value, 'is_scalar');
+                $values = array_filter(array_map('strval', $values), 'strlen');
+                $value = implode(', ', $values);
+            }
+
+            if (!is_scalar($value) || trim((string)$value) === '') {
+                continue;
+            }
+
+            $results[$label] = (string)$value;
+        }
+
+        return $results;
+    }
+
+    protected function getAttachmentNonImageMetadataForDebug(array $metadata): array {
+        $results = [];
+        $technicalMetadata = $metadata;
+        $nestedMetadata = [];
+        $fieldMap = [
+            'fileformat' => __('File format', 'rrze-multisite-manager'),
+            'dataformat' => __('Data format', 'rrze-multisite-manager'),
+            'codec' => __('Codec', 'rrze-multisite-manager'),
+            'bitrate' => __('Bit rate', 'rrze-multisite-manager'),
+            'bitrate_mode' => __('Bit rate mode', 'rrze-multisite-manager'),
+            'channels' => __('Audio channels', 'rrze-multisite-manager'),
+            'channelmode' => __('Audio channel mode', 'rrze-multisite-manager'),
+            'sample_rate' => __('Sample rate', 'rrze-multisite-manager'),
+            'encoding' => __('Encoding', 'rrze-multisite-manager'),
+            'artist' => __('Artist', 'rrze-multisite-manager'),
+            'album' => __('Album', 'rrze-multisite-manager'),
+            'genre' => __('Genre', 'rrze-multisite-manager'),
+            'year' => __('Year', 'rrze-multisite-manager'),
+            'track_number' => __('Track number', 'rrze-multisite-manager'),
+        ];
+        $fieldKey = '';
+        $label = '';
+        $value = null;
+        $metadataType = '';
+        $width = max(0, (int)($metadata['width'] ?? 0));
+        $height = max(0, (int)($metadata['height'] ?? 0));
+
+        foreach (['audio', 'video'] as $metadataType) {
+            $nestedMetadata = is_array($metadata[$metadataType] ?? null) ? (array)$metadata[$metadataType] : [];
+
+            foreach ($nestedMetadata as $fieldKey => $value) {
+                if (!array_key_exists($fieldKey, $technicalMetadata)) {
+                    $technicalMetadata[$fieldKey] = $value;
+                }
+            }
+        }
+
+        if (!empty($metadata['filesize']) && is_numeric($metadata['filesize'])) {
+            $results[__('File size in metadata', 'rrze-multisite-manager')] = $this->formatStorageAnalysisSize((int)$metadata['filesize']);
+        }
+
+        if (!empty($metadata['length_formatted']) && is_scalar($metadata['length_formatted'])) {
+            $results[__('Duration', 'rrze-multisite-manager')] = (string)$metadata['length_formatted'];
+        } elseif (!empty($metadata['length']) && is_numeric($metadata['length'])) {
+            $results[__('Duration', 'rrze-multisite-manager')] = (string)$metadata['length'] . ' s';
+        }
+
+        if ($width > 0 && $height > 0) {
+            $results[__('Dimensions', 'rrze-multisite-manager')] = $width . ' x ' . $height . ' px';
+        }
+
+        foreach ($fieldMap as $fieldKey => $label) {
+            $value = $technicalMetadata[$fieldKey] ?? null;
+
+            if (!is_scalar($value) || trim((string)$value) === '') {
+                continue;
+            }
+
+            if ($fieldKey === 'bitrate' && is_numeric($value)) {
+                $results[$label] = number_format_i18n((int)$value) . ' bit/s';
+                continue;
+            }
+
+            if ($fieldKey === 'sample_rate' && is_numeric($value)) {
+                $results[$label] = number_format_i18n((int)$value) . ' Hz';
+                continue;
+            }
+
+            $results[$label] = (string)$value;
+        }
+
+        return $results;
     }
 
     protected function sumStorageEntriesSize(array $entries): int {
