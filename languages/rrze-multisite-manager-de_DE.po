@@ -1,15 +1,15 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: \n"
-"Report-Msgid-Bugs-To: \n"
-"Last-Translator: \n"
-"Language-Team: \n"
+"Project-Id-Version: RRZE Multisite Manager\n"
+"Report-Msgid-Bugs-To: webmaster@fau.de\n"
+"PO-Revision-Date: 2026-09-01 13:00+0200\n"
+"Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
+"Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
+"Language: de_DE\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-01T12:07:39+00:00\n"
-"PO-Revision-Date: 2026-09-01T12:07:39+00:00\n"
-"Language: \n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #. translators: 1: current PHP version, 2: minimum required PHP version.
 #: rrze-multisite-manager.php:63
@@ -4271,60 +4271,60 @@ msgstr ""
 #: includes/Dashboard.php:1738
 #: includes/Dashboard.php:1759
 msgid "You are not allowed to perform this action."
-msgstr ""
+msgstr "Du bist nicht berechtigt, diese Aktion auszuführen."
 
 #. translators: 1: monitoring status label, 2: monitoring detail text.
 #: includes/MetricsService.php:7729
 #: includes/Settings.php:1367
 msgid "%1$s (%2$s)"
-msgstr ""
+msgstr "%1$s (%2$s)"
 
 #: includes/MonitoringService.php:492
 msgid "No host could be determined from the site URL."
-msgstr ""
+msgstr "Aus der Website-URL konnte kein Host ermittelt werden."
 
 #: includes/MonitoringService.php:493
 msgid "HTTP check skipped because no host could be determined from the site URL."
-msgstr ""
+msgstr "HTTP-Prüfung übersprungen, weil aus der Website-URL kein Host ermittelt werden konnte."
 
 #: includes/MonitoringService.php:511
 msgid "HTTP check skipped because DNS resolution failed."
-msgstr ""
+msgstr "HTTP-Prüfung übersprungen, weil die DNS-Auflösung fehlgeschlagen ist."
 
 #. translators: %s: IP address.
 #: includes/MonitoringService.php:623
 msgid "Direct IP address: %s"
-msgstr ""
+msgstr "Direkte IP-Adresse: %s"
 
 #: includes/MonitoringService.php:642
 msgid "DNS lookup failed."
-msgstr ""
+msgstr "DNS-Abfrage fehlgeschlagen."
 
 #: includes/MonitoringService.php:651
 #: includes/MonitoringService.php:911
 msgid "DNS record found."
-msgstr ""
+msgstr "DNS-Eintrag gefunden."
 
 #: includes/MonitoringService.php:657
 msgid "No A, AAAA, or CNAME record found."
-msgstr ""
+msgstr "Kein A-, AAAA- oder CNAME-Eintrag gefunden."
 
 #: includes/MonitoringService.php:663
 msgid "DNS checks are not available on this server."
-msgstr ""
+msgstr "DNS-Prüfungen sind auf diesem Server nicht verfügbar."
 
 #: includes/MonitoringService.php:946
 msgid "No HTTP status code received."
-msgstr ""
+msgstr "Kein HTTP-Statuscode empfangen."
 
 #: includes/MonitoringService.php:976
 msgid "HTTP request failed."
-msgstr ""
+msgstr "HTTP-Anfrage fehlgeschlagen."
 
 #: templates/site-storage-analysis-page.php:253
 #: templates/site-storage-attachment-debug.php:59
 msgid "Matches"
-msgstr ""
+msgstr "Treffer"
 
 #: templates/site-storage-analysis-page.php:419
 msgid "Image variants from no longer registered sizes"
@@ -4401,7 +4401,7 @@ msgstr "Aufnahmedatum"
 
 #: templates/site-storage-analysis-page.php:387
 msgid "ID"
-msgstr ""
+msgstr "ID"
 
 #: templates/site-storage-attachment-debug.php:23
 msgid "Media type"
