@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.1.19
+ * Version:         1.1.20
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -43,9 +43,6 @@ function autoload(string $class): void {
     }
 }
 
-const RRZE_PHP_VERSION = '8.3';
-const RRZE_WP_VERSION = '6.9.4';
-
 add_action('init', __NAMESPACE__ . '\loadTextdomain', 0);
 add_action('init', __NAMESPACE__ . '\loaded', 5);
 register_deactivation_hook(__FILE__, __NAMESPACE__ . '\deactivate');
@@ -54,22 +51,24 @@ function loadTextdomain(): void {
     load_plugin_textdomain('rrze-multisite-manager', false, dirname(plugin_basename(__FILE__)) . '/languages');
 }
 
-function systemRequirements(): string {
+function systemRequirements(Config $config): string {
     $error = '';
+    $requiredPhpVersion = $config->getRequiredPhpVersion();
+    $requiredWpVersion = $config->getRequiredWpVersion();
 
-    if (version_compare(PHP_VERSION, RRZE_PHP_VERSION, '<')) {
+    if ($requiredPhpVersion !== '' && version_compare(PHP_VERSION, $requiredPhpVersion, '<')) {
         $error = sprintf(
             /* translators: 1: current PHP version, 2: minimum required PHP version. */
             __('The server is running PHP version %1$s. The plugin requires at least PHP version %2$s.', 'rrze-multisite-manager'),
             PHP_VERSION,
-            RRZE_PHP_VERSION
+            $requiredPhpVersion
         );
-    } elseif (version_compare($GLOBALS['wp_version'], RRZE_WP_VERSION, '<')) {
+    } elseif ($requiredWpVersion !== '' && version_compare($GLOBALS['wp_version'], $requiredWpVersion, '<')) {
         $error = sprintf(
             /* translators: 1: current WordPress version, 2: minimum required WordPress version. */
             __('The server is running WordPress version %1$s. The plugin requires at least WordPress version %2$s.', 'rrze-multisite-manager'),
             $GLOBALS['wp_version'],
-            RRZE_WP_VERSION
+            $requiredWpVersion
         );
     }
 
@@ -77,7 +76,9 @@ function systemRequirements(): string {
 }
 
 function loaded(): void {
-    if ($error = systemRequirements()) {
+    $config = new Config();
+
+    if ($error = systemRequirements($config)) {
         $GLOBALS['rrze_multisite_manager_system_requirement_error'] = $error;
         add_action('admin_init', __NAMESPACE__ . '\registerSystemRequirementNotice');
         return;

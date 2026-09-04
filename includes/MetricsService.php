@@ -5612,8 +5612,10 @@ class MetricsService {
         $seen = [];
         $posts = [];
         $metaRows = [];
+        $optionRows = [];
         $post = null;
         $metaRow = null;
+        $optionRow = null;
         $postId = 0;
         $codeMatches = [];
         $codeMatch = [];
@@ -5622,7 +5624,13 @@ class MetricsService {
         $contentParams = [];
         $metaConditions = [];
         $metaParams = [];
+        $optionConditions = [];
+        $optionParams = [];
+        $postTypes = [];
+        $postTypePlaceholders = '';
+        $postTypeParams = [];
         $needle = '';
+        $optionKey = '';
 
         $needles = $this->buildFileUsageSearchNeedles($fileUrl, $relativePath, $attachmentId);
 
@@ -5630,11 +5638,22 @@ class MetricsService {
             return [];
         }
 
+        $postTypes = $this->getCurrentSiteFileUsagePostTypes();
+
+        if (empty($postTypes)) {
+            return [];
+        }
+
+        $postTypePlaceholders = implode(', ', array_fill(0, count($postTypes), '%s'));
+        $postTypeParams = array_values($postTypes);
+
         foreach ($needles as $needle) {
             $contentConditions[] = 'post_content LIKE %s';
             $contentParams[] = '%' . $wpdb->esc_like($needle) . '%';
             $metaConditions[] = 'pm.meta_value LIKE %s';
             $metaParams[] = '%' . $wpdb->esc_like($needle) . '%';
+            $optionConditions[] = 'option_value LIKE %s';
+            $optionParams[] = '%' . $wpdb->esc_like($needle) . '%';
         }
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Placeholder conditions are assembled internally and bound safely via $wpdb->prepare().
@@ -5642,10 +5661,10 @@ class MetricsService {
             $wpdb->prepare(
                 "SELECT ID, post_type, post_title
                 FROM {$wpdb->posts}
-                WHERE post_type IN ('post', 'page')
+                WHERE post_type IN (" . $postTypePlaceholders . ")
                 AND post_status NOT IN ('auto-draft', 'trash')
                 AND (" . implode(' OR ', $contentConditions) . ')',
-                ...$contentParams
+                ...array_merge($postTypeParams, $contentParams)
             )
         );
 
@@ -5673,10 +5692,10 @@ class MetricsService {
                 "SELECT DISTINCT p.ID, p.post_type, p.post_title, pm.meta_key
                 FROM {$wpdb->posts} p
                 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
-                WHERE p.post_type IN ('post', 'page')
+                WHERE p.post_type IN (" . $postTypePlaceholders . ")
                 AND p.post_status NOT IN ('auto-draft', 'trash')
                 AND (" . implode(' OR ', $metaConditions) . ')',
-                ...$metaParams
+                ...array_merge($postTypeParams, $metaParams)
             )
         );
 
@@ -5708,6 +5727,47 @@ class MetricsService {
             }
         }
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Placeholder conditions are assembled internally and bound safely via $wpdb->prepare().
+        $optionRows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT option_name
+                FROM {$wpdb->options}
+                WHERE (
+                    option_name IN ('widget_block', 'widget_media_audio', 'widget_media_gallery', 'widget_media_image', 'widget_media_video')
+                    OR option_name LIKE 'theme_mods\\_%'
+                )
+                AND (" . implode(' OR ', $optionConditions) . ')',
+                ...$optionParams
+            )
+        );
+
+        foreach ($optionRows as $optionRow) {
+            $optionKey = 'option:' . (string)($optionRow->option_name ?? '');
+
+            if ($optionKey === 'option:' || isset($results[$optionKey])) {
+                continue;
+            }
+
+            $results[$optionKey] = [
+                'post_id' => 0,
+                'post_type' => 'option',
+                'title' => sprintf(
+                    /* translators: %s: option name. */
+                    __('Option: %s', 'rrze-multisite-manager'),
+                    (string)($optionRow->option_name ?? '')
+                ),
+                'edit_url' => '',
+                'view_url' => '',
+                'matches' => [
+                    sprintf(
+                        /* translators: %s: option name. */
+                        __('Option value: %s', 'rrze-multisite-manager'),
+                        (string)($optionRow->option_name ?? '')
+                    ),
+                ],
+            ];
+        }
+
         foreach ($results as $index => $resultRow) {
             $results[$index]['matches_label'] = implode(', ', (array)($resultRow['matches'] ?? []));
         }
@@ -5729,6 +5789,56 @@ class MetricsService {
         }
 
         return array_values($results);
+    }
+
+    protected function getCurrentSiteFileUsagePostTypes(): array {
+        $postTypes = get_post_types([], 'objects');
+        $results = [];
+        $postType = null;
+        $slug = '';
+        $alwaysIncluded = [
+            'post',
+            'page',
+            'wp_block',
+            'wp_navigation',
+            'wp_template',
+            'wp_template_part',
+        ];
+        $excluded = [
+            'attachment',
+            'revision',
+            'nav_menu_item',
+            'custom_css',
+            'customize_changeset',
+            'oembed_cache',
+            'user_request',
+            'wp_global_styles',
+            'wp_font_family',
+            'wp_font_face',
+            'wp_pattern_category',
+        ];
+
+        foreach ($alwaysIncluded as $slug) {
+            if (!in_array($slug, $excluded, true)) {
+                $results[$slug] = true;
+            }
+        }
+
+        foreach ($postTypes as $slug => $postType) {
+            if (!is_string($slug) || in_array($slug, $excluded, true)) {
+                continue;
+            }
+
+            if (!$postType instanceof \WP_Post_Type) {
+                continue;
+            }
+
+            if (!empty($postType->public) || !empty($postType->show_ui)) {
+                $results[$slug] = true;
+            }
+        }
+
+        return array_keys($results);
     }
 
     protected function getCurrentSiteStorageAttachmentDebug(int $attachmentId): array {
@@ -5821,6 +5931,7 @@ class MetricsService {
             'is_image' => $isImage,
             'metadata_fields' => $metadataFields,
             'image_metadata' => $isImage && is_array($metadata) ? $this->getAttachmentImageMetadataForDebug($metadata) : [],
+            'image_size_variants' => $isImage && is_array($metadata) ? $this->getAttachmentImageSizeVariantsForDebug($metadata, $baseDir, $baseUrl, $normalizedPath) : [],
             'document_metadata' => !$isImage && is_array($metadata) ? $this->getAttachmentNonImageMetadataForDebug($metadata) : [],
             'has_attachment_metadata' => is_array($metadata),
             'metadata_size_variants' => is_array($metadata) && is_array($metadata['sizes'] ?? null) ? count($metadata['sizes']) : 0,
@@ -5835,6 +5946,74 @@ class MetricsService {
             'match_count_without_code' => count($matchesWithoutCode),
             'match_count_with_code' => count($matchesWithCode),
         ];
+    }
+
+    protected function getAttachmentImageSizeVariantsForDebug(array $metadata, string $baseDir, string $baseUrl, string $fallbackBaseFile): array {
+        $sizes = is_array($metadata['sizes'] ?? null) ? (array)$metadata['sizes'] : [];
+        $baseFile = !empty($metadata['file']) && is_string($metadata['file'])
+            ? $this->normalizeRelativeUploadPath((string)$metadata['file'])
+            : $fallbackBaseFile;
+        $baseDirectory = dirname($baseFile);
+        $results = [];
+        $sizeSlug = '';
+        $sizeData = [];
+        $variantFile = '';
+        $variantPath = '';
+        $absolutePath = '';
+        $sizeBytes = 0;
+
+        if ($baseDirectory === '.' || $baseDirectory === DIRECTORY_SEPARATOR) {
+            $baseDirectory = '';
+        }
+
+        foreach ($sizes as $sizeSlug => $sizeData) {
+            if (!is_array($sizeData) || empty($sizeData['file']) || !is_string($sizeData['file'])) {
+                continue;
+            }
+
+            $variantFile = (string)$sizeData['file'];
+            $variantPath = $baseDirectory !== ''
+                ? $this->normalizeRelativeUploadPath($baseDirectory . '/' . $variantFile)
+                : $this->normalizeRelativeUploadPath($variantFile);
+
+            if ($variantPath === '') {
+                continue;
+            }
+
+            $absolutePath = trailingslashit(wp_normalize_path($baseDir)) . ltrim($variantPath, '/');
+
+            if ($baseDir === '' || !is_file($absolutePath)) {
+                continue;
+            }
+
+            $sizeBytes = max(0, (int)@filesize($absolutePath));
+
+            $results[] = [
+                'slug' => is_string($sizeSlug) ? $sizeSlug : '',
+                'file' => $variantFile,
+                'path' => $variantPath,
+                'width' => max(0, (int)($sizeData['width'] ?? 0)),
+                'height' => max(0, (int)($sizeData['height'] ?? 0)),
+                'size_bytes' => $sizeBytes,
+                'size_label' => $this->formatStorageAnalysisSize($sizeBytes),
+                'file_url' => trailingslashit($baseUrl) . ltrim($variantPath, '/'),
+            ];
+        }
+
+        usort($results, [self::class, 'compareImageSizeVariantEntries']);
+
+        return $results;
+    }
+
+    protected static function compareImageSizeVariantEntries(array $a, array $b): int {
+        $areaA = max(0, (int)($a['width'] ?? 0)) * max(0, (int)($a['height'] ?? 0));
+        $areaB = max(0, (int)($b['width'] ?? 0)) * max(0, (int)($b['height'] ?? 0));
+
+        if ($areaA === $areaB) {
+            return strnatcasecmp((string)($a['slug'] ?? ''), (string)($b['slug'] ?? ''));
+        }
+
+        return $areaB <=> $areaA;
     }
 
     protected function getAttachmentImageMetadataForDebug(array $metadata): array {
@@ -6329,7 +6508,7 @@ class MetricsService {
         if (!empty($this->searchCurrentSiteFileUsageMatches($fileUrl, $normalizedRelativePath))) {
             return [
                 'deleted' => false,
-                'message' => __('This file is still referenced in content, meta fields, or a code registration/enqueue and is therefore not deleted.', 'rrze-multisite-manager'),
+                'message' => __('This file is still referenced in content, blocks, templates, widgets, inspected meta fields, or a code registration/enqueue and is therefore not deleted.', 'rrze-multisite-manager'),
             ];
         }
 
@@ -6480,6 +6659,22 @@ class MetricsService {
         if ($attachmentId > 0) {
             $attachmentNeedles = [
                 'wp-image-' . $attachmentId,
+                '"id":' . $attachmentId,
+                '"mediaId":' . $attachmentId,
+                '"mediaID":' . $attachmentId,
+                '"imageId":' . $attachmentId,
+                '"imageID":' . $attachmentId,
+                '"attachmentId":' . $attachmentId,
+                '"attachmentID":' . $attachmentId,
+                '"backgroundImageId":' . $attachmentId,
+                '"backgroundImageID":' . $attachmentId,
+                '"media_id":' . $attachmentId,
+                '"image_id":' . $attachmentId,
+                '"attachment_id":' . $attachmentId,
+                '"background_image_id":' . $attachmentId,
+                '"ids":[' . $attachmentId,
+                ',' . $attachmentId . ',',
+                ',' . $attachmentId . ']',
             ];
 
             foreach ($attachmentNeedles as $needle) {
