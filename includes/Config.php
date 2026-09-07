@@ -13,6 +13,8 @@ class Config {
             'constants' => [
                 'plugin_name' => __('RRZE Multisite Manager', 'rrze-multisite-manager'),
                 'textdomain' => 'rrze-multisite-manager',
+                'wp_version' => '6.9.4',
+                'php_version' => '8.3',
                 'metrics_cache_ttl' => HOUR_IN_SECONDS,
                 'monitoring_schedule_slug' => 'rrze_msm_every_six_hours',
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
@@ -156,6 +158,14 @@ class Config {
 
     public function getConstants(): array {
         return $this->config['constants'];
+    }
+
+    public function getRequiredWpVersion(): string {
+        return (string)($this->config['constants']['wp_version'] ?? '');
+    }
+
+    public function getRequiredPhpVersion(): string {
+        return (string)($this->config['constants']['php_version'] ?? '');
     }
 
     public function getMenuSettings(): array {

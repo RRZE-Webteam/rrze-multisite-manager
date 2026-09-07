@@ -12,7 +12,7 @@ Verwaltungs- und Analysewerkzeug fuer WordPress-Multisite-Netzwerke mit Fokus au
 
 GNU General Public License (GPL) Version 3
 
-## Documentation
+## Dokumentation
 
 Die oeffentliche Dokumentation und Endanwender-Hinweise liegen unter:
 

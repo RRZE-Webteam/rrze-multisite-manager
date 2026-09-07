@@ -53,6 +53,37 @@ defined('ABSPATH') || exit;
                 <tr><th><?php echo esc_html__('Matches with code', 'rrze-multisite-manager'); ?></th><td class="rrze-msm-col-numeric"><?php echo esc_html((string)count((array)($attachment_debug['matches_with_code'] ?? []))); ?></td></tr>
             </tbody>
         </table>
+        <?php if (!empty($attachment_debug['is_image'])) { ?>
+            <h3><?php echo esc_html__('Available image size variants', 'rrze-multisite-manager'); ?></h3>
+            <?php if (!empty($attachment_debug['image_size_variants'])) { ?>
+                <table class="widefat striped rrze-msm-table">
+                    <thead>
+                        <tr>
+                            <th><?php echo esc_html__('Image size', 'rrze-multisite-manager'); ?></th>
+                            <th><?php echo esc_html__('Dimensions', 'rrze-multisite-manager'); ?></th>
+                            <th class="rrze-msm-col-numeric"><?php echo esc_html__('File size', 'rrze-multisite-manager'); ?></th>
+                            <th><?php echo esc_html__('Linked URL', 'rrze-multisite-manager'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ((array)$attachment_debug['image_size_variants'] as $image_size_variant) { ?>
+                            <tr>
+                                <td><code><?php echo esc_html((string)($image_size_variant['slug'] ?? '')); ?></code></td>
+                                <td><?php echo esc_html((string)($image_size_variant['width'] ?? 0) . ' x ' . (string)($image_size_variant['height'] ?? 0) . ' px'); ?></td>
+                                <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($image_size_variant['size_label'] ?? '')); ?></td>
+                                <td>
+                                    <?php if (!empty($image_size_variant['file_url'])) { ?>
+                                        <a href="<?php echo esc_url((string)$image_size_variant['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html((string)$image_size_variant['file_url']); ?></a>
+                                    <?php } ?>
+                                </td>
+                            </tr>
+                        <?php } ?>
+                    </tbody>
+                </table>
+            <?php } else { ?>
+                <p><?php echo esc_html__('No existing image size variants were found.', 'rrze-multisite-manager'); ?></p>
+            <?php } ?>
+        <?php } ?>
         <?php if (!empty($attachment_debug['matches_without_code'])) { ?>
             <h3><?php echo esc_html__('Detected references without code', 'rrze-multisite-manager'); ?></h3>
             <table class="widefat striped rrze-msm-table">
@@ -64,7 +95,7 @@ defined('ABSPATH') || exit;
                 </tbody>
             </table>
         <?php } else { ?>
-            <p><?php echo esc_html__('No references were detected in posts, pages, or their meta fields.', 'rrze-multisite-manager'); ?></p>
+            <p><?php echo esc_html__('No references were detected in content, blocks, templates, widgets, or inspected meta fields.', 'rrze-multisite-manager'); ?></p>
         <?php } ?>
     <?php } ?>
 </section>

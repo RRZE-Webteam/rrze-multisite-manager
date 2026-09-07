@@ -172,13 +172,6 @@ function setPluginCompatibility(pluginRoot, pkg) {
                     return p1 + compatibility.phprequires.trim();
                 }
             );
-
-            updated = updated.replace(
-                /const\s+RRZE_PHP_VERSION\s*=\s*['"][^'"]*['"]\s*;/,
-                function replacePhpConstant() {
-                    return "const RRZE_PHP_VERSION = '" + compatibility.phprequires.trim() + "';";
-                }
-            );
         }
 
         if (typeof compatibility.wprequires === 'string' && compatibility.wprequires.trim() !== '') {
@@ -188,17 +181,128 @@ function setPluginCompatibility(pluginRoot, pkg) {
                     return p1 + compatibility.wprequires.trim();
                 }
             );
+        }
 
+        return updated;
+    });
+}
+
+function setConfigCompatibility(pluginRoot, pkg) {
+    var compatibility = pkg.compatibility;
+    var filePath = path.join(pluginRoot, 'includes', 'Config.php');
+    var phpVersionReplaced = false;
+    var wpVersionReplaced = false;
+
+    if (!compatibility || typeof compatibility !== 'object') {
+        return;
+    }
+
+    if (!fs.existsSync(filePath)) {
+        throw new Error('Config file not found: ' + filePath);
+    }
+
+    replaceInFile(filePath, function replaceConfigCompatibility(content) {
+        var updated = content;
+
+        if (typeof compatibility.phprequires === 'string' && compatibility.phprequires.trim() !== '') {
             updated = updated.replace(
-                /const\s+RRZE_WP_VERSION\s*=\s*['"][^'"]*['"]\s*;/,
-                function replaceWpConstant() {
-                    return "const RRZE_WP_VERSION = '" + compatibility.wprequires.trim() + "';";
+                /('php_version'\s*=>\s*')[^']*(',)/,
+                function replacePhpVersion(match, p1, p2) {
+                    phpVersionReplaced = true;
+                    return p1 + compatibility.phprequires.trim() + p2;
+                }
+            );
+        }
+
+        if (typeof compatibility.wprequires === 'string' && compatibility.wprequires.trim() !== '') {
+            updated = updated.replace(
+                /('wp_version'\s*=>\s*')[^']*(',)/,
+                function replaceWpVersion(match, p1, p2) {
+                    wpVersionReplaced = true;
+                    return p1 + compatibility.wprequires.trim() + p2;
                 }
             );
         }
 
         return updated;
     });
+
+    if (typeof compatibility.phprequires === 'string' && compatibility.phprequires.trim() !== '' && !phpVersionReplaced) {
+        throw new Error('No php_version field found in includes/Config.php');
+    }
+
+    if (typeof compatibility.wprequires === 'string' && compatibility.wprequires.trim() !== '' && !wpVersionReplaced) {
+        throw new Error('No wp_version field found in includes/Config.php');
+    }
+}
+
+function formatPoRevisionDate(date) {
+    function pad(number) {
+        return String(number).padStart(2, '0');
+    }
+
+    return date.getUTCFullYear()
+        + '-'
+        + pad(date.getUTCMonth() + 1)
+        + '-'
+        + pad(date.getUTCDate())
+        + ' '
+        + pad(date.getUTCHours())
+        + ':'
+        + pad(date.getUTCMinutes())
+        + '+0000';
+}
+
+function shouldReplacePoRevisionDate(value) {
+    var trimmed = value.trim();
+
+    return trimmed === ''
+        || trimmed === 'YEAR-MO-DA HO:MI+ZONE'
+        || trimmed === 'YEAR-MO-DA HO:MI+0000';
+}
+
+function setPotMetadata(pluginRoot, pkg, newVersion) {
+    var textdomain = typeof pkg.textdomain === 'string' && pkg.textdomain.trim() !== ''
+        ? pkg.textdomain.trim()
+        : String(pkg.name || '').trim();
+    var title = typeof pkg.title === 'string' && pkg.title.trim() !== ''
+        ? pkg.title.trim()
+        : String(pkg.name || '').trim();
+    var filePath = path.join(pluginRoot, 'languages', textdomain + '.pot');
+    var replacements = 0;
+    var revisionDate = formatPoRevisionDate(new Date());
+
+    if (textdomain === '' || title === '' || !fs.existsSync(filePath)) {
+        return;
+    }
+
+    replaceInFile(filePath, function replacePotMetadata(content) {
+        content = content.replace(
+            /("Project-Id-Version:\s*)[^\\]*(\\n")/,
+            function replaceProjectIdVersion(match, p1, p2) {
+                replacements++;
+                return p1 + title + ' ' + newVersion + p2;
+            }
+        );
+
+        content = content.replace(
+            /("PO-Revision-Date:\s*)([^\\]*)(\\n")/,
+            function replacePoRevisionDate(match, p1, value, p2) {
+                if (!shouldReplacePoRevisionDate(value)) {
+                    return match;
+                }
+
+                replacements++;
+                return p1 + revisionDate + p2;
+            }
+        );
+
+        return content;
+    });
+
+    if (replacements === 0) {
+        throw new Error('No Project-Id-Version or PO-Revision-Date field found in ' + filePath);
+    }
 }
 
 function getNextVersion(mode, currentVersion) {
@@ -241,6 +345,8 @@ function main() {
     setReadmeTxtVersion(pluginRoot, next);
     setPluginVersion(pluginRoot, pkg, next);
     setPluginCompatibility(pluginRoot, pkg);
+    setConfigCompatibility(pluginRoot, pkg);
+    setPotMetadata(pluginRoot, pkg, next);
 
     console.log('Version bumped (' + mode + '): ' + current + ' -> ' + next);
 }

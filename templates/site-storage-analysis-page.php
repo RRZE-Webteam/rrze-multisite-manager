@@ -243,6 +243,37 @@ defined('ABSPATH') || exit;
                                 <tr><th><?php echo esc_html__('Matches with code', 'rrze-multisite-manager'); ?></th><td class="rrze-msm-col-numeric"><?php echo esc_html((string)count((array)($attachment_debug['matches_with_code'] ?? []))); ?></td></tr>
                             </tbody>
                         </table>
+                        <?php if (!empty($attachment_debug['is_image'])) { ?>
+                            <h3><?php echo esc_html__('Available image size variants', 'rrze-multisite-manager'); ?></h3>
+                            <?php if (!empty($attachment_debug['image_size_variants'])) { ?>
+                                <table class="widefat striped rrze-msm-table">
+                                    <thead>
+                                        <tr>
+                                            <th><?php echo esc_html__('Image size', 'rrze-multisite-manager'); ?></th>
+                                            <th><?php echo esc_html__('Dimensions', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-numeric"><?php echo esc_html__('File size', 'rrze-multisite-manager'); ?></th>
+                                            <th><?php echo esc_html__('Linked URL', 'rrze-multisite-manager'); ?></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ((array)$attachment_debug['image_size_variants'] as $image_size_variant) { ?>
+                                            <tr>
+                                                <td><code><?php echo esc_html((string)($image_size_variant['slug'] ?? '')); ?></code></td>
+                                                <td><?php echo esc_html((string)($image_size_variant['width'] ?? 0) . ' x ' . (string)($image_size_variant['height'] ?? 0) . ' px'); ?></td>
+                                                <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($image_size_variant['size_label'] ?? '')); ?></td>
+                                                <td>
+                                                    <?php if (!empty($image_size_variant['file_url'])) { ?>
+                                                        <a href="<?php echo esc_url((string)$image_size_variant['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html((string)$image_size_variant['file_url']); ?></a>
+                                                    <?php } ?>
+                                                </td>
+                                            </tr>
+                                        <?php } ?>
+                                    </tbody>
+                                </table>
+                            <?php } else { ?>
+                                <p><?php echo esc_html__('No existing image size variants were found.', 'rrze-multisite-manager'); ?></p>
+                            <?php } ?>
+                        <?php } ?>
                         <?php if (!empty($attachment_debug['matches_without_code'])) { ?>
                             <h3><?php echo esc_html__('Detected references without code', 'rrze-multisite-manager'); ?></h3>
                             <table class="widefat striped rrze-msm-table">
@@ -264,7 +295,7 @@ defined('ABSPATH') || exit;
                                 </tbody>
                             </table>
                         <?php } else { ?>
-                            <p><?php echo esc_html__('No references were detected in posts, pages, or their meta fields.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('No references were detected in content, blocks, templates, widgets, or inspected meta fields.', 'rrze-multisite-manager'); ?></p>
                         <?php } ?>
                     <?php } ?>
                 </section>
@@ -390,7 +421,7 @@ defined('ABSPATH') || exit;
                     <section class="rrze-msm-widget rrze-msm-widget-span-12">
                         <header class="rrze-msm-widget-header">
                             <h2><?php echo esc_html__('Registered in the media library and found through references', 'rrze-multisite-manager'); ?></h2>
-                            <p><?php echo esc_html__('These media library files were detected through references in posts, pages, or their meta fields. These files were not inserted normally through the editor, but are referenced either through URLs in text or through additional fields managed by themes or plugins. Even if the media library reports no connection, these files are still referenced by the website.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('These media library files were detected through references in content, blocks, templates, widgets, or inspected meta fields. These files were not inserted normally through the editor, but are referenced either through URLs, block attributes, widget options, or additional fields managed by themes or plugins. Even if the media library reports no connection, these files are still referenced by the website.', 'rrze-multisite-manager'); ?></p>
                         </header>
                         <div class="rrze-msm-site-table-wrap" data-table-id="used-attachment-files" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                             <table class="widefat striped rrze-msm-table">
@@ -442,7 +473,7 @@ defined('ABSPATH') || exit;
                         <?php } ?>
                         <?php if (!$orphanAnalysisComplete) { ?>
                             <div class="notice notice-info inline">
-                                <p><?php echo esc_html__('Complete the orphan check to verify whether these image variant URLs are still referenced in content, meta fields, or active code.', 'rrze-multisite-manager'); ?></p>
+                                <p><?php echo esc_html__('Complete the orphan check to verify whether these image variant URLs are still referenced in content, blocks, templates, widgets, inspected meta fields, or active code.', 'rrze-multisite-manager'); ?></p>
                             </div>
                         <?php } ?>
                         <div class="rrze-msm-site-table-wrap" data-table-id="unregistered-image-size-variants" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
@@ -489,7 +520,7 @@ defined('ABSPATH') || exit;
                     <?php if (!empty($storage_analysis['largest_orphan_files']) || ($orphanAnalysisComplete && !empty($storage_analysis['unused_attachment_files']))) { ?>
                         <?php if ($orphanAnalysisComplete && !empty($storage_analysis['orphan_files_found_in_content'])) { ?>
                             <h3><?php echo esc_html__('Still found through references or code registration', 'rrze-multisite-manager'); ?></h3>
-                            <p><?php echo esc_html__('These files are not attachments, but are still referenced in posts, pages, their meta fields, or through register/enqueue calls in active plugins, MU plugins, or the active theme.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('These files are not attachments, but are still referenced in content, blocks, templates, widgets, inspected meta fields, or through register/enqueue calls in active plugins, MU plugins, or the active theme.', 'rrze-multisite-manager'); ?></p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="orphan-files-referenced" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                                 <div class="tablenav top">
                                     <div class="alignleft actions">
@@ -538,16 +569,16 @@ defined('ABSPATH') || exit;
                             </div>
                         <?php } elseif ($orphanAnalysisComplete && !empty($storage_analysis['largest_orphan_files'])) { ?>
                             <h3><?php echo esc_html__('No references or code registrations found for the analyzed non-attachment files', 'rrze-multisite-manager'); ?></h3>
-                            <p><?php echo esc_html__('For the analyzed potentially orphaned files, no references were found in posts, pages, their meta fields, or through register/enqueue calls in active code.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('For the analyzed potentially orphaned files, no references were found in content, blocks, templates, widgets, inspected meta fields, or through register/enqueue calls in active code.', 'rrze-multisite-manager'); ?></p>
                         <?php } elseif (!$orphanAnalysisComplete) { ?>
                             <div class="notice notice-info inline">
-                                <p><?php echo esc_html__('The base analysis only collected candidates. Start the orphan check now so references in content, meta fields, and active code are actually verified.', 'rrze-multisite-manager'); ?></p>
+                                <p><?php echo esc_html__('The base analysis only collected candidates. Start the orphan check now so references in content, blocks, templates, widgets, inspected meta fields, and active code are actually verified.', 'rrze-multisite-manager'); ?></p>
                             </div>
                         <?php } ?>
 
                         <?php if ($orphanAnalysisComplete && !empty($storage_analysis['unused_attachment_files'])) { ?>
                             <h3 id="rrze-msm-unused-attachments"><?php echo esc_html__('Registered in the media library, but not found in use anywhere', 'rrze-multisite-manager'); ?></h3>
-                            <p><?php echo esc_html__('These files exist as media library attachments, but no direct references were found in posts, pages, or their meta fields.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('These files exist as media library attachments, but no direct references were found in content, blocks, templates, widgets, or inspected meta fields.', 'rrze-multisite-manager'); ?></p>
                             <?php if (!empty($orphan_file_delete_notice)) { ?>
                                 <div class="notice notice-success inline">
                                     <p><?php echo esc_html(sprintf(_n('%d file deleted.', '%d files deleted.', (int)($orphan_file_delete_notice['count'] ?? 0), 'rrze-multisite-manager'), (int)($orphan_file_delete_notice['count'] ?? 0))); ?></p>
@@ -635,7 +666,7 @@ defined('ABSPATH') || exit;
 
                         <?php if ($orphanAnalysisComplete && !empty($storage_analysis['used_attachment_files']) && !$usedAttachmentFilesRendered) { ?>
                             <h3><?php echo esc_html__('Registered in the media library and found through references', 'rrze-multisite-manager'); ?></h3>
-                            <p><?php echo esc_html__('These media library files were detected through references in posts, pages, or their meta fields.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('These media library files were detected through references in content, blocks, templates, widgets, or inspected meta fields.', 'rrze-multisite-manager'); ?></p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="used-attachment-files" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                                 <div class="tablenav top">
                                     <div class="alignleft actions">
@@ -694,7 +725,7 @@ defined('ABSPATH') || exit;
 
                         <?php if ($orphanAnalysisComplete && !empty($storage_analysis['orphan_files_without_content_matches'])) { ?>
                             <h3><?php echo esc_html__('Not found in references or active code registration anywhere', 'rrze-multisite-manager'); ?></h3>
-                            <p><?php echo esc_html__('These files are not attachments, and no direct references were found in posts, pages, their meta fields, or register/enqueue calls in active code.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('These files are not attachments, and no direct references were found in content, blocks, templates, widgets, inspected meta fields, or register/enqueue calls in active code.', 'rrze-multisite-manager'); ?></p>
                             <form method="post" action="<?php echo esc_url((string)$orphan_file_delete_action); ?>">
                                 <input type="hidden" name="action" value="rrze_multisite_manager_delete_orphan_file">
                                 <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
