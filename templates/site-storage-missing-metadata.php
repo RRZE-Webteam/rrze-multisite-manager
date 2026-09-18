@@ -40,16 +40,16 @@ $metadataTables = [
         <h2><?php echo esc_html__('Missing metadata', 'rrze-multisite-manager'); ?></h2>
         <p><?php echo esc_html__('Checks media library entries for missing accessibility and descriptive metadata.', 'rrze-multisite-manager'); ?></p>
     </header>
-    <div id="rrze-msm-media-metadata-runner" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-status="<?php echo esc_attr($metadataAnalysisStatus); ?>">
-        <p id="rrze-msm-media-metadata-message"><?php echo esc_html((string)($media_metadata_analysis['message'] ?? __('Start the analysis to check the media library.', 'rrze-multisite-manager'))); ?></p>
-        <form class="rrze-msm-site-actions" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-            <input type="hidden" name="action" value="rrze_multisite_manager_run_site_media_metadata_analysis">
-            <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
-            <input type="hidden" name="restart" value="<?php echo esc_attr($metadataAnalysisStatus === 'complete' ? '1' : '0'); ?>">
-            <?php wp_nonce_field('rrze-msm-site-media-metadata-analysis', 'rrze_msm_site_media_metadata_nonce'); ?>
-            <button type="submit" class="button button-primary rrze-msm-start-media-metadata-analysis"><?php echo esc_html($metadataAnalysisStatus === 'complete' ? __('Refresh analysis', 'rrze-multisite-manager') : __('Start analysis', 'rrze-multisite-manager')); ?></button>
-        </form>
-    </div>
+    <?php if ($metadataAnalysisStatus === 'running') { ?>
+        <p><?php echo esc_html__('The metadata check is being processed as part of the scheduled storage analysis.', 'rrze-multisite-manager'); ?></p>
+    <?php } elseif ($metadataAnalysisStatus === 'complete') { ?>
+        <p><?php echo esc_html__('The metadata check was completed as part of the last storage analysis.', 'rrze-multisite-manager'); ?></p>
+        <?php if (!empty($media_metadata_analysis['finished_at'])) { ?>
+            <p class="description"><?php echo esc_html(sprintf(__('Last completed: %s', 'rrze-multisite-manager'), mysql2date(get_option('date_format') . ' ' . get_option('time_format'), (string)$media_metadata_analysis['finished_at'], true))); ?></p>
+        <?php } ?>
+    <?php } else { ?>
+        <p><?php echo esc_html__('Missing metadata will be checked with the next scheduled storage analysis.', 'rrze-multisite-manager'); ?></p>
+    <?php } ?>
 </section>
 <?php if ($metadataAnalysisStatus === 'complete') { ?>
     <?php foreach ($metadataTables as $category => $table) { ?>

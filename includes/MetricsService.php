@@ -20,6 +20,9 @@ class MetricsService {
     protected const DASHBOARD_BATCH_SIZE = 25;
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
     protected const SITE_DETAIL_CACHE_VERSION_META = 'rrze_msm_site_detail_cache_version';
+    protected const SITE_STORAGE_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_storage_analysis_result';
+    protected const SITE_STORAGE_ANALYSIS_RESULT_META_OPTION = 'rrze_msm_site_storage_analysis_result_meta';
+    protected const SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_media_metadata_analysis_result';
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
@@ -112,7 +115,45 @@ class MetricsService {
     }
 
     public function handleScheduledDashboardRefresh(): void {
-        $this->runDashboardRefreshBatch();
+        $status = [];
+
+        LoggingService::info(
+            $this->config,
+            'RRZE-MSM: Metrics-Scheduler gestartet',
+            []
+        );
+
+        try {
+            $this->runDashboardRefreshBatch();
+            $status = $this->getDashboardDataStatus();
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Metrics-Scheduler beendet',
+                [
+                    'success' => true,
+                    'checked_sites' => (int)($status['checked_sites'] ?? 0),
+                    'remaining_sites' => (int)($status['remaining_sites'] ?? 0),
+                    'progress_percent' => (int)($status['progress_percent'] ?? 0),
+                    'is_running' => !empty($status['is_running']),
+                ]
+            );
+        } catch (\Throwable $exception) {
+            do_action(
+                'rrze.log.error',
+                'RRZE-MSM: Fehler bei der Metrics-Aktualisierung',
+                [
+                    'message' => $exception->getMessage(),
+                ]
+            );
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Metrics-Scheduler beendet',
+                [
+                    'success' => false,
+                    'message' => $exception->getMessage(),
+                ]
+            );
+        }
     }
 
     public function invalidateCaches(...$args): void {
@@ -3625,51 +3666,88 @@ class MetricsService {
         return $this->getCachedSiteStorageAnalysis($siteId);
     }
 
+    public function resetSiteStorageAnalysis(int $siteId): void {
+        $this->clearSiteStorageAnalysisProcessStates($siteId);
+    }
+
+    public function clearSiteStorageAnalysisProcessStates(int $siteId): void {
+        if ($siteId <= 0 || !get_site($siteId)) {
+            return;
+        }
+
+        switch_to_blog($siteId);
+        delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        restore_current_blog();
+    }
+
     public function getCachedSiteStorageAnalysis(int $siteId): array {
         $cached = [];
+        $legacyCached = [];
 
         if ($siteId <= 0) {
             return [];
         }
 
-        $cached = get_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
+        $cached = get_blog_option($siteId, self::SITE_STORAGE_ANALYSIS_RESULT_OPTION, null);
+
+        if (!is_array($cached) || empty($cached)) {
+            $legacyCached = get_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
+
+            if (is_array($legacyCached) && !empty($legacyCached)) {
+                $cached = $this->normalizeSiteStorageAnalysis($legacyCached);
+                switch_to_blog($siteId);
+                $this->saveCurrentSiteStorageAnalysisResult($cached);
+                restore_current_blog();
+                delete_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
+            }
+        }
 
         if (!is_array($cached) || empty($cached)) {
             return [];
         }
 
-        return $this->normalizeSiteStorageAnalysis($cached);
+        $cached = $this->normalizeSiteStorageAnalysis($cached);
+        $this->ensureSiteStorageAnalysisResultMeta($siteId, $cached);
+
+        return $cached;
     }
 
-    public function getSiteStorageAnalysisProcessStatus(int $siteId): array {
-        $cachedAnalysis = $this->getCachedSiteStorageAnalysis($siteId);
+    public function getSiteStorageAnalysisProcessStatus(int $siteId, bool $loadResult = false): array {
+        $resultMeta = $this->getSiteStorageAnalysisResultMeta($siteId);
         $baseState = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
         $orphanState = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+
+        if ($loadResult) {
+            $this->getCachedSiteStorageAnalysis($siteId);
+            $resultMeta = $this->getSiteStorageAnalysisResultMeta($siteId);
+        }
+
         $status = [
             'site_id' => $siteId,
-            'has_cached_analysis' => !empty($cachedAnalysis),
-            'cached_generated_at' => is_string($cachedAnalysis['generated_at'] ?? null) ? (string)$cachedAnalysis['generated_at'] : '',
+            'has_cached_analysis' => !empty($resultMeta),
+            'cached_generated_at' => is_string($resultMeta['generated_at'] ?? null) ? (string)$resultMeta['generated_at'] : '',
             'base' => $this->getDefaultSiteStorageAnalysisBaseStatus(),
             'orphan' => $this->getDefaultSiteStorageAnalysisOrphanStatus(),
         ];
 
         if (is_array($baseState) && !empty($baseState)) {
             $status['base'] = $this->buildSiteStorageAnalysisBaseStatusFromState($baseState);
-        } elseif (!empty($cachedAnalysis)) {
+        } elseif (!empty($resultMeta)) {
             $status['base']['status'] = 'complete';
             $status['base']['message'] = __('A completed storage analysis already exists.', 'rrze-multisite-manager');
-            $status['base']['finished_at'] = is_string($cachedAnalysis['generated_at'] ?? null) ? (string)$cachedAnalysis['generated_at'] : '';
+            $status['base']['finished_at'] = is_string($resultMeta['generated_at'] ?? null) ? (string)$resultMeta['generated_at'] : '';
         }
 
         if (is_array($orphanState) && !empty($orphanState)) {
             $status['orphan'] = $this->buildSiteStorageAnalysisOrphanStatusFromState($orphanState);
-        } elseif (!empty($cachedAnalysis) && (($cachedAnalysis['orphan_analysis_state'] ?? '') === 'complete')) {
+        } elseif (!empty($resultMeta) && (($resultMeta['orphan_analysis_state'] ?? '') === 'complete')) {
             $status['orphan']['status'] = 'complete';
             $status['orphan']['message'] = __('The orphan check has been completed.', 'rrze-multisite-manager');
-            $status['orphan']['finished_at'] = is_string($cachedAnalysis['orphan_analysis_generated_at'] ?? null)
-                ? (string)$cachedAnalysis['orphan_analysis_generated_at']
-                : (is_string($cachedAnalysis['generated_at'] ?? null) ? (string)$cachedAnalysis['generated_at'] : '');
-        } elseif (!empty($cachedAnalysis)) {
+            $status['orphan']['finished_at'] = is_string($resultMeta['orphan_analysis_generated_at'] ?? null)
+                ? (string)$resultMeta['orphan_analysis_generated_at']
+                : (is_string($resultMeta['generated_at'] ?? null) ? (string)$resultMeta['generated_at'] : '');
+        } elseif (!empty($resultMeta)) {
             $status['orphan']['status'] = 'idle';
             $status['orphan']['message'] = __('The base analysis is available. The orphan check can be started separately if needed.', 'rrze-multisite-manager');
         }
@@ -3714,13 +3792,22 @@ class MetricsService {
     }
 
     public function getSiteMediaMetadataAnalysis(int $siteId): array {
+        $stored = [];
+        $legacyState = [];
+
         if ($siteId <= 0) {
             return [];
         }
 
-        $state = get_site_transient($this->getSiteMediaMetadataAnalysisCacheKey($siteId));
+        $stored = get_blog_option($siteId, self::SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION, []);
 
-        return is_array($state) ? $state : [];
+        if (is_array($stored) && !empty($stored)) {
+            return $stored;
+        }
+
+        $legacyState = get_site_transient($this->getSiteMediaMetadataAnalysisCacheKey($siteId));
+
+        return is_array($legacyState) ? $legacyState : [];
     }
 
     public function runSiteMediaMetadataAnalysisBatch(int $siteId, bool $restart = false): array {
@@ -3744,11 +3831,7 @@ class MetricsService {
             $state = $this->processCurrentSiteMediaMetadataAnalysisState($state);
         }
 
-        set_site_transient(
-            $this->getSiteMediaMetadataAnalysisCacheKey($siteId),
-            $state,
-            $this->getDetailCacheTtl()
-        );
+        $this->saveCurrentSiteMediaMetadataAnalysisResult($state);
         restore_current_blog();
 
         return [
@@ -4152,8 +4235,6 @@ class MetricsService {
             ];
         }
 
-        delete_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
-
         return [
             'site_id' => $siteId,
             'status' => 'running',
@@ -4333,8 +4414,7 @@ class MetricsService {
             'largest_files' => array_slice((array)($state['largest_files'] ?? []), 0, self::STORAGE_LARGEST_FILES_LIMIT),
         ];
 
-        set_site_transient(
-            $this->getSiteStorageAnalysisCacheKey($siteId),
+        $this->saveCurrentSiteStorageAnalysisResult(
             $this->buildStorageAnalysisPayload(
                 (string)($state['upload_basedir'] ?? ''),
                 (string)($state['upload_baseurl'] ?? ''),
@@ -4343,8 +4423,7 @@ class MetricsService {
                 current_time('mysql', true),
                 'idle',
                 ''
-            ),
-            $this->getDetailCacheTtl()
+            )
         );
 
         $state['status'] = 'complete';
@@ -4524,11 +4603,7 @@ class MetricsService {
         $analysis['orphan_analysis_state'] = 'complete';
         $analysis['orphan_analysis_generated_at'] = current_time('mysql', true);
         $analysis['generated_at'] = current_time('mysql', true);
-        set_site_transient(
-            $this->getSiteStorageAnalysisCacheKey($siteId),
-            $this->normalizeSiteStorageAnalysis($analysis),
-            $this->getDetailCacheTtl()
-        );
+        $this->saveCurrentSiteStorageAnalysisResult($this->normalizeSiteStorageAnalysis($analysis));
 
         $state['status'] = 'complete';
         $state['finished_at'] = current_time('mysql', true);
@@ -4718,8 +4793,69 @@ class MetricsService {
         return 'rrze_msm_site_storage_analysis_v3_' . $this->getDetailCacheVersion() . '_' . $siteId;
     }
 
+    protected function saveCurrentSiteStorageAnalysisResult(array $analysis): void {
+        $result = $this->normalizeSiteStorageAnalysis($analysis);
+
+        if (get_option(self::SITE_STORAGE_ANALYSIS_RESULT_OPTION, null) === null) {
+            add_option(self::SITE_STORAGE_ANALYSIS_RESULT_OPTION, $result, '', false);
+        } else {
+            update_option(self::SITE_STORAGE_ANALYSIS_RESULT_OPTION, $result, false);
+        }
+
+        $this->saveCurrentSiteStorageAnalysisResultMeta($this->buildSiteStorageAnalysisResultMeta($result));
+    }
+
+    protected function getSiteStorageAnalysisResultMeta(int $siteId): array {
+        $meta = $siteId > 0 ? get_blog_option($siteId, self::SITE_STORAGE_ANALYSIS_RESULT_META_OPTION, []) : [];
+
+        return is_array($meta) ? $meta : [];
+    }
+
+    protected function ensureSiteStorageAnalysisResultMeta(int $siteId, array $analysis): void {
+        $meta = $this->buildSiteStorageAnalysisResultMeta($analysis);
+
+        if ($siteId <= 0 || $this->getSiteStorageAnalysisResultMeta($siteId) === $meta) {
+            return;
+        }
+
+        switch_to_blog($siteId);
+        $this->saveCurrentSiteStorageAnalysisResultMeta($meta);
+        restore_current_blog();
+    }
+
+    protected function saveCurrentSiteStorageAnalysisResultMeta(array $meta): void {
+        if (get_option(self::SITE_STORAGE_ANALYSIS_RESULT_META_OPTION, null) === null) {
+            add_option(self::SITE_STORAGE_ANALYSIS_RESULT_META_OPTION, $meta, '', false);
+            return;
+        }
+
+        update_option(self::SITE_STORAGE_ANALYSIS_RESULT_META_OPTION, $meta, false);
+    }
+
+    protected function buildSiteStorageAnalysisResultMeta(array $analysis): array {
+        return [
+            'generated_at' => is_string($analysis['generated_at'] ?? null) ? (string)$analysis['generated_at'] : '',
+            'orphan_analysis_state' => is_string($analysis['orphan_analysis_state'] ?? null) ? (string)$analysis['orphan_analysis_state'] : '',
+            'orphan_analysis_generated_at' => is_string($analysis['orphan_analysis_generated_at'] ?? null) ? (string)$analysis['orphan_analysis_generated_at'] : '',
+            'actual_bytes' => max(0, (int)($analysis['actual_bytes'] ?? 0)),
+            'total_files' => max(0, (int)($analysis['total_files'] ?? 0)),
+            'total_directories' => max(0, (int)($analysis['total_directories'] ?? 0)),
+            'orphan_file_count' => max(0, (int)($analysis['orphan_file_count'] ?? 0)),
+            'unused_attachment_file_count' => max(0, (int)($analysis['unused_attachment_file_count'] ?? 0)),
+        ];
+    }
+
     protected function getSiteMediaMetadataAnalysisCacheKey(int $siteId): string {
         return 'rrze_msm_site_media_metadata_analysis_' . $this->getDetailCacheVersion() . '_' . $siteId;
+    }
+
+    protected function saveCurrentSiteMediaMetadataAnalysisResult(array $state): void {
+        if (get_option(self::SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION, null) === null) {
+            add_option(self::SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION, $state, '', false);
+            return;
+        }
+
+        update_option(self::SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION, $state, false);
     }
 
     protected function getSiteStorageAnalysisBaseStateKey(int $siteId): string {
@@ -6578,7 +6714,6 @@ class MetricsService {
 
     protected function removeCurrentSiteUnusedAttachmentFromAnalysis(int $attachmentId, \WP_Post $attachment): void {
         $siteId = get_current_blog_id();
-        $cacheKey = '';
         $analysis = [];
         $unusedAttachments = [];
         $remainingAttachments = [];
@@ -6592,8 +6727,7 @@ class MetricsService {
             return;
         }
 
-        $cacheKey = $this->getSiteStorageAnalysisCacheKey($siteId);
-        $analysis = get_site_transient($cacheKey);
+        $analysis = get_option(self::SITE_STORAGE_ANALYSIS_RESULT_OPTION, []);
 
         if (!is_array($analysis) || empty($analysis)) {
             return;
@@ -6636,7 +6770,7 @@ class MetricsService {
 
         $attachmentStats['media_types'] = $mediaTypes;
         $analysis['attachment_stats'] = $attachmentStats;
-        set_site_transient($cacheKey, $analysis, $this->getDetailCacheTtl());
+        $this->saveCurrentSiteStorageAnalysisResult($analysis);
     }
 
     protected function buildFileUsageSearchNeedles(string $fileUrl, string $relativePath, int $attachmentId = 0): array {
