@@ -519,6 +519,66 @@ function initStorageScheduleResetModal() {
     }
 }
 
+function closeShortcodeBlockScheduleResetModal() {
+    var modal = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-modal');
+
+    if (!modal) {
+        return;
+    }
+
+    modal.setAttribute('hidden', 'hidden');
+}
+
+function updateShortcodeBlockScheduleResetSubmitState() {
+    var checkbox = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-confirm');
+    var submit = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-submit');
+
+    if (!checkbox || !submit) {
+        return;
+    }
+
+    submit.disabled = !checkbox.checked;
+}
+
+function onOpenShortcodeBlockScheduleResetModalClick(event) {
+    var modal = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-modal');
+    var checkbox = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-confirm');
+
+    event.preventDefault();
+
+    if (!modal || !checkbox) {
+        return;
+    }
+
+    checkbox.checked = false;
+    updateShortcodeBlockScheduleResetSubmitState();
+    modal.removeAttribute('hidden');
+}
+
+function onCloseShortcodeBlockScheduleResetModalClick(event) {
+    event.preventDefault();
+    closeShortcodeBlockScheduleResetModal();
+}
+
+function initShortcodeBlockScheduleResetModal() {
+    var openButton = document.querySelector('.rrze-msm-open-shortcode-block-schedule-reset-modal');
+    var closeButtons = document.querySelectorAll('.rrze-msm-close-shortcode-block-schedule-reset-modal');
+    var checkbox = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-confirm');
+    var i = 0;
+
+    if (openButton) {
+        openButton.addEventListener('click', onOpenShortcodeBlockScheduleResetModalClick);
+    }
+
+    for (i = 0; i < closeButtons.length; i++) {
+        closeButtons[i].addEventListener('click', onCloseShortcodeBlockScheduleResetModalClick);
+    }
+
+    if (checkbox) {
+        checkbox.addEventListener('change', updateShortcodeBlockScheduleResetSubmitState);
+    }
+}
+
 function moveWidget(widget, direction) {
     var sibling = null;
     var parent = null;
@@ -719,7 +779,13 @@ function initSortableWidgets() {
 }
 
 function getSiteTableRows(wrapper) {
-    return Array.prototype.slice.call(wrapper.querySelectorAll('tbody tr'));
+    var table = wrapper.querySelector('table.rrze-msm-table');
+
+    if (!table || !table.tBodies.length) {
+        return [];
+    }
+
+    return Array.prototype.slice.call(table.tBodies[0].rows);
 }
 
 function getSiteTableSearchQuery(wrapper) {
@@ -817,7 +883,7 @@ function getSiteTableSortDirection(wrapper) {
 }
 
 function getSiteTableSortType(key) {
-    if (key === 'registered' || key === 'last-updated' || key === 'modified' || key === 'files' || key === 'size' || key === 'share' || key === 'storage' || key === 'active-sites' || key === 'missing') {
+    if (key === 'registered' || key === 'last-updated' || key === 'last-run' || key === 'modified' || key === 'files' || key === 'size' || key === 'share' || key === 'storage' || key === 'active-sites' || key === 'missing') {
         return 'number';
     }
 
@@ -2254,6 +2320,7 @@ function initRrzeMultisiteManager() {
     initSiteDeleteModal();
     initOrphanFileDeleteModal();
     initStorageScheduleResetModal();
+    initShortcodeBlockScheduleResetModal();
     initPluginSitesTextToggles();
     initPluginSitesPagers();
     initReadmeToggles();

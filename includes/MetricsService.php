@@ -4264,8 +4264,9 @@ class MetricsService {
     }
 
     protected function processCurrentSiteStorageAnalysisBaseState(array $state): array {
-        $attachmentIndex = $this->getCurrentSiteStorageAnalysisAttachmentIndex();
-        $referencedFiles = array_fill_keys(array_keys($attachmentIndex), true);
+        $attachmentIndex = [];
+        $referencedFiles = [];
+        $attachmentIndexLoaded = false;
         $processedInBatch = 0;
         $currentDirectory = '';
         $currentFile = '';
@@ -4279,6 +4280,13 @@ class MetricsService {
         ) {
             if (!empty($state['queue_files'])) {
                 $currentFile = (string)array_shift($state['queue_files']);
+
+                // Avoid loading every media-library record when uploads are empty.
+                if (!$attachmentIndexLoaded) {
+                    $attachmentIndex = $this->getCurrentSiteStorageAnalysisAttachmentIndex();
+                    $referencedFiles = array_fill_keys(array_keys($attachmentIndex), true);
+                    $attachmentIndexLoaded = true;
+                }
                 $this->processCurrentSiteStorageAnalysisFile($state, $currentFile, $attachmentIndex, $referencedFiles);
                 $processedInBatch++;
                 continue;
@@ -4412,6 +4420,7 @@ class MetricsService {
                 $actualBytes
             ),
             'largest_files' => array_slice((array)($state['largest_files'] ?? []), 0, self::STORAGE_LARGEST_FILES_LIMIT),
+            'uploads_are_empty' => (int)($state['processed_files'] ?? 0) === 0,
         ];
 
         $this->saveCurrentSiteStorageAnalysisResult(
@@ -4623,7 +4632,13 @@ class MetricsService {
     ): array {
         $actualBytes = (int)($scan['total_bytes'] ?? 0);
         $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
-        $attachmentStats = $this->getCurrentSiteUploadAttachmentStats();
+        $uploadsAreEmpty = !empty($scan['uploads_are_empty']);
+        $attachmentStats = $uploadsAreEmpty
+            ? $this->getCurrentSiteEmptyUploadAttachmentStats()
+            : $this->getCurrentSiteUploadAttachmentStats();
+        $referencedFileCount = $uploadsAreEmpty
+            ? 0
+            : count($this->getCurrentSiteReferencedUploadFiles());
         $unusedAttachmentFileCount = (int)($scan['unused_attachment_file_count'] ?? 0);
         $unusedAttachmentTotalBytes = (int)($scan['unused_attachment_total_bytes'] ?? 0);
         $combinedFlaggedFileCount = (int)($scan['orphan_file_count'] ?? 0) + $unusedAttachmentFileCount;
@@ -4649,7 +4664,7 @@ class MetricsService {
             ],
             [
                 'label' => __('Files referenced according to the database', 'rrze-multisite-manager'),
-                'value' => number_format_i18n(count($this->getCurrentSiteReferencedUploadFiles())),
+                'value' => number_format_i18n($referencedFileCount),
             ],
             [
                 'label' => __('Media library entries', 'rrze-multisite-manager'),
@@ -5314,6 +5329,43 @@ class MetricsService {
             'base_file_count' => count($baseFiles),
             'derived_variant_count' => count($derivedFiles),
             'referenced_physical_file_count' => count($allReferencedFiles),
+            'media_types' => $mediaTypes,
+        ];
+    }
+
+    /**
+     * Builds a compact media summary when no physical upload file exists.
+     * Reading attachment metadata or image variants in this case would only
+     * create costly database and filesystem work without affecting storage use.
+     */
+    protected function getCurrentSiteEmptyUploadAttachmentStats(): array {
+        global $wpdb;
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Aggregate query for the current site's media summary.
+        $rows = $wpdb->get_results(
+            "SELECT post_mime_type, COUNT(ID) AS attachment_count
+            FROM {$wpdb->posts}
+            WHERE post_type = 'attachment'
+            GROUP BY post_mime_type"
+        );
+        $mediaTypes = $this->getEmptyStorageAttachmentMediaTypes();
+        $attachmentCount = 0;
+        $row = null;
+        $count = 0;
+        $category = '';
+
+        foreach ($rows as $row) {
+            $count = max(0, (int)($row->attachment_count ?? 0));
+            $category = $this->getStorageAttachmentMediaCategory((string)($row->post_mime_type ?? ''));
+            $attachmentCount += $count;
+            $mediaTypes[$category]['count'] += $count;
+        }
+
+        return [
+            'attachment_count' => $attachmentCount,
+            'base_file_count' => 0,
+            'derived_variant_count' => 0,
+            'referenced_physical_file_count' => 0,
             'media_types' => $mediaTypes,
         ];
     }
@@ -6601,6 +6653,7 @@ class MetricsService {
         $targetPath = $normalizedBaseDir . ltrim($normalizedRelativePath, '/');
         $attachmentIndex = [];
         $fileUrl = '';
+        $sizeBytes = 0;
 
         if ($baseDir === '' || !is_dir($baseDir)) {
             return [
@@ -6655,6 +6708,8 @@ class MetricsService {
             ];
         }
 
+        $sizeBytes = max(0, (int)@filesize($targetPath));
+
         if (!@unlink($targetPath)) {
             return [
                 'deleted' => false,
@@ -6662,12 +6717,34 @@ class MetricsService {
             ];
         }
 
+        $this->removeCurrentSiteOrphanFileFromAnalysis($normalizedRelativePath, $sizeBytes);
         $this->clearCurrentSiteStorageAnalysisCaches();
 
         return [
             'deleted' => true,
             'message' => __('The file has been deleted.', 'rrze-multisite-manager'),
         ];
+    }
+
+    protected function removeCurrentSiteOrphanFileFromAnalysis(string $relativePath, int $sizeBytes): void {
+        $analysis = get_option(self::SITE_STORAGE_ANALYSIS_RESULT_OPTION, []);
+
+        if (!is_array($analysis) || empty($analysis)) {
+            return;
+        }
+
+        foreach (['largest_orphan_files', 'orphan_files_found_in_content', 'orphan_files_without_content_matches'] as $key) {
+            $analysis[$key] = array_values(array_filter((array)($analysis[$key] ?? []), static function ($entry) use ($relativePath) {
+                return !is_array($entry) || (string)($entry['path'] ?? '') !== $relativePath;
+            }));
+        }
+
+        $analysis['orphan_file_count'] = max(0, (int)($analysis['orphan_file_count'] ?? 0) - 1);
+        $analysis['orphan_total_bytes'] = max(0, (int)($analysis['orphan_total_bytes'] ?? 0) - max(0, $sizeBytes));
+        $analysis['combined_flagged_file_count'] = max(0, (int)($analysis['combined_flagged_file_count'] ?? 0) - 1);
+        $analysis['combined_flagged_total_bytes'] = max(0, (int)($analysis['combined_flagged_total_bytes'] ?? 0) - max(0, $sizeBytes));
+        $analysis['combined_flagged_total_label'] = $this->formatStorageAnalysisSize((int)$analysis['combined_flagged_total_bytes']);
+        $this->saveCurrentSiteStorageAnalysisResult($analysis);
     }
 
     protected function deleteCurrentSiteUnusedAttachment(int $attachmentId): array {
@@ -6939,12 +7016,13 @@ class MetricsService {
             $normalizedPath = $this->normalizeRelativeUploadPath($attachedPath);
             $mimeType = is_string($row->post_mime_type ?? null) ? (string)$row->post_mime_type : '';
             $absolutePath = $normalizedBaseDir . ltrim($normalizedPath, '/');
-            $sizeBytes = is_file($absolutePath) ? (int)@filesize($absolutePath) : 0;
-            $modifiedTimestamp = is_file($absolutePath) ? (int)@filemtime($absolutePath) : 0;
 
-            if ($attachmentId <= 0 || $normalizedPath === '') {
+            if ($attachmentId <= 0 || $normalizedPath === '' || !is_file($absolutePath)) {
                 continue;
             }
+
+            $sizeBytes = (int)@filesize($absolutePath);
+            $modifiedTimestamp = (int)@filemtime($absolutePath);
 
             $results[] = [
                 'attachment_id' => $attachmentId,

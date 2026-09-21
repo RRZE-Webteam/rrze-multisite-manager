@@ -31,6 +31,7 @@ class Dashboard {
     protected Config $config;
     protected MetricsService $metrics;
     protected StorageAnalysisSchedulerService $storageAnalysisScheduler;
+    protected ShortcodeBlockAnalysisSchedulerService $shortcodeBlockAnalysisScheduler;
     protected Template $template;
     protected ViewManager $viewManager;
     protected array $pageHooks = [];
@@ -55,6 +56,7 @@ class Dashboard {
         $this->config = new Config();
         $this->metrics = new MetricsService($settings, $this->config);
         $this->storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
+        $this->shortcodeBlockAnalysisScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
         $this->template = new Template($this->config, $this->plugin->getPath('templates'));
         $this->viewManager = new ViewManager();
     }
@@ -86,6 +88,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('admin_post_rrze_multisite_manager_delete_orphan_file', [$this, 'handleOrphanFileDelete']);
         add_action('admin_post_rrze_multisite_manager_request_site_storage_analysis', [$this, 'requestSiteStorageAnalysis']);
+        add_action('admin_post_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('network_admin_edit_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
@@ -95,6 +98,7 @@ class Dashboard {
         add_action('network_admin_edit_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
+        add_action('network_admin_edit_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
     }
 
     public function registerMenu(): void {
@@ -113,6 +117,8 @@ class Dashboard {
         $siteDetailsSlug = (string)($menuSettings['site_details_slug'] ?? 'rrze-multisite-manager-site-details');
         $siteStorageAnalysisSlug = (string)($menuSettings['site_storage_analysis_slug'] ?? 'rrze-multisite-manager-site-storage-analysis');
         $siteStorageAnalysisMediaSlug = (string)($menuSettings['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis');
+        $shortcodeBlockAnalysisSlug = (string)($menuSettings['shortcode_block_analysis_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks');
+        $shortcodeBlockAnalysisToolsSlug = (string)($menuSettings['shortcode_block_analysis_tools_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks-tools');
         $siteStatusSlug = (string)($menuSettings['site_status_slug'] ?? 'rrze-multisite-manager-site-status');
         $monitoringSlug = (string)($menuSettings['monitoring_slug'] ?? 'rrze-multisite-manager-monitoring');
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
@@ -125,6 +131,13 @@ class Dashboard {
                 'manage_options',
                 $siteStorageAnalysisMediaSlug,
                 [$this, 'renderSiteStorageAnalysisPage']
+            );
+            $this->pageHooks[] = add_management_page(
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                'manage_options',
+                $shortcodeBlockAnalysisToolsSlug,
+                [$this, 'renderShortcodeBlockAnalysisPage']
             );
         }
 
@@ -152,6 +165,14 @@ class Dashboard {
         );
 
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            $this->pageHooks[] = add_submenu_page(
+                $parentSlug,
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                $capability,
+                $shortcodeBlockAnalysisSlug,
+                [$this, 'renderShortcodeBlockAnalysisPage']
+            );
             $this->pageHooks[] = add_submenu_page(
                 $parentSlug,
                 __('Environment', 'rrze-multisite-manager'),
@@ -1152,6 +1173,59 @@ class Dashboard {
         );
     }
 
+    public function renderShortcodeBlockAnalysisPage(): void {
+        $isLocalPage = $this->isCurrentShortcodeBlockToolsPage();
+        $siteId = $isLocalPage ? get_current_blog_id() : (isset($_GET['site_id']) ? absint($_GET['site_id']) : 0);
+        $tab = isset($_GET['analysis_tab']) ? sanitize_key((string)wp_unslash($_GET['analysis_tab'])) : 'shortcodes';
+
+        if (!$this->currentUserCanAccessShortcodeBlockAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        if (!in_array($tab, ['shortcodes', 'blocks'], true)) {
+            $tab = 'shortcodes';
+        }
+
+        echo $this->template->render(
+            'shortcode-block-analysis-page',
+            [
+                'site_id' => $siteId,
+                'site_summary' => $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [],
+                'analysis_status' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getStatus($siteId) : [],
+                'analysis_result' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getResult($siteId) : [],
+                'analysis_tab' => $tab,
+                'is_local_page' => $isLocalPage,
+                'analysis_base_url' => $isLocalPage ? $this->getCurrentShortcodeBlockAnalysisUrl() : $this->getShortcodeBlockAnalysisUrl(),
+                'request_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_request_shortcode_block_analysis'),
+                'plugin_details_base_url' => $this->getPluginDetailsUrl(),
+                'can_view_plugin_details' => is_super_admin(),
+                'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
+                'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
+                'mode_toggle_label' => $this->getModeToggleLabel(),
+                'requested' => isset($_GET['shortcode-block-analysis-requested'])
+                    ? sanitize_key((string)wp_unslash($_GET['shortcode-block-analysis-requested']))
+                    : '',
+            ],
+            $this
+        );
+    }
+
+    public function requestShortcodeBlockAnalysis(): void {
+        $siteId = isset($_POST['site_id']) ? absint(wp_unslash($_POST['site_id'])) : 0;
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+
+        if (!$this->currentUserCanAccessShortcodeBlockAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_msm_request_shortcode_block_analysis_' . $siteId);
+        $requested = $this->shortcodeBlockAnalysisScheduler->requestAnalysis($siteId);
+        $redirectTo = $redirectTo !== '' ? $redirectTo : $this->getShortcodeBlockAnalysisRedirectUrl($siteId);
+
+        wp_safe_redirect(add_query_arg('shortcode-block-analysis-requested', $requested ? '1' : 'running', $redirectTo));
+        exit;
+    }
+
     protected function isSiteStorageAnalysisScheduledOnly(array $siteSummary): bool {
         return (int)($siteSummary['storage']['used_bytes'] ?? 0) > ($this->getStorageAnalysisBrowserLimitMegabytes() * MB_IN_BYTES);
     }
@@ -1959,6 +2033,8 @@ class Dashboard {
             $storageAnalysisScheduler->deactivateIneligibleSite($siteId);
         }
 
+        (new ShortcodeBlockAnalysisSchedulerService($this->config))->reconcileSiteSchedule($siteId);
+
         $this->metrics->clearCache();
         $this->metrics->rebuildDashboardData(true);
         $redirectUrl = $this->getSiteOverviewRedirectUrl(
@@ -1990,6 +2066,7 @@ class Dashboard {
         check_admin_referer('deleteblog_' . $siteId);
         wpmu_delete_blog($siteId, true);
         (new StorageAnalysisSchedulerService($this->metrics, $this->config))->deactivateIneligibleSite($siteId);
+        (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
 
         $this->metrics->clearCache();
         $this->metrics->rebuildDashboardData(true);
@@ -2411,6 +2488,16 @@ class Dashboard {
             && current_user_can('upload_files');
     }
 
+    protected function currentUserCanAccessShortcodeBlockAnalysis(int $siteId): bool {
+        if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            return true;
+        }
+
+        return $siteId > 0
+            && $siteId === get_current_blog_id()
+            && current_user_can('manage_options');
+    }
+
     protected function currentUserCanDeleteSiteStorageFiles(int $siteId): bool {
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
             return true;
@@ -2687,6 +2774,35 @@ class Dashboard {
         return add_query_arg($args, $this->getAdminPageBaseUrl());
     }
 
+    public function getShortcodeBlockAnalysisUrl(int $siteId = 0): string {
+        $args = [
+            'page' => (string)($this->config->getMenuSettings()['shortcode_block_analysis_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks'),
+        ];
+
+        if ($siteId > 0) {
+            $args['site_id'] = $siteId;
+        }
+
+        return add_query_arg($args, $this->getAdminPageBaseUrl());
+    }
+
+    protected function getCurrentShortcodeBlockAnalysisUrl(): string {
+        return add_query_arg(
+            [
+                'page' => (string)($this->config->getMenuSettings()['shortcode_block_analysis_tools_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks-tools'),
+            ],
+            admin_url('tools.php')
+        );
+    }
+
+    protected function getShortcodeBlockAnalysisRedirectUrl(int $siteId): string {
+        if ($siteId === get_current_blog_id() && $this->isCurrentShortcodeBlockToolsPage()) {
+            return $this->getCurrentShortcodeBlockAnalysisUrl();
+        }
+
+        return $this->getShortcodeBlockAnalysisUrl($siteId);
+    }
+
     protected function getCurrentSiteStorageAnalysisUrl(): string {
         return add_query_arg(
             [
@@ -2709,6 +2825,13 @@ class Dashboard {
         $mediaSlug = (string)($this->config->getMenuSettings()['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis');
 
         return $page === $mediaSlug;
+    }
+
+    protected function isCurrentShortcodeBlockToolsPage(): bool {
+        $page = isset($_GET['page']) ? sanitize_key((string)wp_unslash($_GET['page'])) : '';
+        $toolsSlug = (string)($this->config->getMenuSettings()['shortcode_block_analysis_tools_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks-tools');
+
+        return $page === $toolsSlug;
     }
 
     protected function isSiteStorageAnalysisMediaReferer(): bool {
@@ -2766,6 +2889,10 @@ class Dashboard {
 
         if ($page === $storageAnalysisSlug) {
             return $this->getSiteStorageAnalysisUrl();
+        }
+
+        if ($page === (string)($this->config->getMenuSettings()['shortcode_block_analysis_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks')) {
+            return $this->getShortcodeBlockAnalysisUrl();
         }
 
         return $this->getSiteDetailsUrl();

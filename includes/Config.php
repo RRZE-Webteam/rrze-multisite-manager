@@ -20,6 +20,8 @@ class Config {
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
                 'monitoring_hook' => 'rrze_msm_check_site_availability',
                 'storage_analysis_hook' => 'rrze_msm_run_site_storage_analysis',
+                'shortcode_block_analysis_hook' => 'rrze_msm_run_shortcode_block_analysis',
+                'shortcode_block_analysis_timeout_minutes' => 60,
                 'monitoring_user_agent' => 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)',
             ],
             'menu_settings' => [
@@ -37,6 +39,8 @@ class Config {
                 'site_details_slug' => 'rrze-multisite-manager-site-details',
                 'site_storage_analysis_slug' => 'rrze-multisite-manager-site-storage-analysis',
                 'site_storage_analysis_media_slug' => 'rrze-multisite-manager-media-storage-analysis',
+                'shortcode_block_analysis_slug' => 'rrze-multisite-manager-shortcodes-blocks',
+                'shortcode_block_analysis_tools_slug' => 'rrze-multisite-manager-shortcodes-blocks-tools',
                 'site_status_slug' => 'rrze-multisite-manager-site-status',
                 'monitoring_slug' => 'rrze-multisite-manager-monitoring',
                 'views_slug' => 'rrze-multisite-manager-views',
@@ -123,9 +127,32 @@ class Config {
                         ],
                     ],
                     [
+                        'name' => 'shortcode_block_analysis_frequency',
+                        'label' => __('Shortcode and block analysis cycle per website', 'rrze-multisite-manager'),
+                        'desc' => __('How often the scheduled shortcode and block analysis is run for each website.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'twiceweekly',
+                        'choices' => [
+                            'weekly' => __('Once weekly', 'rrze-multisite-manager'),
+                            'twiceweekly' => __('Twice weekly', 'rrze-multisite-manager'),
+                            'daily' => __('Once daily', 'rrze-multisite-manager'),
+                            'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
+                            'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
+                        ],
+                    ],
+                    [
                         'name' => 'storage_analysis_timeout_minutes',
                         'label' => __('Maximum storage analysis runtime in minutes', 'rrze-multisite-manager'),
-                        'desc' => __('A storage analysis that exceeds this runtime is automatically aborted during its next scheduled batch.', 'rrze-multisite-manager'),
+                        'desc' => __('A storage analysis runs in one scheduled process and is aborted when this runtime limit is reached.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 60,
+                        'min' => 1,
+                        'max' => 1440,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_timeout_minutes',
+                        'label' => __('Maximum shortcode and block analysis runtime in minutes', 'rrze-multisite-manager'),
+                        'desc' => __('A shortcode and block analysis runs in one scheduled process and is aborted when this runtime limit is reached.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 60,
                         'min' => 1,
@@ -241,6 +268,24 @@ class Config {
 
     public function getStorageAnalysisHook(): string {
         return (string)($this->config['constants']['storage_analysis_hook'] ?? 'rrze_msm_run_site_storage_analysis');
+    }
+
+    public function getShortcodeBlockAnalysisHook(): string {
+        return (string)($this->config['constants']['shortcode_block_analysis_hook'] ?? 'rrze_msm_run_shortcode_block_analysis');
+    }
+
+    public function getShortcodeBlockAnalysisTimeoutSeconds(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $default = (int)($this->config['constants']['shortcode_block_analysis_timeout_minutes'] ?? 60);
+
+        if (!is_array($options)) {
+            return max(MINUTE_IN_SECONDS, $default * MINUTE_IN_SECONDS);
+        }
+
+        return max(
+            MINUTE_IN_SECONDS,
+            min(1440 * MINUTE_IN_SECONDS, (int)($options['monitoring_shortcode_block_analysis_timeout_minutes'] ?? $default) * MINUTE_IN_SECONDS)
+        );
     }
 
     public function getMonitoringUserAgent(): string {

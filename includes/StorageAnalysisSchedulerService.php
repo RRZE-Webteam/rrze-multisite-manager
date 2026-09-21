@@ -10,14 +10,14 @@ class StorageAnalysisSchedulerService {
     protected const ORPHAN_PHASE = 'orphan';
     protected const METADATA_PHASE = 'metadata';
     protected const SCHEDULED_PHASE = 'scheduled';
-    protected const ACTIVE_PHASE = 'active';
+    // Only retained to remove obsolete continuation events from older releases.
+    protected const LEGACY_ACTIVE_PHASE = 'active';
     protected const SCHEDULE_SIGNATURE_OPTION = 'rrze_msm_storage_analysis_schedule_signature';
+    protected const GLOBAL_INITIALIZATION_OPTION = 'rrze_msm_storage_analysis_global_initialization';
     protected const LOCK_OPTION_PREFIX = 'rrze_msm_storage_analysis_lock_';
-    protected const CANCEL_TRANSIENT_PREFIX = 'rrze_msm_storage_analysis_cancel_';
     protected const META_OPERATIONAL_STATUS = 'rrze_msm_operational_status';
     protected const META_DNS_STATUS = 'rrze_msm_dns_status';
     protected const META_HTTP_STATUS = 'rrze_msm_http_status';
-    protected const LOCK_TTL = 30 * MINUTE_IN_SECONDS;
 
     protected MetricsService $metrics;
     protected Config $config;
@@ -31,7 +31,6 @@ class StorageAnalysisSchedulerService {
         add_action($this->config->getStorageAnalysisHook(), [$this, 'runScheduledAnalysis'], 10, 2);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action('init', [$this, 'ensureRecurringSchedules'], 20);
-        add_action('wpmu_new_blog', [$this, 'scheduleNewSiteRecurringAnalysis'], 20, 1);
     }
 
     public function registerSchedules(array $schedules): array {
@@ -55,11 +54,6 @@ class StorageAnalysisSchedulerService {
             'interval' => 6 * HOUR_IN_SECONDS,
             'display' => __('Four times daily', 'rrze-multisite-manager'),
         ];
-        $schedules['rrze_msm_storage_active_batch'] = [
-            'interval' => MINUTE_IN_SECONDS,
-            'display' => __('Storage analysis batch', 'rrze-multisite-manager'),
-        ];
-
         return $schedules;
     }
 
@@ -84,24 +78,85 @@ class StorageAnalysisSchedulerService {
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
 
+            // Remove continuation events created by earlier plugin versions.
+            $this->unschedule($siteId, self::BASE_PHASE);
+            $this->unschedule($siteId, self::ORPHAN_PHASE);
+            $this->unschedule($siteId, self::LEGACY_ACTIVE_PHASE);
+
             if (!$this->isSiteEligible($siteId)) {
                 $this->deactivateIneligibleSite($siteId);
                 continue;
             }
 
-            $this->unschedule($siteId, self::SCHEDULED_PHASE);
-            // Remove continuation events created by releases before recurring batch tasks.
-            $this->unschedule($siteId, self::BASE_PHASE);
-            $this->unschedule($siteId, self::ORPHAN_PHASE);
+            if ($this->getNextRecurringScheduledTimestamp($siteId) <= 0) {
+                continue;
+            }
 
-            if ($this->isSiteRunRunning((int)$siteId, $this->metrics->getSiteStorageAnalysisProcessStatus((int)$siteId))) {
-                $this->ensureActiveBatchSchedule((int)$siteId);
+            $this->unschedule($siteId, self::SCHEDULED_PHASE);
+            $this->scheduleRecurringAnalysisAt($siteId, time() + MINUTE_IN_SECONDS + wp_rand(0, MINUTE_IN_SECONDS));
+        }
+
+        update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
+    }
+
+    /**
+     * Enables automatic scheduling for sites that become eligible in the future.
+     * Existing schedules are left untouched, so this is safe to repeat.
+     */
+    public function initializeActiveSiteSchedules(): int {
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'orderby' => 'id',
+            'order' => 'ASC',
+        ]);
+        $initialized = 0;
+
+        update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if (!$this->isSiteEligible($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
+                continue;
+            }
+
+            $this->scheduleRecurringAnalysis($siteId);
+            $initialized++;
+        }
+
+        update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
+
+        return $initialized;
+    }
+
+    public function getUnscheduledEligibleSiteCount(): int {
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+        ]);
+        $count = 0;
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($this->isSiteEligible($siteId) && $this->getNextRecurringScheduledTimestamp($siteId) <= 0) {
+                $count++;
             }
         }
 
-        $this->scheduleRecurringAnalyses($this->getEligibleSiteIds($siteIds));
+        return $count;
+    }
 
-        update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
+    public function reconcileSiteSchedule(int $siteId): void {
+        if (!$this->isSiteEligible($siteId)) {
+            $this->deactivateIneligibleSite($siteId);
+            return;
+        }
+
+        if ((bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
+            $this->scheduleNewSiteRecurringAnalysis($siteId);
+        }
     }
 
     public function resetAllSiteSchedules(): int {
@@ -114,11 +169,10 @@ class StorageAnalysisSchedulerService {
 
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
-            $this->requestCancellation($siteId);
             $this->unschedule($siteId, self::BASE_PHASE);
             $this->unschedule($siteId, self::ORPHAN_PHASE);
             $this->unschedule($siteId, self::SCHEDULED_PHASE);
-            $this->unschedule($siteId, self::ACTIVE_PHASE);
+            $this->unschedule($siteId, self::LEGACY_ACTIVE_PHASE);
 
             if (!$this->isSiteEligible($siteId)) {
                 $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
@@ -132,32 +186,8 @@ class StorageAnalysisSchedulerService {
         return count($eligibleSiteIds);
     }
 
-    public function requestCancellation(int $siteId): bool {
-        $status = [];
-
-        if ($siteId <= 0 || !get_site($siteId)) {
-            return false;
-        }
-
-        $status = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
-
-        if (!$this->isSiteRunRunning($siteId, $status)) {
-            return false;
-        }
-
-        set_site_transient(
-            $this->getCancellationTransientKey($siteId),
-            [
-                'requested_at' => current_time('mysql', true),
-            ],
-            self::LOCK_TTL
-        );
-
-        return true;
-    }
-
     public function scheduleNewSiteRecurringAnalysis(int $siteId): void {
-        if (!$this->isSiteEligible($siteId)) {
+        if (!$this->isSiteEligible($siteId) || !(bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
             return;
         }
 
@@ -167,7 +197,6 @@ class StorageAnalysisSchedulerService {
     public function isSiteEligible(int $siteId): bool {
         $site = $siteId > 0 ? get_site($siteId) : null;
         $isActive = false;
-        $isArchived = false;
         $operationalStatus = '';
         $dnsStatus = '';
         $httpStatus = '';
@@ -177,9 +206,8 @@ class StorageAnalysisSchedulerService {
         }
 
         $isActive = (int)$site->archived === 0 && (int)$site->spam === 0 && (int)$site->deleted === 0;
-        $isArchived = (int)$site->archived === 1 && (int)$site->spam === 0 && (int)$site->deleted === 0;
 
-        if (!$isActive && !$isArchived) {
+        if (!$isActive) {
             return false;
         }
 
@@ -205,9 +233,8 @@ class StorageAnalysisSchedulerService {
 
         $this->unschedule($siteId, self::BASE_PHASE);
         $this->unschedule($siteId, self::ORPHAN_PHASE);
-        $this->unschedule($siteId, self::ACTIVE_PHASE);
+        $this->unschedule($siteId, self::LEGACY_ACTIVE_PHASE);
         $this->unschedule($siteId, self::SCHEDULED_PHASE);
-        delete_site_transient($this->getCancellationTransientKey($siteId));
         $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
 
         return true;
@@ -238,6 +265,7 @@ class StorageAnalysisSchedulerService {
     }
 
     public function startAnalysisNow(int $siteId): bool {
+        $this->recoverInterruptedRun($siteId);
         $status = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
 
         if (!$this->isSiteEligible($siteId) || $this->isSiteRunRunning($siteId, $status)) {
@@ -247,9 +275,8 @@ class StorageAnalysisSchedulerService {
 
         $this->unschedule($siteId, self::BASE_PHASE);
         $this->unschedule($siteId, self::ORPHAN_PHASE);
-        $this->unschedule($siteId, self::ACTIVE_PHASE);
+        $this->unschedule($siteId, self::LEGACY_ACTIVE_PHASE);
         $this->unschedule($siteId, self::SCHEDULED_PHASE);
-        delete_site_transient($this->getCancellationTransientKey($siteId));
         $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
         $this->scheduleRecurringAnalysisAt($siteId, time());
 
@@ -257,34 +284,32 @@ class StorageAnalysisSchedulerService {
     }
 
     public function getStatus(int $siteId): array {
-        $activeTimestamp = $this->getNextScheduledTimestamp($siteId, self::ACTIVE_PHASE);
         $recurringTimestamp = $this->getNextRecurringScheduledTimestamp($siteId);
-        $nextTimestamp = 0;
-        $nextPhase = '';
         $storedStatus = $siteId > 0 ? get_blog_option($siteId, self::OPTION_STATUS, []) : [];
+        $lastCompletedAt = is_array($storedStatus) ? (string)($storedStatus['last_completed_at'] ?? '') : '';
+        $phases = is_array($storedStatus['phases'] ?? null)
+            ? $storedStatus['phases']
+            : ($recurringTimestamp > 0 ? $this->getScheduledPhaseStatuses() : $this->getDefaultPhaseStatuses());
 
-        if ($activeTimestamp > 0) {
-            $nextTimestamp = $activeTimestamp;
-            $nextPhase = self::ACTIVE_PHASE;
-        }
-
-        if ($recurringTimestamp > 0 && ($nextTimestamp <= 0 || $recurringTimestamp < $nextTimestamp)) {
-            $nextTimestamp = $recurringTimestamp;
-            $nextPhase = self::SCHEDULED_PHASE;
+        // Preserve a successful timestamp created by releases before last_completed_at existed.
+        if ($lastCompletedAt === '' && is_array($storedStatus) && empty($storedStatus['last_error']) && empty($storedStatus['last_was_aborted'])) {
+            $lastCompletedAt = (string)($storedStatus['last_finished_at'] ?? '');
         }
 
         return [
-            'next_run_timestamp' => $nextTimestamp,
-            'next_phase' => $nextPhase,
+            'next_run_timestamp' => $recurringTimestamp,
+            'next_phase' => self::SCHEDULED_PHASE,
             'next_recurring_run_timestamp' => $recurringTimestamp,
             'last_started_at' => is_array($storedStatus) ? (string)($storedStatus['last_started_at'] ?? '') : '',
             'last_finished_at' => is_array($storedStatus) ? (string)($storedStatus['last_finished_at'] ?? '') : '',
+            'last_completed_at' => $lastCompletedAt,
             'last_duration_seconds' => is_array($storedStatus) ? max(0, (int)($storedStatus['last_duration_seconds'] ?? 0)) : 0,
             'last_was_aborted' => is_array($storedStatus) && !empty($storedStatus['last_was_aborted']),
             'last_error' => is_array($storedStatus) ? (string)($storedStatus['last_error'] ?? '') : '',
             'is_running' => is_array($storedStatus) && !empty($storedStatus['is_running']),
             'metadata_pending' => is_array($storedStatus) && !empty($storedStatus['metadata_pending']),
             'metadata_started' => is_array($storedStatus) && !empty($storedStatus['metadata_started']),
+            'phases' => $phases,
         ];
     }
 
@@ -299,189 +324,130 @@ class StorageAnalysisSchedulerService {
         }
 
         try {
-            $this->runScheduledAnalysisLocked($siteId, $phase);
+            if ($phase !== self::SCHEDULED_PHASE) {
+                // A continuation event from an earlier release must not start a second process.
+                $this->unschedule($siteId, $phase);
+                return;
+            }
+
+            $this->runSingleProcessAnalysis($siteId);
         } finally {
             $this->releaseSiteLock($siteId);
         }
     }
 
-    protected function runScheduledAnalysisLocked(int $siteId, string $phase, bool $forceNewRun = false): void {
-        $result = [];
-        $status = [];
-        $previousStatus = [];
-        $isNewRun = false;
+    protected function runSingleProcessAnalysis(int $siteId): void {
+        $status = $this->getStatus($siteId);
 
-        $previousStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+        if (!empty($status['is_running'])) {
+            $startedTimestamp = !empty($status['last_started_at'])
+                ? (int)strtotime((string)$status['last_started_at'] . ' UTC')
+                : 0;
 
-        if ($this->isCancellationRequested($siteId)) {
-            $this->abortCancelledAnalysis($siteId, $previousStatus);
-            return;
-        }
+            if ($startedTimestamp > 0 && (time() - $startedTimestamp) >= $this->getTimeoutSeconds()) {
+                $this->abortSingleProcessAnalysis(
+                    $siteId,
+                    $this->getRunningPhase($status),
+                    __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager')
+                );
+                return;
+            }
 
-        if ($this->isAnalysisTimedOut($siteId, $previousStatus)) {
-            $this->abortTimedOutAnalysis($siteId, $previousStatus);
-            return;
-        }
-
-        if ($phase === self::SCHEDULED_PHASE) {
-            $this->runRecurringAnalysis($siteId);
-            return;
-        }
-
-        if ($phase === self::ACTIVE_PHASE) {
-            $this->runActiveAnalysis($siteId);
-            return;
-        }
-
-        $phase = in_array($phase, [self::BASE_PHASE, self::ORPHAN_PHASE, self::METADATA_PHASE], true)
-            ? $phase
-            : self::BASE_PHASE;
-        $isNewRun = $forceNewRun || ($phase === self::BASE_PHASE && ($previousStatus['base']['status'] ?? 'idle') === 'idle');
-
-        if ($isNewRun) {
             LoggingService::info(
                 $this->config,
-                sprintf(
-                    __('RRZE-MSM: Storage analysis (site %d) started', 'rrze-multisite-manager'),
-                    $siteId
-                ),
-                [
-                    'site_id' => $siteId,
-                    'phase' => $phase,
-                ]
+                'RRZE-MSM: Storage analysis scheduler skipped',
+                ['site_id' => $siteId, 'reason' => 'analysis_already_running']
             );
+            return;
         }
+
+        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+        $this->markRunStarted($siteId, true);
+        $this->extendRuntimeLimit();
+        LoggingService::info(
+            $this->config,
+            sprintf(__('RRZE-MSM: Storage analysis (site %d) started', 'rrze-multisite-manager'), $siteId),
+            ['site_id' => $siteId, 'phase' => self::BASE_PHASE]
+        );
+
+        $deadline = time() + $this->getTimeoutSeconds();
+        $phase = self::BASE_PHASE;
 
         try {
-            $this->markRunStarted($siteId, $isNewRun);
-            if ($phase === self::ORPHAN_PHASE) {
-                $result = $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId);
-            } elseif ($phase === self::METADATA_PHASE) {
-                $result = $this->metrics->runSiteMediaMetadataAnalysisBatch(
-                    $siteId,
-                    empty($this->getStatus($siteId)['metadata_started'])
-                );
-                $this->markMediaMetadataStarted($siteId);
-            } else {
-                $result = $this->metrics->runSiteStorageAnalysisBatch($siteId);
+            foreach ([self::BASE_PHASE, self::ORPHAN_PHASE, self::METADATA_PHASE] as $phase) {
+                $this->runAnalysisPhaseToCompletion($siteId, $phase, $deadline);
             }
+
+            $this->markRunFinished($siteId);
         } catch (\Throwable $exception) {
+            if (time() >= $deadline) {
+                $this->abortSingleProcessAnalysis($siteId, $phase, $exception->getMessage());
+                return;
+            }
+
             $this->markRunFailed($siteId, $exception->getMessage());
-            $this->unschedule($siteId, self::ACTIVE_PHASE);
+            $this->markPhaseFailed($siteId, $phase, $exception->getMessage());
             $this->logStorageAnalysisError($siteId, $phase, $exception->getMessage());
-            $this->logTaskFinished($siteId, $phase, [], false);
-            return;
         }
-
-        if (empty($result['success'])) {
-            $message = (string)($result['message'] ?? __('The storage analysis could not be completed.', 'rrze-multisite-manager'));
-            $this->markRunFailed($siteId, $message);
-            $this->unschedule($siteId, self::ACTIVE_PHASE);
-            $this->logStorageAnalysisError($siteId, $phase, $message, is_array($result['status'] ?? null) ? $result['status'] : []);
-            $this->logTaskFinished($siteId, $phase, is_array($result['status'] ?? null) ? $result['status'] : [], false);
-            return;
-        }
-
-        $status = is_array($result['status'] ?? null) ? $result['status'] : $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
-
-        if (!$this->isSiteEligible($siteId)) {
-            $this->deactivateIneligibleSite($siteId);
-            return;
-        }
-
-        if ($this->isCancellationRequested($siteId)) {
-            $this->abortCancelledAnalysis($siteId, $status);
-            return;
-        }
-
-        if ($phase === self::BASE_PHASE) {
-            if (($status['base']['status'] ?? '') === 'running') {
-                $this->ensureActiveBatchSchedule($siteId);
-                $this->logTaskFinished($siteId, $phase, $status, true);
-                return;
-            }
-
-            if (($status['base']['status'] ?? '') === 'complete') {
-                $this->ensureActiveBatchSchedule($siteId);
-                $this->logTaskFinished($siteId, $phase, $status, true);
-                return;
-            }
-        }
-
-        if ($phase === self::ORPHAN_PHASE && ($status['orphan']['status'] ?? '') === 'running') {
-            $this->ensureActiveBatchSchedule($siteId);
-            $this->logTaskFinished($siteId, $phase, $status, true);
-            return;
-        }
-
-        if ($phase === self::ORPHAN_PHASE && ($status['orphan']['status'] ?? '') === 'complete') {
-            $this->ensureActiveBatchSchedule($siteId);
-            $this->logTaskFinished($siteId, $phase, $status, true);
-            return;
-        }
-
-        if ($phase === self::METADATA_PHASE) {
-            $metadataState = is_array($result['analysis'] ?? null) ? $result['analysis'] : [];
-
-            if (($metadataState['status'] ?? '') === 'running') {
-                $this->ensureActiveBatchSchedule($siteId);
-                $this->logTaskFinished($siteId, $phase, $status, true);
-                return;
-            }
-
-            if (($metadataState['status'] ?? '') === 'complete') {
-                $this->markRunFinished($siteId);
-                $this->unschedule($siteId, self::ACTIVE_PHASE);
-            }
-        }
-
-        $this->logTaskFinished($siteId, $phase, $status, true);
     }
 
-    protected function runRecurringAnalysis(int $siteId): void {
-        $status = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+    protected function runAnalysisPhaseToCompletion(int $siteId, string $phase, int $deadline): void {
+        $restartMetadataAnalysis = true;
 
-        if ($this->isSiteRunRunning($siteId, $status)) {
-            LoggingService::info(
-                $this->config,
-                'RRZE-MSM: Speicheranalyse-Scheduler übersprungen',
-                [
-                    'site_id' => $siteId,
-                    'reason' => 'analysis_already_running',
-                ]
-            );
-            $this->ensureActiveBatchSchedule($siteId);
-            return;
+        $this->markPhaseStarted($siteId, $phase);
+
+        while (time() < $deadline) {
+            if ($phase === self::BASE_PHASE) {
+                $result = $this->metrics->runSiteStorageAnalysisBatch($siteId);
+                $isComplete = (($result['status']['base']['status'] ?? '') === 'complete');
+            } elseif ($phase === self::ORPHAN_PHASE) {
+                $result = $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId);
+                $isComplete = (($result['status']['orphan']['status'] ?? '') === 'complete');
+            } else {
+                $result = $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restartMetadataAnalysis);
+                $restartMetadataAnalysis = false;
+                $isComplete = (($result['analysis']['status'] ?? '') === 'complete');
+                $this->markMediaMetadataStarted($siteId);
+            }
+
+            if (empty($result['success'])) {
+                throw new \RuntimeException((string)($result['message'] ?? __('The storage analysis could not be completed.', 'rrze-multisite-manager')));
+            }
+
+            if ($isComplete) {
+                $this->markPhaseFinished($siteId, $phase);
+                return;
+            }
         }
 
-        $this->unschedule($siteId, self::BASE_PHASE);
-        $this->unschedule($siteId, self::ORPHAN_PHASE);
-        $this->unschedule($siteId, self::ACTIVE_PHASE);
+        throw new \RuntimeException(__('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
+    }
+
+    protected function abortSingleProcessAnalysis(int $siteId, string $phase, string $message): void {
+        $status = $this->getStatus($siteId);
+        $startedAt = (string)($status['last_started_at'] ?? '');
+        $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
+        $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
+
         $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
-        $this->runScheduledAnalysisLocked($siteId, self::BASE_PHASE, true);
+        $this->markRunAborted($siteId, $startedAt, $duration, $message);
+        $this->markPhaseAborted($siteId, $phase, $message);
+        do_action(
+            'rrze.log.error',
+            'RRZE-MSM: Storage analysis aborted because of its runtime limit',
+            [
+                'site_id' => $siteId,
+                'phase' => $phase,
+                'duration_seconds' => $duration,
+                'timeout_seconds' => $this->getTimeoutSeconds(),
+            ]
+        );
     }
 
-    protected function runActiveAnalysis(int $siteId): void {
-        $status = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
-
-        if (($status['base']['status'] ?? '') === 'running') {
-            $this->runScheduledAnalysisLocked($siteId, self::BASE_PHASE);
-            return;
+    protected function extendRuntimeLimit(): void {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit($this->getTimeoutSeconds() + MINUTE_IN_SECONDS);
         }
-
-        if (($status['base']['status'] ?? '') === 'complete' && ($status['orphan']['status'] ?? '') !== 'complete') {
-            $this->runScheduledAnalysisLocked($siteId, self::ORPHAN_PHASE);
-            return;
-        }
-
-        if (($status['base']['status'] ?? '') === 'complete'
-            && ($status['orphan']['status'] ?? '') === 'complete'
-            && !empty($this->getStatus($siteId)['metadata_pending'])) {
-            $this->runScheduledAnalysisLocked($siteId, self::METADATA_PHASE);
-            return;
-        }
-
-        $this->unschedule($siteId, self::ACTIVE_PHASE);
     }
 
     public function getSiteProcesses(): array {
@@ -496,6 +462,10 @@ class StorageAnalysisSchedulerService {
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
             $site = get_site($siteId);
+            $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+            $scheduleStatus = $this->getStatus($siteId);
+
+            $this->recoverInterruptedRun($siteId, $analysisStatus, $scheduleStatus);
             $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
             $scheduleStatus = $this->getStatus($siteId);
             $isEligible = $this->isSiteEligible($siteId);
@@ -520,11 +490,12 @@ class StorageAnalysisSchedulerService {
                 'is_eligible' => $isEligible,
                 'is_due' => $isDue,
                 'cycle' => $isEligible ? $this->getScheduleLabel() : '',
-                'last_run' => (string)($scheduleStatus['last_finished_at'] ?? ''),
+                'last_run' => (string)($scheduleStatus['last_completed_at'] ?? ''),
                 // The monitoring table describes the configured recurrence, not internal follow-up batches.
                 'next_run_timestamp' => $nextRunTimestamp,
                 'last_duration_seconds' => (int)($scheduleStatus['last_duration_seconds'] ?? 0),
                 'last_was_aborted' => !empty($scheduleStatus['last_was_aborted']),
+                'phases' => is_array($scheduleStatus['phases'] ?? null) ? $scheduleStatus['phases'] : [],
                 'can_start_now' => $isEligible && !$isDue && !$this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
             ];
         }
@@ -573,19 +544,6 @@ class StorageAnalysisSchedulerService {
             $nextTimestamp += MINUTE_IN_SECONDS + wp_rand(0, MINUTE_IN_SECONDS);
             $this->scheduleRecurringAnalysisAt($siteId, $nextTimestamp);
         }
-    }
-
-    protected function ensureActiveBatchSchedule(int $siteId): void {
-        if (!$this->isSiteEligible($siteId) || $this->getNextScheduledTimestamp($siteId, self::ACTIVE_PHASE) > 0) {
-            return;
-        }
-
-        wp_schedule_event(
-            time() + MINUTE_IN_SECONDS,
-            'rrze_msm_storage_active_batch',
-            $this->config->getStorageAnalysisHook(),
-            [$siteId, self::ACTIVE_PHASE]
-        );
     }
 
     protected function unschedule(int $siteId, string $phase): void {
@@ -660,7 +618,7 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function getScheduleSignature(): string {
-        return $this->getScheduleKey() . ':recurring-batches-v2';
+        return $this->getScheduleKey() . ':single-process-v3';
     }
 
     protected function getScheduleLabel(): string {
@@ -682,71 +640,6 @@ class StorageAnalysisSchedulerService {
         return max(MINUTE_IN_SECONDS, min(1440 * MINUTE_IN_SECONDS, $minutes * MINUTE_IN_SECONDS));
     }
 
-    protected function isAnalysisTimedOut(int $siteId, array $analysisStatus): bool {
-        $scheduleStatus = $this->getStatus($siteId);
-        $startedAt = (string)($scheduleStatus['last_started_at'] ?? '');
-        $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
-
-        return $this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus)
-            && $startedTimestamp > 0
-            && (time() - $startedTimestamp) >= $this->getTimeoutSeconds();
-    }
-
-    protected function abortTimedOutAnalysis(int $siteId, array $analysisStatus): void {
-        $scheduleStatus = $this->getStatus($siteId);
-        $startedAt = (string)($scheduleStatus['last_started_at'] ?? '');
-        $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
-        $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
-        $phase = ($analysisStatus['orphan']['status'] ?? '') === 'running' ? self::ORPHAN_PHASE : self::BASE_PHASE;
-        $message = __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager');
-
-        $this->unschedule($siteId, self::BASE_PHASE);
-        $this->unschedule($siteId, self::ORPHAN_PHASE);
-        $this->unschedule($siteId, self::ACTIVE_PHASE);
-        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
-        $this->markRunAborted($siteId, $startedAt, $duration, $message);
-
-        do_action(
-            'rrze.log.error',
-            'RRZE-MSM: Speicheranalyse wegen Zeitüberschreitung abgebrochen',
-            [
-                'site_id' => $siteId,
-                'phase' => $phase,
-                'started_at' => $startedAt,
-                'duration_seconds' => $duration,
-                'timeout_seconds' => $this->getTimeoutSeconds(),
-                'status' => $analysisStatus,
-            ]
-        );
-    }
-
-    protected function abortCancelledAnalysis(int $siteId, array $analysisStatus): void {
-        $scheduleStatus = $this->getStatus($siteId);
-        $startedAt = (string)($scheduleStatus['last_started_at'] ?? '');
-        $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
-        $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
-        $message = __('The storage analysis was cancelled.', 'rrze-multisite-manager');
-
-        $this->unschedule($siteId, self::BASE_PHASE);
-        $this->unschedule($siteId, self::ORPHAN_PHASE);
-        $this->unschedule($siteId, self::ACTIVE_PHASE);
-        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
-        $this->markRunAborted($siteId, $startedAt, $duration, $message);
-        delete_site_transient($this->getCancellationTransientKey($siteId));
-
-        LoggingService::info(
-            $this->config,
-            sprintf(
-                __('RRZE-MSM: Storage analysis (site %d) cancelled', 'rrze-multisite-manager'),
-                $siteId
-            ),
-            [
-                'site_id' => $siteId,
-                'duration_seconds' => $duration,
-            ]
-        );
-    }
-
     protected function isAnalysisRunning(array $status): bool {
         return ($status['base']['status'] ?? '') === 'running' || ($status['orphan']['status'] ?? '') === 'running';
     }
@@ -761,14 +654,6 @@ class StorageAnalysisSchedulerService {
         }
 
         return !empty($scheduleStatus['is_running']);
-    }
-
-    protected function getCancellationTransientKey(int $siteId): string {
-        return self::CANCEL_TRANSIENT_PREFIX . $siteId;
-    }
-
-    protected function isCancellationRequested(int $siteId): bool {
-        return get_site_transient($this->getCancellationTransientKey($siteId)) !== false;
     }
 
     protected function getSiteProcessStatus(bool $isEligible, bool $isDue, array $analysisStatus, array $scheduleStatus): string {
@@ -812,7 +697,7 @@ class StorageAnalysisSchedulerService {
 
         if (
             $nextRunTimestamp > time()
-            && !empty($scheduleStatus['last_finished_at'])
+            && !empty($scheduleStatus['last_completed_at'])
             && !empty($analysisStatus['has_cached_analysis'])
         ) {
             return 'ok';
@@ -825,7 +710,7 @@ class StorageAnalysisSchedulerService {
         $optionName = self::LOCK_OPTION_PREFIX . $siteId;
         $existing = (int)get_site_option($optionName, 0);
 
-        if ($existing > 0 && (time() - $existing) > self::LOCK_TTL) {
+        if ($existing > 0 && (time() - $existing) > ($this->getTimeoutSeconds() + MINUTE_IN_SECONDS)) {
             delete_site_option($optionName);
         }
 
@@ -836,11 +721,54 @@ class StorageAnalysisSchedulerService {
         delete_site_option(self::LOCK_OPTION_PREFIX . $siteId);
     }
 
+    protected function hasActiveSiteLock(int $siteId): bool {
+        $startedAt = (int)get_site_option(self::LOCK_OPTION_PREFIX . $siteId, 0);
+
+        return $startedAt > 0 && (time() - $startedAt) <= ($this->getTimeoutSeconds() + MINUTE_IN_SECONDS);
+    }
+
+    protected function recoverInterruptedRun(int $siteId, array $analysisStatus = [], array $scheduleStatus = []): bool {
+        if ($siteId <= 0) {
+            return false;
+        }
+
+        if (empty($scheduleStatus)) {
+            $scheduleStatus = $this->getStatus($siteId);
+        }
+
+        if (empty($scheduleStatus['is_running']) || $this->hasActiveSiteLock($siteId)) {
+            return false;
+        }
+
+        $startedAt = (string)($scheduleStatus['last_started_at'] ?? '');
+        $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
+        $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
+        $message = __('The storage analysis was interrupted before it could finish.', 'rrze-multisite-manager');
+
+        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+        $this->markRunAborted($siteId, $startedAt, $duration, $message);
+        $this->markPhaseAborted($siteId, $this->getRunningPhase($scheduleStatus), $message);
+        do_action(
+            'rrze.log.error',
+            'RRZE-MSM: Storage analysis interrupted unexpectedly',
+            [
+                'site_id' => $siteId,
+                'duration_seconds' => $duration,
+                'status' => $analysisStatus,
+            ]
+        );
+
+        return true;
+    }
+
     protected function markRunStarted(int $siteId, bool $isNewRun): void {
         $status = get_blog_option($siteId, self::OPTION_STATUS, []);
 
-        if (!is_array($status) || $isNewRun || empty($status['last_started_at'])) {
+        if (!is_array($status)) {
             $status = [];
+        }
+
+        if ($isNewRun || empty($status['last_started_at'])) {
             $status['last_started_at'] = current_time('mysql', true);
         }
 
@@ -850,9 +778,150 @@ class StorageAnalysisSchedulerService {
         if ($isNewRun) {
             $status['metadata_pending'] = true;
             $status['metadata_started'] = false;
+            $status['phases'] = $this->getScheduledPhaseStatuses();
         }
 
         update_blog_option($siteId, self::OPTION_STATUS, $status);
+    }
+
+    protected function markPhaseStarted(int $siteId, string $phase): void {
+        $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+        $phaseStatus = is_array($status['phases'][$phase] ?? null) ? $status['phases'][$phase] : [];
+
+        if (($phaseStatus['status'] ?? '') === 'running' && !empty($phaseStatus['started_at'])) {
+            return;
+        }
+
+        if (!is_array($status)) {
+            $status = [];
+        }
+
+        $status['phases'] = is_array($status['phases'] ?? null)
+            ? $status['phases']
+            : $this->getDefaultPhaseStatuses();
+        $status['phases'][$phase] = [
+            'status' => 'running',
+            'started_at' => current_time('mysql', true),
+            'finished_at' => '',
+            'message' => '',
+        ];
+        update_blog_option($siteId, self::OPTION_STATUS, $status);
+        $this->logPhaseEvent($siteId, $phase, 'started');
+    }
+
+    protected function markPhaseFinished(int $siteId, string $phase): void {
+        $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+
+        if (!is_array($status)) {
+            $status = [];
+        }
+
+        $status['phases'] = is_array($status['phases'] ?? null)
+            ? $status['phases']
+            : $this->getDefaultPhaseStatuses();
+        $status['phases'][$phase] = array_merge(
+            (array)($status['phases'][$phase] ?? []),
+            [
+                'status' => 'complete',
+                'finished_at' => current_time('mysql', true),
+                'message' => '',
+            ]
+        );
+        update_blog_option($siteId, self::OPTION_STATUS, $status);
+        $this->logPhaseEvent($siteId, $phase, 'finished');
+    }
+
+    protected function markPhaseFailed(int $siteId, string $phase, string $message): void {
+        $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+
+        if (!is_array($status)) {
+            $status = [];
+        }
+
+        $status['phases'] = is_array($status['phases'] ?? null)
+            ? $status['phases']
+            : $this->getDefaultPhaseStatuses();
+        $status['phases'][$phase] = array_merge(
+            (array)($status['phases'][$phase] ?? []),
+            [
+                'status' => 'error',
+                'finished_at' => current_time('mysql', true),
+                'message' => $message,
+            ]
+        );
+        update_blog_option($siteId, self::OPTION_STATUS, $status);
+        $this->logPhaseEvent($siteId, $phase, 'failed', $message);
+    }
+
+    protected function markPhaseAborted(int $siteId, string $phase, string $message): void {
+        $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+
+        if (!is_array($status)) {
+            $status = [];
+        }
+
+        $status['phases'] = is_array($status['phases'] ?? null)
+            ? $status['phases']
+            : $this->getDefaultPhaseStatuses();
+        $status['phases'][$phase] = array_merge(
+            (array)($status['phases'][$phase] ?? []),
+            [
+                'status' => 'aborted',
+                'finished_at' => current_time('mysql', true),
+                'message' => $message,
+            ]
+        );
+        update_blog_option($siteId, self::OPTION_STATUS, $status);
+        $this->logPhaseEvent($siteId, $phase, 'aborted', $message);
+    }
+
+    protected function getDefaultPhaseStatuses(): array {
+        return [
+            self::BASE_PHASE => ['status' => 'idle', 'started_at' => '', 'finished_at' => '', 'message' => ''],
+            self::ORPHAN_PHASE => ['status' => 'idle', 'started_at' => '', 'finished_at' => '', 'message' => ''],
+            self::METADATA_PHASE => ['status' => 'idle', 'started_at' => '', 'finished_at' => '', 'message' => ''],
+        ];
+    }
+
+    protected function getRunningPhase(array $status): string {
+        $phases = is_array($status['phases'] ?? null) ? $status['phases'] : [];
+
+        foreach ([self::METADATA_PHASE, self::ORPHAN_PHASE, self::BASE_PHASE] as $phase) {
+            if (($phases[$phase]['status'] ?? '') === 'running') {
+                return $phase;
+            }
+        }
+
+        return self::BASE_PHASE;
+    }
+
+    protected function getScheduledPhaseStatuses(): array {
+        $phases = $this->getDefaultPhaseStatuses();
+
+        foreach (array_keys($phases) as $phase) {
+            $phases[$phase]['status'] = 'scheduled';
+        }
+
+        return $phases;
+    }
+
+    protected function logPhaseEvent(int $siteId, string $phase, string $event, string $message = ''): void {
+        LoggingService::info(
+            $this->config,
+            sprintf(
+                __('RRZE-MSM: Storage analysis phase %1$s for site %2$d %3$s', 'rrze-multisite-manager'),
+                $phase,
+                $siteId,
+                $event
+            ),
+            [
+                'site_id' => $siteId,
+                'site_url' => get_home_url($siteId, '/'),
+                'phase' => $phase,
+                'event' => $event,
+                'message' => $message,
+            ]
+        );
     }
 
     protected function markMediaMetadataStarted(int $siteId): void {
@@ -878,12 +947,13 @@ class StorageAnalysisSchedulerService {
             $duration = $startedTimestamp && $finishedTimestamp ? max(0, $finishedTimestamp - $startedTimestamp) : 0;
         }
 
-        update_blog_option(
-            $siteId,
-            self::OPTION_STATUS,
+        $status = is_array($status) ? $status : [];
+        $status = array_merge(
+            $status,
             [
                 'last_started_at' => $startedAt,
                 'last_finished_at' => $finishedAt,
+                'last_completed_at' => $finishedAt,
                 'last_duration_seconds' => $duration,
                 'last_was_aborted' => false,
                 'last_error' => '',
@@ -892,12 +962,23 @@ class StorageAnalysisSchedulerService {
                 'metadata_started' => false,
             ]
         );
+        update_blog_option($siteId, self::OPTION_STATUS, $status);
+        LoggingService::info(
+            $this->config,
+            sprintf(__('RRZE-MSM: Storage analysis (site %d) finished', 'rrze-multisite-manager'), $siteId),
+            [
+                'site_id' => $siteId,
+                'site_url' => get_home_url($siteId, '/'),
+                'duration_seconds' => $duration,
+            ]
+        );
     }
 
     protected function markRunAborted(int $siteId, string $startedAt, int $duration, string $message): void {
-        update_blog_option(
-            $siteId,
-            self::OPTION_STATUS,
+        $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+        $status = is_array($status) ? $status : [];
+        $status = array_merge(
+            $status,
             [
                 'last_started_at' => $startedAt,
                 'last_finished_at' => current_time('mysql', true),
@@ -909,6 +990,7 @@ class StorageAnalysisSchedulerService {
                 'metadata_started' => false,
             ]
         );
+        update_blog_option($siteId, self::OPTION_STATUS, $status);
     }
 
     protected function markRunFailed(int $siteId, string $message): void {
@@ -937,31 +1019,4 @@ class StorageAnalysisSchedulerService {
         );
     }
 
-    protected function logTaskFinished(int $siteId, string $phase, array $status, bool $success): void {
-        $phaseStatus = is_array($status[$phase] ?? null) ? $status[$phase] : [];
-        $isComplete = $phase === self::ORPHAN_PHASE && ($phaseStatus['status'] ?? '') === 'complete';
-
-        if ($success && !$isComplete) {
-            return;
-        }
-
-        LoggingService::info(
-            $this->config,
-            sprintf(
-                __('RRZE-MSM: Storage analysis (site %d) finished', 'rrze-multisite-manager'),
-                $siteId
-            ),
-            [
-                'site_id' => $siteId,
-                'phase' => $phase,
-                'success' => $success,
-                'status' => (string)($phaseStatus['status'] ?? ''),
-                'message' => (string)($phaseStatus['message'] ?? ''),
-                'processed_files' => (int)($phaseStatus['processed_files'] ?? 0),
-                'processed_directories' => (int)($phaseStatus['processed_directories'] ?? 0),
-                'processed' => (int)($phaseStatus['processed'] ?? 0),
-                'total' => (int)($phaseStatus['total'] ?? 0),
-            ]
-        );
-    }
 }

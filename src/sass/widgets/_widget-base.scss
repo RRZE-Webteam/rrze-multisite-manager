@@ -207,6 +207,16 @@
     cursor: default;
 }
 
+.rrze-msm-monitoring-site-url .row-actions {
+    visibility: hidden;
+    margin-top: 4px;
+}
+
+.rrze-msm-table tbody tr:hover .rrze-msm-monitoring-site-url .row-actions,
+.rrze-msm-table tbody tr:focus-within .rrze-msm-monitoring-site-url .row-actions {
+    visibility: visible;
+}
+
 .rrze-msm-site-row-inactive th,
 .rrze-msm-site-row-inactive td,
 .rrze-msm-table.striped > tbody > .rrze-msm-site-row-inactive:nth-child(odd) th,
@@ -690,6 +700,40 @@ td.rrze-msm-plugin-col-active-sites {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+}
+
+.rrze-msm-attachment-debug-form {
+    align-items: flex-start;
+}
+
+.rrze-msm-attachment-search,
+.rrze-msm-attachment-id-lookup {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.rrze-msm-attachment-search {
+    flex: 1 1 32rem;
+}
+
+.rrze-msm-attachment-search .description,
+.rrze-msm-attachment-search select {
+    flex-basis: 100%;
+}
+
+.rrze-msm-attachment-search .description {
+    margin: 0;
+}
+
+.rrze-msm-attachment-id-lookup {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.rrze-msm-attachment-id-lookup label {
+    margin: 0;
 }
 
 .rrze-msm-site-action-state {
@@ -1244,6 +1288,31 @@ a.rrze-msm-subtab.is-active:visited {
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 8px;
+}
+
+.rrze-msm-phase-timestamp {
+    white-space: nowrap;
+}
+
+.rrze-msm-phase-timestamp .dashicons {
+    margin-right: 4px;
+    vertical-align: text-bottom;
+}
+
+.rrze-msm-phase-icon-complete {
+    color: var(--rrze-msm-positive);
+}
+
+.rrze-msm-phase-icon-running {
+    color: var(--rrze-msm-neutral);
+}
+
+.rrze-msm-phase-icon-scheduled {
+    color: var(--rrze-msm-scheduled);
+}
+
+.rrze-msm-phase-icon-idle {
+    color: var(--rrze-msm-muted);
 }
 
 @media (max-width: 1200px) {

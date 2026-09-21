@@ -567,7 +567,7 @@ class MonitoringService {
             $result = $this->buildCheckResult($siteId, $siteLabel, $siteUrl, $host, $timestamp, $dnsStatus, $httpStatus, $dnsStatusDetail, $httpStatusDetail, $httpStatusCode, $operationalStatus, $operationalStatus, false);
             $this->logMonitoringWarning($result);
             $this->appendSiteHistory($siteId, $result);
-            $this->deactivateStorageAnalysisForUnavailableSite($siteId, $result);
+            $this->reconcileStorageAnalysisSchedule($siteId);
             return $result;
         }
 
@@ -590,24 +590,17 @@ class MonitoringService {
         $result = $this->buildCheckResult($siteId, $siteLabel, $siteUrl, $host, $timestamp, $dnsStatus, $httpStatus, $dnsStatusDetail, $httpStatusDetail, $httpStatusCode, $operationalStatus, $nextOperationalStatus, $statusChanged);
         $this->logMonitoringWarning($result);
         $this->appendSiteHistory($siteId, $result);
-        $this->deactivateStorageAnalysisForUnavailableSite($siteId, $result);
+        $this->reconcileStorageAnalysisSchedule($siteId);
 
         return $result;
     }
 
-    protected function deactivateStorageAnalysisForUnavailableSite(int $siteId, array $result): void {
-        $dnsStatus = (string)($result['dns_status'] ?? '');
-        $httpStatus = (string)($result['http_status'] ?? '');
-        $operationalStatus = (string)($result['status'] ?? '');
+    protected function reconcileStorageAnalysisSchedule(int $siteId): void {
+        $storageScheduler = new StorageAnalysisSchedulerService(new MetricsService(null, $this->config), $this->config);
+        $storageScheduler->reconcileSiteSchedule($siteId);
 
-        if (
-            in_array($operationalStatus, ['provisioning', 'retired', 'dns_missing', 'unreachable'], true)
-            || !in_array($dnsStatus, ['ok', 'unknown'], true)
-            || !in_array($httpStatus, ['ok', 'unknown', 'pending'], true)
-        ) {
-            (new StorageAnalysisSchedulerService(new MetricsService(null, $this->config), $this->config))
-                ->deactivateIneligibleSite($siteId);
-        }
+        $shortcodeBlockScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
+        $shortcodeBlockScheduler->reconcileSiteSchedule($siteId);
     }
 
     protected function getSiteMonitoringLabel(\WP_Site $site): string {
