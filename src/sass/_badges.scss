@@ -20,6 +20,11 @@
     color: var(--rrze-msm-warning-text);
 }
 
+.rrze-msm-badge-scheduled {
+    background: var(--rrze-msm-scheduled);
+    color: var(--rrze-msm-scheduled-text);
+}
+
 .rrze-msm-badge-danger {
     background: var(--rrze-msm-danger);
     color: var(--rrze-msm-danger-text);

@@ -778,6 +778,7 @@ class StorageAnalysisSchedulerService {
             'waiting_for_cron' => __('Waiting for cron', 'rrze-multisite-manager'),
             'aborted' => __('Aborted', 'rrze-multisite-manager'),
             'error' => __('Error', 'rrze-multisite-manager'),
+            'ok' => __('Ok', 'rrze-multisite-manager'),
             'scheduled' => __('Scheduled', 'rrze-multisite-manager'),
             'not_scheduled' => __('Not scheduled', 'rrze-multisite-manager'),
         ];
@@ -807,7 +808,17 @@ class StorageAnalysisSchedulerService {
             return 'error';
         }
 
-        return (int)($scheduleStatus['next_run_timestamp'] ?? 0) > 0 ? 'scheduled' : 'not_scheduled';
+        $nextRunTimestamp = (int)($scheduleStatus['next_recurring_run_timestamp'] ?? 0);
+
+        if (
+            $nextRunTimestamp > time()
+            && !empty($scheduleStatus['last_finished_at'])
+            && !empty($analysisStatus['has_cached_analysis'])
+        ) {
+            return 'ok';
+        }
+
+        return $nextRunTimestamp > 0 ? 'scheduled' : 'not_scheduled';
     }
 
     protected function acquireSiteLock(int $siteId): bool {

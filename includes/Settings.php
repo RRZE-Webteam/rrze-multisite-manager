@@ -845,12 +845,14 @@ class Settings {
         foreach ($processes as $process) {
             $siteId = (int)($process['site_id'] ?? 0);
             $statusKey = (string)($process['status_key'] ?? '');
-            $statusClass = 'rrze-msm-badge-positive';
+            $statusClass = 'rrze-msm-badge-neutral';
 
             if (!empty($process['is_running'])) {
                 $statusClass = 'rrze-msm-badge-info';
-            } elseif ($statusKey === 'waiting_for_cron') {
-                $statusClass = 'rrze-msm-badge-info';
+            } elseif (in_array($statusKey, ['scheduled', 'waiting_for_cron'], true)) {
+                $statusClass = 'rrze-msm-badge-scheduled';
+            } elseif ($statusKey === 'ok') {
+                $statusClass = 'rrze-msm-badge-positive';
             } elseif ($statusKey === 'inactive') {
                 $statusClass = 'rrze-msm-badge-inactive';
             } elseif (in_array($statusKey, ['error', 'aborted'], true)) {

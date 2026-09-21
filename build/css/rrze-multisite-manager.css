@@ -34,6 +34,8 @@ body.rrze-msm-mode-dark {
   --rrze-msm-warning: var(--rrze-msm-status-archive-bg);
   --rrze-msm-warning-text: var(--rrze-msm-status-archive-text);
   --rrze-msm-warning-soft: color-mix(in srgb, var(--rrze-msm-status-archive-bg) 24%, #fff 76%);
+  --rrze-msm-scheduled: #fd7e14;
+  --rrze-msm-scheduled-text: #fff;
   --rrze-msm-danger: var(--rrze-msm-status-delete-bg);
   --rrze-msm-danger-text: var(--rrze-msm-status-delete-text);
   --rrze-msm-danger-soft: color-mix(in srgb, var(--rrze-msm-status-delete-bg) 18%, #fff 82%);
@@ -256,6 +258,11 @@ body.rrze-msm-mode-dark {
 .rrze-msm-badge-warning {
   background: var(--rrze-msm-warning);
   color: var(--rrze-msm-warning-text);
+}
+
+.rrze-msm-badge-scheduled {
+  background: var(--rrze-msm-scheduled);
+  color: var(--rrze-msm-scheduled-text);
 }
 
 .rrze-msm-badge-danger {
