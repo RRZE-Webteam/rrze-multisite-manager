@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.2.2\n"
+"Project-Id-Version: RRZE Multisite Manager 1.2.3\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-22T14:25:18+00:00\n"
-"PO-Revision-Date: 2026-09-22 14:25+0000\n"
+"POT-Creation-Date: 2026-09-22T15:24:02+00:00\n"
+"PO-Revision-Date: 2026-09-22 15:24+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -468,8 +468,8 @@ msgstr ""
 #: includes/Dashboard.php:3295
 #: includes/MetricsService.php:8534
 #: includes/MetricsServiceSiteTrait.php:242
-#: includes/Settings.php:1218
-#: includes/Settings.php:1923
+#: includes/Settings.php:1225
+#: includes/Settings.php:1930
 msgid "DNS missing"
 msgstr ""
 
@@ -869,7 +869,7 @@ msgstr ""
 #: includes/Dashboard.php:3085
 #: includes/Settings.php:936
 #: includes/Settings.php:1088
-#: includes/Settings.php:1220
+#: includes/Settings.php:1227
 #: includes/Widgets/PluginUsageWidget.php:129
 #: includes/Widgets/PluginUsageWidget.php:372
 #: templates/site-details-page.php:351
@@ -903,7 +903,7 @@ msgstr ""
 #: includes/MetricsService.php:2627
 #: includes/MetricsService.php:3479
 #: includes/MetricsService.php:8560
-#: includes/Settings.php:1883
+#: includes/Settings.php:1890
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:550
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:575
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:647
@@ -968,7 +968,7 @@ msgstr ""
 #: includes/Dashboard.php:3294
 #: includes/MetricsService.php:8533
 #: includes/MetricsServiceSiteTrait.php:232
-#: includes/Settings.php:1915
+#: includes/Settings.php:1922
 msgid "Technically reachable"
 msgstr ""
 
@@ -1506,7 +1506,7 @@ msgstr ""
 
 #: includes/MetricsService.php:6747
 #: includes/MetricsService.php:6749
-#: includes/Settings.php:1212
+#: includes/Settings.php:1219
 msgid "Duration"
 msgstr ""
 
@@ -1629,37 +1629,37 @@ msgid "Not public"
 msgstr ""
 
 #: includes/MetricsService.php:8556
-#: includes/Settings.php:1863
+#: includes/Settings.php:1870
 msgid "OK"
 msgstr ""
 
 #: includes/MetricsService.php:8557
-#: includes/Settings.php:1867
+#: includes/Settings.php:1874
 #: templates/site-storage-missing-metadata.php:76
 msgid "Missing"
 msgstr ""
 
 #: includes/MetricsService.php:8558
 #: includes/Settings.php:1067
-#: includes/Settings.php:1879
+#: includes/Settings.php:1886
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:261
 #: includes/StorageAnalysisSchedulerService.php:675
 msgid "Error"
 msgstr ""
 
 #: includes/MetricsService.php:8559
-#: includes/Settings.php:1871
+#: includes/Settings.php:1878
 msgid "Timeout"
 msgstr ""
 
 #: includes/MetricsService.php:8561
-#: includes/Settings.php:1875
+#: includes/Settings.php:1882
 msgid "Pending"
 msgstr ""
 
 #. translators: 1: monitoring status label, 2: monitoring detail text.
 #: includes/MetricsService.php:8585
-#: includes/Settings.php:1907
+#: includes/Settings.php:1914
 msgid "%1$s (%2$s)"
 msgstr ""
 
@@ -2006,7 +2006,7 @@ msgstr ""
 
 #. translators: %d: site ID.
 #: includes/MonitoringService.php:615
-#: includes/Settings.php:1812
+#: includes/Settings.php:1819
 msgid "Site %d"
 msgstr ""
 
@@ -2243,8 +2243,8 @@ msgstr ""
 
 #: includes/Settings.php:902
 #: includes/Settings.php:1047
-#: includes/Settings.php:1169
-#: includes/Settings.php:1258
+#: includes/Settings.php:1172
+#: includes/Settings.php:1265
 #: templates/plugin-details-page.php:52
 #: templates/site-details-page.php:53
 #: templates/site-details-page.php:318
@@ -2279,13 +2279,13 @@ msgstr ""
 
 #: includes/Settings.php:909
 #: includes/Settings.php:1052
-#: includes/Settings.php:1175
+#: includes/Settings.php:1180
 msgid "Next run"
 msgstr ""
 
 #: includes/Settings.php:910
 #: includes/Settings.php:1053
-#: includes/Settings.php:1176
+#: includes/Settings.php:1181
 #: templates/plugin-details-page.php:245
 #: templates/site-details-page.php:474
 #: templates/site-details-page.php:636
@@ -2311,8 +2311,8 @@ msgstr ""
 #: includes/Settings.php:960
 #: includes/Settings.php:1066
 #: includes/Settings.php:1104
-#: includes/Settings.php:1401
-#: includes/Settings.php:1509
+#: includes/Settings.php:1408
+#: includes/Settings.php:1516
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:260
 #: includes/StorageAnalysisSchedulerService.php:671
 msgid "Running"
@@ -2320,13 +2320,13 @@ msgstr ""
 
 #: includes/Settings.php:967
 #: includes/Settings.php:1112
-#: includes/Settings.php:1634
+#: includes/Settings.php:1641
 msgid "Start now"
 msgstr ""
 
 #: includes/Settings.php:967
 #: includes/Settings.php:1112
-#: includes/Settings.php:1210
+#: includes/Settings.php:1217
 msgid "Start"
 msgstr ""
 
@@ -2413,15 +2413,15 @@ msgid "Ok"
 msgstr ""
 
 #: includes/Settings.php:1070
-#: includes/Settings.php:1405
-#: includes/Settings.php:1513
+#: includes/Settings.php:1412
+#: includes/Settings.php:1520
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:264
 #: includes/StorageAnalysisSchedulerService.php:677
 msgid "Scheduled"
 msgstr ""
 
 #: includes/Settings.php:1071
-#: includes/Settings.php:1437
+#: includes/Settings.php:1444
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:265
 #: includes/StorageAnalysisSchedulerService.php:678
 msgid "Not scheduled"
@@ -2439,19 +2439,19 @@ msgstr ""
 msgid "Yes, reinitialize the shortcode and block analysis tasks."
 msgstr ""
 
-#: includes/Settings.php:1160
+#: includes/Settings.php:1163
 msgid "Monitoring processes"
 msgstr ""
 
-#: includes/Settings.php:1161
+#: includes/Settings.php:1164
 msgid "Here you can see which monitoring processes are scheduled, when they last ran, and start them immediately if needed."
 msgstr ""
 
-#: includes/Settings.php:1167
+#: includes/Settings.php:1170
 msgid "Process"
 msgstr ""
 
-#: includes/Settings.php:1168
+#: includes/Settings.php:1171
 #: templates/plugin-details-page.php:412
 #: templates/shortcode-block-analysis-page.php:275
 #: templates/site-storage-attachment-debug.php:40
@@ -2464,142 +2464,142 @@ msgstr ""
 msgid "Description"
 msgstr ""
 
-#: includes/Settings.php:1170
+#: includes/Settings.php:1173
 msgid "Interval (hrs.)"
 msgstr ""
 
-#: includes/Settings.php:1171
+#: includes/Settings.php:1175
 msgid "Progress"
 msgstr ""
 
-#: includes/Settings.php:1172
+#: includes/Settings.php:1176
 msgid "Remaining"
 msgstr ""
 
-#: includes/Settings.php:1173
+#: includes/Settings.php:1178
 msgid "Last active"
 msgstr ""
 
-#: includes/Settings.php:1174
+#: includes/Settings.php:1179
 msgid "Last site count"
 msgstr ""
 
-#: includes/Settings.php:1196
+#: includes/Settings.php:1203
 msgid "There are currently no monitoring processes registered."
 msgstr ""
 
-#: includes/Settings.php:1203
+#: includes/Settings.php:1210
 msgid "Last monitoring runs"
 msgstr ""
 
-#: includes/Settings.php:1204
+#: includes/Settings.php:1211
 msgid "This is the run log of the last complete monitoring passes, including notable status changes and technical issues."
 msgstr ""
 
-#: includes/Settings.php:1211
+#: includes/Settings.php:1218
 msgid "End"
 msgstr ""
 
-#: includes/Settings.php:1213
+#: includes/Settings.php:1220
 msgid "Trigger"
 msgstr ""
 
-#: includes/Settings.php:1214
+#: includes/Settings.php:1221
 msgid "Sites checked"
 msgstr ""
 
-#: includes/Settings.php:1215
-#: includes/Settings.php:1708
-#: includes/Settings.php:1847
+#: includes/Settings.php:1222
+#: includes/Settings.php:1715
+#: includes/Settings.php:1854
 msgid "Status change"
 msgstr ""
 
-#: includes/Settings.php:1216
+#: includes/Settings.php:1223
 msgid "DNS issues"
 msgstr ""
 
-#: includes/Settings.php:1217
+#: includes/Settings.php:1224
 msgid "HTTP problems"
 msgstr ""
 
-#: includes/Settings.php:1219
+#: includes/Settings.php:1226
 msgid "Not reachable"
 msgstr ""
 
-#: includes/Settings.php:1241
+#: includes/Settings.php:1248
 msgid "No complete monitoring run has been logged yet."
 msgstr ""
 
-#: includes/Settings.php:1248
+#: includes/Settings.php:1255
 msgid "Most recently detected issues"
 msgstr ""
 
-#: includes/Settings.php:1249
+#: includes/Settings.php:1256
 msgid "Compact history of the latest status changes and technical issues logged by monitoring."
 msgstr ""
 
-#: includes/Settings.php:1255
+#: includes/Settings.php:1262
 #: templates/site-details-page.php:164
 msgid "Timestamp"
 msgstr ""
 
-#: includes/Settings.php:1256
+#: includes/Settings.php:1263
 #: templates/plugin-details-page.php:243
 msgid "Website"
 msgstr ""
 
-#: includes/Settings.php:1257
+#: includes/Settings.php:1264
 msgid "Event"
 msgstr ""
 
-#: includes/Settings.php:1259
+#: includes/Settings.php:1266
 #: includes/Widgets/Widgets.php:444
 #: includes/Widgets/Widgets.php:520
 #: templates/site-details-page.php:165
 msgid "DNS"
 msgstr ""
 
-#: includes/Settings.php:1260
+#: includes/Settings.php:1267
 #: includes/Widgets/Widgets.php:445
 #: includes/Widgets/Widgets.php:521
 #: templates/site-details-page.php:166
 msgid "HTTP"
 msgstr ""
 
-#: includes/Settings.php:1261
+#: includes/Settings.php:1268
 msgid "Run"
 msgstr ""
 
-#: includes/Settings.php:1278
+#: includes/Settings.php:1285
 msgid "No notable monitoring events have been logged yet."
 msgstr ""
 
-#: includes/Settings.php:1298
+#: includes/Settings.php:1305
 #: templates/views-page.php:23
 msgid "Create new view"
 msgstr ""
 
-#: includes/Settings.php:1299
+#: includes/Settings.php:1306
 #: templates/views-page.php:24
 msgid "New views start with all widgets. You can then narrow the selection directly below."
 msgstr ""
 
-#: includes/Settings.php:1301
+#: includes/Settings.php:1308
 #: templates/views-page.php:26
 msgid "Name of the new view"
 msgstr ""
 
-#: includes/Settings.php:1315
+#: includes/Settings.php:1322
 #: templates/views-page.php:39
 msgid "System view: always contains all available widgets and cannot be edited."
 msgstr ""
 
-#: includes/Settings.php:1317
+#: includes/Settings.php:1324
 #: templates/views-page.php:41
 msgid "System view: name is fixed, widget assignment can be adjusted."
 msgstr ""
 
-#: includes/Settings.php:1322
+#: includes/Settings.php:1329
 #: templates/plugin-details-page.php:375
 #: templates/site-details-page.php:243
 #: templates/site-details-page.php:378
@@ -2613,147 +2613,147 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: includes/Settings.php:1327
+#: includes/Settings.php:1334
 #: templates/views-page.php:51
 msgid "Delete view"
 msgstr ""
 
-#: includes/Settings.php:1345
+#: includes/Settings.php:1352
 #: templates/views-page.php:73
 msgid "Save views"
 msgstr ""
 
-#: includes/Settings.php:1392
+#: includes/Settings.php:1399
 msgid "Not started"
 msgstr ""
 
-#: includes/Settings.php:1397
+#: includes/Settings.php:1404
 msgid "Completed"
 msgstr ""
 
-#: includes/Settings.php:1429
-#: includes/Settings.php:1520
+#: includes/Settings.php:1436
+#: includes/Settings.php:1527
 msgid "Not run yet"
 msgstr ""
 
-#: includes/Settings.php:1450
-#: includes/Settings.php:1494
+#: includes/Settings.php:1457
 #: includes/Settings.php:1501
-#: includes/Settings.php:1842
-#: includes/Settings.php:1886
-#: includes/Settings.php:1934
+#: includes/Settings.php:1508
+#: includes/Settings.php:1849
+#: includes/Settings.php:1893
+#: includes/Settings.php:1941
 msgid "-"
 msgstr ""
 
-#: includes/Settings.php:1450
+#: includes/Settings.php:1457
 msgid "0 sec."
 msgstr ""
 
-#: includes/Settings.php:1458
+#: includes/Settings.php:1465
 msgid "%d hr."
 msgid_plural "%d hr."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Settings.php:1462
+#: includes/Settings.php:1469
 msgid "%d min."
 msgid_plural "%d min."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Settings.php:1466
+#: includes/Settings.php:1473
 msgid "%d sec."
 msgid_plural "%d sec."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Settings.php:1479
+#: includes/Settings.php:1486
 msgid "%1$s / %2$s (%3$d%%)"
 msgstr ""
 
-#: includes/Settings.php:1488
+#: includes/Settings.php:1495
 msgid "%1$s / %2$s"
 msgstr ""
 
-#: includes/Settings.php:1517
+#: includes/Settings.php:1524
 msgid "Ready"
 msgstr ""
 
-#: includes/Settings.php:1529
+#: includes/Settings.php:1536
 msgid "Batch size: %s"
 msgstr ""
 
-#: includes/Settings.php:1536
+#: includes/Settings.php:1543
 msgid "Last processed: %s sites"
 msgstr ""
 
-#: includes/Settings.php:1608
+#: includes/Settings.php:1615
 msgid "Update now"
 msgstr ""
 
-#: includes/Settings.php:1617
-#: includes/Settings.php:1643
+#: includes/Settings.php:1624
+#: includes/Settings.php:1650
 msgid "Reset"
 msgstr ""
 
-#: includes/Settings.php:1625
-#: includes/Settings.php:1651
+#: includes/Settings.php:1632
+#: includes/Settings.php:1658
 msgid "Reset and restart"
 msgstr ""
 
-#: includes/Settings.php:1678
+#: includes/Settings.php:1685
 msgid "Run is taking unusually long"
 msgstr ""
 
-#: includes/Settings.php:1682
+#: includes/Settings.php:1689
 msgid "Next run is overdue"
 msgstr ""
 
-#: includes/Settings.php:1686
+#: includes/Settings.php:1693
 msgid "No completed process data is available yet"
 msgstr ""
 
-#: includes/Settings.php:1712
+#: includes/Settings.php:1719
 msgid "Technical issues"
 msgstr ""
 
-#: includes/Settings.php:1716
+#: includes/Settings.php:1723
 msgid "No notable issues have been logged."
 msgstr ""
 
-#: includes/Settings.php:1744
+#: includes/Settings.php:1751
 msgid "DNS: %s"
 msgstr ""
 
-#: includes/Settings.php:1754
+#: includes/Settings.php:1761
 msgid "HTTP: %s"
 msgstr ""
 
-#: includes/Settings.php:1832
+#: includes/Settings.php:1839
 msgid "%1$s -> %2$s"
 msgstr ""
 
-#: includes/Settings.php:1851
+#: includes/Settings.php:1858
 msgid "DNS issue"
 msgstr ""
 
-#: includes/Settings.php:1855
+#: includes/Settings.php:1862
 msgid "HTTP issue"
 msgstr ""
 
-#: includes/Settings.php:1858
+#: includes/Settings.php:1865
 msgid "Monitoring event"
 msgstr ""
 
-#: includes/Settings.php:1919
+#: includes/Settings.php:1926
 msgid "Provisioning phase"
 msgstr ""
 
-#: includes/Settings.php:1927
+#: includes/Settings.php:1934
 msgid "HTTP unreachable"
 msgstr ""
 
-#: includes/Settings.php:1931
+#: includes/Settings.php:1938
 msgid "Decommissioned"
 msgstr ""
 

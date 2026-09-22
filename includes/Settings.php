@@ -1154,6 +1154,9 @@ class Settings {
         $process = [];
         $run = [];
         $event = [];
+        $websiteCount = (int)get_sites(['count' => true]);
+        $batchSizes = array_values(array_filter(array_map(static fn(array $process): int => (int)($process['batch_size'] ?? 0), $processes)));
+        $showProgressColumns = !empty($batchSizes) && $websiteCount > min($batchSizes);
 
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
         echo '<header class="rrze-msm-widget-header">';
@@ -1168,8 +1171,10 @@ class Settings {
             echo '<th>' . esc_html__('Description', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('Interval (hrs.)', 'rrze-multisite-manager') . '</th>';
-            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Progress', 'rrze-multisite-manager') . '</th>';
-            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Remaining', 'rrze-multisite-manager') . '</th>';
+            if ($showProgressColumns) {
+                echo '<th class="rrze-msm-col-numeric">' . esc_html__('Progress', 'rrze-multisite-manager') . '</th>';
+                echo '<th class="rrze-msm-col-numeric">' . esc_html__('Remaining', 'rrze-multisite-manager') . '</th>';
+            }
             echo '<th>' . esc_html__('Last active', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric">' . esc_html__('Last site count', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th>';
@@ -1182,8 +1187,10 @@ class Settings {
                 echo '<td>' . $this->renderProcessDescriptionHtml($process) . '</td>';
                 echo '<td>' . $this->renderProcessStatusHtml($process) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(!empty($process['interval_label']) ? (string)$process['interval_label'] : number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
-                echo '<td>' . $this->renderProcessProgressHtml($process) . '</td>';
-                echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatProcessRemaining($process)) . '</td>';
+                if ($showProgressColumns) {
+                    echo '<td>' . $this->renderProcessProgressHtml($process) . '</td>';
+                    echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatProcessRemaining($process)) . '</td>';
+                }
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['last_run'] ?? ''))) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
                 echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
