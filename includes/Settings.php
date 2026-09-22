@@ -942,7 +942,13 @@ class Settings {
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base');
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'orphan', true);
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'metadata', true);
-            echo '<td>' . esc_html(!empty($process['last_was_aborted']) ? __('Aborted', 'rrze-multisite-manager') : $this->formatProcessDuration((int)($process['last_duration_seconds'] ?? 0))) . '</td>';
+            $durationSeconds = (int)($process['last_duration_seconds'] ?? 0);
+            $durationLabel = !empty($process['last_was_aborted'])
+                ? __('Aborted', 'rrze-multisite-manager')
+                : ($lastRun !== '' && $durationSeconds <= 0
+                    ? __('<1 sec.', 'rrze-multisite-manager')
+                    : $this->formatProcessDuration($durationSeconds));
+            echo '<td>' . esc_html($durationLabel) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp($lastRun)) . '</td>';
             echo '<td>' . esc_html((string)($process['cycle'] ?? '')) . '</td>';
             echo '<td>' . esc_html(!empty($process['is_due']) ? __('Waiting for cron', 'rrze-multisite-manager') : $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';

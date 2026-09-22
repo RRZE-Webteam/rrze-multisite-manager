@@ -458,7 +458,17 @@ class ShortcodeBlockAnalysisSchedulerService {
             'post_type' => $post->post_type,
             'post_url' => get_permalink($postId),
         ];
-        $this->collectShortcodes((string)$post->post_content, $location, $state['shortcodes']);
+        $content = (string)$post->post_content;
+        $this->collectShortcodes($content, $location, $state['shortcodes']);
+
+        // Unregistered tags are only meaningful when authors deliberately used a Shortcode block.
+        foreach ($this->flattenBlocks(parse_blocks($content)) as $block) {
+            if ((string)($block['blockName'] ?? '') !== 'core/shortcode') {
+                continue;
+            }
+
+            $this->collectShortcodes((string)($block['innerHTML'] ?? ''), $location, $state['shortcodes'], true);
+        }
 
         foreach (get_post_meta($postId) as $metaKey => $values) {
             foreach ((array)$values as $value) {
@@ -502,8 +512,8 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
     }
 
-    protected function collectShortcodes(string $content, array $location, array &$shortcodes): void {
-        if ($content === '' || !preg_match_all('/\\[([A-Za-z][A-Za-z0-9_-]*)\\b[^\\]]*\\]/', $content, $matches)) {
+    protected function collectShortcodes(string $content, array $location, array &$shortcodes, bool $allowUnregistered = false): void {
+        if ($content === '' || !preg_match_all('/(?<!\\[)\\[(?!\\[)([A-Za-z][A-Za-z0-9_-]*)(?=\\s|\\])(?:\\s[^\\]]*)?\\]/', $content, $matches)) {
             return;
         }
 
@@ -525,12 +535,18 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         foreach ($matchesByRawShortcode as $match) {
             $tag = (string)$match['tag'];
+            $isRegistered = shortcode_exists($tag);
+
+            if (!$isRegistered && !$allowUnregistered) {
+                continue;
+            }
+
             $provider = $this->getShortcodeProviderDetails($tag);
             $shortcodes[] = array_merge(
                 [
                     'shortcode' => $tag,
                     'raw_shortcode' => (string)$match['raw_shortcode'],
-                    'registered' => shortcode_exists($tag),
+                    'registered' => $isRegistered,
                     'provider' => (string)($provider['name'] ?? __('Unknown', 'rrze-multisite-manager')),
                     'provider_plugin_file' => (string)($provider['plugin_file'] ?? ''),
                 ],

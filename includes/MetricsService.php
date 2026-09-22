@@ -3755,6 +3755,42 @@ class MetricsService {
         return $status;
     }
 
+    /**
+     * Returns a compact snapshot of a running storage-analysis phase for logging.
+     *
+     * @return array<string, mixed>
+     */
+    public function getSiteStorageAnalysisProgressContext(int $siteId, string $phase): array {
+        if ($siteId <= 0) {
+            return [];
+        }
+
+        if ($phase === 'orphan') {
+            $state = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+
+            return is_array($state) ? $this->buildSiteStorageOrphanProgressContext($state) : [];
+        }
+
+        if ($phase === 'base') {
+            $state = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+
+            if (!is_array($state)) {
+                return [];
+            }
+
+            return [
+                'phase_status' => (string)($state['status'] ?? ''),
+                'updated_at' => (string)($state['updated_at'] ?? ''),
+                'processed_files' => (int)($state['processed_files'] ?? 0),
+                'processed_directories' => (int)($state['processed_directories'] ?? 0),
+                'queued_files' => count((array)($state['queue_files'] ?? [])),
+                'queued_directories' => count((array)($state['queue_directories'] ?? [])),
+            ];
+        }
+
+        return [];
+    }
+
     public function runSiteStorageAnalysisBatch(int $siteId, bool $restart = false): array {
         $status = [];
 
@@ -4467,6 +4503,73 @@ class MetricsService {
             'unregistered_image_size_variants_found_in_content' => [],
             'unregistered_image_size_variants_without_content_matches' => [],
         ];
+    }
+
+    /**
+     * Builds log-safe progress data for the orphan check without storing content matches.
+     *
+     * @return array<string, mixed>
+     */
+    protected function buildSiteStorageOrphanProgressContext(array $state): array {
+        $candidates = array_values((array)($state['candidates'] ?? []));
+        $attachmentCandidates = array_values((array)($state['attachment_candidates'] ?? []));
+        $variantCandidates = array_values((array)($state['unregistered_image_size_variant_candidates'] ?? []));
+        $candidateIndex = max(0, (int)($state['current_index'] ?? 0));
+        $attachmentIndex = max(0, (int)($state['attachment_index'] ?? 0));
+        $variantIndex = max(0, (int)($state['unregistered_image_size_variant_index'] ?? 0));
+        $currentCandidates = [];
+        $currentIndex = 0;
+        $stage = 'complete';
+
+        if ($candidateIndex < count($candidates)) {
+            $stage = 'file_candidates';
+            $currentCandidates = $candidates;
+            $currentIndex = $candidateIndex;
+        } elseif ($attachmentIndex < count($attachmentCandidates)) {
+            $stage = 'media_library_entries';
+            $currentCandidates = $attachmentCandidates;
+            $currentIndex = $attachmentIndex;
+        } elseif ($variantIndex < count($variantCandidates)) {
+            $stage = 'unregistered_image_size_variants';
+            $currentCandidates = $variantCandidates;
+            $currentIndex = $variantIndex;
+        }
+
+        return [
+            'phase_status' => (string)($state['status'] ?? ''),
+            'stage' => $stage,
+            'updated_at' => (string)($state['updated_at'] ?? ''),
+            'processed' => $candidateIndex + $attachmentIndex + $variantIndex,
+            'total' => count($candidates) + count($attachmentCandidates) + count($variantCandidates),
+            'last_checked_candidate' => $this->getStorageAnalysisProgressCandidate($currentCandidates, $currentIndex - 1),
+            'next_candidate' => $this->getStorageAnalysisProgressCandidate($currentCandidates, $currentIndex),
+        ];
+    }
+
+    /**
+     * Returns only identifying file data needed to diagnose a stalled analysis.
+     *
+     * @return array<string, int|string>
+     */
+    protected function getStorageAnalysisProgressCandidate(array $candidates, int $index): array {
+        $candidate = is_array($candidates[$index] ?? null) ? (array)$candidates[$index] : [];
+        $path = is_string($candidate['path'] ?? null) ? (string)$candidate['path'] : '';
+        $attachmentId = absint($candidate['attachment_id'] ?? 0);
+        $type = is_string($candidate['type_label'] ?? null) ? (string)$candidate['type_label'] : '';
+
+        if (empty($candidate)) {
+            return [];
+        }
+
+        return array_filter(
+            [
+                'position' => $index + 1,
+                'attachment_id' => $attachmentId,
+                'path' => ltrim(wp_normalize_path($path), '/'),
+                'type' => $type,
+            ],
+            static fn($value): bool => $value !== '' && $value !== 0
+        );
     }
 
     protected function processCurrentSiteStorageAnalysisOrphanState(array $state): array {
