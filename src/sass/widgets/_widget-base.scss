@@ -115,6 +115,10 @@
     color: var(--rrze-msm-text);
 }
 
+.rrze-msm-table td ul {
+    margin-top: 0;
+}
+
 .rrze-msm-table th.rrze-msm-col-actions.rrze-msm-col-actions-text,
 .rrze-msm-table td.rrze-msm-col-actions.rrze-msm-col-actions-text {
     width: 20%;

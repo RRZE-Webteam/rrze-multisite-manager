@@ -388,7 +388,12 @@ class StorageAnalysisSchedulerService {
 
             $this->markRunFailed($siteId, $exception->getMessage());
             $this->markPhaseFailed($siteId, $phase, $exception->getMessage());
-            $this->logStorageAnalysisError($siteId, $phase, $exception->getMessage());
+            $this->logStorageAnalysisError(
+                $siteId,
+                $phase,
+                $exception->getMessage(),
+                $this->metrics->getSiteStorageAnalysisProgressContext($siteId, $phase)
+            );
         }
     }
 
@@ -428,6 +433,7 @@ class StorageAnalysisSchedulerService {
 
     protected function abortSingleProcessAnalysis(int $siteId, string $phase, string $message): void {
         $status = $this->getStatus($siteId);
+        $progressContext = $this->metrics->getSiteStorageAnalysisProgressContext($siteId, $phase);
         $startedAt = (string)($status['last_started_at'] ?? '');
         $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
         $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
@@ -443,6 +449,7 @@ class StorageAnalysisSchedulerService {
                 'phase' => $phase,
                 'duration_seconds' => $duration,
                 'timeout_seconds' => $this->getTimeoutSeconds(),
+                'progress' => $progressContext,
             ]
         );
     }
