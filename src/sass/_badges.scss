@@ -20,6 +20,11 @@
     color: var(--rrze-msm-warning-text);
 }
 
+.rrze-msm-badge-scheduled {
+    background: var(--rrze-msm-scheduled);
+    color: var(--rrze-msm-scheduled-text);
+}
+
 .rrze-msm-badge-danger {
     background: var(--rrze-msm-danger);
     color: var(--rrze-msm-danger-text);
@@ -33,4 +38,9 @@
 .rrze-msm-badge-neutral {
     background: var(--rrze-msm-neutral);
     color: var(--rrze-msm-neutral-text);
+}
+
+.rrze-msm-badge-inactive {
+    background: var(--rrze-msm-inactive);
+    color: var(--rrze-msm-inactive-text);
 }

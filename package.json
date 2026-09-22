@@ -1,7 +1,7 @@
 {
   "name": "rrze-multisite-manager",
   "title": "RRZE Multisite Manager",
-  "version": "1.1.20",
+  "version": "1.2.0",
   "description": "Multisite management for WordPress",
   "tags": "Plugin, WordPress, Multisite, RRZE, FAU",
   "main": "rrze-multisite-manager.php",
@@ -9,19 +9,26 @@
   "private": true,
   "scripts": {
     "readme": "node scripts/build-readme.js",
+    "languages": "node scripts/build-languages.js",
     "version:dev": "node scripts/build-version.js dev",
     "version:prod": "node scripts/build-version.js prod",
     "version:release": "node scripts/build-version.js release",
-    "dev": "node scripts/build-assets.js dev && npm run version:dev && npm run readme",
-    "build": "node scripts/build-assets.js prod",
-    "prod": "node scripts/build-assets.js prod && npm run version:prod && npm run readme",
-    "release": "node scripts/build-assets.js prod && npm run version:release && npm run readme",
+    "dev": "node scripts/build-assets.js dev && npm run languages && npm run version:dev && npm run readme",
+    "build": "node scripts/build-assets.js prod && npm run languages",
+    "prod": "node scripts/build-assets.js prod && npm run languages && npm run version:prod && npm run readme",
+    "release": "node scripts/build-assets.js prod && npm run languages && npm run version:release && npm run readme",
     "watch": "node scripts/build-assets.js dev --watch"
   },
   "compatibility": {
     "wprequires": "6.9.4",
     "wptestedup": "7.1",
     "phprequires": "8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RRZE-Webteam/rrze-multisite-manager",
+    "issues": "https://github.com/RRZE-Webteam/rrze-multisite-manager/issues",
+    "clone": "git+https://github.com/RRZE-Webteam/rrze-multisite-manager.git"
   },
   "supports": {
     "email": "webmaster@fau.de"

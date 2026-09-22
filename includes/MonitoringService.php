@@ -77,7 +77,46 @@ class MonitoringService {
     }
 
     public function runScheduledChecks(): void {
-        $this->runMonitoringBatch();
+        $process = [];
+
+        LoggingService::info(
+            $this->config,
+            'RRZE-MSM: Monitoring-Scheduler gestartet',
+            []
+        );
+
+        try {
+            $this->runMonitoringBatch();
+            $processes = $this->getProcessesOverview();
+            $process = is_array($processes[0] ?? null) ? $processes[0] : [];
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Monitoring-Scheduler beendet',
+                [
+                    'success' => true,
+                    'checked_sites' => (int)($process['checked_sites'] ?? 0),
+                    'remaining_sites' => (int)($process['remaining_sites'] ?? 0),
+                    'progress_percent' => (int)($process['progress_percent'] ?? 0),
+                    'is_running' => !empty($process['is_running']),
+                ]
+            );
+        } catch (\Throwable $exception) {
+            do_action(
+                'rrze.log.error',
+                'RRZE-MSM: Fehler beim Monitoring',
+                [
+                    'message' => $exception->getMessage(),
+                ]
+            );
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Monitoring-Scheduler beendet',
+                [
+                    'success' => false,
+                    'message' => $exception->getMessage(),
+                ]
+            );
+        }
     }
 
     public static function clearScheduledEvent(?Config $config = null): void {
@@ -480,6 +519,11 @@ class MonitoringService {
             return [];
         }
 
+        if ((int)$site->spam === 1 || (int)$site->deleted === 1) {
+            (new StorageAnalysisSchedulerService(new MetricsService(null, $this->config), $this->config))
+                ->deactivateIneligibleSite($siteId);
+        }
+
         $siteUrl = get_home_url($siteId, '/');
         $siteLabel = $this->getSiteMonitoringLabel($site);
         $host = (string)wp_parse_url($siteUrl, PHP_URL_HOST);
@@ -521,7 +565,9 @@ class MonitoringService {
         if ($operationalStatusSource === 'manual' || $operationalStatus === 'retired' || $operationalStatus === 'provisioning') {
             $this->updateFailureTracking($siteId, $dnsStatus, $httpStatus, $timestamp, $dnsFailureCount, $httpFailureCount);
             $result = $this->buildCheckResult($siteId, $siteLabel, $siteUrl, $host, $timestamp, $dnsStatus, $httpStatus, $dnsStatusDetail, $httpStatusDetail, $httpStatusCode, $operationalStatus, $operationalStatus, false);
+            $this->logMonitoringWarning($result);
             $this->appendSiteHistory($siteId, $result);
+            $this->reconcileStorageAnalysisSchedule($siteId);
             return $result;
         }
 
@@ -542,9 +588,19 @@ class MonitoringService {
 
         $statusChanged = $this->updateOperationalStatus($siteId, $operationalStatus, $nextOperationalStatus, $timestamp, 'auto');
         $result = $this->buildCheckResult($siteId, $siteLabel, $siteUrl, $host, $timestamp, $dnsStatus, $httpStatus, $dnsStatusDetail, $httpStatusDetail, $httpStatusCode, $operationalStatus, $nextOperationalStatus, $statusChanged);
+        $this->logMonitoringWarning($result);
         $this->appendSiteHistory($siteId, $result);
+        $this->reconcileStorageAnalysisSchedule($siteId);
 
         return $result;
+    }
+
+    protected function reconcileStorageAnalysisSchedule(int $siteId): void {
+        $storageScheduler = new StorageAnalysisSchedulerService(new MetricsService(null, $this->config), $this->config);
+        $storageScheduler->reconcileSiteSchedule($siteId);
+
+        $shortcodeBlockScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
+        $shortcodeBlockScheduler->reconcileSiteSchedule($siteId);
     }
 
     protected function getSiteMonitoringLabel(\WP_Site $site): string {
@@ -573,6 +629,36 @@ class MonitoringService {
         update_site_meta($siteId, self::META_OPERATIONAL_STATUS_CHANGED_AT, $timestamp);
 
         return true;
+    }
+
+    protected function logMonitoringWarning(array $result): void {
+        $dnsStatus = (string)($result['dns_status'] ?? 'unknown');
+        $httpStatus = (string)($result['http_status'] ?? 'unknown');
+        $hasDnsIssue = !in_array($dnsStatus, ['ok', 'unknown'], true);
+        $hasHttpIssue = !in_array($httpStatus, ['ok', 'unknown', 'pending'], true);
+
+        if (!$hasDnsIssue && !$hasHttpIssue) {
+            return;
+        }
+
+        LoggingService::warning(
+            'RRZE-MSM: Auffälligkeit beim Website-Monitoring',
+            [
+                'site_id' => (int)($result['site_id'] ?? 0),
+                'site_label' => (string)($result['site_label'] ?? ''),
+                'site_url' => (string)($result['site_url'] ?? ''),
+                'host' => (string)($result['host'] ?? ''),
+                'checked_at' => (string)($result['checked_at'] ?? ''),
+                'dns_status' => $dnsStatus,
+                'dns_detail' => (string)($result['dns_status_detail'] ?? ''),
+                'http_status' => $httpStatus,
+                'http_status_code' => (int)($result['http_status_code'] ?? 0),
+                'http_detail' => (string)($result['http_status_detail'] ?? ''),
+                'previous_operational_status' => (string)($result['previous_status'] ?? ''),
+                'operational_status' => (string)($result['status'] ?? ''),
+                'status_changed' => !empty($result['status_changed']),
+            ]
+        );
     }
 
     protected function updateFailureTracking(int $siteId, string $dnsStatus, string $httpStatus, string $timestamp, int $dnsFailureCount, int $httpFailureCount): void {

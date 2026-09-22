@@ -34,6 +34,8 @@ body.rrze-msm-mode-dark {
     --rrze-msm-warning: var(--rrze-msm-status-archive-bg);
     --rrze-msm-warning-text: var(--rrze-msm-status-archive-text);
     --rrze-msm-warning-soft: color-mix(in srgb, var(--rrze-msm-status-archive-bg) 24%, #fff 76%);
+    --rrze-msm-scheduled: #fd7e14;
+    --rrze-msm-scheduled-text: #fff;
     --rrze-msm-danger: var(--rrze-msm-status-delete-bg);
     --rrze-msm-danger-text: var(--rrze-msm-status-delete-text);
     --rrze-msm-danger-soft: color-mix(in srgb, var(--rrze-msm-status-delete-bg) 18%, #fff 82%);
@@ -43,6 +45,8 @@ body.rrze-msm-mode-dark {
     --rrze-msm-neutral: var(--rrze-msm-status-blocked-bg);
     --rrze-msm-neutral-text: var(--rrze-msm-status-blocked-text);
     --rrze-msm-neutral-soft: color-mix(in srgb, var(--rrze-msm-status-blocked-bg) 18%, #fff 82%);
+    --rrze-msm-inactive: #d3d3d3;
+    --rrze-msm-inactive-text: #000;
     --rrze-msm-widget-border-radius: 5px;
     --rrze-msm-badge-border-radius: 999px;
     --rrze-msm-actions-text-min-width: 25em;

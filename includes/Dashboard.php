@@ -30,6 +30,8 @@ class Dashboard {
     protected Settings $settings;
     protected Config $config;
     protected MetricsService $metrics;
+    protected StorageAnalysisSchedulerService $storageAnalysisScheduler;
+    protected ShortcodeBlockAnalysisSchedulerService $shortcodeBlockAnalysisScheduler;
     protected Template $template;
     protected ViewManager $viewManager;
     protected array $pageHooks = [];
@@ -47,13 +49,14 @@ class Dashboard {
     protected const META_LAST_DNS_OK_AT = 'rrze_msm_last_dns_ok_at';
     protected const META_LAST_HTTP_OK_AT = 'rrze_msm_last_http_ok_at';
     protected const META_MONITORING_NOTE = 'rrze_msm_monitoring_note';
-    protected const STORAGE_ANALYSIS_AUTO_START_THRESHOLD = 104857600;
 
     public function __construct(Plugin $plugin, Settings $settings) {
         $this->plugin = $plugin;
         $this->settings = $settings;
         $this->config = new Config();
         $this->metrics = new MetricsService($settings, $this->config);
+        $this->storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
+        $this->shortcodeBlockAnalysisScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
         $this->template = new Template($this->config, $this->plugin->getPath('templates'));
         $this->viewManager = new ViewManager();
     }
@@ -65,7 +68,6 @@ class Dashboard {
 
         add_action('admin_menu', [$this, 'registerMenu'], 999);
         add_action('network_admin_menu', [$this, 'registerNetworkMenu'], 999);
-        add_action('admin_init', [$this, 'continueSiteMediaMetadataAnalysis']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
         add_action('admin_bar_menu', [$this, 'addAdminBarMenu'], 35);
         add_action('admin_head', [$this, 'printAdminBarStyles']);
@@ -75,9 +77,7 @@ class Dashboard {
         add_action('wp_ajax_rrze_msm_search_sites', [$this, 'ajaxSearchSites']);
         add_action('wp_ajax_rrze_msm_search_plugins', [$this, 'ajaxSearchPlugins']);
         add_action('wp_ajax_rrze_msm_search_themes', [$this, 'ajaxSearchThemes']);
-        add_action('wp_ajax_rrze_msm_run_site_storage_analysis', [$this, 'ajaxRunSiteStorageAnalysis']);
-        add_action('wp_ajax_rrze_msm_run_site_storage_orphan_analysis', [$this, 'ajaxRunSiteStorageOrphanAnalysis']);
-        add_action('wp_ajax_rrze_msm_run_site_media_metadata_analysis', [$this, 'ajaxRunSiteMediaMetadataAnalysis']);
+        add_action('wp_ajax_rrze_msm_search_site_media', [$this, 'ajaxSearchSiteMedia']);
         add_action('wp_ajax_rrze_msm_get_site_storage_analysis_status', [$this, 'ajaxGetSiteStorageAnalysisStatus']);
         add_action('admin_post_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('admin_post_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
@@ -86,8 +86,9 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
         add_action('admin_post_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
-        add_action('admin_post_rrze_multisite_manager_run_site_media_metadata_analysis', [$this, 'handleSiteMediaMetadataAnalysis']);
         add_action('admin_post_rrze_multisite_manager_delete_orphan_file', [$this, 'handleOrphanFileDelete']);
+        add_action('admin_post_rrze_multisite_manager_request_site_storage_analysis', [$this, 'requestSiteStorageAnalysis']);
+        add_action('admin_post_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('network_admin_edit_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
@@ -97,6 +98,7 @@ class Dashboard {
         add_action('network_admin_edit_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
+        add_action('network_admin_edit_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
     }
 
     public function registerMenu(): void {
@@ -115,18 +117,30 @@ class Dashboard {
         $siteDetailsSlug = (string)($menuSettings['site_details_slug'] ?? 'rrze-multisite-manager-site-details');
         $siteStorageAnalysisSlug = (string)($menuSettings['site_storage_analysis_slug'] ?? 'rrze-multisite-manager-site-storage-analysis');
         $siteStorageAnalysisMediaSlug = (string)($menuSettings['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis');
+        $shortcodeBlockAnalysisSlug = (string)($menuSettings['shortcode_block_analysis_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks');
+        $shortcodeBlockAnalysisToolsSlug = (string)($menuSettings['shortcode_block_analysis_tools_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks-tools');
         $siteStatusSlug = (string)($menuSettings['site_status_slug'] ?? 'rrze-multisite-manager-site-status');
         $monitoringSlug = (string)($menuSettings['monitoring_slug'] ?? 'rrze-multisite-manager-monitoring');
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
         $settingsSlug = $this->settings->getSettingsSlug();
 
-        if (!is_network_admin() && current_user_can('manage_options') && current_user_can('upload_files')) {
-            $this->pageHooks[] = add_media_page(
-                __('Storage Analysis', 'rrze-multisite-manager'),
-                __('Storage Analysis', 'rrze-multisite-manager'),
+        if (!is_network_admin() && current_user_can('manage_options')) {
+            if (current_user_can('upload_files')) {
+                $this->pageHooks[] = add_media_page(
+                    __('Storage Analysis', 'rrze-multisite-manager'),
+                    __('Storage Analysis', 'rrze-multisite-manager'),
+                    'manage_options',
+                    $siteStorageAnalysisMediaSlug,
+                    [$this, 'renderSiteStorageAnalysisPage']
+                );
+            }
+
+            $this->pageHooks[] = add_management_page(
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
                 'manage_options',
-                $siteStorageAnalysisMediaSlug,
-                [$this, 'renderSiteStorageAnalysisPage']
+                $shortcodeBlockAnalysisToolsSlug,
+                [$this, 'renderShortcodeBlockAnalysisPage']
             );
         }
 
@@ -184,15 +198,6 @@ class Dashboard {
 
         $this->pageHooks[] = add_submenu_page(
             $parentSlug,
-            __('Storage Analysis', 'rrze-multisite-manager'),
-            __('Storage Analysis', 'rrze-multisite-manager'),
-            $capability,
-            $siteStorageAnalysisSlug,
-            [$this, 'renderSiteStorageAnalysisPage']
-        );
-
-        $this->pageHooks[] = add_submenu_page(
-            $parentSlug,
             __('Plugin Overview', 'rrze-multisite-manager'),
             __('Plugin Overview', 'rrze-multisite-manager'),
             $capability,
@@ -236,7 +241,25 @@ class Dashboard {
             [$this, 'renderSiteStatusPage']
         );
 
+        $this->pageHooks[] = add_submenu_page(
+            $parentSlug,
+            __('Storage Analysis', 'rrze-multisite-manager'),
+            __('Storage Analysis', 'rrze-multisite-manager'),
+            $capability,
+            $siteStorageAnalysisSlug,
+            [$this, 'renderSiteStorageAnalysisPage']
+        );
+
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            $this->pageHooks[] = add_submenu_page(
+                $parentSlug,
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                $capability,
+                $shortcodeBlockAnalysisSlug,
+                [$this, 'renderShortcodeBlockAnalysisPage']
+            );
+
             $this->pageHooks[] = add_submenu_page(
                 $parentSlug,
                 __('Monitoring', 'rrze-multisite-manager'),
@@ -349,9 +372,14 @@ class Dashboard {
                 'themeSearchNonce' => wp_create_nonce('rrze-msm-search-themes'),
                 'themeSearchMinLength' => 3,
                 'themeSearchNoResults' => __('No themes found.', 'rrze-multisite-manager'),
+                'siteMediaSearchNonce' => wp_create_nonce('rrze-msm-search-site-media'),
+                'siteMediaSearchMinLength' => 3,
+                'siteMediaSearchNoResults' => __('No media files found.', 'rrze-multisite-manager'),
+                'siteMediaSearchResultsFound' => __('media files found.', 'rrze-multisite-manager'),
+                'siteMediaSearchRunning' => __('Searching media library ...', 'rrze-multisite-manager'),
+                'siteMediaSearchFailed' => __('The media library could not be searched.', 'rrze-multisite-manager'),
                 'siteStorageAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-analysis'),
                 'siteStorageOrphanAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-orphan-analysis'),
-                'siteMediaMetadataAnalysisNonce' => wp_create_nonce('rrze-msm-site-media-metadata-analysis'),
                 'siteStorageStatusNonce' => wp_create_nonce('rrze-msm-site-storage-status'),
                 'siteStorageAnalysisCompleted' => __('The storage analysis is complete. The page is being reloaded.', 'rrze-multisite-manager'),
                 'siteStorageAnalysisFailed' => __('The storage analysis could not be completed.', 'rrze-multisite-manager'),
@@ -430,6 +458,9 @@ class Dashboard {
 
         $dashboardData = $this->metrics->getDashboardData();
         $metricsStatus = $this->metrics->getDashboardDataStatus();
+        $metricsLastRunLabel = !empty($metricsStatus['last_run_timestamp'])
+            ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$metricsStatus['last_run_timestamp'])
+            : __('No metrics run yet', 'rrze-multisite-manager');
         $widgets = $this->getWidgetInstances();
         $views = $this->viewManager->getViews(array_keys($widgets));
         $currentView = $this->viewManager->getCurrentView($views, 'default');
@@ -457,9 +488,8 @@ class Dashboard {
                 'widget_markup' => $widgetMarkup,
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
-                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus, $this->getDashboardUrl()),
+                'metrics_last_run_label' => $metricsLastRunLabel,
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
-                'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
             ],
             $this
         );
@@ -1090,11 +1120,14 @@ class Dashboard {
         $storageTab = isset($_GET['storage_tab']) ? sanitize_key((string)wp_unslash($_GET['storage_tab'])) : 'analysis';
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
         $storageAnalysis = $siteId > 0 ? $this->metrics->getCachedSiteStorageAnalysis($siteId) : [];
-        $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId) : [];
+        $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId, true) : [];
         $attachmentDebug = ($siteId > 0 && $debugAttachmentId > 0) ? $this->metrics->getSiteStorageAttachmentDebug($siteId, $debugAttachmentId) : [];
         $mediaMetadataAnalysis = $siteId > 0 ? $this->metrics->getSiteMediaMetadataAnalysis($siteId) : [];
         $orphanFileDeleteNotice = [];
-        $autoStartStorageAnalysis = false;
+        $storageAnalysisScheduledOnly = false;
+        $storageAnalysisSchedulerStatus = [];
+        $storageAnalysisTasksAllowed = false;
+        $storageAnalysisBrowserLimitMegabytes = $this->getStorageAnalysisBrowserLimitMegabytes();
 
         if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -1105,7 +1138,12 @@ class Dashboard {
             delete_site_transient('rrze_msm_orphan_file_delete_notice_' . get_current_user_id() . '_' . $siteId);
         }
 
-        $autoStartStorageAnalysis = $this->shouldAutoStartSiteStorageAnalysis($siteSummary, $storageAnalysis, $storageAnalysisStatus);
+        $storageAnalysisScheduledOnly = $this->isSiteStorageAnalysisScheduledOnly($siteSummary);
+
+        if ($siteId > 0) {
+            $storageAnalysisSchedulerStatus = $this->storageAnalysisScheduler->getStatus($siteId);
+            $storageAnalysisTasksAllowed = $this->storageAnalysisScheduler->isSiteEligible($siteId);
+        }
 
         echo $this->template->render(
             'site-storage-analysis-page',
@@ -1118,7 +1156,11 @@ class Dashboard {
                 'storage_analysis' => $storageAnalysis,
                 'storage_analysis_status' => $storageAnalysisStatus,
                 'storage_analysis_ready' => !empty($storageAnalysis) && empty($storageAnalysis['error']),
-                'auto_start_storage_analysis' => $autoStartStorageAnalysis,
+                'storage_analysis_scheduled_only' => $storageAnalysisScheduledOnly,
+                'storage_analysis_tasks_allowed' => $storageAnalysisTasksAllowed,
+                'storage_analysis_browser_limit_megabytes' => $storageAnalysisBrowserLimitMegabytes,
+                'storage_analysis_scheduler_status' => $storageAnalysisSchedulerStatus,
+                'storage_analysis_request_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_request_site_storage_analysis'),
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
@@ -1137,20 +1179,90 @@ class Dashboard {
         );
     }
 
-    protected function shouldAutoStartSiteStorageAnalysis(array $siteSummary, array $storageAnalysis, array $storageAnalysisStatus): bool {
-        $usedBytes = (int)($siteSummary['storage']['used_bytes'] ?? 0);
-        $hasCachedAnalysis = !empty($storageAnalysis);
-        $baseStatus = (string)($storageAnalysisStatus['base']['status'] ?? 'idle');
+    public function renderShortcodeBlockAnalysisPage(): void {
+        $isLocalPage = $this->isCurrentShortcodeBlockToolsPage();
+        $siteId = $isLocalPage ? get_current_blog_id() : (isset($_GET['site_id']) ? absint($_GET['site_id']) : 0);
+        $tab = isset($_GET['analysis_tab']) ? sanitize_key((string)wp_unslash($_GET['analysis_tab'])) : 'shortcodes';
 
-        if ($hasCachedAnalysis || $baseStatus === 'running') {
-            return false;
+        if (!$this->currentUserCanAccessShortcodeBlockAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
         }
 
-        if ($usedBytes <= 0) {
-            return false;
+        if (!in_array($tab, ['shortcodes', 'blocks'], true)) {
+            $tab = 'shortcodes';
         }
 
-        return $usedBytes <= self::STORAGE_ANALYSIS_AUTO_START_THRESHOLD;
+        echo $this->template->render(
+            'shortcode-block-analysis-page',
+            [
+                'site_id' => $siteId,
+                'site_summary' => $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [],
+                'analysis_status' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getStatus($siteId) : [],
+                'analysis_result' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getResult($siteId) : [],
+                'analysis_next_run_timestamp' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getNextScheduledRunTimestamp($siteId) : 0,
+                'analysis_tab' => $tab,
+                'is_local_page' => $isLocalPage,
+                'analysis_base_url' => $isLocalPage ? $this->getCurrentShortcodeBlockAnalysisUrl() : $this->getShortcodeBlockAnalysisUrl(),
+                'request_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_request_shortcode_block_analysis'),
+                'plugin_details_base_url' => $this->getPluginDetailsUrl(),
+                'can_view_plugin_details' => is_super_admin(),
+                'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
+                'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
+                'mode_toggle_label' => $this->getModeToggleLabel(),
+                'requested' => isset($_GET['shortcode-block-analysis-requested'])
+                    ? sanitize_key((string)wp_unslash($_GET['shortcode-block-analysis-requested']))
+                    : '',
+            ],
+            $this
+        );
+    }
+
+    public function requestShortcodeBlockAnalysis(): void {
+        $siteId = isset($_POST['site_id']) ? absint(wp_unslash($_POST['site_id'])) : 0;
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+
+        if (!$this->currentUserCanAccessShortcodeBlockAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_msm_request_shortcode_block_analysis_' . $siteId);
+        $requested = $this->shortcodeBlockAnalysisScheduler->requestAnalysis($siteId);
+        $redirectTo = $redirectTo !== '' ? $redirectTo : $this->getShortcodeBlockAnalysisRedirectUrl($siteId);
+
+        wp_safe_redirect(add_query_arg('shortcode-block-analysis-requested', $requested ? '1' : 'running', $redirectTo));
+        exit;
+    }
+
+    protected function isSiteStorageAnalysisScheduledOnly(array $siteSummary): bool {
+        return (int)($siteSummary['storage']['used_bytes'] ?? 0) > ($this->getStorageAnalysisBrowserLimitMegabytes() * MB_IN_BYTES);
+    }
+
+    protected function isSiteStorageAnalysisScheduledOnlyForSite(int $siteId): bool {
+        return $siteId > 0 && $this->isSiteStorageAnalysisScheduledOnly($this->metrics->getSiteStorageAnalysisSite($siteId));
+    }
+
+    protected function logStorageAnalysisError(
+        int $siteId,
+        string $phase,
+        string $trigger,
+        bool $restart,
+        string $message,
+        array $status = []
+    ): void {
+        LoggingService::storageAnalysisError(
+            [
+                'site_id' => $siteId,
+                'phase' => $phase,
+                'trigger' => $trigger,
+                'restart' => $restart,
+                'message' => $message,
+                'status' => $status,
+            ]
+        );
+    }
+
+    protected function getStorageAnalysisBrowserLimitMegabytes(): int {
+        return max(1, (int)$this->settings->getOption('monitoring', 'storage_analysis_browser_max_megabytes', 100));
     }
 
     protected function renderStorageTopConsumersPieChart(array $storageAnalysis): string {
@@ -1673,6 +1785,83 @@ class Dashboard {
         );
     }
 
+    public function ajaxSearchSiteMedia(): void {
+        $siteId = isset($_GET['site_id']) ? absint(wp_unslash($_GET['site_id'])) : 0;
+        $searchTerm = isset($_GET['q']) ? sanitize_text_field((string)wp_unslash($_GET['q'])) : '';
+        $attachments = [];
+        $attachmentIds = [];
+        $attachment = null;
+        $results = [];
+
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-search-site-media', 'nonce');
+
+        if (mb_strlen($searchTerm) < 3) {
+            wp_send_json_success(['results' => []]);
+        }
+
+        switch_to_blog($siteId);
+
+        try {
+            $attachments = get_posts([
+                'post_type' => 'attachment',
+                'post_status' => 'inherit',
+                'posts_per_page' => 20,
+                's' => $searchTerm,
+                'orderby' => 'date',
+                'order' => 'DESC',
+            ]);
+
+            foreach ($attachments as $attachment) {
+                if ($attachment instanceof \WP_Post) {
+                    $attachmentIds[] = (int)$attachment->ID;
+                }
+            }
+
+            $attachments = get_posts([
+                'post_type' => 'attachment',
+                'post_status' => 'inherit',
+                'posts_per_page' => 20,
+                'meta_key' => '_wp_attached_file',
+                'meta_value' => $searchTerm,
+                'meta_compare' => 'LIKE',
+                'orderby' => 'date',
+                'order' => 'DESC',
+            ]);
+
+            foreach ($attachments as $attachment) {
+                if ($attachment instanceof \WP_Post) {
+                    $attachmentIds[] = (int)$attachment->ID;
+                }
+            }
+
+            $attachmentIds = array_slice(array_values(array_unique(array_filter($attachmentIds))), 0, 20);
+
+            foreach ($attachmentIds as $attachmentId) {
+                $attachment = get_post($attachmentId);
+
+                if (!$attachment instanceof \WP_Post || $attachment->post_type !== 'attachment') {
+                    continue;
+                }
+
+                $results[] = [
+                    'id' => (int)$attachment->ID,
+                    'title' => trim((string)$attachment->post_title) !== ''
+                        ? wp_strip_all_tags((string)$attachment->post_title)
+                        : basename((string)get_attached_file($attachment->ID)),
+                    'mime_type' => (string)$attachment->post_mime_type,
+                ];
+            }
+        } finally {
+            restore_current_blog();
+        }
+
+        wp_send_json_success(['results' => $results]);
+    }
+
     public function ajaxRunSiteStorageAnalysis(): void {
         $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
         $restart = !empty($_REQUEST['restart']);
@@ -1683,9 +1872,30 @@ class Dashboard {
         }
 
         check_ajax_referer('rrze-msm-site-storage-analysis', 'nonce');
-        $result = $this->metrics->runSiteStorageAnalysisBatch($siteId, $restart);
+
+        if ($this->isSiteStorageAnalysisScheduledOnlyForSite($siteId)) {
+            wp_send_json_error(
+                ['message' => __('This storage analysis is processed by scheduled background tasks only.', 'rrze-multisite-manager')],
+                403
+            );
+        }
+
+        try {
+            $result = $this->metrics->runSiteStorageAnalysisBatch($siteId, $restart);
+        } catch (\Throwable $exception) {
+            $this->logStorageAnalysisError($siteId, 'base', 'ajax', $restart, $exception->getMessage());
+            wp_send_json_error(['message' => $exception->getMessage()], 500);
+        }
 
         if (empty($result['success'])) {
+            $this->logStorageAnalysisError(
+                $siteId,
+                'base',
+                'ajax',
+                $restart,
+                (string)($result['message'] ?? ''),
+                is_array($result['status'] ?? null) ? $result['status'] : []
+            );
             wp_send_json_error($result, 400);
         }
 
@@ -1702,81 +1912,34 @@ class Dashboard {
         }
 
         check_ajax_referer('rrze-msm-site-storage-orphan-analysis', 'nonce');
-        $result = $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId, $restart);
+
+        if ($this->isSiteStorageAnalysisScheduledOnlyForSite($siteId)) {
+            wp_send_json_error(
+                ['message' => __('This storage analysis is processed by scheduled background tasks only.', 'rrze-multisite-manager')],
+                403
+            );
+        }
+
+        try {
+            $result = $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId, $restart);
+        } catch (\Throwable $exception) {
+            $this->logStorageAnalysisError($siteId, 'orphan', 'ajax', $restart, $exception->getMessage());
+            wp_send_json_error(['message' => $exception->getMessage()], 500);
+        }
 
         if (empty($result['success'])) {
+            $this->logStorageAnalysisError(
+                $siteId,
+                'orphan',
+                'ajax',
+                $restart,
+                (string)($result['message'] ?? ''),
+                is_array($result['status'] ?? null) ? $result['status'] : []
+            );
             wp_send_json_error($result, 400);
         }
 
         wp_send_json_success($result);
-    }
-
-    public function ajaxRunSiteMediaMetadataAnalysis(): void {
-        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
-        $restart = !empty($_REQUEST['restart']);
-        $result = [];
-
-        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
-            wp_send_json_error(['message' => 'forbidden'], 403);
-        }
-
-        check_ajax_referer('rrze-msm-site-media-metadata-analysis', 'nonce');
-        $result = $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restart);
-
-        if (empty($result['success'])) {
-            wp_send_json_error($result, 400);
-        }
-
-        wp_send_json_success($result);
-    }
-
-    public function handleSiteMediaMetadataAnalysis(): void {
-        $siteId = isset($_POST['site_id']) ? absint(wp_unslash($_POST['site_id'])) : 0;
-        $restart = !empty($_POST['restart']);
-
-        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
-            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
-        }
-
-        check_admin_referer('rrze-msm-site-media-metadata-analysis', 'rrze_msm_site_media_metadata_nonce');
-        $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restart);
-
-        wp_safe_redirect($this->getSiteMediaMetadataAnalysisContinuationUrl($siteId));
-        exit;
-    }
-
-    public function continueSiteMediaMetadataAnalysis(): void {
-        $siteId = isset($_GET['rrze_msm_media_metadata_site_id'])
-            ? absint(wp_unslash($_GET['rrze_msm_media_metadata_site_id']))
-            : 0;
-        $result = [];
-
-        if ($siteId <= 0 || empty($_GET['rrze_msm_continue_media_metadata'])) {
-            return;
-        }
-
-        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
-            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
-        }
-
-        check_admin_referer('rrze-msm-site-media-metadata-analysis', 'rrze_msm_media_metadata_nonce');
-        $result = $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId);
-
-        if (($result['analysis']['status'] ?? '') === 'running') {
-            wp_safe_redirect($this->getSiteMediaMetadataAnalysisContinuationUrl($siteId));
-            exit;
-        }
-
-        wp_safe_redirect(
-            add_query_arg(
-                [
-                    'site_id' => $siteId,
-                    'storage_tab' => 'missing-metadata',
-                ],
-                $this->getSiteStorageAnalysisRedirectUrl($siteId)
-            )
-        );
-        exit;
     }
 
     public function ajaxGetSiteStorageAnalysisStatus(): void {
@@ -1793,6 +1956,29 @@ class Dashboard {
                 'status' => $this->metrics->getSiteStorageAnalysisProcessStatus($siteId),
             ]
         );
+    }
+
+    public function requestSiteStorageAnalysis(): void {
+        $siteId = isset($_POST['site_id']) ? absint(wp_unslash($_POST['site_id'])) : 0;
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+        $started = false;
+        $isEligible = false;
+
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_msm_request_site_storage_analysis_' . $siteId);
+        $isEligible = $this->storageAnalysisScheduler->isSiteEligible($siteId);
+        $started = $isEligible && $this->storageAnalysisScheduler->startAnalysisNow($siteId);
+
+        wp_safe_redirect(
+            add_query_arg(
+                ['storage_analysis_scheduled' => $started ? 'requested' : ($isEligible ? 'running' : 'inactive')],
+                $redirectTo !== '' ? $redirectTo : $this->getSiteStorageAnalysisRedirectUrl($siteId)
+            )
+        );
+        exit;
     }
 
     public function handleSiteStatusAction(): void {
@@ -1846,6 +2032,16 @@ class Dashboard {
             wp_die(esc_html__('Invalid status action.', 'rrze-multisite-manager'));
         }
 
+        $storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
+
+        if ($storageAnalysisScheduler->isSiteEligible($siteId)) {
+            $storageAnalysisScheduler->scheduleNewSiteRecurringAnalysis($siteId);
+        } else {
+            $storageAnalysisScheduler->deactivateIneligibleSite($siteId);
+        }
+
+        (new ShortcodeBlockAnalysisSchedulerService($this->config))->reconcileSiteSchedule($siteId);
+
         $this->metrics->clearCache();
         $this->metrics->rebuildDashboardData(true);
         $redirectUrl = $this->getSiteOverviewRedirectUrl(
@@ -1876,6 +2072,8 @@ class Dashboard {
 
         check_admin_referer('deleteblog_' . $siteId);
         wpmu_delete_blog($siteId, true);
+        (new StorageAnalysisSchedulerService($this->metrics, $this->config))->deactivateIneligibleSite($siteId);
+        (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
 
         $this->metrics->clearCache();
         $this->metrics->rebuildDashboardData(true);
@@ -2297,6 +2495,16 @@ class Dashboard {
             && current_user_can('upload_files');
     }
 
+    protected function currentUserCanAccessShortcodeBlockAnalysis(int $siteId): bool {
+        if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            return true;
+        }
+
+        return $siteId > 0
+            && $siteId === get_current_blog_id()
+            && current_user_can('manage_options');
+    }
+
     protected function currentUserCanDeleteSiteStorageFiles(int $siteId): bool {
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
             return true;
@@ -2573,6 +2781,35 @@ class Dashboard {
         return add_query_arg($args, $this->getAdminPageBaseUrl());
     }
 
+    public function getShortcodeBlockAnalysisUrl(int $siteId = 0): string {
+        $args = [
+            'page' => (string)($this->config->getMenuSettings()['shortcode_block_analysis_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks'),
+        ];
+
+        if ($siteId > 0) {
+            $args['site_id'] = $siteId;
+        }
+
+        return add_query_arg($args, $this->getAdminPageBaseUrl());
+    }
+
+    protected function getCurrentShortcodeBlockAnalysisUrl(): string {
+        return add_query_arg(
+            [
+                'page' => (string)($this->config->getMenuSettings()['shortcode_block_analysis_tools_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks-tools'),
+            ],
+            admin_url('tools.php')
+        );
+    }
+
+    protected function getShortcodeBlockAnalysisRedirectUrl(int $siteId): string {
+        if ($siteId === get_current_blog_id() && $this->isCurrentShortcodeBlockToolsPage()) {
+            return $this->getCurrentShortcodeBlockAnalysisUrl();
+        }
+
+        return $this->getShortcodeBlockAnalysisUrl($siteId);
+    }
+
     protected function getCurrentSiteStorageAnalysisUrl(): string {
         return add_query_arg(
             [
@@ -2597,6 +2834,13 @@ class Dashboard {
         return $page === $mediaSlug;
     }
 
+    protected function isCurrentShortcodeBlockToolsPage(): bool {
+        $page = isset($_GET['page']) ? sanitize_key((string)wp_unslash($_GET['page'])) : '';
+        $toolsSlug = (string)($this->config->getMenuSettings()['shortcode_block_analysis_tools_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks-tools');
+
+        return $page === $toolsSlug;
+    }
+
     protected function isSiteStorageAnalysisMediaReferer(): bool {
         $referer = wp_get_referer();
         $query = '';
@@ -2611,19 +2855,6 @@ class Dashboard {
         parse_str($query, $args);
 
         return ($args['page'] ?? '') === $mediaSlug;
-    }
-
-    protected function getSiteMediaMetadataAnalysisContinuationUrl(int $siteId): string {
-        return add_query_arg(
-            [
-                'site_id' => $siteId,
-                'storage_tab' => 'missing-metadata',
-                'rrze_msm_continue_media_metadata' => '1',
-                'rrze_msm_media_metadata_site_id' => $siteId,
-                'rrze_msm_media_metadata_nonce' => wp_create_nonce('rrze-msm-site-media-metadata-analysis'),
-            ],
-            $this->getSiteStorageAnalysisRedirectUrl($siteId)
-        );
     }
 
     public function getPluginDetailsUrl(string $pluginFile = ''): string {
@@ -2665,6 +2896,10 @@ class Dashboard {
 
         if ($page === $storageAnalysisSlug) {
             return $this->getSiteStorageAnalysisUrl();
+        }
+
+        if ($page === (string)($this->config->getMenuSettings()['shortcode_block_analysis_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks')) {
+            return $this->getShortcodeBlockAnalysisUrl();
         }
 
         return $this->getSiteDetailsUrl();

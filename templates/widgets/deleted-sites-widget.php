@@ -1,4 +1,10 @@
-<?php if ( ! defined( 'ABSPATH' ) ) { exit; } ?>
+<?php
+if (!defined('ABSPATH')) { exit; }
+
+$tableId = sanitize_key((string)$widget_id);
+$defaultPerPage = max(1, absint($default_per_page ?? 10));
+$siteTable = $this->renderSiteTable($sites, ['table_id' => $tableId, 'default_per_page' => $defaultPerPage, 'sort_key' => 'registered', 'sort_direction' => 'desc']);
+?>
 <section class="rrze-msm-widget <?php echo esc_attr($widget_classes); ?>" data-widget-id="<?php echo esc_attr($widget_id); ?>">
     <div class="rrze-msm-widget-controls">
         <button type="button" class="rrze-msm-widget-move rrze-msm-widget-move-up" data-direction="up" aria-label="<?php echo esc_attr__('Move widget up', 'rrze-multisite-manager'); ?>">&#9650;</button>
@@ -8,5 +14,5 @@
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
-    <?php echo $this->renderSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10, 'sort_key' => 'registered', 'sort_direction' => 'desc']); ?>
+    <?php echo wp_kses($siteTable, $this->getWidgetTableAllowedHtml()); ?>
 </section>

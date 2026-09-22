@@ -6,13 +6,24 @@ defined('ABSPATH') || exit;
         <h2><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></h2>
         <p><?php echo esc_html__('Checks a specific media library file and shows how the storage analysis currently classifies it.', 'rrze-multisite-manager'); ?></p>
     </header>
-    <form method="get" class="rrze-msm-site-actions">
+    <form method="get" class="rrze-msm-site-actions rrze-msm-attachment-debug-form">
         <input type="hidden" name="page" value="<?php echo esc_attr(isset($_GET['page']) ? sanitize_key((string)wp_unslash($_GET['page'])) : ''); ?>">
         <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
         <input type="hidden" name="storage_tab" value="debug">
-        <label for="rrze-msm-debug-attachment-id"><?php echo esc_html__('Attachment ID', 'rrze-multisite-manager'); ?></label>
-        <input id="rrze-msm-debug-attachment-id" name="debug_attachment_id" type="number" min="1" value="<?php echo esc_attr((string)$debug_attachment_id); ?>">
-        <button type="submit" class="button button-secondary"><?php echo esc_html__('Run debug', 'rrze-multisite-manager'); ?></button>
+        <div class="rrze-msm-attachment-search">
+            <label for="rrze-msm-attachment-search"><?php echo esc_html__('Search media library', 'rrze-multisite-manager'); ?></label>
+            <input id="rrze-msm-attachment-search" type="search" autocomplete="off" aria-describedby="rrze-msm-attachment-search-help rrze-msm-attachment-search-status">
+            <button type="button" class="button button-secondary" id="rrze-msm-attachment-search-submit"><?php echo esc_html__('Search', 'rrze-multisite-manager'); ?></button>
+            <p id="rrze-msm-attachment-search-help" class="description"><?php echo esc_html__('Enter at least three characters to search by title or file name.', 'rrze-multisite-manager'); ?></p>
+            <p id="rrze-msm-attachment-search-status" class="description" role="status" aria-live="polite"></p>
+            <label for="rrze-msm-attachment-search-results" class="screen-reader-text"><?php echo esc_html__('Search results', 'rrze-multisite-manager'); ?></label>
+            <select id="rrze-msm-attachment-search-results" size="5" hidden></select>
+        </div>
+        <div class="rrze-msm-attachment-id-lookup">
+            <label for="rrze-msm-debug-attachment-id"><?php echo esc_html__('Attachment ID', 'rrze-multisite-manager'); ?></label>
+            <input id="rrze-msm-debug-attachment-id" name="debug_attachment_id" type="number" min="1" value="<?php echo esc_attr($debug_attachment_id > 0 ? (string)$debug_attachment_id : ''); ?>">
+            <button type="submit" class="button button-secondary"><?php echo esc_html__('Open media details', 'rrze-multisite-manager'); ?></button>
+        </div>
     </form>
     <?php if (!empty($attachment_debug['error'])) { ?>
         <div class="notice notice-error inline"><p><?php echo esc_html((string)$attachment_debug['error']); ?></p></div>

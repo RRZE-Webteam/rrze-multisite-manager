@@ -11,6 +11,8 @@ class Main {
     protected MetricsService $metrics;
     protected Dashboard $dashboard;
     protected MonitoringService $monitoring;
+    protected StorageAnalysisSchedulerService $storageAnalysisScheduler;
+    protected ShortcodeBlockAnalysisSchedulerService $shortcodeBlockAnalysisScheduler;
 
     public function __construct(Plugin $plugin) {
         $this->plugin = $plugin;
@@ -25,6 +27,14 @@ class Main {
         $metrics = new MetricsService($settings, $this->config);
         $metrics->onLoaded();
         $this->metrics = $metrics;
+
+        $storageAnalysisScheduler = new StorageAnalysisSchedulerService($metrics, $this->config);
+        $storageAnalysisScheduler->onLoaded();
+        $this->storageAnalysisScheduler = $storageAnalysisScheduler;
+
+        $shortcodeBlockAnalysisScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
+        $shortcodeBlockAnalysisScheduler->onLoaded();
+        $this->shortcodeBlockAnalysisScheduler = $shortcodeBlockAnalysisScheduler;
 
         $dashboard = new Dashboard($this->plugin, $settings);
         $dashboard->onLoaded();

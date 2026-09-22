@@ -8,6 +8,10 @@ defined('ABSPATH') || exit;
             <div>
                 <h1><?php echo esc_html__('RRZE Multisite Manager', 'rrze-multisite-manager'); ?></h1>
                 <p><?php echo esc_html__('Local network metrics and operational overview for this WordPress multisite.', 'rrze-multisite-manager'); ?></p>
+                <p>
+                    <?php /* translators: %s: date and time of the last metrics run. */ ?>
+                    <span><?php echo esc_html(sprintf(__('Status: %s', 'rrze-multisite-manager'), (string)$metrics_last_run_label)); ?></span>
+                </p>
             </div>
             <div class="rrze-msm-header-controls">
                 <form class="rrze-msm-view-form" method="get" action="<?php echo esc_url($dashboard_url); ?>">
@@ -34,14 +38,6 @@ defined('ABSPATH') || exit;
             <strong><?php echo esc_html__('Active view:', 'rrze-multisite-manager'); ?></strong>
             <span><?php echo esc_html($current_view_label); ?></span>
         </div>
-
-        <?php if (!empty($metrics_refreshed)) { ?>
-            <div class="notice notice-success is-dismissible">
-                <p><?php echo esc_html__('The metrics have been rebuilt.', 'rrze-multisite-manager'); ?></p>
-            </div>
-        <?php } ?>
-
-        <?php if (!empty($metrics_notice_html)) { echo $metrics_notice_html; } ?>
 
         <?php if (!empty($metrics_has_data)) { ?>
             <div class="rrze-msm-grid rrze-msm-grid-primary" data-current-view="<?php echo esc_attr($current_view_slug); ?>">
