@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.1.22
+ * Version:         1.1.23
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -45,10 +45,33 @@ function autoload(string $class): void {
 
 add_action('init', __NAMESPACE__ . '\loadTextdomain', 0);
 add_action('init', __NAMESPACE__ . '\loaded', 5);
+add_action('admin_init', __NAMESPACE__ . '\loadTextdomain', 0);
+add_filter('load_textdomain_mofile', __NAMESPACE__ . '\preferBundledTextdomainMofile', 10, 2);
 register_deactivation_hook(__FILE__, __NAMESPACE__ . '\deactivate');
 
 function loadTextdomain(): void {
+    $domain = 'rrze-multisite-manager';
+    $bundledMofile = plugin_dir_path(__FILE__) . 'languages/' . $domain . '-' . determine_locale() . '.mo';
+
+    if (is_readable($bundledMofile)) {
+        // Replace a potentially stale global language pack with the bundled catalog.
+        unload_textdomain($domain, true);
+        load_textdomain($domain, $bundledMofile);
+        return;
+    }
+
     load_plugin_textdomain('rrze-multisite-manager', false, dirname(plugin_basename(__FILE__)) . '/languages');
+}
+
+function preferBundledTextdomainMofile(string $mofile, string $domain): string {
+    if ($domain !== 'rrze-multisite-manager') {
+        return $mofile;
+    }
+
+    $bundledMofile = plugin_dir_path(__FILE__) . 'languages/' . $domain . '-' . determine_locale() . '.mo';
+
+    // Use the catalog shipped with this plugin when it is available and current.
+    return is_readable($bundledMofile) ? $bundledMofile : $mofile;
 }
 
 function systemRequirements(Config $config): string {

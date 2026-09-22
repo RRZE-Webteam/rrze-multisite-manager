@@ -1193,6 +1193,7 @@ class Dashboard {
                 'site_summary' => $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [],
                 'analysis_status' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getStatus($siteId) : [],
                 'analysis_result' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getResult($siteId) : [],
+                'analysis_next_run_timestamp' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getNextScheduledRunTimestamp($siteId) : 0,
                 'analysis_tab' => $tab,
                 'is_local_page' => $isLocalPage,
                 'analysis_base_url' => $isLocalPage ? $this->getCurrentShortcodeBlockAnalysisUrl() : $this->getShortcodeBlockAnalysisUrl(),

@@ -18,6 +18,30 @@ $sortBy = in_array($sortBy, $sortColumns, true) ? $sortBy : $entryNameKey;
 $sortOrder = isset($_GET['analysis_order']) ? sanitize_key((string)wp_unslash($_GET['analysis_order'])) : 'asc';
 $sortOrder = $sortOrder === 'desc' ? 'desc' : 'asc';
 $analysisGeneratedAt = (string)($analysis_result['generated_at'] ?? '');
+$analysisNextRunTimestamp = (int)$analysis_next_run_timestamp;
+$getDistinctEntryCount = static function (array $items, string $key): int {
+    $names = [];
+
+    foreach ($items as $item) {
+        if (!is_array($item) || empty($item[$key])) {
+            continue;
+        }
+
+        $names[strtolower((string)$item[$key])] = true;
+    }
+
+    return count($names);
+};
+$foundShortcodeCount = $getDistinctEntryCount((array)($analysis_result['shortcodes'] ?? []), 'shortcode');
+$foundBlockCount = $getDistinctEntryCount((array)($analysis_result['blocks'] ?? []), 'block');
+$analysedPostCount = max(
+    (int)($analysis_status['total_posts'] ?? 0),
+    (int)($analysis_status['processed_posts'] ?? 0),
+    (int)($analysis_status['phases']['shortcodes']['total_posts'] ?? 0),
+    (int)($analysis_status['phases']['blocks']['total_posts'] ?? 0),
+    (int)($analysis_result['total_posts'] ?? 0),
+    (int)($analysis_result['processed_posts'] ?? 0)
+);
 $getEntrySortValue = static function (array $entry, string $column): string {
     if ($column === 'registered') {
         return !empty($entry['registered']) ? '1' : '0';
@@ -184,51 +208,31 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                 <?php } elseif ($requested === 'running') { ?>
                     <div class="notice notice-info inline"><p><?php echo esc_html__('The shortcode and block analysis is already running.', 'rrze-multisite-manager'); ?></p></div>
                 <?php } ?>
-                <p>
-                    <?php
-                    echo esc_html(
-                        sprintf(
-                            __('Status: %1$s (%2$d / %3$d posts processed)', 'rrze-multisite-manager'),
-                            (string)($analysis_status['status'] ?? __('Not requested', 'rrze-multisite-manager')),
-                            (int)($analysis_status['processed_posts'] ?? 0),
-                            (int)($analysis_status['total_posts'] ?? 0)
-                        )
-                    );
-                    ?>
-                </p>
-                <?php if ($analysisGeneratedAt !== '') { ?>
-                    <p><?php
-                    /* translators: %s: date and time of the completed shortcode and block analysis. */
-                    echo esc_html(sprintf(__('Analysis date: %s', 'rrze-multisite-manager'), get_date_from_gmt($analysisGeneratedAt, 'd.m.Y H:i')));
-                    ?></p>
-                <?php } ?>
-                <ul class="rrze-msm-analysis-phase-status">
-                    <?php foreach (['shortcodes' => __('Shortcode analysis', 'rrze-multisite-manager'), 'blocks' => __('Block analysis', 'rrze-multisite-manager')] as $phaseKey => $phaseLabel) { ?>
+                <ul>
+                    <li>
                         <?php
-                        $phaseStatus = is_array($analysis_status['phases'][$phaseKey] ?? null) ? $analysis_status['phases'][$phaseKey] : [];
-                        $phaseStatusKey = (string)($phaseStatus['status'] ?? 'idle');
-                        $phaseStatusLabels = [
-                            'complete' => __('Completed', 'rrze-multisite-manager'),
-                            'running' => __('Running', 'rrze-multisite-manager'),
-                            'scheduled' => __('Scheduled', 'rrze-multisite-manager'),
-                            'error' => __('Error', 'rrze-multisite-manager'),
-                            'idle' => __('Not started', 'rrze-multisite-manager'),
-                        ];
+                        echo esc_html(
+                            sprintf(
+                                /* translators: 1: date and time of the last analysis, 2: date and time of the next scheduled analysis. */
+                                __('Last analysis: %1$s (Next scheduled analysis: %2$s)', 'rrze-multisite-manager'),
+                                $analysisGeneratedAt !== '' ? get_date_from_gmt($analysisGeneratedAt, 'd.m.Y H:i') : '-',
+                                $analysisNextRunTimestamp > 0 ? wp_date('d.m.Y H:i', $analysisNextRunTimestamp) : '-'
+                            )
+                        );
                         ?>
-                        <li>
-                            <strong><?php echo esc_html($phaseLabel); ?>:</strong>
-                            <?php
-                            echo esc_html(
-                                sprintf(
-                                    __('%1$s (%2$d / %3$d posts processed)', 'rrze-multisite-manager'),
-                                    $phaseStatusLabels[$phaseStatusKey] ?? __('Not started', 'rrze-multisite-manager'),
-                                    (int)($phaseStatus['processed_posts'] ?? 0),
-                                    (int)($phaseStatus['total_posts'] ?? 0)
-                                )
-                            );
-                            ?>
-                        </li>
-                    <?php } ?>
+                    </li>
+                    <li><?php
+                    /* translators: %d: number of searched posts and pages. */
+                    echo esc_html(sprintf(__('Searched posts and pages: %d', 'rrze-multisite-manager'), $analysedPostCount));
+                    ?></li>
+                    <li><?php
+                    /* translators: %d: number of distinct blocks found. */
+                    echo esc_html(sprintf(__('Found blocks: %d', 'rrze-multisite-manager'), $foundBlockCount));
+                    ?></li>
+                    <li><?php
+                    /* translators: %d: number of distinct shortcodes found. */
+                    echo esc_html(sprintf(__('Found shortcodes: %d', 'rrze-multisite-manager'), $foundShortcodeCount));
+                    ?></li>
                 </ul>
                 <form method="post" action="<?php echo esc_url($request_action); ?>">
                     <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">

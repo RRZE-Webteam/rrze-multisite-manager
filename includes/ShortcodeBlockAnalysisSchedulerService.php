@@ -177,6 +177,10 @@ class ShortcodeBlockAnalysisSchedulerService {
         return is_array($result) ? $result : [];
     }
 
+    public function getNextScheduledRunTimestamp(int $siteId): int {
+        return $siteId > 0 ? $this->getNextRecurringScheduledTimestamp($siteId) : 0;
+    }
+
     public function getSiteProcesses(): array {
         $siteIds = get_sites(['fields' => 'ids', 'number' => 0, 'orderby' => 'id', 'order' => 'ASC']);
         $processes = [];
@@ -191,6 +195,14 @@ class ShortcodeBlockAnalysisSchedulerService {
             $status = $this->getStatus($siteId);
             $isActive = $this->isSiteActive($siteId);
             $isRunning = $this->isRunning($siteId);
+            $lastFinishedAt = (string)($result['generated_at'] ?? '');
+
+            // Older completed runs may not yet have stored a separate result.
+            if ($lastFinishedAt === '' && (string)($status['status'] ?? '') === 'complete' && empty($status['last_error'])) {
+                $lastFinishedAt = (string)($status['last_finished_at'] ?? '');
+            }
+
+            $statusKey = $this->getProcessStatusKey($isActive, $isRunning, $nextRun, $status, $lastFinishedAt);
 
             if (empty($status) && empty($result) && $nextRun <= 0) {
                 continue;
@@ -199,22 +211,82 @@ class ShortcodeBlockAnalysisSchedulerService {
             $processes[] = [
                 'site_id' => $siteId,
                 'url' => get_home_url($siteId, '/'),
-                'status' => $isActive ? (string)($status['status'] ?? (!empty($result) ? 'complete' : 'idle')) : 'inactive',
+                'status' => $this->getProcessStatusLabel($statusKey),
+                'status_key' => $statusKey,
                 'is_active' => $isActive,
                 'website_status_key' => $isActive ? 'active' : 'inactive',
                 'is_running' => $isRunning,
                 'last_started_at' => (string)($status['last_started_at'] ?? ''),
                 // Only a persisted result represents a successfully completed analysis.
-                'last_finished_at' => (string)($result['generated_at'] ?? ''),
+                'last_finished_at' => $lastFinishedAt,
                 'next_run_timestamp' => $nextRun,
                 'cycle' => $isActive ? $this->getScheduleLabel() : '',
                 'processed_posts' => (int)($status['processed_posts'] ?? 0),
                 'total_posts' => (int)($status['total_posts'] ?? 0),
-                'phases' => is_array($status['phases'] ?? null) ? $status['phases'] : $this->getDefaultPhaseStatuses(),
+                'phases' => $this->getProcessPhases($status, $lastFinishedAt),
             ];
         }
 
         return $processes;
+    }
+
+    protected function getProcessStatusKey(bool $isActive, bool $isRunning, int $nextRun, array $status, string $lastFinishedAt): string {
+        if (!$isActive) {
+            return 'inactive';
+        }
+
+        if ($isRunning) {
+            return 'running';
+        }
+
+        if (!empty($status['last_error'])) {
+            return 'error';
+        }
+
+        if ($nextRun > 0 && $nextRun <= time()) {
+            return 'waiting_for_cron';
+        }
+
+        if ($lastFinishedAt !== '' && $nextRun > time()) {
+            return 'ok';
+        }
+
+        return $nextRun > 0 ? 'scheduled' : 'not_scheduled';
+    }
+
+    protected function getProcessStatusLabel(string $statusKey): string {
+        $labels = [
+            'inactive' => __('Inactive', 'rrze-multisite-manager'),
+            'running' => __('Running', 'rrze-multisite-manager'),
+            'error' => __('Error', 'rrze-multisite-manager'),
+            'waiting_for_cron' => __('Waiting for cron', 'rrze-multisite-manager'),
+            'ok' => __('Ok', 'rrze-multisite-manager'),
+            'scheduled' => __('Scheduled', 'rrze-multisite-manager'),
+            'not_scheduled' => __('Not scheduled', 'rrze-multisite-manager'),
+        ];
+
+        return $labels[$statusKey] ?? $labels['not_scheduled'];
+    }
+
+    protected function getProcessPhases(array $status, string $lastFinishedAt): array {
+        $phases = is_array($status['phases'] ?? null) ? $status['phases'] : $this->getDefaultPhaseStatuses();
+
+        if ($lastFinishedAt === '') {
+            return $phases;
+        }
+
+        foreach ([self::SHORTCODE_PHASE, self::BLOCK_PHASE] as $phase) {
+            $phaseStatus = is_array($phases[$phase] ?? null) ? $phases[$phase] : [];
+
+            if (in_array((string)($phaseStatus['status'] ?? ''), ['idle', 'scheduled'], true) && empty($phaseStatus['started_at'])) {
+                $phaseStatus['status'] = 'complete';
+                $phaseStatus['started_at'] = $lastFinishedAt;
+                $phaseStatus['finished_at'] = $lastFinishedAt;
+                $phases[$phase] = $phaseStatus;
+            }
+        }
+
+        return $phases;
     }
 
     public function getUnscheduledActiveSiteCount(): int {
@@ -729,6 +801,8 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function finish(int $siteId, array $state): void {
         $result = [
             'generated_at' => current_time('mysql', true),
+            'processed_posts' => (int)($state['block_processed_posts'] ?? 0),
+            'total_posts' => (int)($state['total_posts'] ?? 0),
             'shortcodes' => array_values((array)($state['shortcodes'] ?? [])),
             'blocks' => array_values((array)($state['blocks'] ?? [])),
         ];
@@ -918,17 +992,23 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     protected function markScheduled(int $siteId): void {
         $status = $this->getStatus($siteId);
+        $hasCompletedResult = !empty($this->getResult($siteId)['generated_at']);
         $status = array_merge(
             $status,
             [
-                'status' => 'scheduled',
+                'status' => $hasCompletedResult ? 'complete' : 'scheduled',
                 'last_error' => '',
-                'phase' => self::SHORTCODE_PHASE,
-                'processed_posts' => 0,
-                'total_posts' => 0,
-                'phases' => $this->getScheduledPhaseStatuses(),
+                'phase' => $hasCompletedResult ? 'complete' : self::SHORTCODE_PHASE,
+                'processed_posts' => $hasCompletedResult ? (int)($status['processed_posts'] ?? 0) : 0,
+                'total_posts' => $hasCompletedResult ? (int)($status['total_posts'] ?? 0) : 0,
             ]
         );
+
+        // Keep the previous successful phase timestamps visible until a new run starts.
+        if (!$hasCompletedResult || !is_array($status['phases'] ?? null)) {
+            $status['phases'] = $this->getScheduledPhaseStatuses();
+        }
+
         update_blog_option($siteId, self::STATUS_OPTION, $status);
     }
 

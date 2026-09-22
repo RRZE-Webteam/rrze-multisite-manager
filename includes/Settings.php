@@ -1049,22 +1049,42 @@ class Settings {
 
             foreach ($processes as $process) {
                 $siteId = (int)($process['site_id'] ?? 0);
-                $statusKey = (string)($process['status'] ?? 'idle');
-                $statusClass = $statusKey === 'scheduled'
+                $statusKey = (string)($process['status_key'] ?? ($process['status'] ?? 'not_scheduled'));
+
+                if ($statusKey === 'complete') {
+                    $statusKey = 'ok';
+                }
+
+                $statusLabels = [
+                    'inactive' => __('Inactive', 'rrze-multisite-manager'),
+                    'running' => __('Running', 'rrze-multisite-manager'),
+                    'error' => __('Error', 'rrze-multisite-manager'),
+                    'waiting_for_cron' => __('Waiting for cron', 'rrze-multisite-manager'),
+                    'ok' => __('Ok', 'rrze-multisite-manager'),
+                    'scheduled' => __('Scheduled', 'rrze-multisite-manager'),
+                    'not_scheduled' => __('Not scheduled', 'rrze-multisite-manager'),
+                ];
+                $lastFinishedAt = (string)($process['last_finished_at'] ?? '');
+                $lastRunTimestamp = $lastFinishedAt !== '' ? (int)strtotime($lastFinishedAt . ' UTC') : 0;
+                $statusClass = in_array($statusKey, ['scheduled', 'waiting_for_cron'], true)
                     ? 'rrze-msm-badge-scheduled'
                     : ($statusKey === 'running'
                         ? 'rrze-msm-badge-info'
-                        : ($statusKey === 'complete'
+                        : ($statusKey === 'ok'
                             ? 'rrze-msm-badge-positive'
                             : ($statusKey === 'inactive'
                                 ? 'rrze-msm-badge-inactive'
                                 : ($statusKey === 'error' ? 'rrze-msm-badge-danger' : 'rrze-msm-badge-neutral'))));
-                $statusLabel = $statusKey === 'scheduled'
-                    ? __('Scheduled', 'rrze-multisite-manager')
-                    : $statusKey;
-                echo '<tr data-sort-name="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-sort-url="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-site-status="' . esc_attr((string)($process['website_status_key'] ?? 'inactive')) . '">';
-                echo '<td><a href="' . esc_url($this->getSiteDetailsPageUrl($siteId)) . '">' . esc_html((string)($process['url'] ?? '')) . '</a></td>';
-                echo '<td><span class="rrze-msm-badge ' . esc_attr($statusClass) . '">' . esc_html($statusLabel) . '</span></td>';
+                echo '<tr data-sort-name="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-sort-url="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-sort-status="' . esc_attr(strtolower((string)($process['status'] ?? ''))) . '" data-sort-last-run="' . esc_attr((string)$lastRunTimestamp) . '" data-site-status="' . esc_attr((string)($process['website_status_key'] ?? 'inactive')) . '">';
+                echo '<td class="rrze-msm-monitoring-site-url">';
+                echo '<span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
+                echo '<div class="row-actions">';
+                echo '<span class="rrze-msm-row-action-details"><a href="' . esc_url($this->getSiteDetailsPageUrl($siteId)) . '">' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
+                echo ' | ';
+                echo '<span class="rrze-msm-row-action-shortcode-block"><a href="' . esc_url($this->getSiteShortcodeBlockAnalysisPageUrl($siteId)) . '">' . esc_html__('Shortcodes and Blocks', 'rrze-multisite-manager') . '</a></span>';
+                echo '</div>';
+                echo '</td>';
+                echo '<td><span class="rrze-msm-badge ' . esc_attr($statusClass) . '">' . esc_html($statusLabels[$statusKey] ?? $statusLabels['not_scheduled']) . '</span></td>';
                 echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'shortcodes');
                 echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'blocks', true);
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['last_finished_at'] ?? ''))) . '</td>';
@@ -1077,11 +1097,13 @@ class Settings {
                 } elseif (!empty($process['is_running'])) {
                     echo esc_html__('Running', 'rrze-multisite-manager');
                 } else {
+                    $hasSuccessfulRun = $statusKey === 'ok'
+                        && (int)($process['next_run_timestamp'] ?? 0) > time();
                     echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_request_shortcode_block_analysis')) . '">';
                     echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
                     echo '<input type="hidden" name="redirect_to" value="' . esc_url($monitoringUrl) . '">';
                     wp_nonce_field('rrze_msm_request_shortcode_block_analysis_' . $siteId);
-                    echo '<button type="submit" class="button button-secondary">' . esc_html__('Start', 'rrze-multisite-manager') . '</button>';
+                    echo '<button type="submit" class="button button-secondary">' . esc_html($hasSuccessfulRun ? __('Start now', 'rrze-multisite-manager') : __('Start', 'rrze-multisite-manager')) . '</button>';
                     echo '</form>';
                 }
 
@@ -1928,6 +1950,20 @@ class Settings {
         return add_query_arg(
             [
                 'page' => (string)($this->config->getMenuSettings()['site_storage_analysis_slug'] ?? 'rrze-multisite-manager-site-storage-analysis'),
+                'site_id' => $siteId,
+            ],
+            admin_url('admin.php')
+        );
+    }
+
+    protected function getSiteShortcodeBlockAnalysisPageUrl(int $siteId): string {
+        if ($siteId <= 0) {
+            return '';
+        }
+
+        return add_query_arg(
+            [
+                'page' => (string)($this->config->getMenuSettings()['shortcode_block_analysis_slug'] ?? 'rrze-multisite-manager-shortcodes-blocks'),
                 'site_id' => $siteId,
             ],
             admin_url('admin.php')

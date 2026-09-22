@@ -261,6 +261,29 @@ function shouldReplacePoRevisionDate(value) {
         || trimmed === 'YEAR-MO-DA HO:MI+0000';
 }
 
+function getPotContactMetadata(pkg) {
+    var author = pkg.author && typeof pkg.author === 'object' ? pkg.author : {};
+    var repository = pkg.repository && typeof pkg.repository === 'object' ? pkg.repository : {};
+    var authorValue = typeof author.name === 'string' ? author.name.trim() : '';
+    var authorUrl = typeof author.url === 'string' ? author.url.trim() : '';
+    var issuesUrl = typeof repository.issues === 'string' ? repository.issues.trim() : '';
+    var supportEmail = pkg.supports && typeof pkg.supports.email === 'string' ? pkg.supports.email.trim() : '';
+    var emailMatch = authorValue.match(/<([^>]+)>/);
+    var authorEmail = supportEmail || (emailMatch ? emailMatch[1].trim() : '');
+    var authorName = authorValue.replace(/\s*<[^>]+>\s*/, '').trim();
+    var translator = authorName;
+
+    if (authorEmail !== '') {
+        translator += ' <' + authorEmail + '>';
+    }
+
+    return {
+        authorName: authorName,
+        reportBugsTo: issuesUrl || (authorEmail !== '' ? 'mailto:' + authorEmail : authorUrl),
+        translator: translator
+    };
+}
+
 function setPotMetadata(pluginRoot, pkg, newVersion) {
     var textdomain = typeof pkg.textdomain === 'string' && pkg.textdomain.trim() !== ''
         ? pkg.textdomain.trim()
@@ -270,13 +293,30 @@ function setPotMetadata(pluginRoot, pkg, newVersion) {
         : String(pkg.name || '').trim();
     var filePath = path.join(pluginRoot, 'languages', textdomain + '.pot');
     var replacements = 0;
-    var revisionDate = formatPoRevisionDate(new Date());
+    var buildDate = new Date();
+    var revisionDate = formatPoRevisionDate(buildDate);
+    var contact = getPotContactMetadata(pkg);
+    var license = typeof pkg.license === 'string' ? pkg.license.trim() : '';
 
     if (textdomain === '' || title === '' || !fs.existsSync(filePath)) {
         return;
     }
 
     replaceInFile(filePath, function replacePotMetadata(content) {
+        if (contact.authorName !== '') {
+            content = content.replace(
+                /^# Copyright \(C\) .*$/m,
+                '# Copyright (C) ' + buildDate.getUTCFullYear() + ' ' + contact.authorName
+            );
+        }
+
+        if (license !== '') {
+            content = content.replace(
+                /^# This file is distributed under the .*\.$/m,
+                '# This file is distributed under the ' + license + '.'
+            );
+        }
+
         content = content.replace(
             /("Project-Id-Version:\s*)[^\\]*(\\n")/,
             function replaceProjectIdVersion(match, p1, p2) {
@@ -284,6 +324,33 @@ function setPotMetadata(pluginRoot, pkg, newVersion) {
                 return p1 + title + ' ' + newVersion + p2;
             }
         );
+
+        if (contact.reportBugsTo !== '') {
+            content = content.replace(
+                /("Report-Msgid-Bugs-To:\s*)[^\\]*(\\n")/,
+                function replaceReportBugsTo(match, p1, p2) {
+                    replacements++;
+                    return p1 + contact.reportBugsTo + p2;
+                }
+            );
+        }
+
+        if (contact.translator !== '') {
+            content = content.replace(
+                /("Last-Translator:\s*)[^\\]*(\\n")/,
+                function replaceLastTranslator(match, p1, p2) {
+                    replacements++;
+                    return p1 + contact.translator + p2;
+                }
+            );
+            content = content.replace(
+                /("Language-Team:\s*)[^\\]*(\\n")/,
+                function replaceLanguageTeam(match, p1, p2) {
+                    replacements++;
+                    return p1 + contact.translator + p2;
+                }
+            );
+        }
 
         content = content.replace(
             /("PO-Revision-Date:\s*)([^\\]*)(\\n")/,
@@ -323,8 +390,8 @@ function getNextVersion(mode, currentVersion) {
 
 function main() {
     var mode = process.argv[2];
-    if (mode !== 'dev' && mode !== 'prod' && mode !== 'release') {
-        console.error('Usage: node scripts/build-version.js dev|prod|release');
+    if (mode !== 'dev' && mode !== 'prod' && mode !== 'release' && mode !== 'sync') {
+        console.error('Usage: node scripts/build-version.js dev|prod|release|sync');
         process.exit(1);
     }
 
@@ -337,10 +404,12 @@ function main() {
     }
 
     var current = pkg.version;
-    var next = getNextVersion(mode, current);
+    var next = mode === 'sync' ? current : getNextVersion(mode, current);
 
-    pkg.version = next;
-    writeJson(packagePath, pkg);
+    if (mode !== 'sync') {
+        pkg.version = next;
+        writeJson(packagePath, pkg);
+    }
 
     setReadmeTxtVersion(pluginRoot, next);
     setPluginVersion(pluginRoot, pkg, next);
@@ -348,7 +417,11 @@ function main() {
     setConfigCompatibility(pluginRoot, pkg);
     setPotMetadata(pluginRoot, pkg, next);
 
-    console.log('Version bumped (' + mode + '): ' + current + ' -> ' + next);
+    if (mode === 'sync') {
+        console.log('Version metadata synchronized: ' + current);
+    } else {
+        console.log('Version bumped (' + mode + '): ' + current + ' -> ' + next);
+    }
 }
 
 main();
