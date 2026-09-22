@@ -260,7 +260,7 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                     <input id="rrze-msm-analysis-filter" type="search" name="analysis_filter" value="<?php echo esc_attr($filter); ?>">
                     <button type="submit" class="button button-secondary"><?php echo esc_html__('Filter', 'rrze-multisite-manager'); ?></button>
                 </form>
-                <table class="widefat striped rrze-msm-table">
+                <table class="widefat striped rrze-msm-table rrze-msm-shortcode-analysis-table">
                     <thead><tr>
                         <?php echo $renderSortHeader($entryNameKey, $analysisTab === 'blocks' ? _x('Block', 'Block editor content', 'rrze-multisite-manager') : __('Shortcode', 'rrze-multisite-manager')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Header helper escapes URL and label. ?>
                         <?php if ($analysisTab === 'shortcodes') { ?>
@@ -281,7 +281,13 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                             <tr>
                                 <td><strong><?php echo esc_html((string)($entry[$analysisTab === 'blocks' ? 'block_title' : $entryNameKey] ?? ($entry[$entryNameKey] ?? ''))); ?></strong><?php if ($analysisTab === 'blocks') { ?><br><code><?php echo esc_html((string)($entry['block'] ?? '')); ?></code><?php } ?></td>
                                 <?php if ($analysisTab === 'shortcodes') { ?>
-                                    <td><?php echo esc_html(!empty($entry['registered']) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')); ?></td>
+                                    <td>
+                                        <?php if (!empty($entry['registered'])) { ?>
+                                            <?php echo esc_html__('Yes', 'rrze-multisite-manager'); ?>
+                                        <?php } else { ?>
+                                            <span class="rrze-msm-shortcode-unregistered"><span class="dashicons dashicons-no" aria-hidden="true"></span><?php echo esc_html__('No', 'rrze-multisite-manager'); ?></span>
+                                        <?php } ?>
+                                    </td>
                                     <td>
                                         <?php
                                         $providerName = (string)($entry['provider'] ?? __('Unknown', 'rrze-multisite-manager'));
