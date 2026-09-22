@@ -37,6 +37,7 @@ class MetricsService {
     protected array $siteNameCache = [];
     protected array $siteAdminEmailCache = [];
     protected array $currentSiteAssetUsageIndexCache = [];
+    protected array $currentSiteAttachmentUsagePathIndexCache = [];
     protected ?array $themeSiteAggregate = null;
     protected ?int $dashboardSiteCount = null;
 
@@ -4494,8 +4495,13 @@ class MetricsService {
             'candidates' => $candidates,
             'found_in_content' => [],
             'without_matches' => [],
+            'upload_baseurl' => (string)($analysis['upload_baseurl'] ?? ''),
             'attachment_candidates' => $this->getCurrentSiteAttachmentBaseEntriesForAnalysis((string)($analysis['upload_baseurl'] ?? '')),
             'attachment_index' => 0,
+            'attachment_usage_stage' => 'posts',
+            'attachment_usage_post_cursor' => 0,
+            'attachment_usage_meta_cursor' => 0,
+            'attachment_usage_matches' => [],
             'used_attachments' => [],
             'unused_attachments' => [],
             'unregistered_image_size_variant_candidates' => (array)($analysis['largest_unregistered_image_size_variants'] ?? []),
@@ -4585,6 +4591,13 @@ class MetricsService {
         $unregisteredImageSizeIndex = 0;
         $unregisteredImageSizeCandidate = [];
 
+        if (($state['attachment_usage_stage'] ?? 'complete') !== 'complete') {
+            $this->processCurrentSiteAttachmentUsageIndexBatch($state);
+            $state['updated_at'] = current_time('mysql', true);
+
+            return $state;
+        }
+
         while (
             $processed < self::STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE
             && (
@@ -4630,11 +4643,9 @@ class MetricsService {
                 $attachmentCandidate = is_array($attachmentCandidates[$attachmentIndex] ?? null) ? (array)$attachmentCandidates[$attachmentIndex] : [];
 
                 if (!empty($attachmentCandidate)) {
-                    $matches = $this->searchCurrentSiteFileUsageMatches(
-                        is_string($attachmentCandidate['file_url'] ?? null) ? (string)$attachmentCandidate['file_url'] : '',
-                        is_string($attachmentCandidate['path'] ?? null) ? (string)$attachmentCandidate['path'] : '',
-                        (int)($attachmentCandidate['attachment_id'] ?? 0),
-                        false
+                    $matches = $this->getCurrentSiteAttachmentUsageMatches(
+                        (array)($state['attachment_usage_matches'] ?? []),
+                        (int)($attachmentCandidate['attachment_id'] ?? 0)
                     );
                     $matchCount = count($matches);
                     $attachmentCandidate['content_usage_count'] = $matchCount;
@@ -4699,6 +4710,335 @@ class MetricsService {
         );
 
         return $state;
+    }
+
+    /**
+     * Builds a site-local attachment reference index in source batches.
+     *
+     * This replaces the former approach of running several SQL LIKE queries for
+     * every media-library entry. The state is retained so that progress remains
+     * visible and the scheduler can enforce its overall runtime limit.
+     */
+    protected function processCurrentSiteAttachmentUsageIndexBatch(array &$state): void {
+        $stage = (string)($state['attachment_usage_stage'] ?? 'posts');
+        $attachmentPathIndex = $this->getCurrentSiteAttachmentUsagePathIndex();
+        $baseUrl = (string)($state['upload_baseurl'] ?? '');
+        $usageMatches = is_array($state['attachment_usage_matches'] ?? null)
+            ? (array)$state['attachment_usage_matches']
+            : [];
+        $rows = [];
+        $row = null;
+
+        if ($stage === 'posts') {
+            $rows = $this->getCurrentSiteAttachmentUsagePostRows((int)($state['attachment_usage_post_cursor'] ?? 0));
+
+            foreach ($rows as $row) {
+                $postId = (int)($row->ID ?? 0);
+
+                if ($postId <= 0) {
+                    continue;
+                }
+
+                $this->collectCurrentSiteAttachmentUsageMatches(
+                    (string)($row->post_content ?? ''),
+                    [
+                        'post_id' => $postId,
+                        'post_type' => (string)($row->post_type ?? ''),
+                        'title' => trim((string)($row->post_title ?? '')) !== '' ? (string)$row->post_title : __('(no title)', 'rrze-multisite-manager'),
+                        'edit_url' => get_edit_post_link($postId, ''),
+                        'view_url' => get_permalink($postId),
+                        'match_label' => __('Content', 'rrze-multisite-manager'),
+                    ],
+                    $attachmentPathIndex,
+                    $baseUrl,
+                    $usageMatches
+                );
+                $state['attachment_usage_post_cursor'] = $postId;
+            }
+
+            if (count($rows) < self::STORAGE_MEDIA_METADATA_BATCH_SIZE) {
+                $stage = 'meta';
+            }
+        } elseif ($stage === 'meta') {
+            $rows = $this->getCurrentSiteAttachmentUsageMetaRows((int)($state['attachment_usage_meta_cursor'] ?? 0));
+
+            foreach ($rows as $row) {
+                $metaId = (int)($row->meta_id ?? 0);
+                $postId = (int)($row->ID ?? 0);
+
+                if ($metaId <= 0 || $postId <= 0) {
+                    continue;
+                }
+
+                $this->collectCurrentSiteAttachmentUsageMatches(
+                    (string)($row->meta_value ?? ''),
+                    [
+                        'post_id' => $postId,
+                        'post_type' => (string)($row->post_type ?? ''),
+                        'title' => trim((string)($row->post_title ?? '')) !== '' ? (string)$row->post_title : __('(no title)', 'rrze-multisite-manager'),
+                        'edit_url' => get_edit_post_link($postId, ''),
+                        'view_url' => get_permalink($postId),
+                        /* translators: %s: post meta key name. */
+                        'match_label' => sprintf(__('Meta field: %s', 'rrze-multisite-manager'), (string)($row->meta_key ?? '')),
+                    ],
+                    $attachmentPathIndex,
+                    $baseUrl,
+                    $usageMatches
+                );
+                $state['attachment_usage_meta_cursor'] = $metaId;
+            }
+
+            if (count($rows) < self::STORAGE_MEDIA_METADATA_BATCH_SIZE) {
+                $stage = 'options';
+            }
+        } elseif ($stage === 'options') {
+            foreach ($this->getCurrentSiteAttachmentUsageOptionRows() as $row) {
+                $optionName = (string)($row->option_name ?? '');
+
+                if ($optionName === '') {
+                    continue;
+                }
+
+                $this->collectCurrentSiteAttachmentUsageMatches(
+                    (string)($row->option_value ?? ''),
+                    [
+                        'post_id' => 0,
+                        'post_type' => 'option',
+                        /* translators: %s: option name. */
+                        'title' => sprintf(__('Option: %s', 'rrze-multisite-manager'), $optionName),
+                        'edit_url' => '',
+                        'view_url' => '',
+                        /* translators: %s: option name. */
+                        'match_label' => sprintf(__('Option value: %s', 'rrze-multisite-manager'), $optionName),
+                    ],
+                    $attachmentPathIndex,
+                    $baseUrl,
+                    $usageMatches
+                );
+            }
+            $stage = 'complete';
+        }
+
+        $state['attachment_usage_matches'] = $usageMatches;
+        $state['attachment_usage_stage'] = $stage;
+        $state['message'] = $stage === 'complete'
+            ? __('Attachment references have been indexed.', 'rrze-multisite-manager')
+            : __('Media library references are being indexed.', 'rrze-multisite-manager');
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    protected function getCurrentSiteAttachmentUsagePostRows(int $lastPostId): array {
+        global $wpdb;
+
+        $postTypes = $this->getCurrentSiteFileUsagePostTypes();
+
+        if (empty($postTypes)) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($postTypes), '%s'));
+        $query = "SELECT ID, post_type, post_title, post_content
+            FROM {$wpdb->posts}
+            WHERE ID > %d
+            AND post_type IN ({$placeholders})
+            AND post_status NOT IN ('auto-draft', 'trash')
+            ORDER BY ID ASC
+            LIMIT %d";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Internally generated placeholders are bound via $wpdb->prepare().
+        return (array)$wpdb->get_results(
+            $wpdb->prepare($query, ...array_merge([$lastPostId], array_values($postTypes), [self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
+        );
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    protected function getCurrentSiteAttachmentUsageMetaRows(int $lastMetaId): array {
+        global $wpdb;
+
+        $postTypes = $this->getCurrentSiteFileUsagePostTypes();
+
+        if (empty($postTypes)) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($postTypes), '%s'));
+        $query = "SELECT pm.meta_id, pm.meta_key, pm.meta_value, p.ID, p.post_type, p.post_title
+            FROM {$wpdb->postmeta} pm
+            INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+            WHERE pm.meta_id > %d
+            AND p.post_type IN ({$placeholders})
+            AND p.post_status NOT IN ('auto-draft', 'trash')
+            ORDER BY pm.meta_id ASC
+            LIMIT %d";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Internally generated placeholders are bound via $wpdb->prepare().
+        return (array)$wpdb->get_results(
+            $wpdb->prepare($query, ...array_merge([$lastMetaId], array_values($postTypes), [self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
+        );
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    protected function getCurrentSiteAttachmentUsageOptionRows(): array {
+        global $wpdb;
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A small, explicit set of widget and theme options is inspected once per storage analysis.
+        return (array)$wpdb->get_results(
+            "SELECT option_name, option_value
+            FROM {$wpdb->options}
+            WHERE option_name IN ('widget_block', 'widget_media_audio', 'widget_media_gallery', 'widget_media_image', 'widget_media_video')
+            OR option_name LIKE 'theme_mods\\_%'"
+        );
+    }
+
+    protected function collectCurrentSiteAttachmentUsageMatches(string $value, array $location, array $attachmentPathIndex, string $baseUrl, array &$usageMatches): void {
+        $attachmentIds = $this->extractCurrentSiteAttachmentReferenceIds($value, $attachmentPathIndex, $baseUrl);
+
+        foreach ($attachmentIds as $attachmentId) {
+            $this->addCurrentSiteAttachmentUsageMatch($usageMatches, $attachmentId, $location);
+        }
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    protected function extractCurrentSiteAttachmentReferenceIds(string $value, array $pathIndex, string $baseUrl): array {
+        $attachmentIds = [];
+        $matches = [];
+        $match = '';
+        $path = '';
+        $basePath = (string)wp_parse_url($baseUrl, PHP_URL_PATH);
+
+        if ($value === '' || empty($pathIndex)) {
+            return [];
+        }
+
+        preg_match_all('/\\bwp-image-(\\d+)\\b/i', $value, $matches);
+        foreach ((array)($matches[1] ?? []) as $match) {
+            $attachmentIds[(int)$match] = (int)$match;
+        }
+
+        preg_match_all('/["\']?(?:attachment_id|image_id|media_id|background_image_id|attachmentId|imageId|mediaId|backgroundImageId|id)["\']?\\s*(?::|=|;i:)\\s*["\']?(\\d+)/i', $value, $matches);
+        foreach ((array)($matches[1] ?? []) as $match) {
+            $attachmentIds[(int)$match] = (int)$match;
+        }
+
+        preg_match_all('/["\']?ids["\']?\\s*(?::|=)\\s*\\[([^\\]]+)\\]/i', $value, $matches);
+        foreach ((array)($matches[1] ?? []) as $match) {
+            preg_match_all('/\\d+/', (string)$match, $idMatches);
+
+            foreach ((array)($idMatches[0] ?? []) as $idMatch) {
+                $attachmentIds[(int)$idMatch] = (int)$idMatch;
+            }
+        }
+
+        preg_match_all('~(?:https?:)?//[^\\s"\'<>]+~i', $value, $matches);
+        foreach ((array)($matches[0] ?? []) as $match) {
+            $path = (string)wp_parse_url(str_starts_with((string)$match, '//') ? 'https:' . $match : $match, PHP_URL_PATH);
+            $this->addCurrentSiteAttachmentUsagePathMatch($attachmentIds, $pathIndex, $path, $basePath);
+        }
+
+        preg_match_all('~(?:wp-content/uploads/(?:sites/\\d+/)?|\\d{4}/\\d{2}/)[^\\s"\'<>\\[\\]\\(\\)]+~u', $value, $matches);
+        foreach ((array)($matches[0] ?? []) as $match) {
+            $path = rawurldecode((string)$match);
+            $path = preg_replace('~^wp-content/uploads/(?:sites/\\d+/)?~', '', $path) ?? $path;
+            $this->addCurrentSiteAttachmentUsagePathMatch($attachmentIds, $pathIndex, $path, '');
+        }
+
+        foreach ($attachmentIds as $attachmentId) {
+            if (!in_array($attachmentId, $pathIndex, true)) {
+                unset($attachmentIds[$attachmentId]);
+            }
+        }
+
+        return array_values($attachmentIds);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    protected function getCurrentSiteAttachmentUsagePathIndex(): array {
+        $siteId = get_current_blog_id();
+
+        if ($siteId <= 0) {
+            return [];
+        }
+
+        if (isset($this->currentSiteAttachmentUsagePathIndexCache[$siteId])) {
+            return $this->currentSiteAttachmentUsagePathIndexCache[$siteId];
+        }
+
+        $pathIndex = [];
+
+        foreach ($this->getCurrentSiteStorageAnalysisAttachmentIndex() as $path => $entry) {
+            if (!is_array($entry) || empty($entry['attachment_id'])) {
+                continue;
+            }
+
+            $pathIndex[$this->normalizeRelativeUploadPath((string)$path)] = (int)$entry['attachment_id'];
+        }
+
+        $this->currentSiteAttachmentUsagePathIndexCache[$siteId] = $pathIndex;
+
+        return $pathIndex;
+    }
+
+    protected function addCurrentSiteAttachmentUsagePathMatch(array &$attachmentIds, array $pathIndex, string $path, string $basePath): void {
+        $path = rawurldecode((string)$path);
+
+        if ($basePath !== '' && str_starts_with($path, trailingslashit($basePath))) {
+            $path = substr($path, strlen(trailingslashit($basePath)));
+        }
+
+        $path = $this->normalizeRelativeUploadPath(trim($path, " \\t\\n\\r\\0\\x0B.,;:!?"));
+        $attachmentId = (int)($pathIndex[$path] ?? 0);
+
+        if ($attachmentId > 0) {
+            $attachmentIds[$attachmentId] = $attachmentId;
+        }
+    }
+
+    protected function addCurrentSiteAttachmentUsageMatch(array &$usageMatches, int $attachmentId, array $location): void {
+        if ($attachmentId <= 0) {
+            return;
+        }
+
+        $postId = (int)($location['post_id'] ?? 0);
+        $locationKey = $postId > 0 ? 'post:' . $postId : 'option:' . (string)($location['title'] ?? '');
+        $matchLabel = (string)($location['match_label'] ?? '');
+
+        if (!isset($usageMatches[$attachmentId][$locationKey])) {
+            $usageMatches[$attachmentId][$locationKey] = [
+                'post_id' => $postId,
+                'post_type' => (string)($location['post_type'] ?? ''),
+                'title' => (string)($location['title'] ?? ''),
+                'edit_url' => (string)($location['edit_url'] ?? ''),
+                'view_url' => (string)($location['view_url'] ?? ''),
+                'matches' => [],
+            ];
+        }
+
+        if ($matchLabel !== '' && !in_array($matchLabel, (array)$usageMatches[$attachmentId][$locationKey]['matches'], true)) {
+            $usageMatches[$attachmentId][$locationKey]['matches'][] = $matchLabel;
+        }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected function getCurrentSiteAttachmentUsageMatches(array $usageMatches, int $attachmentId): array {
+        $matches = is_array($usageMatches[$attachmentId] ?? null) ? array_values($usageMatches[$attachmentId]) : [];
+
+        foreach ($matches as $index => $match) {
+            $matches[$index]['matches_label'] = implode(', ', (array)($match['matches'] ?? []));
+        }
+
+        return $matches;
     }
 
     protected function finalizeCurrentSiteStorageAnalysisOrphanState(int $siteId, array $analysis, array &$state): void {

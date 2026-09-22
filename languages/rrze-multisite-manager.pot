@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.2.1\n"
+"Project-Id-Version: RRZE Multisite Manager 1.2.2\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-22T11:57:43+00:00\n"
-"PO-Revision-Date: 2026-09-22 11:57+0000\n"
+"POT-Creation-Date: 2026-09-22T14:25:18+00:00\n"
+"PO-Revision-Date: 2026-09-22 14:25+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -459,14 +459,14 @@ msgstr ""
 
 #: includes/Dashboard.php:635
 #: includes/Dashboard.php:3293
-#: includes/MetricsService.php:8192
+#: includes/MetricsService.php:8532
 #: includes/MetricsServiceSiteTrait.php:237
 msgid "Provisioning in progress"
 msgstr ""
 
 #: includes/Dashboard.php:648
 #: includes/Dashboard.php:3295
-#: includes/MetricsService.php:8194
+#: includes/MetricsService.php:8534
 #: includes/MetricsServiceSiteTrait.php:242
 #: includes/Settings.php:1218
 #: includes/Settings.php:1923
@@ -475,13 +475,13 @@ msgstr ""
 
 #: includes/Dashboard.php:661
 #: includes/Dashboard.php:3296
-#: includes/MetricsService.php:8195
+#: includes/MetricsService.php:8535
 #: includes/MetricsServiceSiteTrait.php:247
 msgid "Technically unreachable"
 msgstr ""
 
 #: includes/Dashboard.php:942
-#: includes/MetricsService.php:8140
+#: includes/MetricsService.php:8480
 #: includes/MetricsServiceSiteTrait.php:198
 #: includes/Widgets/StatusWidget.php:42
 msgid "Archived"
@@ -497,7 +497,7 @@ msgid "Archived by"
 msgstr ""
 
 #: includes/Dashboard.php:953
-#: includes/MetricsService.php:8154
+#: includes/MetricsService.php:8494
 #: includes/MetricsServiceSiteTrait.php:203
 msgid "Blocked"
 msgstr ""
@@ -548,7 +548,7 @@ msgstr ""
 #: includes/Dashboard.php:1045
 #: includes/Dashboard.php:1049
 #: includes/Dashboard.php:3230
-#: includes/MetricsService.php:8224
+#: includes/MetricsService.php:8564
 #: includes/MetricsServiceEnvironmentTrait.php:95
 #: includes/Widgets/Widgets.php:460
 #: includes/Widgets/Widgets.php:461
@@ -648,7 +648,7 @@ msgid "No storage consumers could be determined."
 msgstr ""
 
 #: includes/Dashboard.php:1303
-#: includes/MetricsService.php:7928
+#: includes/MetricsService.php:8268
 msgid "Other"
 msgstr ""
 
@@ -795,19 +795,19 @@ msgid "You are not allowed to delete upload files."
 msgstr ""
 
 #: includes/Dashboard.php:2298
-#: includes/MetricsService.php:5875
-#: includes/MetricsService.php:6776
+#: includes/MetricsService.php:6215
+#: includes/MetricsService.php:7116
 msgid "Invalid file."
 msgstr ""
 
 #: includes/Dashboard.php:2318
 #: includes/Dashboard.php:2348
-#: includes/MetricsService.php:6824
+#: includes/MetricsService.php:7164
 msgid "The file could not be deleted."
 msgstr ""
 
 #: includes/Dashboard.php:2338
-#: includes/MetricsService.php:6887
+#: includes/MetricsService.php:7227
 msgid "The media library entry could not be deleted."
 msgstr ""
 
@@ -899,10 +899,10 @@ msgid "User-ID %d"
 msgstr ""
 
 #: includes/Dashboard.php:3225
-#: includes/MetricsService.php:2478
-#: includes/MetricsService.php:2626
-#: includes/MetricsService.php:3478
-#: includes/MetricsService.php:8220
+#: includes/MetricsService.php:2479
+#: includes/MetricsService.php:2627
+#: includes/MetricsService.php:3479
+#: includes/MetricsService.php:8560
 #: includes/Settings.php:1883
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:550
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:575
@@ -916,7 +916,7 @@ msgstr ""
 #: includes/Widgets/Widgets.php:1008
 #: includes/Widgets/Widgets.php:1109
 #: templates/shortcode-block-analysis-page.php:117
-#: templates/shortcode-block-analysis-page.php:287
+#: templates/shortcode-block-analysis-page.php:293
 msgid "Unknown"
 msgstr ""
 
@@ -966,48 +966,48 @@ msgid "Not set / automatic"
 msgstr ""
 
 #: includes/Dashboard.php:3294
-#: includes/MetricsService.php:8193
+#: includes/MetricsService.php:8533
 #: includes/MetricsServiceSiteTrait.php:232
 #: includes/Settings.php:1915
 msgid "Technically reachable"
 msgstr ""
 
 #: includes/Dashboard.php:3297
-#: includes/MetricsService.php:8196
+#: includes/MetricsService.php:8536
 #: includes/MetricsServiceSiteTrait.php:252
 msgid "Out of service"
 msgstr ""
 
-#: includes/MetricsService.php:368
+#: includes/MetricsService.php:369
 msgid "Dashboard metrics"
 msgstr ""
 
-#: includes/MetricsService.php:369
+#: includes/MetricsService.php:370
 msgid "Calculates the aggregated network metrics for the dashboard as well as website, plugin, and theme overviews."
 msgstr ""
 
 #. translators: %d: metrics refresh interval in minutes.
-#: includes/MetricsService.php:373
+#: includes/MetricsService.php:374
 msgid "Every %d minutes"
 msgstr ""
 
-#: includes/MetricsService.php:1076
+#: includes/MetricsService.php:1077
 msgid "Dynamically registered post type"
 msgstr ""
 
-#: includes/MetricsService.php:1081
-#: includes/MetricsService.php:1150
-#: includes/MetricsService.php:1155
+#: includes/MetricsService.php:1082
+#: includes/MetricsService.php:1151
+#: includes/MetricsService.php:1156
 msgid "Cannot be resolved statically"
 msgstr ""
 
-#: includes/MetricsService.php:1145
+#: includes/MetricsService.php:1146
 msgid "Dynamically registered taxonomy"
 msgstr ""
 
-#: includes/MetricsService.php:1494
-#: includes/MetricsService.php:1512
-#: includes/MetricsService.php:1527
+#: includes/MetricsService.php:1495
+#: includes/MetricsService.php:1513
+#: includes/MetricsService.php:1528
 #: includes/MetricsServiceEnvironmentTrait.php:97
 #: includes/MetricsServiceEnvironmentTrait.php:106
 #: includes/MetricsServiceEnvironmentTrait.php:107
@@ -1018,7 +1018,7 @@ msgstr ""
 #: includes/MetricsServiceEnvironmentTrait.php:121
 #: includes/MetricsServiceEnvironmentTrait.php:122
 #: includes/MetricsServiceEnvironmentTrait.php:123
-#: templates/shortcode-block-analysis-page.php:284
+#: templates/shortcode-block-analysis-page.php:288
 #: templates/site-details-page.php:180
 #: templates/site-details-page.php:484
 #: templates/site-details-page.php:551
@@ -1039,8 +1039,8 @@ msgstr ""
 msgid "No"
 msgstr ""
 
-#: includes/MetricsService.php:1508
-#: includes/MetricsService.php:1524
+#: includes/MetricsService.php:1509
+#: includes/MetricsService.php:1525
 #: includes/MetricsServiceEnvironmentTrait.php:55
 #: includes/MetricsServiceEnvironmentTrait.php:106
 #: includes/MetricsServiceEnvironmentTrait.php:107
@@ -1051,7 +1051,7 @@ msgstr ""
 #: includes/MetricsServiceEnvironmentTrait.php:121
 #: includes/MetricsServiceEnvironmentTrait.php:122
 #: includes/MetricsServiceEnvironmentTrait.php:123
-#: templates/shortcode-block-analysis-page.php:284
+#: templates/shortcode-block-analysis-page.php:286
 #: templates/site-details-page.php:180
 #: templates/site-details-page.php:484
 #: templates/site-details-page.php:551
@@ -1072,41 +1072,41 @@ msgstr ""
 msgid "Yes"
 msgstr ""
 
-#: includes/MetricsService.php:1532
+#: includes/MetricsService.php:1533
 msgid "Thumbnail"
 msgstr ""
 
-#: includes/MetricsService.php:1533
+#: includes/MetricsService.php:1534
 msgid "Medium"
 msgstr ""
 
-#: includes/MetricsService.php:1534
+#: includes/MetricsService.php:1535
 msgid "Medium large"
 msgstr ""
 
-#: includes/MetricsService.php:1535
+#: includes/MetricsService.php:1536
 msgid "Large"
 msgstr ""
 
-#: includes/MetricsService.php:1536
+#: includes/MetricsService.php:1537
 msgid "Featured image"
 msgstr ""
 
-#: includes/MetricsService.php:1609
+#: includes/MetricsService.php:1610
 msgid "Theme/plugin"
 msgstr ""
 
-#: includes/MetricsService.php:1613
-#: includes/MetricsService.php:7908
+#: includes/MetricsService.php:1614
+#: includes/MetricsService.php:8248
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:574
 msgid "WordPress Core"
 msgstr ""
 
-#: includes/MetricsService.php:1616
+#: includes/MetricsService.php:1617
 msgid "Not directly assigned"
 msgstr ""
 
-#: includes/MetricsService.php:1765
+#: includes/MetricsService.php:1766
 #: includes/MetricsServicePluginTrait.php:157
 #: includes/MetricsServicePluginTrait.php:158
 #: includes/MetricsServiceThemeTrait.php:114
@@ -1114,201 +1114,240 @@ msgstr ""
 msgid "Not available."
 msgstr ""
 
-#: includes/MetricsService.php:2358
-#: includes/MetricsService.php:9366
+#: includes/MetricsService.php:2359
+#: includes/MetricsService.php:9706
 msgid "Classic Editor"
 msgstr ""
 
-#: includes/MetricsService.php:2364
-#: includes/MetricsService.php:9372
+#: includes/MetricsService.php:2365
+#: includes/MetricsService.php:9712
 msgid "Block Editor"
 msgstr ""
 
-#: includes/MetricsService.php:3359
+#: includes/MetricsService.php:3360
 msgid "Block templates"
 msgstr ""
 
-#: includes/MetricsService.php:3360
+#: includes/MetricsService.php:3361
 msgid "Template parts"
 msgstr ""
 
-#: includes/MetricsService.php:3443
-#: includes/MetricsService.php:4781
-#: includes/MetricsService.php:7033
+#: includes/MetricsService.php:3444
+#: includes/MetricsService.php:5121
+#: includes/MetricsService.php:7373
 msgid "Images"
 msgstr ""
 
-#: includes/MetricsService.php:3447
+#: includes/MetricsService.php:3448
 msgid "Audio"
 msgstr ""
 
-#: includes/MetricsService.php:3451
+#: includes/MetricsService.php:3452
 msgid "Video"
 msgstr ""
 
-#: includes/MetricsService.php:3454
-#: includes/MetricsService.php:4797
+#: includes/MetricsService.php:3455
+#: includes/MetricsService.php:5137
 msgid "Documents"
 msgstr ""
 
-#: includes/MetricsService.php:3738
+#: includes/MetricsService.php:3739
 msgid "A completed storage analysis already exists."
 msgstr ""
 
-#: includes/MetricsService.php:3746
-#: includes/MetricsService.php:4727
+#: includes/MetricsService.php:3747
+#: includes/MetricsService.php:5067
 msgid "The orphan check has been completed."
 msgstr ""
 
-#: includes/MetricsService.php:3752
+#: includes/MetricsService.php:3753
 msgid "The base analysis is available. The orphan check can be started separately if needed."
 msgstr ""
 
-#: includes/MetricsService.php:3800
-#: includes/MetricsService.php:3818
-#: includes/MetricsService.php:3855
+#: includes/MetricsService.php:3801
+#: includes/MetricsService.php:3819
+#: includes/MetricsService.php:3856
 msgid "Invalid website."
 msgstr ""
 
-#: includes/MetricsService.php:3884
+#: includes/MetricsService.php:3885
 msgid "Media metadata analysis is running."
 msgstr ""
 
-#: includes/MetricsService.php:3957
+#: includes/MetricsService.php:3958
 msgid "The media metadata analysis has been completed."
 msgstr ""
 
 #. translators: %s: processed media items.
-#: includes/MetricsService.php:3964
+#: includes/MetricsService.php:3965
 msgid "%s media items have already been checked."
 msgstr ""
 
-#: includes/MetricsService.php:4055
-#: includes/MetricsService.php:4264
+#: includes/MetricsService.php:4056
+#: includes/MetricsService.php:4265
 msgid "The uploads directory of this website could not be found."
 msgstr ""
 
-#: includes/MetricsService.php:4065
-#: includes/MetricsService.php:4271
+#: includes/MetricsService.php:4066
+#: includes/MetricsService.php:4272
 msgid "The uploads directory of this website is not readable."
 msgstr ""
 
-#: includes/MetricsService.php:4080
-#: includes/MetricsService.php:4757
+#: includes/MetricsService.php:4081
+#: includes/MetricsService.php:5097
 msgid "Reported by WordPress"
 msgstr ""
 
-#: includes/MetricsService.php:4084
-#: includes/MetricsService.php:4761
+#: includes/MetricsService.php:4085
+#: includes/MetricsService.php:5101
 msgid "Found in the uploads directory"
 msgstr ""
 
-#: includes/MetricsService.php:4088
-#: includes/MetricsService.php:4765
+#: includes/MetricsService.php:4089
+#: includes/MetricsService.php:5105
 msgid "Difference"
 msgstr ""
 
-#: includes/MetricsService.php:4092
-#: includes/MetricsService.php:4769
+#: includes/MetricsService.php:4093
+#: includes/MetricsService.php:5109
 #: templates/site-storage-analysis-page.php:333
 #: templates/site-storage-analysis-page.php:473
 msgid "Files"
 msgstr ""
 
-#: includes/MetricsService.php:4096
-#: includes/MetricsService.php:4773
+#: includes/MetricsService.php:4097
+#: includes/MetricsService.php:5113
 msgid "Files referenced according to the database"
 msgstr ""
 
-#: includes/MetricsService.php:4100
-#: includes/MetricsService.php:4777
+#: includes/MetricsService.php:4101
+#: includes/MetricsService.php:5117
 msgid "Media library entries"
 msgstr ""
 
-#: includes/MetricsService.php:4104
-#: includes/MetricsService.php:4785
-#: includes/MetricsService.php:7038
+#: includes/MetricsService.php:4105
+#: includes/MetricsService.php:5125
+#: includes/MetricsService.php:7378
 msgid "Generated image variants"
 msgstr ""
 
-#: includes/MetricsService.php:4108
-#: includes/MetricsService.php:4805
+#: includes/MetricsService.php:4109
+#: includes/MetricsService.php:5145
 #: templates/site-storage-analysis-page.php:332
 msgid "Folders"
 msgstr ""
 
-#: includes/MetricsService.php:4112
-#: includes/MetricsService.php:4809
+#: includes/MetricsService.php:4113
+#: includes/MetricsService.php:5149
 msgid "Analysis time"
 msgstr ""
 
-#: includes/MetricsService.php:4212
+#: includes/MetricsService.php:4213
 msgid "The base analysis must be completed before the orphan check can run."
 msgstr ""
 
-#: includes/MetricsService.php:4278
+#: includes/MetricsService.php:4279
 msgid "Storage analysis is running."
 msgstr ""
 
 #. translators: 1: scanned files, 2: scanned directories.
-#: includes/MetricsService.php:4341
+#: includes/MetricsService.php:4342
 msgid "%1$s files and %2$s folders have already been processed."
 msgstr ""
 
-#: includes/MetricsService.php:4478
+#: includes/MetricsService.php:4479
 msgid "The base analysis is complete. The orphan check can now be started separately."
 msgstr ""
 
-#: includes/MetricsService.php:4488
+#: includes/MetricsService.php:4489
 msgid "Orphan check is running."
 msgstr ""
 
 #. translators: %d: number of content usage matches.
-#: includes/MetricsService.php:4609
-#: includes/MetricsService.php:4643
-#: includes/MetricsService.php:4676
-#: includes/MetricsService.php:5243
+#: includes/MetricsService.php:4622
+#: includes/MetricsService.php:4654
+#: includes/MetricsService.php:4687
+#: includes/MetricsService.php:5583
 msgid "%d matches"
 msgid_plural "%d matches"
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: 1: processed candidates, 2: total candidates.
-#: includes/MetricsService.php:4696
+#: includes/MetricsService.php:4707
 msgid "%1$s of %2$s potentially orphaned files have been checked."
 msgstr ""
 
-#: includes/MetricsService.php:4781
-#: includes/MetricsService.php:7034
+#: includes/MetricsService.php:4747
+#: includes/MetricsService.php:4778
+#: includes/MetricsService.php:6317
+#: includes/MetricsService.php:6349
+msgid "(no title)"
+msgstr ""
+
+#: includes/MetricsService.php:4750
+#: includes/MetricsService.php:6320
+#: includes/Widgets/Widgets.php:293
+msgid "Content"
+msgstr ""
+
+#. translators: %s: post meta key name.
+#: includes/MetricsService.php:4782
+#: includes/MetricsService.php:6359
+msgid "Meta field: %s"
+msgstr ""
+
+#. translators: %s: option name.
+#: includes/MetricsService.php:4808
+#: includes/MetricsService.php:6392
+msgid "Option: %s"
+msgstr ""
+
+#. translators: %s: option name.
+#: includes/MetricsService.php:4812
+#: includes/MetricsService.php:6400
+msgid "Option value: %s"
+msgstr ""
+
+#: includes/MetricsService.php:4825
+msgid "Attachment references have been indexed."
+msgstr ""
+
+#: includes/MetricsService.php:4826
+msgid "Media library references are being indexed."
+msgstr ""
+
+#: includes/MetricsService.php:5121
+#: includes/MetricsService.php:7374
 msgid "Original images"
 msgstr ""
 
-#: includes/MetricsService.php:4785
-#: includes/MetricsService.php:7039
+#: includes/MetricsService.php:5125
+#: includes/MetricsService.php:7379
 msgid "without original images"
 msgstr ""
 
-#: includes/MetricsService.php:4789
+#: includes/MetricsService.php:5129
 msgid "Audio files"
 msgstr ""
 
-#: includes/MetricsService.php:4793
+#: includes/MetricsService.php:5133
 msgid "Video files"
 msgstr ""
 
-#: includes/MetricsService.php:4801
+#: includes/MetricsService.php:5141
 msgid "Spreadsheets"
 msgstr ""
 
-#: includes/MetricsService.php:4994
+#: includes/MetricsService.php:5334
 msgid "No base analysis is available yet."
 msgstr ""
 
-#: includes/MetricsService.php:5004
+#: includes/MetricsService.php:5344
 msgid "No orphan check is available yet."
 msgstr ""
 
-#: includes/MetricsService.php:5781
+#: includes/MetricsService.php:6121
 #: templates/site-storage-analysis-page.php:387
 #: templates/site-storage-analysis-page.php:446
 #: templates/site-storage-analysis-page.php:501
@@ -1321,311 +1360,286 @@ msgid "File"
 msgstr ""
 
 #. translators: %s: storage size difference.
-#: includes/MetricsService.php:5796
+#: includes/MetricsService.php:6136
 msgid "The upload directory is %s larger than the storage value reported by WordPress. This often indicates outdated core caches or additional files in the uploads folder."
 msgstr ""
 
 #. translators: %s: storage size difference.
-#: includes/MetricsService.php:5801
+#: includes/MetricsService.php:6141
 msgid "WordPress reports %s more storage than was found in the currently scanned uploads directory. This often indicates an outdated WordPress storage value."
 msgstr ""
 
 #. translators: 1: orphan file count, 2: total orphan storage size.
-#: includes/MetricsService.php:5812
+#: includes/MetricsService.php:6152
 msgid "%1$s potentially orphaned files with a total of %2$s were found. These are files in the uploads folder that are currently not referenced by attachment metadata."
 msgstr ""
 
-#: includes/MetricsService.php:5822
+#: includes/MetricsService.php:6162
 msgid "This website has no fixed upload limit. Therefore, the storage analysis only shows actual usage and no meaningful percentage utilization."
 msgstr ""
 
-#: includes/MetricsService.php:5854
+#: includes/MetricsService.php:6194
 msgid "The media ID does not belong to the selected website, so no information can be displayed."
 msgstr ""
 
-#: includes/MetricsService.php:5858
+#: includes/MetricsService.php:6198
 msgid "The entered ID does not belong to a media library item."
 msgstr ""
 
-#: includes/MetricsService.php:5892
+#: includes/MetricsService.php:6232
 msgid "Invalid media library entry."
 msgstr ""
 
-#: includes/MetricsService.php:5977
-#: includes/MetricsService.php:6009
-msgid "(no title)"
-msgstr ""
-
-#: includes/MetricsService.php:5980
-#: includes/Widgets/Widgets.php:293
-msgid "Content"
-msgstr ""
-
-#. translators: %s: post meta key name.
-#: includes/MetricsService.php:6019
-msgid "Meta field: %s"
-msgstr ""
-
-#. translators: %s: option name.
-#: includes/MetricsService.php:6052
-msgid "Option: %s"
-msgstr ""
-
-#. translators: %s: option name.
-#: includes/MetricsService.php:6060
-msgid "Option value: %s"
-msgstr ""
-
-#: includes/MetricsService.php:6321
+#: includes/MetricsService.php:6661
 msgid "Camera"
 msgstr ""
 
-#: includes/MetricsService.php:6322
+#: includes/MetricsService.php:6662
 msgid "Aperture"
 msgstr ""
 
-#: includes/MetricsService.php:6323
+#: includes/MetricsService.php:6663
 msgid "Focal length"
 msgstr ""
 
-#: includes/MetricsService.php:6324
+#: includes/MetricsService.php:6664
 msgid "ISO sensitivity"
 msgstr ""
 
-#: includes/MetricsService.php:6325
+#: includes/MetricsService.php:6665
 msgid "Shutter speed"
 msgstr ""
 
-#: includes/MetricsService.php:6326
+#: includes/MetricsService.php:6666
 msgid "Orientation"
 msgstr ""
 
-#: includes/MetricsService.php:6327
+#: includes/MetricsService.php:6667
 msgid "Credit"
 msgstr ""
 
-#: includes/MetricsService.php:6328
+#: includes/MetricsService.php:6668
 msgid "Copyright"
 msgstr ""
 
-#: includes/MetricsService.php:6329
+#: includes/MetricsService.php:6669
 msgid "EXIF title"
 msgstr ""
 
-#: includes/MetricsService.php:6330
+#: includes/MetricsService.php:6670
 msgid "EXIF caption"
 msgstr ""
 
-#: includes/MetricsService.php:6331
+#: includes/MetricsService.php:6671
 #: templates/plugin-details-page.php:415
 #: templates/theme-details-page.php:278
 msgid "Keywords"
 msgstr ""
 
-#: includes/MetricsService.php:6339
+#: includes/MetricsService.php:6679
 msgid "Image dimensions"
 msgstr ""
 
-#: includes/MetricsService.php:6343
+#: includes/MetricsService.php:6683
 msgid "Date taken"
 msgstr ""
 
-#: includes/MetricsService.php:6370
+#: includes/MetricsService.php:6710
 msgid "File format"
 msgstr ""
 
-#: includes/MetricsService.php:6371
+#: includes/MetricsService.php:6711
 msgid "Data format"
 msgstr ""
 
-#: includes/MetricsService.php:6372
+#: includes/MetricsService.php:6712
 msgid "Codec"
 msgstr ""
 
-#: includes/MetricsService.php:6373
+#: includes/MetricsService.php:6713
 msgid "Bit rate"
 msgstr ""
 
-#: includes/MetricsService.php:6374
+#: includes/MetricsService.php:6714
 msgid "Bit rate mode"
 msgstr ""
 
-#: includes/MetricsService.php:6375
+#: includes/MetricsService.php:6715
 msgid "Audio channels"
 msgstr ""
 
-#: includes/MetricsService.php:6376
+#: includes/MetricsService.php:6716
 msgid "Audio channel mode"
 msgstr ""
 
-#: includes/MetricsService.php:6377
+#: includes/MetricsService.php:6717
 msgid "Sample rate"
 msgstr ""
 
-#: includes/MetricsService.php:6378
+#: includes/MetricsService.php:6718
 msgid "Encoding"
 msgstr ""
 
-#: includes/MetricsService.php:6379
+#: includes/MetricsService.php:6719
 msgid "Artist"
 msgstr ""
 
-#: includes/MetricsService.php:6380
+#: includes/MetricsService.php:6720
 msgid "Album"
 msgstr ""
 
-#: includes/MetricsService.php:6381
+#: includes/MetricsService.php:6721
 msgid "Genre"
 msgstr ""
 
-#: includes/MetricsService.php:6382
+#: includes/MetricsService.php:6722
 msgid "Year"
 msgstr ""
 
-#: includes/MetricsService.php:6383
+#: includes/MetricsService.php:6723
 msgid "Track number"
 msgstr ""
 
-#: includes/MetricsService.php:6403
+#: includes/MetricsService.php:6743
 msgid "File size in metadata"
 msgstr ""
 
-#: includes/MetricsService.php:6407
-#: includes/MetricsService.php:6409
+#: includes/MetricsService.php:6747
+#: includes/MetricsService.php:6749
 #: includes/Settings.php:1212
 msgid "Duration"
 msgstr ""
 
-#: includes/MetricsService.php:6413
+#: includes/MetricsService.php:6753
 #: templates/site-storage-analysis-page.php:271
 #: templates/site-storage-attachment-debug.php:74
 msgid "Dimensions"
 msgstr ""
 
-#: includes/MetricsService.php:6485
-#: includes/MetricsService.php:6491
+#: includes/MetricsService.php:6825
+#: includes/MetricsService.php:6831
 msgid "Code reference"
 msgstr ""
 
 #. translators: %s: plugin name.
-#: includes/MetricsService.php:6543
+#: includes/MetricsService.php:6883
 msgid "Plugin: %s"
 msgstr ""
 
 #. translators: %s: theme name.
-#: includes/MetricsService.php:6557
+#: includes/MetricsService.php:6897
 msgid "Theme: %s"
 msgstr ""
 
 #. translators: %s: MU plugin name.
-#: includes/MetricsService.php:6573
+#: includes/MetricsService.php:6913
 msgid "MU plugin: %s"
 msgstr ""
 
 #. translators: %s: file name where the asset registration or enqueue was found.
-#: includes/MetricsService.php:6675
+#: includes/MetricsService.php:7015
 msgid "Code registration/enqueue in %s"
 msgstr ""
 
-#: includes/MetricsService.php:6769
+#: includes/MetricsService.php:7109
 msgid "The uploads directory was not found."
 msgstr ""
 
-#: includes/MetricsService.php:6783
+#: includes/MetricsService.php:7123
 msgid "The file path is invalid."
 msgstr ""
 
-#: includes/MetricsService.php:6790
+#: includes/MetricsService.php:7130
 msgid "The file no longer exists."
 msgstr ""
 
-#: includes/MetricsService.php:6799
+#: includes/MetricsService.php:7139
 msgid "This file is still registered as an attachment and must not be deleted here."
 msgstr ""
 
-#: includes/MetricsService.php:6808
+#: includes/MetricsService.php:7148
 msgid "This file is still referenced in content, blocks, templates, widgets, inspected meta fields, or a code registration/enqueue and is therefore not deleted."
 msgstr ""
 
-#: includes/MetricsService.php:6815
+#: includes/MetricsService.php:7155
 msgid "The file is not writable."
 msgstr ""
 
-#: includes/MetricsService.php:6833
+#: includes/MetricsService.php:7173
 msgid "The file has been deleted."
 msgstr ""
 
-#: includes/MetricsService.php:6869
+#: includes/MetricsService.php:7209
 msgid "The media library entry no longer exists."
 msgstr ""
 
-#: includes/MetricsService.php:6880
+#: includes/MetricsService.php:7220
 msgid "The media library entry has no valid upload file."
 msgstr ""
 
-#: includes/MetricsService.php:6895
+#: includes/MetricsService.php:7235
 msgid "The media library entry has been deleted."
 msgstr ""
 
-#: includes/MetricsService.php:7186
+#: includes/MetricsService.php:7526
 msgid "Files in the root directory"
 msgstr ""
 
-#: includes/MetricsService.php:7293
+#: includes/MetricsService.php:7633
 msgid "All options"
 msgstr ""
 
-#: includes/MetricsService.php:7527
+#: includes/MetricsService.php:7867
 msgid "No expiration set"
 msgstr ""
 
-#: includes/MetricsService.php:7578
+#: includes/MetricsService.php:7918
 msgid "one-time"
 msgstr ""
 
-#: includes/MetricsService.php:7920
+#: includes/MetricsService.php:8260
 msgid "Theme mods"
 msgstr ""
 
-#: includes/MetricsService.php:7924
+#: includes/MetricsService.php:8264
 msgid "Widgets"
 msgstr ""
 
-#: includes/MetricsService.php:8128
+#: includes/MetricsService.php:8468
 msgid "(empty)"
 msgstr ""
 
-#: includes/MetricsService.php:8147
+#: includes/MetricsService.php:8487
 msgid "Deleted"
 msgstr ""
 
-#: includes/MetricsService.php:8161
+#: includes/MetricsService.php:8501
 msgid "Public"
 msgstr ""
 
-#: includes/MetricsService.php:8168
+#: includes/MetricsService.php:8508
 #: includes/Settings.php:587
 #: includes/Settings.php:884
 #: includes/Settings.php:1030
 msgid "Active"
 msgstr ""
 
-#: includes/MetricsService.php:8175
+#: includes/MetricsService.php:8515
 msgid "Not public"
 msgstr ""
 
-#: includes/MetricsService.php:8216
+#: includes/MetricsService.php:8556
 #: includes/Settings.php:1863
 msgid "OK"
 msgstr ""
 
-#: includes/MetricsService.php:8217
+#: includes/MetricsService.php:8557
 #: includes/Settings.php:1867
 #: templates/site-storage-missing-metadata.php:76
 msgid "Missing"
 msgstr ""
 
-#: includes/MetricsService.php:8218
+#: includes/MetricsService.php:8558
 #: includes/Settings.php:1067
 #: includes/Settings.php:1879
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:261
@@ -1633,41 +1647,41 @@ msgstr ""
 msgid "Error"
 msgstr ""
 
-#: includes/MetricsService.php:8219
+#: includes/MetricsService.php:8559
 #: includes/Settings.php:1871
 msgid "Timeout"
 msgstr ""
 
-#: includes/MetricsService.php:8221
+#: includes/MetricsService.php:8561
 #: includes/Settings.php:1875
 msgid "Pending"
 msgstr ""
 
 #. translators: 1: monitoring status label, 2: monitoring detail text.
-#: includes/MetricsService.php:8245
+#: includes/MetricsService.php:8585
 #: includes/Settings.php:1907
 msgid "%1$s (%2$s)"
 msgstr ""
 
-#: includes/MetricsService.php:8491
+#: includes/MetricsService.php:8831
 msgid "Network-enabled"
 msgstr ""
 
-#: includes/MetricsService.php:8498
+#: includes/MetricsService.php:8838
 #: includes/MetricsServicePluginTrait.php:243
 #: templates/site-details-page.php:333
 msgid "Active on websites"
 msgstr ""
 
-#: includes/MetricsService.php:8503
+#: includes/MetricsService.php:8843
 msgid "Not used"
 msgstr ""
 
-#: includes/MetricsService.php:8510
+#: includes/MetricsService.php:8850
 msgid "Block theme"
 msgstr ""
 
-#: includes/MetricsService.php:9312
+#: includes/MetricsService.php:9652
 #: includes/Widgets/NetworkStorageUsageWidget.php:49
 msgid "Free storage"
 msgstr ""
@@ -3930,8 +3944,8 @@ msgstr ""
 msgid "No results are available yet."
 msgstr ""
 
-#: templates/shortcode-block-analysis-page.php:310
-#: templates/shortcode-block-analysis-page.php:324
+#: templates/shortcode-block-analysis-page.php:316
+#: templates/shortcode-block-analysis-page.php:330
 msgid "Show more…"
 msgstr ""
 

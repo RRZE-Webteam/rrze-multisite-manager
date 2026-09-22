@@ -119,6 +119,20 @@
     margin-top: 0;
 }
 
+.rrze-msm-shortcode-analysis-table td code {
+    word-break: break-word;
+}
+
+.rrze-msm-shortcode-unregistered {
+    color: var(--rrze-msm-status-delete-bg);
+}
+
+.rrze-msm-shortcode-unregistered .dashicons {
+    color: var(--rrze-msm-status-delete-bg) !important;
+    margin-right: 4px;
+    vertical-align: text-bottom;
+}
+
 .rrze-msm-table th.rrze-msm-col-actions.rrze-msm-col-actions-text,
 .rrze-msm-table td.rrze-msm-col-actions.rrze-msm-col-actions-text {
     width: 20%;
