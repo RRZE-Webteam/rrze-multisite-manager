@@ -124,14 +124,17 @@ class Dashboard {
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
         $settingsSlug = $this->settings->getSettingsSlug();
 
-        if (!is_network_admin() && current_user_can('manage_options') && current_user_can('upload_files')) {
-            $this->pageHooks[] = add_media_page(
-                __('Storage Analysis', 'rrze-multisite-manager'),
-                __('Storage Analysis', 'rrze-multisite-manager'),
-                'manage_options',
-                $siteStorageAnalysisMediaSlug,
-                [$this, 'renderSiteStorageAnalysisPage']
-            );
+        if (!is_network_admin() && current_user_can('manage_options')) {
+            if (current_user_can('upload_files')) {
+                $this->pageHooks[] = add_media_page(
+                    __('Storage Analysis', 'rrze-multisite-manager'),
+                    __('Storage Analysis', 'rrze-multisite-manager'),
+                    'manage_options',
+                    $siteStorageAnalysisMediaSlug,
+                    [$this, 'renderSiteStorageAnalysisPage']
+                );
+            }
+
             $this->pageHooks[] = add_management_page(
                 __('Shortcodes and Blocks', 'rrze-multisite-manager'),
                 __('Shortcodes and Blocks', 'rrze-multisite-manager'),
@@ -167,14 +170,6 @@ class Dashboard {
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
             $this->pageHooks[] = add_submenu_page(
                 $parentSlug,
-                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
-                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
-                $capability,
-                $shortcodeBlockAnalysisSlug,
-                [$this, 'renderShortcodeBlockAnalysisPage']
-            );
-            $this->pageHooks[] = add_submenu_page(
-                $parentSlug,
                 __('Environment', 'rrze-multisite-manager'),
                 __('Environment', 'rrze-multisite-manager'),
                 $capability,
@@ -199,15 +194,6 @@ class Dashboard {
             $capability,
             $siteDetailsSlug,
             [$this, 'renderSiteDetailsPage']
-        );
-
-        $this->pageHooks[] = add_submenu_page(
-            $parentSlug,
-            __('Storage Analysis', 'rrze-multisite-manager'),
-            __('Storage Analysis', 'rrze-multisite-manager'),
-            $capability,
-            $siteStorageAnalysisSlug,
-            [$this, 'renderSiteStorageAnalysisPage']
         );
 
         $this->pageHooks[] = add_submenu_page(
@@ -255,7 +241,25 @@ class Dashboard {
             [$this, 'renderSiteStatusPage']
         );
 
+        $this->pageHooks[] = add_submenu_page(
+            $parentSlug,
+            __('Storage Analysis', 'rrze-multisite-manager'),
+            __('Storage Analysis', 'rrze-multisite-manager'),
+            $capability,
+            $siteStorageAnalysisSlug,
+            [$this, 'renderSiteStorageAnalysisPage']
+        );
+
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            $this->pageHooks[] = add_submenu_page(
+                $parentSlug,
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                $capability,
+                $shortcodeBlockAnalysisSlug,
+                [$this, 'renderShortcodeBlockAnalysisPage']
+            );
+
             $this->pageHooks[] = add_submenu_page(
                 $parentSlug,
                 __('Monitoring', 'rrze-multisite-manager'),
@@ -454,6 +458,9 @@ class Dashboard {
 
         $dashboardData = $this->metrics->getDashboardData();
         $metricsStatus = $this->metrics->getDashboardDataStatus();
+        $metricsLastRunLabel = !empty($metricsStatus['last_run_timestamp'])
+            ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$metricsStatus['last_run_timestamp'])
+            : __('No metrics run yet', 'rrze-multisite-manager');
         $widgets = $this->getWidgetInstances();
         $views = $this->viewManager->getViews(array_keys($widgets));
         $currentView = $this->viewManager->getCurrentView($views, 'default');
@@ -481,9 +488,8 @@ class Dashboard {
                 'widget_markup' => $widgetMarkup,
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
-                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus, $this->getDashboardUrl()),
+                'metrics_last_run_label' => $metricsLastRunLabel,
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
-                'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
             ],
             $this
         );

@@ -8,5 +8,6 @@
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
+    <?php // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- The renderer returns internally escaped, trusted widget markup. ?>
     <?php echo $this->renderMonitoringAlertSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10]); ?>
 </section>

@@ -45,6 +45,7 @@ $metadataTables = [
     <?php } elseif ($metadataAnalysisStatus === 'complete') { ?>
         <p><?php echo esc_html__('The metadata check was completed as part of the last storage analysis.', 'rrze-multisite-manager'); ?></p>
         <?php if (!empty($media_metadata_analysis['finished_at'])) { ?>
+            <?php /* translators: %s: completion date and time of the metadata analysis. */ ?>
             <p class="description"><?php echo esc_html(sprintf(__('Last completed: %s', 'rrze-multisite-manager'), mysql2date(get_option('date_format') . ' ' . get_option('time_format'), (string)$media_metadata_analysis['finished_at'], true))); ?></p>
         <?php } ?>
     <?php } else { ?>

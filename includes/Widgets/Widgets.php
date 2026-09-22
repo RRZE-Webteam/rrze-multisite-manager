@@ -198,6 +198,52 @@ abstract class Widgets {
         return (string)ob_get_clean();
     }
 
+    /**
+     * Returns the HTML elements used by the internally generated site tables.
+     *
+     * @return array<string, array<string, bool>>
+     */
+    protected function getWidgetTableAllowedHtml(): array {
+        $allowedHtml = wp_kses_allowed_html('post');
+
+        $allowedHtml['div'] = [
+            'class' => true,
+            'id' => true,
+            'data-*' => true,
+            'aria-*' => true,
+        ];
+        $allowedHtml['table'] = ['class' => true];
+        $allowedHtml['thead'] = ['class' => true];
+        $allowedHtml['tbody'] = ['class' => true];
+        $allowedHtml['tr'] = ['class' => true];
+        $allowedHtml['th'] = ['class' => true, 'scope' => true];
+        $allowedHtml['td'] = ['class' => true, 'colspan' => true, 'rowspan' => true];
+        $allowedHtml['select'] = ['class' => true, 'id' => true, 'aria-label' => true];
+        $allowedHtml['option'] = ['value' => true, 'selected' => true];
+        $allowedHtml['button'] = [
+            'type' => true,
+            'class' => true,
+            'data-*' => true,
+            'aria-*' => true,
+            'disabled' => true,
+        ];
+        $allowedHtml['a'] = [
+            'class' => true,
+            'href' => true,
+            'title' => true,
+            'aria-label' => true,
+            'target' => true,
+            'rel' => true,
+        ];
+        $allowedHtml['span'] = [
+            'class' => true,
+            'title' => true,
+            'aria-hidden' => true,
+        ];
+
+        return $allowedHtml;
+    }
+
     public function renderSiteOverviewTable(array $sites, array $args = []): string {
         $site = [];
         $tableId = sanitize_key((string)($args['table_id'] ?? 'site-overview'));

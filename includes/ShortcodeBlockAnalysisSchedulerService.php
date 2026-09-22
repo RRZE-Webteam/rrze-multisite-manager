@@ -381,6 +381,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
         }
 
+        // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- This exception message is not HTML output and is escaped when rendered.
         throw new \RuntimeException(__('The shortcode and block analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
     }
 

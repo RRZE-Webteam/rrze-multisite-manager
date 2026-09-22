@@ -366,6 +366,7 @@ class StorageAnalysisSchedulerService {
         $this->extendRuntimeLimit();
         LoggingService::info(
             $this->config,
+            /* translators: %d: site ID. */
             sprintf(__('RRZE-MSM: Storage analysis (site %d) started', 'rrze-multisite-manager'), $siteId),
             ['site_id' => $siteId, 'phase' => self::BASE_PHASE]
         );
@@ -411,6 +412,7 @@ class StorageAnalysisSchedulerService {
             }
 
             if (empty($result['success'])) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- This exception message is not HTML output and is escaped when rendered.
                 throw new \RuntimeException((string)($result['message'] ?? __('The storage analysis could not be completed.', 'rrze-multisite-manager')));
             }
 
@@ -420,6 +422,7 @@ class StorageAnalysisSchedulerService {
             }
         }
 
+        // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- This exception message is not HTML output and is escaped when rendered.
         throw new \RuntimeException(__('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
     }
 
@@ -909,6 +912,7 @@ class StorageAnalysisSchedulerService {
         LoggingService::info(
             $this->config,
             sprintf(
+                /* translators: 1: analysis phase, 2: site ID, 3: event name. */
                 __('RRZE-MSM: Storage analysis phase %1$s for site %2$d %3$s', 'rrze-multisite-manager'),
                 $phase,
                 $siteId,
@@ -965,6 +969,7 @@ class StorageAnalysisSchedulerService {
         update_blog_option($siteId, self::OPTION_STATUS, $status);
         LoggingService::info(
             $this->config,
+            /* translators: %d: site ID. */
             sprintf(__('RRZE-MSM: Storage analysis (site %d) finished', 'rrze-multisite-manager'), $siteId),
             [
                 'site_id' => $siteId,

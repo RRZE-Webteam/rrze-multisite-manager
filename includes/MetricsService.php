@@ -3869,6 +3869,7 @@ class MetricsService {
         global $wpdb;
 
         $lastAttachmentId = (int)($state['last_attachment_id'] ?? 0);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded, site-local batch query is required for the scheduled analysis; its result is persisted with the analysis state.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT ID, post_title, post_excerpt, post_content, post_mime_type, post_modified_gmt
@@ -4501,6 +4502,7 @@ class MetricsService {
                     $matchCount = count($matches);
                     $candidate['content_usage_count'] = $matchCount;
                     $candidate['content_usage_label'] = sprintf(
+                        /* translators: %d: number of content usage matches. */
                         _n('%d matches', '%d matches', $matchCount, 'rrze-multisite-manager'),
                         $matchCount
                     );
@@ -4534,6 +4536,7 @@ class MetricsService {
                     $matchCount = count($matches);
                     $attachmentCandidate['content_usage_count'] = $matchCount;
                     $attachmentCandidate['content_usage_label'] = sprintf(
+                        /* translators: %d: number of content usage matches. */
                         _n('%d matches', '%d matches', $matchCount, 'rrze-multisite-manager'),
                         $matchCount
                     );
@@ -4566,6 +4569,7 @@ class MetricsService {
                 $matchCount = count($matches);
                 $unregisteredImageSizeCandidate['content_usage_count'] = $matchCount;
                 $unregisteredImageSizeCandidate['content_usage_label'] = sprintf(
+                    /* translators: %d: number of content usage matches. */
                     _n('%d matches', '%d matches', $matchCount, 'rrze-multisite-manager'),
                     $matchCount
                 );
@@ -5205,6 +5209,7 @@ class MetricsService {
     protected function getCurrentSiteUploadAttachmentStats(): array {
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- This site-local attachment index is an analysis input and is persisted in the resulting storage analysis.
         $rows = $wpdb->get_results(
             "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file, pm_meta.meta_value AS attachment_metadata
             FROM {$wpdb->posts} p
@@ -6993,6 +6998,7 @@ class MetricsService {
         $uploadDir = wp_get_upload_dir();
         $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
         $normalizedBaseDir = trailingslashit(wp_normalize_path($baseDir));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- This site-local attachment index is an analysis input and is persisted in the resulting storage analysis.
         $rows = $wpdb->get_results(
             "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file
             FROM {$wpdb->posts} p

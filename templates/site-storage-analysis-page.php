@@ -46,7 +46,7 @@ defined('ABSPATH') || exit;
             $nextScheduledRunTimestamp = (int)($schedulerStatus['next_run_timestamp'] ?? 0);
             $analysisIsRunning = $baseState === 'running' || $orphanState === 'running'
                 || !empty($schedulerStatus['metadata_started']);
-            $lastAnalysisCompletedAt = (string)($schedulerStatus['last_finished_at'] ?? '');
+            $lastAnalysisCompletedAt = (string)($schedulerStatus['last_completed_at'] ?? '');
             if ($lastAnalysisCompletedAt === '') {
                 $lastAnalysisCompletedAt = (string)($storage_analysis['generated_at'] ?? ($storage_analysis_status['cached_generated_at'] ?? ''));
             }
@@ -155,10 +155,11 @@ defined('ABSPATH') || exit;
                         echo esc_html__('No completed storage analysis is available yet.', 'rrze-multisite-manager');
                     }
 
-                    echo ' ';
+                    echo '; ';
 
                     if ($nextScheduledRunTimestamp > 0) {
-                        echo esc_html(sprintf(__('Next scheduled batch: %s', 'rrze-multisite-manager'), wp_date(get_option('date_format') . ' ' . get_option('time_format'), $nextScheduledRunTimestamp)));
+                        /* translators: %s: date and time of the next scheduled storage analysis. */
+                        echo esc_html(sprintf(__('Next scheduled run: %s', 'rrze-multisite-manager'), wp_date(get_option('date_format') . ' ' . get_option('time_format'), $nextScheduledRunTimestamp)));
                     } else {
                         echo esc_html__('No scheduled batch is currently available.', 'rrze-multisite-manager');
                     }
