@@ -43,6 +43,7 @@ class MetricsService {
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
     protected const DASHBOARD_LOCK_TTL = 900;
     protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 100;
+    protected const DASHBOARD_BATCH_EVENT_ARGS = ['rrze_msm_dashboard_metrics_batch' => true];
     protected ?Settings $settings;
     protected Config $config;
     protected array $siteNameCache = [];
@@ -61,8 +62,22 @@ class MetricsService {
     public function onLoaded(): void {
         add_action(self::DASHBOARD_REFRESH_HOOK, [$this, 'handleScheduledDashboardRefresh']);
         add_action(self::STORAGE_ANALYSIS_CLEANUP_HOOK, [$this, 'runLegacyStorageAnalysisCleanup']);
+        add_action('init', [$this, 'ensureDashboardRefreshContinuation'], 24);
         add_action('init', [$this, 'scheduleLegacyStorageAnalysisCleanup'], 25);
         $this->registerInvalidationHooks();
+    }
+
+    /**
+     * Restores a missing continuation without scheduling work alongside an active batch.
+     */
+    public function ensureDashboardRefreshContinuation(): void {
+        if (
+            $this->isDashboardRefreshInProgress()
+            && !$this->isDashboardRefreshLocked()
+            && $this->getNextDashboardRefreshEventTimestamp() <= 0
+        ) {
+            $this->scheduleDashboardRefresh(5, true);
+        }
     }
 
     /**
@@ -287,7 +302,7 @@ class MetricsService {
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v6_' . (string)get_current_network_id());
     }
 
-    public function handleScheduledDashboardRefresh(): void {
+    public function handleScheduledDashboardRefresh(...$args): void {
         $status = [];
 
         LoggingService::info(
@@ -392,7 +407,11 @@ class MetricsService {
     }
 
     public function startDashboardRefreshRun(bool $runImmediately = true): void {
-        if ($this->isDashboardRefreshLocked() || $this->isDashboardRefreshInProgress()) {
+        if ($this->isDashboardRefreshLocked()) {
+            return;
+        }
+
+        if ($this->isDashboardRefreshInProgress()) {
             $this->scheduleDashboardRefresh(5, true);
             return;
         }
@@ -492,7 +511,7 @@ class MetricsService {
         $cached = $this->getStoredDashboardCache();
         $hasData = $this->isUsableDashboardCache($cached);
         $needsRefresh = $this->shouldRefreshDashboardCache($cached);
-        $nextRunTimestamp = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+        $nextRunTimestamp = $this->getNextDashboardRefreshEventTimestamp();
         $siteCount = 0;
         $batchOffset = (int)get_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, 0);
         $batchTotal = (int)get_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
@@ -9164,7 +9183,12 @@ class MetricsService {
     }
 
     protected function scheduleDashboardRefresh(int $delay = 60, bool $isBatchContinuation = false): void {
-        $scheduledAt = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+        if (!$isBatchContinuation && $this->isDashboardRefreshInProgress()) {
+            return;
+        }
+
+        $scheduledEvent = $this->getNextDashboardRefreshEvent();
+        $scheduledAt = (int)($scheduledEvent['timestamp'] ?? 0);
         $cached = $this->getStoredDashboardCache();
         $generatedAt = (int)($cached['generated_at'] ?? 0);
         $baseTimestamp = $generatedAt > 0 ? $generatedAt : time();
@@ -9177,19 +9201,67 @@ class MetricsService {
                 return;
             }
 
-            wp_unschedule_event((int)$scheduledAt, self::DASHBOARD_REFRESH_HOOK);
+            wp_unschedule_event(
+                $scheduledAt,
+                self::DASHBOARD_REFRESH_HOOK,
+                (array)($scheduledEvent['args'] ?? [])
+            );
         }
 
-        wp_schedule_single_event($scheduleTimestamp, self::DASHBOARD_REFRESH_HOOK);
+        wp_schedule_single_event(
+            $scheduleTimestamp,
+            self::DASHBOARD_REFRESH_HOOK,
+            $isBatchContinuation ? self::DASHBOARD_BATCH_EVENT_ARGS : []
+        );
     }
 
     protected function clearScheduledDashboardRefreshEvents(): void {
-        $timestamp = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+        $cron = _get_cron_array();
 
-        while ($timestamp) {
-            wp_unschedule_event((int)$timestamp, self::DASHBOARD_REFRESH_HOOK);
-            $timestamp = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+        foreach ((array)$cron as $timestamp => $events) {
+            foreach ((array)($events[self::DASHBOARD_REFRESH_HOOK] ?? []) as $event) {
+                wp_unschedule_event(
+                    (int)$timestamp,
+                    self::DASHBOARD_REFRESH_HOOK,
+                    (array)($event['args'] ?? [])
+                );
+            }
         }
+    }
+
+    /**
+     * Returns the earliest pending dashboard refresh event, including batch continuations.
+     */
+    protected function getNextDashboardRefreshEvent(): array {
+        $nextEvent = [
+            'timestamp' => 0,
+            'args' => [],
+        ];
+
+        foreach ((array)_get_cron_array() as $timestamp => $events) {
+            if (!is_numeric($timestamp) || empty($events[self::DASHBOARD_REFRESH_HOOK]) || !is_array($events[self::DASHBOARD_REFRESH_HOOK])) {
+                continue;
+            }
+
+            foreach ($events[self::DASHBOARD_REFRESH_HOOK] as $event) {
+                if ((int)$nextEvent['timestamp'] > 0 && (int)$nextEvent['timestamp'] <= (int)$timestamp) {
+                    continue;
+                }
+
+                $nextEvent = [
+                    'timestamp' => (int)$timestamp,
+                    'args' => (array)($event['args'] ?? []),
+                ];
+            }
+        }
+
+        return $nextEvent;
+    }
+
+    protected function getNextDashboardRefreshEventTimestamp(): int {
+        $event = $this->getNextDashboardRefreshEvent();
+
+        return (int)($event['timestamp'] ?? 0);
     }
 
     protected function getMetricsRefreshIntervalMinutes(): int {

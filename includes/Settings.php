@@ -153,13 +153,25 @@ class Settings {
 
         $rawOptions = $_POST[$this->optionName] ?? [];
         $options = $this->sanitizeOptions($rawOptions);
+        $previousOptions = $this->options;
+
+        $monitoringIntervalChanged = (int)($previousOptions['monitoring_monitoring_interval_hours'] ?? 0) !== (int)($options['monitoring_monitoring_interval_hours'] ?? 0);
+        $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_frequency'] ?? '');
+        $shortcodeAnalysisFrequencyChanged = (string)($previousOptions['monitoring_shortcode_block_analysis_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? '');
 
         update_site_option($this->optionName, $options);
-        (new MetricsService($this, $this->config))->startDashboardRefreshRun(false);
-        MonitoringService::clearScheduledEvent($this->config);
-        (new MonitoringService($this->plugin, $this->config))->ensureScheduledEvent();
-        (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->syncRecurringSchedules();
-        (new ShortcodeBlockAnalysisSchedulerService($this->config))->syncRecurringSchedules();
+
+        if ($monitoringIntervalChanged) {
+            (new MonitoringService($this->plugin, $this->config))->rescheduleRecurringEvent();
+        }
+
+        if ($storageAnalysisFrequencyChanged) {
+            (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->syncRecurringSchedules();
+        }
+
+        if ($shortcodeAnalysisFrequencyChanged) {
+            (new ShortcodeBlockAnalysisSchedulerService($this->config))->syncRecurringSchedules();
+        }
 
         $redirectUrl = add_query_arg(
             [
