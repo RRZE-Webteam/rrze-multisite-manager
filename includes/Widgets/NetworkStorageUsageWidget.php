@@ -47,8 +47,20 @@ class NetworkStorageUsageWidget extends Widgets {
 
     protected function normalizeStorageUsageItems(array $items): array {
         $freeStorageLabel = __('Free storage', 'rrze-multisite-manager');
+        $otherStorageLabel = __('Other websites', 'rrze-multisite-manager');
         $item = [];
         $index = 0;
+        $totalBytes = 0;
+        $otherBytes = 0;
+        $normalizedItems = [];
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $totalBytes += max(0, (int)($item['value'] ?? 0));
+        }
 
         foreach ($items as $index => $item) {
             if (!is_array($item)) {
@@ -56,11 +68,34 @@ class NetworkStorageUsageWidget extends Widgets {
             }
 
             if ((string)($item['label'] ?? '') === $freeStorageLabel) {
-                $items[$index]['accent'] = 'free-storage';
+                $item['accent'] = 'free-storage';
+                $item['hide_legend'] = true;
+                $normalizedItems[] = $item;
+                continue;
             }
+
+            $value = max(0, (int)($item['value'] ?? 0));
+            $share = $totalBytes > 0 ? $value / $totalBytes : 0;
+
+            if ($share > 0.05) {
+                $normalizedItems[] = $item;
+                continue;
+            }
+
+            $otherBytes += $value;
         }
 
-        return $items;
+        if ($otherBytes > 0) {
+            $normalizedItems[] = [
+                'label' => $otherStorageLabel,
+                'value' => $otherBytes,
+                'value_label' => size_format($otherBytes),
+                'accent' => 'theme-6',
+                'hide_legend' => true,
+            ];
+        }
+
+        return $normalizedItems;
     }
 
     protected function getSummaryLabel(array $storageUsage): string {

@@ -564,6 +564,7 @@ abstract class Widgets {
     }
 
     public function renderPieChart(array $items, string $emptyMessage, array $args = []): string {
+        $items = $this->normalizePieChartItems($items);
         $gradient = $this->getPieGradient($items);
         $centerTitle = trim((string)($args['center_title'] ?? ''));
         $centerValue = trim((string)($args['center_value'] ?? ''));
@@ -607,6 +608,10 @@ abstract class Widgets {
         echo '<div class="rrze-msm-pie-legend">';
 
         foreach ($items as $itemIndex => $item) {
+            if (!empty($item['hide_legend'])) {
+                continue;
+            }
+
             echo '<div class="rrze-msm-pie-legend-item">';
             echo '<span class="rrze-msm-pie-swatch" style="background:' . esc_attr($this->getPieItemColor($item)) . ';"></span>';
             echo '<div>';
@@ -620,6 +625,61 @@ abstract class Widgets {
         echo '</div>';
 
         return (string)ob_get_clean();
+    }
+
+    /**
+     * Combines small chart segments so a large network does not create an
+     * unreadable pie chart or an excessively long legend.
+     */
+    protected function normalizePieChartItems(array $items): array {
+        $totalValue = 0;
+        $otherValue = 0;
+        $normalizedItems = [];
+        $item = [];
+        $value = 0;
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $totalValue += max(0, (int)($item['value'] ?? 0));
+        }
+
+        if ($totalValue <= 0) {
+            return $items;
+        }
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $value = max(0, (int)($item['value'] ?? 0));
+
+            if ($value <= 0) {
+                continue;
+            }
+
+            if (!empty($item['hide_legend']) || ($value / $totalValue) > 0.05) {
+                $normalizedItems[] = $item;
+                continue;
+            }
+
+            $otherValue += $value;
+        }
+
+        if ($otherValue > 0) {
+            $normalizedItems[] = [
+                'label' => __('Other', 'rrze-multisite-manager'),
+                'value' => $otherValue,
+                'value_label' => number_format_i18n($otherValue),
+                'accent' => 'theme-6',
+                'hide_legend' => true,
+            ];
+        }
+
+        return $normalizedItems;
     }
 
     /** @return array{sites: array<int, array<string, mixed>>, html: string} */
@@ -1312,10 +1372,11 @@ abstract class Widgets {
 
     protected function renderThemeSitesHtml(array $theme): string {
         $activeSites = is_array($theme['active_sites'] ?? null) ? $theme['active_sites'] : [];
-        $isTruncated = !empty($theme['active_sites_truncated']);
         $siteCount = (int)($theme['site_count'] ?? count($activeSites));
         $site = [];
         $perPage = 20;
+        $isTruncated = !empty($theme['active_sites_truncated']) || count($activeSites) > $perPage;
+        $activeSites = array_slice($activeSites, 0, $perPage);
         $totalPages = (int)ceil(count($activeSites) / $perPage);
         $index = 0;
         $page = 1;
