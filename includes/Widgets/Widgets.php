@@ -53,7 +53,7 @@ abstract class Widgets {
         return trim($html);
     }
 
-    public function renderActionsForSite(array $site, string $displayMode = 'icon'): string {
+    public function renderActionsForSite(array $site, string $displayMode = 'text'): string {
         return $this->renderSiteActions($site, $displayMode);
     }
 
@@ -132,7 +132,7 @@ abstract class Widgets {
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionModeClass = $actionMode === 'text' ? 'rrze-msm-site-overview-text-actions' : 'rrze-msm-site-overview-icon-actions';
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
@@ -143,7 +143,7 @@ abstract class Widgets {
         }
 
         ob_start();
-        echo '<div class="rrze-msm-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="rrze-msm-site-table-wrap ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
         echo '<label for="rrze-msm-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label> ';
@@ -164,7 +164,7 @@ abstract class Widgets {
         echo '</select>';
         echo '</div>';
         echo '</div>';
-        echo '<table class="widefat striped rrze-msm-table">';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-site-hover-actions-table">';
         echo '<thead><tr>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('registered', __('Registered', 'rrze-multisite-manager')) . '</th>';
@@ -181,11 +181,11 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)($site['last_updated_timestamp'] ?? 0)) . '"';
             echo ' data-sort-admin-email="' . esc_attr((string)($site['admin_email_sort'] ?? strtolower((string)($site['admin_email'] ?? '')))) . '"';
             echo '>';
-            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
+            echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
             echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
             echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unknown', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -250,7 +250,7 @@ abstract class Widgets {
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionModeClass = $actionMode === 'text' ? 'rrze-msm-site-overview-text-actions' : 'rrze-msm-site-overview-icon-actions';
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
@@ -282,7 +282,7 @@ abstract class Widgets {
         echo '</select>';
         echo '</div>';
         echo '</div>';
-        echo '<table class="widefat striped rrze-msm-table rrze-msm-site-overview-table">';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-site-overview-table rrze-msm-site-hover-actions-table">';
         echo '<thead><tr>';
         echo '<th class="rrze-msm-site-branding-column">' . esc_html__('Logo', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
@@ -305,14 +305,14 @@ abstract class Widgets {
             echo ' data-sort-storage="' . esc_attr((string)($site['storage']['used_bytes'] ?? 0)) . '"';
             echo '>';
             echo '<td class="rrze-msm-site-branding-cell">' . $this->renderSiteBranding((array)($site['branding'] ?? []), (string)$site['name']) . '</td>';
-            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
+            echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
             echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
             echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unknown', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
             echo '<td>' . $this->renderRoleCounts((int)($site['id'] ?? 0), (array)($site['role_counts'] ?? [])) . '</td>';
             echo '<td>' . $this->renderContentCounts((array)($site['content_counts'] ?? [])) . '</td>';
             echo '<td class="' . esc_attr(trim('rrze-msm-col-numeric ' . $this->getStorageCellClass((array)($site['storage'] ?? [])))) . '">' . $this->renderStorageUsage((array)($site['storage'] ?? [])) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -332,7 +332,7 @@ abstract class Widgets {
         $statusType = (string)($args['status_type'] ?? 'archive');
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'last-updated'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $statusLabel = $statusType === 'spam'
             ? __('Blocked since', 'rrze-multisite-manager')
@@ -367,7 +367,7 @@ abstract class Widgets {
         echo '</select>';
         echo '</div>';
         echo '</div>';
-        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table">';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table rrze-msm-site-hover-actions-table">';
         echo '<thead><tr>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . esc_html($statusLabel) . '</th>';
@@ -383,11 +383,11 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site[$statusMetaKey] ?? ''))) . '"';
             echo ' data-sort-admin-email=""';
             echo '>';
-            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
+            echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site[$statusMetaKey] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusUser((int)($site['status_user_id'] ?? 0)) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['status_note'] ?? '')) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -406,7 +406,7 @@ abstract class Widgets {
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
@@ -437,7 +437,7 @@ abstract class Widgets {
         echo '</select>';
         echo '</div>';
         echo '</div>';
-        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table">';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table rrze-msm-site-hover-actions-table">';
         echo '<thead><tr>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . esc_html__('Operational status', 'rrze-multisite-manager') . '</th>';
@@ -455,13 +455,13 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site['last_availability_check'] ?? ''))) . '"';
             echo ' data-sort-admin-email=""';
             echo '>';
-            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
+            echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
             echo '<td>' . $this->renderOperationalStatusBadge((string)($site['operational_status_label'] ?? ''), (string)($site['operational_status'] ?? '')) . '</td>';
             echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['last_availability_check'] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['monitoring_note'] ?? '')) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -480,7 +480,7 @@ abstract class Widgets {
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'last-updated'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
@@ -511,7 +511,7 @@ abstract class Widgets {
         echo '</select>';
         echo '</div>';
         echo '</div>';
-        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table">';
+        echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table rrze-msm-site-hover-actions-table">';
         echo '<thead><tr>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . esc_html__('New operational status', 'rrze-multisite-manager') . '</th>';
@@ -529,13 +529,13 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site['operational_status_changed_at'] ?? ''))) . '"';
             echo ' data-sort-admin-email=""';
             echo '>';
-            echo '<td>' . $this->renderSiteTitleAndUrl($site) . '</td>';
+            echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
             echo '<td>' . $this->renderOperationalStatusBadge((string)($site['operational_status_label'] ?? ''), (string)($site['operational_status'] ?? '')) . '</td>';
             echo '<td>' . esc_html(trim((string)($site['previous_operational_status_label'] ?? '')) !== '' ? (string)$site['previous_operational_status_label'] : __('Not set', 'rrze-multisite-manager')) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['operational_status_changed_at'] ?? ''))) . '</td>';
             echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode) . '</td>';
+            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -822,7 +822,7 @@ abstract class Widgets {
         return str_contains($url, '/wp-admin/network/');
     }
 
-    protected function renderSiteActions(array $site, string $displayMode = 'icon'): string {
+    protected function renderSiteActions(array $site, string $displayMode = 'icon', bool $includeNavigation = true): string {
         $siteId = (int)($site['id'] ?? 0);
         $isMainSite = !empty($site['is_main_site']);
         $isArchived = !empty($site['is_archived']);
@@ -830,14 +830,13 @@ abstract class Widgets {
         $isDeleted = !empty($site['is_deleted']);
         $isNormal = !$isArchived && !$isSpam && !$isDeleted;
         $isRestricted = $isArchived || $isSpam;
-        $isTechnicallyUnavailable = $this->isTechnicallyUnavailableSite($site);
         $actions = [];
 
         if ($siteId <= 0) {
             return '';
         }
 
-        if ($this->currentUserCanUseNetworkAdminFeatures()) {
+        if ($includeNavigation && $this->currentUserCanUseNetworkAdminFeatures()) {
             $actions[] = $this->renderSiteActionLink(
                 network_admin_url('site-info.php?id=' . $siteId),
                 __('Edit', 'rrze-multisite-manager'),
@@ -847,7 +846,7 @@ abstract class Widgets {
             );
         }
 
-        if (!$isTechnicallyUnavailable) {
+        if ($includeNavigation && !$this->isTechnicallyUnavailableSite($site)) {
             $actions[] = $this->renderSiteActionLink(
                 get_admin_url($siteId),
                 __('Dashboard', 'rrze-multisite-manager'),
@@ -865,7 +864,7 @@ abstract class Widgets {
         }
 
         if ($isMainSite) {
-            return '<div class="rrze-msm-site-actions">' . implode('', $actions) . '</div>';
+            return $includeNavigation ? '<div class="rrze-msm-site-actions">' . implode('', $actions) . '</div>' : '';
         }
 
         if ($this->currentUserCanUseNetworkAdminFeatures() && $isNormal) {
@@ -912,6 +911,38 @@ abstract class Widgets {
         }
 
         return '<div class="rrze-msm-site-actions">' . implode('', $actions) . '</div>';
+    }
+
+    protected function renderSiteOverviewTitleAndUrl(array $site): string {
+        $siteId = (int)($site['id'] ?? 0);
+        $siteName = (string)($site['name'] ?? '');
+        $siteUrl = (string)($site['url'] ?? '');
+        $actions = [];
+        $html = '<strong>' . esc_html($siteName) . '</strong>';
+
+        if ($siteUrl !== '') {
+            $html .= '<br><span>' . esc_html($siteUrl) . '</span>';
+        }
+
+        if ($siteId <= 0) {
+            return $html;
+        }
+
+        $actions[] = '<span class="rrze-msm-row-action-details"><a href="' . esc_url($this->getSiteDetailsPageUrl($siteId)) . '">' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
+
+        if ($this->currentUserCanUseNetworkAdminFeatures()) {
+            $actions[] = '<span class="rrze-msm-row-action-edit"><a href="' . esc_url(network_admin_url('site-info.php?id=' . $siteId)) . '">' . esc_html__('Edit', 'rrze-multisite-manager') . '</a></span>';
+        }
+
+        if (!$this->isTechnicallyUnavailableSite($site)) {
+            $actions[] = '<span class="rrze-msm-row-action-dashboard"><a href="' . esc_url(get_admin_url($siteId)) . '">' . esc_html__('Dashboard', 'rrze-multisite-manager') . '</a></span>';
+
+            if ($siteUrl !== '') {
+                $actions[] = '<span class="rrze-msm-row-action-open"><a href="' . esc_url($siteUrl) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Open', 'rrze-multisite-manager') . '</a></span>';
+            }
+        }
+
+        return $html . '<div class="row-actions">' . implode(' | ', $actions) . '</div>';
     }
 
     protected function renderSiteActionLink(string $url, string $label, string $icon, bool $newTab = false, string $displayMode = 'icon'): string {

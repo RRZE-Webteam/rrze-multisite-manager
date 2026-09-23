@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) { exit; }
 
 $tableId = sanitize_key((string)$widget_id);
 $defaultPerPage = max(1, absint($default_per_page ?? 10));
-$siteTable = $this->renderStatusSiteTable($sites, ['table_id' => $tableId, 'default_per_page' => $defaultPerPage, 'status_type' => 'archive']);
+$siteTable = $this->renderStatusSiteTable($sites, ['table_id' => $tableId, 'default_per_page' => $defaultPerPage, 'status_type' => 'archive', 'action_mode' => 'text']);
 ?>
 <section class="rrze-msm-widget <?php echo esc_attr($widget_classes); ?>" data-widget-id="<?php echo esc_attr($widget_id); ?>">
     <div class="rrze-msm-widget-controls">

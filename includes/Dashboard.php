@@ -1161,6 +1161,7 @@ class Dashboard {
                 'storage_analysis_browser_limit_megabytes' => $storageAnalysisBrowserLimitMegabytes,
                 'storage_analysis_scheduler_status' => $storageAnalysisSchedulerStatus,
                 'storage_analysis_request_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_request_site_storage_analysis'),
+                'can_request_storage_analysis' => $this->currentUserCanRequestSiteAnalysis(),
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
@@ -1204,6 +1205,7 @@ class Dashboard {
                 'is_local_page' => $isLocalPage,
                 'analysis_base_url' => $isLocalPage ? $this->getCurrentShortcodeBlockAnalysisUrl() : $this->getShortcodeBlockAnalysisUrl(),
                 'request_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_request_shortcode_block_analysis'),
+                'can_request_analysis' => $this->currentUserCanRequestSiteAnalysis(),
                 'plugin_details_base_url' => $this->getPluginDetailsUrl(),
                 'can_view_plugin_details' => is_super_admin(),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
@@ -1222,6 +1224,10 @@ class Dashboard {
         $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
 
         if (!$this->currentUserCanAccessShortcodeBlockAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
+        if (!$this->currentUserCanRequestSiteAnalysis()) {
             wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
         }
 
@@ -1968,6 +1974,10 @@ class Dashboard {
             wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
         }
 
+        if (!$this->currentUserCanRequestSiteAnalysis()) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
         check_admin_referer('rrze_msm_request_site_storage_analysis_' . $siteId);
         $isEligible = $this->storageAnalysisScheduler->isSiteEligible($siteId);
         $started = $isEligible && $this->storageAnalysisScheduler->startAnalysisNow($siteId);
@@ -2518,6 +2528,17 @@ class Dashboard {
 
     protected function currentUserCanUseNetworkAdminFeatures(): bool {
         return is_super_admin();
+    }
+
+    protected function currentUserCanRequestSiteAnalysis(): bool {
+        if (is_super_admin()) {
+            return true;
+        }
+
+        $user = wp_get_current_user();
+
+        return $user instanceof \WP_User
+            && in_array('websupport', (array)$user->roles, true);
     }
 
     protected function getSuperAdminOnlySiteOptions(): array {

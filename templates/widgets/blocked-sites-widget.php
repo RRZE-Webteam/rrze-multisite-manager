@@ -11,5 +11,5 @@ defined('ABSPATH') || exit;
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
-    <?php echo $this->renderStatusSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10, 'status_type' => 'spam']); ?>
+    <?php echo $this->renderStatusSiteTable($sites, ['table_id' => $widget_id, 'default_per_page' => $default_per_page ?? 10, 'status_type' => 'spam', 'action_mode' => 'text']); ?>
 </section>

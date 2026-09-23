@@ -51,7 +51,9 @@ defined('ABSPATH') || exit;
                 $lastAnalysisCompletedAt = (string)($storage_analysis['generated_at'] ?? ($storage_analysis_status['cached_generated_at'] ?? ''));
             }
 
-            $canRequestStorageAnalysis = $storageAnalysisTasksAllowed && !$analysisIsRunning;
+            $canRequestStorageAnalysis = !empty($can_request_storage_analysis)
+                && $storageAnalysisTasksAllowed
+                && !$analysisIsRunning;
             $storageTab = isset($_GET['storage_tab']) ? sanitize_key((string)wp_unslash($_GET['storage_tab'])) : 'analysis';
             $storageTab = in_array($storageTab, ['analysis', 'debug', 'missing-metadata'], true) ? $storageTab : 'analysis';
             $storageAnalysisScheduled = isset($_GET['storage_analysis_scheduled']) ? sanitize_key((string)wp_unslash($_GET['storage_analysis_scheduled'])) : '';
