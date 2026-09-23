@@ -27,7 +27,7 @@ class ThemeUsageWidget extends Widgets {
 
     protected function getTemplateData(array $dashboardData): array {
         return [
-            'items' => $dashboardData['theme_usage'] ?? [],
+            'items' => $this->formatWebsiteUsageItems((array)($dashboardData['theme_usage'] ?? [])),
             'empty_message' => __('No theme usage data available.', 'rrze-multisite-manager'),
         ];
     }
