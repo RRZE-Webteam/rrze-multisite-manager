@@ -500,6 +500,7 @@ class StorageAnalysisSchedulerService {
                 'is_eligible' => $isEligible,
                 'is_due' => $isDue,
                 'cycle' => $isEligible ? $this->getScheduleLabel() : '',
+                'last_started_at' => (string)($scheduleStatus['last_started_at'] ?? ''),
                 'last_run' => (string)($scheduleStatus['last_completed_at'] ?? ''),
                 // The monitoring table describes the configured recurrence, not internal follow-up batches.
                 'next_run_timestamp' => $nextRunTimestamp,

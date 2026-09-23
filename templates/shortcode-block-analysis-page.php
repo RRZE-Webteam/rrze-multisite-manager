@@ -34,6 +34,17 @@ $getDistinctEntryCount = static function (array $items, string $key): int {
 };
 $foundShortcodeCount = $getDistinctEntryCount((array)($analysis_result['shortcodes'] ?? []), 'shortcode');
 $foundBlockCount = $getDistinctEntryCount((array)($analysis_result['blocks'] ?? []), 'block');
+$unregisteredShortcodes = [];
+
+foreach ((array)($analysis_result['shortcodes'] ?? []) as $shortcode) {
+    if (!is_array($shortcode) || !empty($shortcode['registered']) || empty($shortcode['shortcode'])) {
+        continue;
+    }
+
+    $unregisteredShortcodes[strtolower((string)$shortcode['shortcode'])] = true;
+}
+
+$unregisteredShortcodeCount = count($unregisteredShortcodes);
 $analysedPostCount = max(
     (int)($analysis_status['total_posts'] ?? 0),
     (int)($analysis_status['processed_posts'] ?? 0),
@@ -183,7 +194,6 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
         <div class="rrze-msm-page-header">
             <div>
                 <h1><?php echo esc_html__('Shortcodes and Blocks', 'rrze-multisite-manager'); ?></h1>
-                <p><?php echo esc_html__('Analysis of shortcode and block usage in posts, pages, and post metadata.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
                 <button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="<?php echo esc_attr(str_contains($mode_class, 'dark') ? 'light' : 'dark'); ?>"><?php echo esc_html($mode_toggle_label); ?></button>
@@ -234,6 +244,22 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                     echo esc_html(sprintf(__('Found shortcodes: %d', 'rrze-multisite-manager'), $foundShortcodeCount));
                     ?></li>
                 </ul>
+                <?php if ($unregisteredShortcodeCount > 0) { ?>
+                    <div class="notice notice-warning inline"><p><?php
+                    echo esc_html(
+                        sprintf(
+                            /* translators: %d: number of unregistered shortcodes found. */
+                            _n(
+                                'Notice: %d unregistered shortcode was found. It is not executed and is therefore output without interpretation.',
+                                'Notice: %d unregistered shortcodes were found. They are not executed and are therefore output without interpretation.',
+                                $unregisteredShortcodeCount,
+                                'rrze-multisite-manager'
+                            ),
+                            $unregisteredShortcodeCount
+                        )
+                    );
+                    ?></p></div>
+                <?php } ?>
                 <form method="post" action="<?php echo esc_url($request_action); ?>">
                     <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
                     <input type="hidden" name="redirect_to" value="<?php echo esc_attr(add_query_arg(['site_id' => (int)$site_id, 'analysis_tab' => $analysisTab], $analysis_base_url)); ?>">
