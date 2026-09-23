@@ -7,7 +7,6 @@ defined('ABSPATH') || exit;
         <div class="rrze-msm-page-header">
             <div>
                 <h1><?php echo esc_html__('Theme Details', 'rrze-multisite-manager'); ?></h1>
-                <p><?php echo esc_html__('Detailed view of a single theme with metadata, usage, and technical code analysis.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
                 <?php if (!empty($theme_details)) { ?>

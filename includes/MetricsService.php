@@ -539,6 +539,8 @@ class MetricsService {
             'needs_refresh' => $needsRefresh,
             'is_running' => $isRunning,
             'last_run_timestamp' => (int)($cached['generated_at'] ?? 0),
+            'last_started_at_timestamp' => (int)($cached['started_at'] ?? 0),
+            'last_finished_at_timestamp' => (int)($cached['generated_at'] ?? 0),
             'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
             'last_site_count' => $siteCount,
             'batch_offset' => $batchOffset,
@@ -561,13 +563,19 @@ class MetricsService {
                 'id' => 'dashboard-metrics',
                 'title' => __('Dashboard metrics', 'rrze-multisite-manager'),
                 'description' => __('Calculates the aggregated network metrics for the dashboard as well as website, plugin, and theme overviews.', 'rrze-multisite-manager'),
-                'interval_hours' => round($this->getMetricsRefreshIntervalMinutes() / 60, 2),
+                'interval_hours' => $this->getMetricsRefreshIntervalHours(),
                 'interval_label' => sprintf(
-                    /* translators: %d: metrics refresh interval in minutes. */
-                    __('Every %d minutes', 'rrze-multisite-manager'),
-                    $this->getMetricsRefreshIntervalMinutes()
+                    /* translators: %d: interval in hours for the monitoring schedule. */
+                    __('Every %d hours', 'rrze-multisite-manager'),
+                    $this->getMetricsRefreshIntervalHours()
                 ),
                 'last_run' => $status['last_run_timestamp'] > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_run_timestamp']) : '',
+                'started_at' => !empty($status['is_running'])
+                    ? ((int)($status['started_at_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$status['started_at_timestamp']) : '')
+                    : ((int)($status['last_started_at_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_started_at_timestamp']) : ''),
+                'finished_at' => !empty($status['is_running'])
+                    ? ''
+                    : ((int)($status['last_finished_at_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_finished_at_timestamp']) : ''),
                 'last_site_count' => (int)$status['last_site_count'],
                 'next_run_timestamp' => (int)($status['next_run_timestamp'] ?? 0),
                 'is_running' => !empty($status['is_running']),
@@ -578,7 +586,7 @@ class MetricsService {
                 'progress_percent' => (int)($status['progress_percent'] ?? 0),
                 'batch_size' => $this->config->getMonitoringBatchSize(),
                 'current_duration_seconds' => (int)($status['current_duration_seconds'] ?? 0),
-                'last_duration_seconds' => (int)($status['last_duration_seconds'] ?? 0),
+                'last_duration_seconds' => !empty($status['is_running']) ? 0 : (int)($status['last_duration_seconds'] ?? 0),
                 'run_state' => [
                     'has_data' => !empty($status['has_data']),
                     'needs_refresh' => !empty($status['needs_refresh']),
@@ -9237,6 +9245,29 @@ class MetricsService {
             'timestamp' => 0,
             'args' => [],
         ];
+        $scheduledEvents = [
+            [
+                'timestamp' => wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK),
+                'args' => [],
+            ],
+            [
+                'timestamp' => wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK, self::DASHBOARD_BATCH_EVENT_ARGS),
+                'args' => self::DASHBOARD_BATCH_EVENT_ARGS,
+            ],
+        ];
+
+        foreach ($scheduledEvents as $scheduledEvent) {
+            $timestamp = (int)($scheduledEvent['timestamp'] ?? 0);
+
+            if (!$timestamp || ((int)$nextEvent['timestamp'] > 0 && (int)$nextEvent['timestamp'] <= (int)$timestamp)) {
+                continue;
+            }
+
+            $nextEvent = [
+                'timestamp' => $timestamp,
+                'args' => (array)($scheduledEvent['args'] ?? []),
+            ];
+        }
 
         foreach ((array)_get_cron_array() as $timestamp => $events) {
             if (!is_numeric($timestamp) || empty($events[self::DASHBOARD_REFRESH_HOOK]) || !is_array($events[self::DASHBOARD_REFRESH_HOOK])) {
@@ -9264,19 +9295,21 @@ class MetricsService {
         return (int)($event['timestamp'] ?? 0);
     }
 
-    protected function getMetricsRefreshIntervalMinutes(): int {
+    protected function getMetricsRefreshIntervalHours(): int {
         $options = get_site_option($this->config->getOptionName(), []);
-        $interval = 60;
+        $interval = 2;
 
-        if (is_array($options) && isset($options['monitoring_metrics_interval_minutes'])) {
-            $interval = (int)$options['monitoring_metrics_interval_minutes'];
+        if (is_array($options) && isset($options['monitoring_metrics_interval_hours'])) {
+            $interval = (int)$options['monitoring_metrics_interval_hours'];
+        } elseif (is_array($options) && isset($options['monitoring_metrics_interval_minutes'])) {
+            $interval = (int)ceil((int)$options['monitoring_metrics_interval_minutes'] / 60);
         }
 
-        return max(60, min(10080, $interval));
+        return max(1, min(168, $interval));
     }
 
     protected function getMetricsRefreshIntervalSeconds(): int {
-        return $this->getMetricsRefreshIntervalMinutes() * MINUTE_IN_SECONDS;
+        return $this->getMetricsRefreshIntervalHours() * HOUR_IN_SECONDS;
     }
 
     protected function acquireDashboardRefreshLock(): bool {

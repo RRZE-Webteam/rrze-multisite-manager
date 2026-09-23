@@ -138,12 +138,15 @@ abstract class Widgets {
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
 
+        $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
+        $sites = $serverPagination['sites'];
+
         if (empty($sites)) {
             return '<p>' . esc_html__('No entries available.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
-        echo '<div class="rrze-msm-site-table-wrap ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
         echo '<label for="rrze-msm-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label> ';
@@ -191,7 +194,7 @@ abstract class Widgets {
 
         echo '</tbody></table>';
         echo '<div class="tablenav bottom">';
-        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '"></div>';
+        echo $serverPagination['html'];
         echo '</div>';
         echo '</div>';
 
@@ -256,12 +259,15 @@ abstract class Widgets {
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
 
+        $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
+        $sites = $serverPagination['sites'];
+
         if (empty($sites)) {
             return '<p>' . esc_html__('No entries available.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
-        echo '<div class="rrze-msm-site-table-wrap rrze-msm-site-overview-wrap ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-site-overview-wrap ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
         echo '<label for="rrze-msm-overview-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label> ';
@@ -318,7 +324,7 @@ abstract class Widgets {
 
         echo '</tbody></table>';
         echo '<div class="tablenav bottom">';
-        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '"></div>';
+        echo $serverPagination['html'];
         echo '</div>';
         echo '</div>';
 
@@ -341,12 +347,15 @@ abstract class Widgets {
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
 
+        $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
+        $sites = $serverPagination['sites'];
+
         if (empty($sites)) {
             return '<p>' . esc_html__('No entries available.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
-        echo '<div class="rrze-msm-site-table-wrap rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
         echo '<label for="rrze-msm-status-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label> ';
@@ -393,7 +402,7 @@ abstract class Widgets {
 
         echo '</tbody></table>';
         echo '<div class="tablenav bottom">';
-        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '"></div>';
+        echo $serverPagination['html'];
         echo '</div>';
         echo '</div>';
 
@@ -411,12 +420,15 @@ abstract class Widgets {
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
 
+        $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
+        $sites = $serverPagination['sites'];
+
         if (empty($sites)) {
             return '<p>' . esc_html__('No problematic websites found.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
-        echo '<div class="rrze-msm-site-table-wrap rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
         echo '<label for="rrze-msm-operational-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label> ';
@@ -467,7 +479,7 @@ abstract class Widgets {
 
         echo '</tbody></table>';
         echo '<div class="tablenav bottom">';
-        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '"></div>';
+        echo $serverPagination['html'];
         echo '</div>';
         echo '</div>';
 
@@ -485,12 +497,15 @@ abstract class Widgets {
         $perPageOptions = $this->getSiteTablePerPageOptions($defaultPerPage);
         $option = 0;
 
+        $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
+        $sites = $serverPagination['sites'];
+
         if (empty($sites)) {
             return '<p>' . esc_html__('There have been no new technical warnings since the last monitoring run.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
-        echo '<div class="rrze-msm-site-table-wrap rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '">';
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
         echo '<label for="rrze-msm-monitoring-alerts-per-page-' . esc_attr($tableId) . '">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label> ';
@@ -541,7 +556,7 @@ abstract class Widgets {
 
         echo '</tbody></table>';
         echo '<div class="tablenav bottom">';
-        echo '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '"></div>';
+        echo $serverPagination['html'];
         echo '</div>';
         echo '</div>';
 
@@ -605,6 +620,47 @@ abstract class Widgets {
         echo '</div>';
 
         return (string)ob_get_clean();
+    }
+
+    /** @return array{sites: array<int, array<string, mixed>>, html: string} */
+    protected function getServerPaginatedSiteRows(array $sites, string $tableId, int $perPage): array {
+        $pageKey = 'rrze_msm_' . $tableId . '_page';
+        $page = isset($_GET[$pageKey]) ? max(1, absint(wp_unslash($_GET[$pageKey]))) : 1;
+        $perPage = max(1, $perPage);
+        $total = count($sites);
+        $totalPages = max(1, (int)ceil($total / $perPage));
+        $page = min($page, $totalPages);
+        $html = '';
+
+        if ($totalPages > 1) {
+            $queryArgs = [];
+
+            foreach ($_GET as $key => $value) {
+                if (!is_scalar($value)) {
+                    continue;
+                }
+
+                $queryArgs[sanitize_key((string)$key)] = sanitize_text_field(wp_unslash($value));
+            }
+
+            $queryArgs[$pageKey] = '%#%';
+            $baseUrl = add_query_arg($queryArgs, admin_url('admin.php'));
+            $html = '<div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '">';
+            $html .= paginate_links([
+                'base' => $baseUrl,
+                'format' => '',
+                'current' => $page,
+                'total' => $totalPages,
+                'prev_text' => __('Previous page', 'rrze-multisite-manager'),
+                'next_text' => __('Next page', 'rrze-multisite-manager'),
+            ]);
+            $html .= '</div>';
+        }
+
+        return [
+            'sites' => array_slice($sites, ($page - 1) * $perPage, $perPage),
+            'html' => $html,
+        ];
     }
 
     abstract public function getId(): string;

@@ -701,100 +701,31 @@ class Dashboard {
             );
         }
 
-        $tabTables = [
-            'all' => $widget->renderSiteOverviewTable(
-                $dashboardData['site_overview'] ?? [],
-                [
-                    'table_id' => 'site-overview-page-all',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'registered',
-                    'sort_direction' => 'desc',
-                    'action_mode' => 'text',
-                ]
-            ),
-            'active' => $widget->renderSiteOverviewTable(
-                array_values(
-                    array_filter(
-                        $dashboardData['site_overview'] ?? [],
-                        static function (array $site): bool {
-                            return empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']);
-                        }
-                    )
-                ),
-                [
-                    'table_id' => 'site-overview-page-active',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'registered',
-                    'sort_direction' => 'desc',
-                    'action_mode' => 'text',
-                ]
-            ),
-            'archived' => $widget->renderSiteOverviewTable(
-                $dashboardData['archived_sites'] ?? [],
-                [
-                    'table_id' => 'site-overview-page-archived',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'registered',
-                    'sort_direction' => 'desc',
-                    'action_mode' => 'text',
-                ]
-            ),
-            'blocked' => $widget->renderSiteOverviewTable(
-                $dashboardData['blocked_sites'] ?? [],
-                [
-                    'table_id' => 'site-overview-page-blocked',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'registered',
-                    'sort_direction' => 'desc',
-                    'action_mode' => 'text',
-                ]
-            ),
-            'deleted' => $widget->renderSiteOverviewTable(
-                $dashboardData['deleted_sites'] ?? [],
-                [
-                    'table_id' => 'site-overview-page-deleted',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'registered',
-                    'sort_direction' => 'desc',
-                    'action_mode' => 'text',
-                ]
-            ),
-            'provisioning' => $widget->renderOperationalStatusSiteTable(
-                $dashboardData['provisioning_sites'] ?? [],
-                [
-                    'table_id' => 'site-overview-page-provisioning',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'name',
-                    'sort_direction' => 'asc',
-                    'action_mode' => 'text',
-                ]
-            ),
-            'dns-missing' => $widget->renderOperationalStatusSiteTable(
-                $dashboardData['dns_missing_sites'] ?? [],
-                [
-                    'table_id' => 'site-overview-page-dns-missing',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'name',
-                    'sort_direction' => 'asc',
-                    'action_mode' => 'text',
-                ]
-            ),
-            'unreachable' => $widget->renderOperationalStatusSiteTable(
-                $dashboardData['unreachable_sites'] ?? [],
-                [
-                    'table_id' => 'site-overview-page-unreachable',
-                    'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
-                    'sort_key' => 'name',
-                    'sort_direction' => 'asc',
-                    'action_mode' => 'text',
-                ]
-            ),
+        $tableOptions = [
+            'table_id' => 'site-overview-page-' . $currentTab,
+            'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
+            'sort_key' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'name' : 'registered',
+            'sort_direction' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'asc' : 'desc',
+            'action_mode' => 'text',
         ];
+        $tableSites = match ($currentTab) {
+            'active' => array_values(array_filter($dashboardData['site_overview'] ?? [], static fn(array $site): bool => empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']))),
+            'archived' => $dashboardData['archived_sites'] ?? [],
+            'blocked' => $dashboardData['blocked_sites'] ?? [],
+            'deleted' => $dashboardData['deleted_sites'] ?? [],
+            'provisioning' => $dashboardData['provisioning_sites'] ?? [],
+            'dns-missing' => $dashboardData['dns_missing_sites'] ?? [],
+            'unreachable' => $dashboardData['unreachable_sites'] ?? [],
+            default => $dashboardData['site_overview'] ?? [],
+        };
+        $siteOverviewTable = in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true)
+            ? $widget->renderOperationalStatusSiteTable($tableSites, $tableOptions)
+            : $widget->renderSiteOverviewTable($tableSites, $tableOptions);
 
         echo $this->template->render(
             'site-overview-page',
             [
-                'site_overview_table' => !empty($metricsStatus['has_data']) ? ($tabTables[$currentTab] ?? $tabTables['all']) : '',
+                'site_overview_table' => !empty($metricsStatus['has_data']) ? $siteOverviewTable : '',
                 'overview_tabs' => $tabs,
                 'current_tab' => $currentTab,
                 'status_updated' => !empty($_GET['status-updated']),

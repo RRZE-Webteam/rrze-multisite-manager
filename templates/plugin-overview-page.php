@@ -7,7 +7,6 @@ defined('ABSPATH') || exit;
         <div class="rrze-msm-page-header">
             <div>
                 <h1><?php echo esc_html__('Plugin Overview', 'rrze-multisite-manager'); ?></h1>
-                <p><?php echo esc_html__('Central overview of installed, network-active, active, and inactive plugins in the network.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
                 <button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="<?php echo esc_attr($mode_class === 'rrze-msm-mode-dark' ? 'light' : 'dark'); ?>">

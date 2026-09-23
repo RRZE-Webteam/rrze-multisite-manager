@@ -95,13 +95,13 @@ class Config {
                 ],
                 'monitoring' => [
                     [
-                        'name' => 'metrics_interval_minutes',
-                        'label' => __('Metrics interval in minutes', 'rrze-multisite-manager'),
+                        'name' => 'metrics_interval_hours',
+                        'label' => __('Metrics interval in hours', 'rrze-multisite-manager'),
                         'desc' => __('Minimum interval between automatically scheduled metrics runs. Manually started runs are not affected.', 'rrze-multisite-manager'),
                         'type' => 'number',
-                        'default' => 60,
-                        'min' => 60,
-                        'max' => 10080,
+                        'default' => 2,
+                        'min' => 1,
+                        'max' => 168,
                     ],
                     [
                         'name' => 'batch_size',

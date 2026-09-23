@@ -8,7 +8,6 @@ defined('ABSPATH') || exit;
         <div class="rrze-msm-page-header">
             <div>
                 <h1><?php echo esc_html__('Website Details', 'rrze-multisite-manager'); ?></h1>
-                <p><?php echo esc_html__('Detailed view of a single website with status, user, content, and storage information.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
                 <?php if (!empty($site_details)) { ?>
