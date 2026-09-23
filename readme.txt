@@ -1,5 +1,5 @@
 === Plugin Name: RRZE Multisite Manager ===
-Version: 1.2.13
+Version: 1.2.14
 Plugin URI: https://github.com/RRZE-Webteam/rrze-multisite-manager
 GitHub Issue URL: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues
 Author: RRZE-Webteam <webmaster@fau.de>

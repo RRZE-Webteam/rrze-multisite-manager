@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.2.13
+ * Version:         1.2.14
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam

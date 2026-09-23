@@ -47,7 +47,7 @@ class NetworkStorageUsageWidget extends Widgets {
 
     protected function normalizeStorageUsageItems(array $items): array {
         $freeStorageLabel = __('Free storage', 'rrze-multisite-manager');
-        $otherStorageLabel = __('Other websites', 'rrze-multisite-manager');
+        $otherStorageLabel = __('Sonstige (Summe aller Websites unter 5%)', 'rrze-multisite-manager');
         $item = [];
         $index = 0;
         $totalBytes = 0;
@@ -91,7 +91,6 @@ class NetworkStorageUsageWidget extends Widgets {
                 'value' => $otherBytes,
                 'value_label' => size_format($otherBytes),
                 'accent' => 'theme-6',
-                'hide_legend' => true,
             ];
         }
 
