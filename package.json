@@ -1,7 +1,7 @@
 {
   "name": "rrze-multisite-manager",
   "title": "RRZE Multisite Manager",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "description": "Multisite management for WordPress",
   "tags": "Plugin, WordPress, Multisite, RRZE, FAU",
   "main": "rrze-multisite-manager.php",

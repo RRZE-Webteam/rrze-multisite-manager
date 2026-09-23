@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.2.11\n"
+"Project-Id-Version: RRZE Multisite Manager 1.2.12\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-23T13:57:33+00:00\n"
-"PO-Revision-Date: 2026-09-23 13:57+0000\n"
+"POT-Creation-Date: 2026-09-23T14:03:00+00:00\n"
+"PO-Revision-Date: 2026-09-23 14:03+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -2265,7 +2265,7 @@ msgstr ""
 
 #: includes/Settings.php:955
 #: includes/Settings.php:1091
-#: includes/Settings.php:1216
+#: includes/Settings.php:1217
 #: includes/Settings.php:1316
 #: templates/plugin-details-page.php:51
 #: templates/site-details-page.php:52
@@ -2478,24 +2478,25 @@ msgstr ""
 msgid "Description"
 msgstr ""
 
-#: includes/Settings.php:1217
+#: includes/Settings.php:1216
+#: includes/Widgets/SummaryWidget.php:34
+msgid "Sites"
+msgstr ""
+
+#: includes/Settings.php:1218
 msgid "Interval (hrs.)"
 msgstr ""
 
-#: includes/Settings.php:1219
+#: includes/Settings.php:1220
 msgid "Progress"
 msgstr ""
 
-#: includes/Settings.php:1220
+#: includes/Settings.php:1221
 msgid "Remaining"
 msgstr ""
 
-#: includes/Settings.php:1222
-msgid "Last active"
-msgstr ""
-
 #: includes/Settings.php:1223
-msgid "Last site count"
+msgid "Last active"
 msgstr ""
 
 #: includes/Settings.php:1228
@@ -3204,10 +3205,6 @@ msgstr ""
 
 #: includes/Widgets/SummaryWidget.php:17
 msgid "A quick overview for this multisite."
-msgstr ""
-
-#: includes/Widgets/SummaryWidget.php:34
-msgid "Sites"
 msgstr ""
 
 #. translators: %d: number of active sites.

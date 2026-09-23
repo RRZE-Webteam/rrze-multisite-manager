@@ -1213,6 +1213,7 @@ class Settings {
             echo '<thead><tr>';
             echo '<th rowspan="2">' . esc_html__('Process', 'rrze-multisite-manager') . '</th>';
             echo '<th rowspan="2">' . esc_html__('Description', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Sites', 'rrze-multisite-manager') . '</th>';
             echo '<th rowspan="2">' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Interval (hrs.)', 'rrze-multisite-manager') . '</th>';
             if ($showProgressColumns) {
@@ -1220,7 +1221,6 @@ class Settings {
                 echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Remaining', 'rrze-multisite-manager') . '</th>';
             }
             echo '<th colspan="3">' . esc_html__('Last active', 'rrze-multisite-manager') . '</th>';
-            echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Last site count', 'rrze-multisite-manager') . '</th>';
             echo '<th rowspan="2">' . esc_html__('Next run', 'rrze-multisite-manager') . '</th>';
             echo '<th rowspan="2">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
             echo '</tr><tr>';
@@ -1233,6 +1233,7 @@ class Settings {
                 echo '<tr>';
                 echo '<td>' . esc_html((string)($process['title'] ?? '')) . '</td>';
                 echo '<td>' . $this->renderProcessDescriptionHtml($process) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
                 echo '<td>' . $this->renderProcessStatusHtml($process) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
                 if ($showProgressColumns) {
@@ -1243,7 +1244,6 @@ class Settings {
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['started_at'] ?? ''))) . '</td>';
                 echo '<td>' . esc_html($finishedAt === '' ? '-' : $this->formatProcessTimestamp($finishedAt)) . '</td>';
                 echo '<td>' . esc_html($this->formatProcessDurationInMinutes((int)($process['last_duration_seconds'] ?? 0), $finishedAt !== '')) . '</td>';
-                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
                 echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
                 echo '<td>' . $this->renderProcessActionsHtml($process, $this->getMonitoringPageUrl()) . '</td>';
                 echo '</tr>';
@@ -1487,7 +1487,7 @@ class Settings {
             return __('Not run yet', 'rrze-multisite-manager');
         }
 
-        return get_date_from_gmt($timestamp, get_option('date_format') . ' ' . get_option('time_format'));
+        return get_date_from_gmt($timestamp, 'd.m.Y H:i');
     }
 
     protected function formatScheduledTimestamp(int $timestamp): string {
@@ -1495,7 +1495,7 @@ class Settings {
             return __('Not scheduled', 'rrze-multisite-manager');
         }
 
-        return wp_date(get_option('date_format') . ' ' . get_option('time_format'), $timestamp);
+        return wp_date('d.m.Y H:i', $timestamp);
     }
 
     protected function formatProcessDuration(int $seconds, bool $treatZeroAsEmpty = true): string {

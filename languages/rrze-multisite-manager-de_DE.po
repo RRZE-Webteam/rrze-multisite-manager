@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-09-23T13:56:59+00:00\n"
+"POT-Creation-Date: 2026-09-23T14:02:16+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -2250,7 +2250,7 @@ msgid "URL"
 msgstr "URL"
 
 #: includes/Settings.php:955 includes/Settings.php:1091
-#: includes/Settings.php:1216 includes/Settings.php:1316
+#: includes/Settings.php:1217 includes/Settings.php:1316
 #: templates/plugin-details-page.php:51 templates/site-details-page.php:52
 #: templates/site-details-page.php:317
 msgid "Status"
@@ -2449,25 +2449,25 @@ msgstr "Prozess"
 msgid "Description"
 msgstr "Beschreibung"
 
-#: includes/Settings.php:1217
+#: includes/Settings.php:1216 includes/Widgets/SummaryWidget.php:34
+msgid "Sites"
+msgstr "Sites"
+
+#: includes/Settings.php:1218
 msgid "Interval (hrs.)"
 msgstr "Intervall (Std.)"
 
-#: includes/Settings.php:1219
+#: includes/Settings.php:1220
 msgid "Progress"
 msgstr "Fortschritt"
 
-#: includes/Settings.php:1220
+#: includes/Settings.php:1221
 msgid "Remaining"
 msgstr "Rest"
 
-#: includes/Settings.php:1222
+#: includes/Settings.php:1223
 msgid "Last active"
 msgstr "Zuletzt aktiv"
-
-#: includes/Settings.php:1223
-msgid "Last site count"
-msgstr "Letzte Site-Anzahl"
 
 #: includes/Settings.php:1228 includes/Settings.php:1269
 msgid "End"
@@ -3233,10 +3233,6 @@ msgstr "Kernzahlen"
 #: includes/Widgets/SummaryWidget.php:17
 msgid "A quick overview for this multisite."
 msgstr "Der schnelle Einstieg für diese Multisite."
-
-#: includes/Widgets/SummaryWidget.php:34
-msgid "Sites"
-msgstr "Sites"
 
 #. translators: %d: number of active sites.
 #: includes/Widgets/SummaryWidget.php:38
@@ -5157,6 +5153,9 @@ msgstr "Derzeit liegen keine aktiven Plugins im Netzwerk vor."
 #: templates/widgets/status-widget.php:14
 msgid "Quick explanation"
 msgstr "Kurz erklärt"
+
+#~ msgid "Last site count"
+#~ msgstr "Letzte Site-Anzahl"
 
 #~ msgid ""
 #~ "Detailed view of a single website with status, user, content, and storage "
