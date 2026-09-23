@@ -904,6 +904,7 @@ class Settings {
         $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage);
         $processes = $processPage['processes'];
         $hasMore = !empty($processPage['has_more']);
+        $unscheduledSiteCount = $scheduler->getUnscheduledEligibleSiteCount();
 
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
         echo '<header class="rrze-msm-widget-header">';
@@ -1007,10 +1008,12 @@ class Settings {
         $this->renderMonitoringTablePagination('storage_monitoring_page', $currentPage, $hasMore);
         echo '</div>';
         echo '<p class="rrze-msm-site-actions">';
-        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_site_storage_analysis_schedules')) . '">';
-        wp_nonce_field('rrze_multisite_manager_initialize_site_storage_analysis_schedules');
-        echo '<button type="submit" class="button button-secondary">' . esc_html__('Initialize storage analysis for newly created websites', 'rrze-multisite-manager') . '</button>';
-        echo '</form>';
+        if ($unscheduledSiteCount > 0) {
+            echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_site_storage_analysis_schedules')) . '">';
+            wp_nonce_field('rrze_multisite_manager_initialize_site_storage_analysis_schedules');
+            echo '<button type="submit" class="button button-secondary">' . esc_html__('Initialize storage analysis for newly created websites', 'rrze-multisite-manager') . '</button>';
+            echo '</form>';
+        }
         echo '<button type="button" class="button button-secondary rrze-msm-button-danger rrze-msm-open-storage-schedule-reset-modal">' . esc_html__('Reset storage analysis schedulers', 'rrze-multisite-manager') . '</button>';
         echo '</p>';
         echo '<div class="rrze-msm-modal" id="rrze-msm-storage-schedule-reset-modal" hidden>';
@@ -1036,6 +1039,7 @@ class Settings {
         $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage);
         $processes = $processPage['processes'];
         $hasMore = !empty($processPage['has_more']);
+        $unscheduledSiteCount = $scheduler->getUnscheduledActiveSiteCount();
         $monitoringUrl = add_query_arg(
             [
                 'page' => $this->getMonitoringSlug(),
@@ -1141,10 +1145,12 @@ class Settings {
         }
 
         echo '<p class="rrze-msm-site-actions">';
-        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules')) . '">';
-        wp_nonce_field('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules');
-        echo '<button type="submit" class="button button-secondary">' . esc_html__('Initialize shortcode and block analysis for newly created websites', 'rrze-multisite-manager') . '</button>';
-        echo '</form>';
+        if ($unscheduledSiteCount > 0) {
+            echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules')) . '">';
+            wp_nonce_field('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules');
+            echo '<button type="submit" class="button button-secondary">' . esc_html__('Initialize shortcode and block analysis for newly created websites', 'rrze-multisite-manager') . '</button>';
+            echo '</form>';
+        }
         echo '<button type="button" class="button button-secondary rrze-msm-button-danger rrze-msm-open-shortcode-block-schedule-reset-modal">' . esc_html__('Reset shortcode/block analysis schedulers', 'rrze-multisite-manager') . '</button>';
         echo '</p>';
         echo '<div class="rrze-msm-modal" id="rrze-msm-shortcode-block-schedule-reset-modal" hidden>';
@@ -1622,6 +1628,13 @@ class Settings {
     protected function renderProcessActionsHtml(array $process, string $redirectTo = ''): string {
         $processId = (string)($process['id'] ?? '');
         $html = '<div class="rrze-msm-process-actions">';
+
+        if (!empty($process['is_running'])) {
+            $html .= '<span>' . esc_html__('Running', 'rrze-multisite-manager') . '</span>';
+            $html .= '</div>';
+
+            return $html;
+        }
 
         if ($processId === 'dashboard-metrics') {
             $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_metrics')) . '">';
