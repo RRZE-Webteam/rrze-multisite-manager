@@ -17,6 +17,16 @@
     white-space: normal;
 }
 
+.rrze-msm-site-hover-actions-table .rrze-msm-site-overview-site .row-actions {
+    visibility: hidden;
+    margin-top: 4px;
+}
+
+.rrze-msm-site-hover-actions-table tbody tr:hover .rrze-msm-site-overview-site .row-actions,
+.rrze-msm-site-hover-actions-table tbody tr:focus-within .rrze-msm-site-overview-site .row-actions {
+    visibility: visible;
+}
+
 .rrze-msm-site-overview-text-actions .rrze-msm-site-overview-table th.rrze-msm-col-actions,
 .rrze-msm-site-overview-text-actions .rrze-msm-site-overview-table td.rrze-msm-col-actions {
     width: 20%;

@@ -36,6 +36,7 @@ if (!defined('ABSPATH')) {
                 'show_network_button' => true,
                 'highlight_network_plugins' => true,
                 'network_plugins_url' => (string)$network_plugins_url,
+                'action_mode' => 'text',
             ]
         );
         ?>

@@ -260,12 +260,14 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                     );
                     ?></p></div>
                 <?php } ?>
-                <form method="post" action="<?php echo esc_url($request_action); ?>">
-                    <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
-                    <input type="hidden" name="redirect_to" value="<?php echo esc_attr(add_query_arg(['site_id' => (int)$site_id, 'analysis_tab' => $analysisTab], $analysis_base_url)); ?>">
-                    <?php wp_nonce_field('rrze_msm_request_shortcode_block_analysis_' . (int)$site_id); ?>
-                    <button type="submit" class="button button-secondary"><?php echo esc_html__('Request analysis', 'rrze-multisite-manager'); ?></button>
-                </form>
+                <?php if (!empty($can_request_analysis)) { ?>
+                    <form method="post" action="<?php echo esc_url($request_action); ?>">
+                        <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                        <input type="hidden" name="redirect_to" value="<?php echo esc_attr(add_query_arg(['site_id' => (int)$site_id, 'analysis_tab' => $analysisTab], $analysis_base_url)); ?>">
+                        <?php wp_nonce_field('rrze_msm_request_shortcode_block_analysis_' . (int)$site_id); ?>
+                        <button type="submit" class="button button-secondary"><?php echo esc_html__('Request analysis', 'rrze-multisite-manager'); ?></button>
+                    </form>
+                <?php } ?>
             </section>
 
             <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Analysis result types', 'rrze-multisite-manager'); ?>">

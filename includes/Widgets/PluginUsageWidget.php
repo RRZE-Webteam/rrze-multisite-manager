@@ -35,7 +35,7 @@ class PluginUsageWidget extends Widgets {
         $showActiveSiteList = !empty($args['show_active_site_list']);
         $showNetworkButton = !empty($args['show_network_button']);
         $highlightNetworkPlugins = !empty($args['highlight_network_plugins']);
-        $actionMode = (string)($args['action_mode'] ?? 'icon');
+        $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionModeClass = $actionMode === 'text' ? 'rrze-msm-plugin-table-text-actions' : 'rrze-msm-plugin-table-icon-actions';
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $networkPluginsUrl = (string)($args['network_plugins_url'] ?? network_admin_url('plugins.php'));
@@ -493,7 +493,7 @@ class PluginUsageWidget extends Widgets {
         return (string)ob_get_clean();
     }
 
-    protected function renderPluginActionLink(string $url, string $label, string $icon, string $accent = '', string $displayMode = 'icon'): string {
+    protected function renderPluginActionLink(string $url, string $label, string $icon, string $accent = '', string $displayMode = 'text'): string {
         $classes = trim('button button-small rrze-msm-site-action ' . ($accent !== '' ? 'rrze-msm-site-action-' . $accent . ' ' : '') . ($displayMode === 'text' ? 'rrze-msm-site-action-text' : 'rrze-msm-site-action-icon'));
 
         if ($displayMode === 'text') {
@@ -503,7 +503,7 @@ class PluginUsageWidget extends Widgets {
         return '<a class="' . esc_attr($classes) . '" href="' . esc_url($url) . '" title="' . esc_attr($label) . '" aria-label="' . esc_attr($label) . '"><span class="dashicons dashicons-' . esc_attr($icon) . '" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html($label) . '</span></a>';
     }
 
-    protected function renderPluginActionButton(string $label, string $icon, string $accent = '', array $dataAttributes = [], string $displayMode = 'icon'): string {
+    protected function renderPluginActionButton(string $label, string $icon, string $accent = '', array $dataAttributes = [], string $displayMode = 'text'): string {
         $classes = trim('button button-small rrze-msm-site-action rrze-msm-open-plugin-deactivate-modal ' . ($accent !== '' ? 'rrze-msm-site-action-' . $accent . ' ' : '') . ($displayMode === 'text' ? 'rrze-msm-site-action-text' : 'rrze-msm-site-action-icon'));
         $attributes = '';
         $attributeName = '';
