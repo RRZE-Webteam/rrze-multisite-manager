@@ -1198,9 +1198,16 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function isSiteUnscheduled(int $siteId): bool {
-        return $this->isSiteActive($siteId)
-            && !$this->isRunning($siteId)
-            && $this->getNextRecurringScheduledTimestamp($siteId) <= 0;
+        if (!$this->isSiteActive($siteId)) {
+            return false;
+        }
+
+        $status = $this->getStatus($siteId);
+
+        return (string)($status['status'] ?? '') !== 'running'
+            && $this->getNextRecurringScheduledTimestamp($siteId) <= 0
+            && empty($status['last_started_at'])
+            && empty($status['last_finished_at']);
     }
 
     protected function isRunning(int $siteId): bool {

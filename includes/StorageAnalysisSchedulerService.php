@@ -130,7 +130,7 @@ class StorageAnalysisSchedulerService {
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
 
-            if (!$this->isSiteEligible($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
+            if (!$this->isSiteAwaitingInitialSchedule($siteId)) {
                 continue;
             }
 
@@ -153,7 +153,7 @@ class StorageAnalysisSchedulerService {
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
 
-            if ($this->isSiteEligible($siteId) && $this->getNextRecurringScheduledTimestamp($siteId) <= 0) {
+            if ($this->isSiteAwaitingInitialSchedule($siteId)) {
                 $count++;
             }
         }
@@ -580,6 +580,19 @@ class StorageAnalysisSchedulerService {
         return 'inactive';
     }
 
+    protected function isSiteAwaitingInitialSchedule(int $siteId): bool {
+        if (!$this->isSiteEligible($siteId)) {
+            return false;
+        }
+
+        $status = $this->getStatus($siteId);
+
+        return (int)($status['next_recurring_run_timestamp'] ?? 0) <= 0
+            && empty($status['last_started_at'])
+            && empty($status['last_finished_at'])
+            && empty($status['last_completed_at']);
+    }
+
     protected function scheduleRecurringAnalysis(int $siteId): void {
         $delay = MINUTE_IN_SECONDS + ($siteId % (5 * MINUTE_IN_SECONDS));
         $this->scheduleRecurringAnalysisAt($siteId, time() + $delay);
@@ -762,7 +775,6 @@ class StorageAnalysisSchedulerService {
         if (
             $nextRunTimestamp > time()
             && !empty($scheduleStatus['last_completed_at'])
-            && !empty($analysisStatus['has_cached_analysis'])
         ) {
             return 'ok';
         }

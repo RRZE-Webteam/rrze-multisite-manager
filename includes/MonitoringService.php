@@ -32,7 +32,6 @@ class MonitoringService {
     protected const OPTION_RUN_LOG = 'rrze_msm_monitoring_run_log';
     protected const LOCK_KEY = 'rrze_msm_monitoring_lock';
     protected const LOCK_TTL = 900;
-    protected const BATCH_SIZE = 20;
     protected const MAX_SITE_HISTORY_ENTRIES = 10;
     protected const MAX_RUN_EVENT_ENTRIES = 12;
 
@@ -155,7 +154,7 @@ class MonitoringService {
         $lastSiteCount = (int)get_site_option(self::OPTION_LAST_SITE_COUNT, 0);
         $batchOffset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
         $batchTotal = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
-        $isRunning = $this->isMonitoringLocked();
+        $isExecuting = $this->isMonitoringLocked();
         $runState = $this->getRunState();
         $runHistory = $this->getRunHistory();
         $lastRunEntry = !empty($runHistory[0]) && is_array($runHistory[0]) ? $runHistory[0] : [];
@@ -164,7 +163,11 @@ class MonitoringService {
             (string)($lastRunEntry['started_at'] ?? ''),
             (string)($lastRunEntry['finished_at'] ?? '')
         );
-        $checkedSites = $isRunning ? (int)($runState['checked_sites'] ?? 0) : $lastSiteCount;
+        $hasOpenBatch = $batchTotal > 0 && $batchOffset < $batchTotal;
+        $isRunning = $isExecuting || ($hasOpenBatch && !empty($runState));
+        $checkedSites = $hasOpenBatch
+            ? max($batchOffset, (int)($runState['checked_sites'] ?? 0))
+            : $lastSiteCount;
         $remainingSites = max(0, ($batchTotal > 0 ? $batchTotal : $lastSiteCount) - $checkedSites);
         $progressPercent = ($batchTotal > 0 && $checkedSites > 0)
             ? (int)round(($checkedSites / $batchTotal) * 100)
@@ -178,7 +181,7 @@ class MonitoringService {
         $nextRunTimestamp = $hasOpenBatch && $nextBatchRunTimestamp > 0
             ? $nextBatchRunTimestamp
             : $nextRecurringRunTimestamp;
-        $isStale = $this->isMonitoringRunStale($isRunning, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
+        $isStale = $this->isMonitoringRunStale($isExecuting, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
 
         return [
             [
@@ -222,6 +225,11 @@ class MonitoringService {
     }
 
     public function startMonitoringRun(bool $runImmediately = true): void {
+        if ($this->isMonitoringLocked() || $this->isMonitoringRunInProgress()) {
+            $this->scheduleNextBatch(5);
+            return;
+        }
+
         $this->clearPendingBatchEvents();
         $this->resetBatchState();
         $this->initializeRunState($runImmediately ? 'manual' : 'scheduled');
@@ -303,7 +311,7 @@ class MonitoringService {
     }
 
     protected function getBatchSize(): int {
-        return self::BATCH_SIZE;
+        return $this->config->getMonitoringBatchSize();
     }
 
     protected function scheduleNextBatch(int $delay = 30): void {
@@ -373,6 +381,13 @@ class MonitoringService {
 
     protected function isMonitoringLocked(): bool {
         return (int)get_site_transient(self::LOCK_KEY) > 0;
+    }
+
+    public function isMonitoringRunInProgress(): bool {
+        $offset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
+        $total = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
+
+        return $total > 0 && $offset < $total && !empty($this->getRunState());
     }
 
     protected function getNextScheduledHookTimestamp(string $hook, bool $recurring): int {

@@ -17,7 +17,6 @@ class MetricsService {
     protected const DASHBOARD_BATCH_OFFSET_OPTION = 'rrze_msm_dashboard_metrics_batch_offset';
     protected const DASHBOARD_BATCH_TOTAL_OPTION = 'rrze_msm_dashboard_metrics_batch_total';
     protected const DASHBOARD_BATCH_STATE_OPTION = 'rrze_msm_dashboard_metrics_batch_state';
-    protected const DASHBOARD_BATCH_SIZE = 25;
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
     protected const SITE_DETAIL_CACHE_VERSION_META = 'rrze_msm_site_detail_cache_version';
     protected const SITE_STORAGE_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_storage_analysis_result';
@@ -26,7 +25,8 @@ class MetricsService {
     protected const STORAGE_ANALYSIS_CLEANUP_HOOK = 'rrze_msm_cleanup_legacy_storage_analysis_data';
     protected const STORAGE_ANALYSIS_CLEANUP_VERSION_OPTION = 'rrze_msm_storage_analysis_cleanup_version';
     protected const STORAGE_ANALYSIS_CLEANUP_OFFSET_OPTION = 'rrze_msm_storage_analysis_cleanup_offset';
-    protected const STORAGE_ANALYSIS_CLEANUP_VERSION = 1;
+    // Version 2 also removes expired legacy base/orphan work states added after the initial cleanup.
+    protected const STORAGE_ANALYSIS_CLEANUP_VERSION = 2;
     protected const STORAGE_ANALYSIS_CLEANUP_BATCH_SIZE = 25;
     protected const STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION = 'rrze_msm_storage_analysis_cleanup_lock';
@@ -234,7 +234,7 @@ class MetricsService {
             return (array)($cached['data'] ?? []);
         }
 
-        $this->scheduleDashboardRefresh(5);
+        $this->scheduleDashboardRefresh(5, true);
 
         return $this->getEmptyDashboardDataPayload();
     }
@@ -392,12 +392,13 @@ class MetricsService {
     }
 
     public function startDashboardRefreshRun(bool $runImmediately = true): void {
-        if ($this->isDashboardRefreshLocked()) {
-            $this->scheduleDashboardRefresh(5);
+        if ($this->isDashboardRefreshLocked() || $this->isDashboardRefreshInProgress()) {
+            $this->scheduleDashboardRefresh(5, true);
             return;
         }
 
         $this->markDashboardCacheDirty(false);
+        $this->clearScheduledDashboardRefreshEvents();
         $this->resetDashboardRefreshBatchState();
 
         if ($runImmediately) {
@@ -405,7 +406,7 @@ class MetricsService {
             return;
         }
 
-        $this->scheduleDashboardRefresh(5);
+        $this->scheduleDashboardRefresh(5, true);
     }
 
     public function resetDashboardRefreshState(): void {
@@ -497,7 +498,8 @@ class MetricsService {
         $batchTotal = (int)get_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
         $batchState = $this->getDashboardRefreshBatchState();
         $startedAtTimestamp = (int)($batchState['started_at'] ?? 0);
-        $isRunning = $this->isDashboardRefreshLocked();
+        $isExecuting = $this->isDashboardRefreshLocked();
+        $isRunning = $this->isDashboardRefreshInProgress();
         $currentDurationSeconds = ($isRunning && $startedAtTimestamp > 0)
             ? max(0, time() - $startedAtTimestamp)
             : 0;
@@ -506,7 +508,7 @@ class MetricsService {
         $progressPercent = ($batchTotal > 0 && $checkedSites > 0)
             ? (int)round(($checkedSites / $batchTotal) * 100)
             : 0;
-        $isStale = $this->isDashboardRefreshStale($isRunning, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
+        $isStale = $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
 
         if ($hasData) {
             $siteCount = count((array)($cached['data']['site_overview'] ?? []));
@@ -555,7 +557,7 @@ class MetricsService {
                 'checked_sites' => (int)($status['checked_sites'] ?? 0),
                 'remaining_sites' => (int)($status['remaining_sites'] ?? 0),
                 'progress_percent' => (int)($status['progress_percent'] ?? 0),
-                'batch_size' => self::DASHBOARD_BATCH_SIZE,
+                'batch_size' => $this->config->getMonitoringBatchSize(),
                 'current_duration_seconds' => (int)($status['current_duration_seconds'] ?? 0),
                 'last_duration_seconds' => (int)($status['last_duration_seconds'] ?? 0),
                 'run_state' => [
@@ -600,7 +602,7 @@ class MetricsService {
 
         $siteIds = get_sites([
             'fields' => 'ids',
-            'number' => self::DASHBOARD_BATCH_SIZE,
+            'number' => $this->config->getMonitoringBatchSize(),
             'offset' => max(0, $offset),
             'orderby' => 'registered',
             'order' => 'DESC',
@@ -669,7 +671,7 @@ class MetricsService {
         update_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, $nextOffset);
         update_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, $totalSites);
         $this->releaseDashboardRefreshLock();
-        $this->scheduleDashboardRefresh($manual ? 5 : 20);
+        $this->scheduleDashboardRefresh($manual ? 5 : 20, true);
     }
 
     protected function getMonthlyGrowth(): array {
@@ -9161,20 +9163,33 @@ class MetricsService {
         add_action('update_site_option_blog_upload_space', [$this, 'invalidateCaches'], 20, 4);
     }
 
-    protected function scheduleDashboardRefresh(int $delay = 60): void {
+    protected function scheduleDashboardRefresh(int $delay = 60, bool $isBatchContinuation = false): void {
         $scheduledAt = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
         $cached = $this->getStoredDashboardCache();
         $generatedAt = (int)($cached['generated_at'] ?? 0);
         $baseTimestamp = $generatedAt > 0 ? $generatedAt : time();
         $minimumRunTimestamp = $baseTimestamp + $this->getMetricsRefreshIntervalSeconds();
         $requestedTimestamp = time() + max(5, $delay);
-        $scheduleTimestamp = max($requestedTimestamp, $minimumRunTimestamp);
+        $scheduleTimestamp = $isBatchContinuation ? $requestedTimestamp : max($requestedTimestamp, $minimumRunTimestamp);
 
         if ($scheduledAt && (int)$scheduledAt > 0) {
-            return;
+            if ((int)$scheduledAt <= $scheduleTimestamp) {
+                return;
+            }
+
+            wp_unschedule_event((int)$scheduledAt, self::DASHBOARD_REFRESH_HOOK);
         }
 
         wp_schedule_single_event($scheduleTimestamp, self::DASHBOARD_REFRESH_HOOK);
+    }
+
+    protected function clearScheduledDashboardRefreshEvents(): void {
+        $timestamp = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+
+        while ($timestamp) {
+            wp_unschedule_event((int)$timestamp, self::DASHBOARD_REFRESH_HOOK);
+            $timestamp = wp_next_scheduled(self::DASHBOARD_REFRESH_HOOK);
+        }
     }
 
     protected function getMetricsRefreshIntervalMinutes(): int {
@@ -9206,6 +9221,13 @@ class MetricsService {
 
     protected function isDashboardRefreshLocked(): bool {
         return (int)get_site_transient(self::DASHBOARD_LOCK_KEY) > 0;
+    }
+
+    public function isDashboardRefreshInProgress(): bool {
+        $offset = (int)get_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, 0);
+        $total = (int)get_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
+
+        return $total > 0 && $offset < $total && !empty($this->getDashboardRefreshBatchState());
     }
 
     protected function isDashboardRefreshStale(bool $isRunning, int $batchTotal, int $checkedSites, int $nextRunTimestamp, int $currentDurationSeconds): bool {

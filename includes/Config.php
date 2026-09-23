@@ -104,6 +104,15 @@ class Config {
                         'max' => 10080,
                     ],
                     [
+                        'name' => 'batch_size',
+                        'label' => __('Batch size for network processes', 'rrze-multisite-manager'),
+                        'desc' => __('Number of websites processed in each batch for dashboard metrics and website availability checks. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 25,
+                        'min' => 5,
+                        'max' => 100,
+                    ],
+                    [
                         'name' => 'storage_analysis_browser_max_megabytes',
                         'label' => __('Maximum storage size for browser analysis in MB', 'rrze-multisite-manager'),
                         'desc' => __('Up to this WordPress-reported storage usage, the storage analysis can run in browser batches. Larger websites are processed exclusively by scheduled background tasks.', 'rrze-multisite-manager'),
@@ -284,6 +293,13 @@ class Config {
         $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_orphan_files_limit'] ?? 250) : 250;
 
         return max(10, min(5000, $limit));
+    }
+
+    public function getMonitoringBatchSize(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $size = is_array($options) ? (int)($options['monitoring_batch_size'] ?? 25) : 25;
+
+        return max(5, min(100, $size));
     }
 
     public function getShortcodeBlockAnalysisHook(): string {
