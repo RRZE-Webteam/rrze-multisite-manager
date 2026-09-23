@@ -188,6 +188,12 @@ class MonitoringService {
         $runState = $this->getRunState();
         $runHistory = $this->getRunHistory();
         $lastRunEntry = !empty($runHistory[0]) && is_array($runHistory[0]) ? $runHistory[0] : [];
+        $lastStartedAt = (string)($lastRunEntry['started_at'] ?? '');
+        $lastFinishedAt = (string)($lastRunEntry['finished_at'] ?? $lastRun);
+
+        if ($lastFinishedAt === '') {
+            $lastFinishedAt = $lastRun;
+        }
         $startedAtTimestamp = !empty($runState['started_at']) ? strtotime((string)$runState['started_at'] . ' GMT') : 0;
         $lastDurationSeconds = $this->calculateRunDurationSeconds(
             (string)($lastRunEntry['started_at'] ?? ''),
@@ -223,6 +229,8 @@ class MonitoringService {
                 'dns_failure_threshold' => $this->getDnsFailureThreshold(),
                 'http_failure_threshold' => $this->getHttpFailureThreshold(),
                 'last_run' => $lastRun,
+                'started_at' => $isRunning ? (string)($runState['started_at'] ?? '') : $lastStartedAt,
+                'finished_at' => $isRunning ? '' : $lastFinishedAt,
                 'last_site_count' => $lastSiteCount,
                 'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
                 'next_recurring_run_timestamp' => $nextRecurringRunTimestamp,
@@ -236,7 +244,7 @@ class MonitoringService {
                 'is_stale' => $isStale,
                 'batch_size' => $this->getBatchSize(),
                 'current_duration_seconds' => $currentDurationSeconds,
-                'last_duration_seconds' => $lastDurationSeconds,
+                'last_duration_seconds' => $isRunning ? 0 : $lastDurationSeconds,
                 'run_state' => $runState,
             ],
         ];

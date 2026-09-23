@@ -111,7 +111,8 @@ class Settings {
 
     public function getOptions(): array {
         $defaults = $this->defaultOptions();
-        $options = get_site_option($this->optionName, []);
+        $storedOptions = get_site_option($this->optionName, []);
+        $options = $storedOptions;
 
         if (!is_array($options)) {
             $options = [];
@@ -119,6 +120,14 @@ class Settings {
 
         $options = wp_parse_args($options, $defaults);
         $options = array_intersect_key($options, $defaults);
+
+        if (
+            is_array($storedOptions)
+            && !array_key_exists('monitoring_metrics_interval_hours', $storedOptions)
+            && isset($storedOptions['monitoring_metrics_interval_minutes'])
+        ) {
+            $options['monitoring_metrics_interval_hours'] = max(1, min(168, (int)ceil((int)$storedOptions['monitoring_metrics_interval_minutes'] / 60)));
+        }
 
         return $this->normalizeOptions($options);
     }
@@ -1202,18 +1211,22 @@ class Settings {
         if (!empty($processes)) {
             echo '<table class="widefat striped rrze-msm-table">';
             echo '<thead><tr>';
-            echo '<th>' . esc_html__('Process', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Description', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
-            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Interval (hrs.)', 'rrze-multisite-manager') . '</th>';
+            echo '<th rowspan="2">' . esc_html__('Process', 'rrze-multisite-manager') . '</th>';
+            echo '<th rowspan="2">' . esc_html__('Description', 'rrze-multisite-manager') . '</th>';
+            echo '<th rowspan="2">' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Interval (hrs.)', 'rrze-multisite-manager') . '</th>';
             if ($showProgressColumns) {
-                echo '<th class="rrze-msm-col-numeric">' . esc_html__('Progress', 'rrze-multisite-manager') . '</th>';
-                echo '<th class="rrze-msm-col-numeric">' . esc_html__('Remaining', 'rrze-multisite-manager') . '</th>';
+                echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Progress', 'rrze-multisite-manager') . '</th>';
+                echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Remaining', 'rrze-multisite-manager') . '</th>';
             }
-            echo '<th>' . esc_html__('Last active', 'rrze-multisite-manager') . '</th>';
-            echo '<th class="rrze-msm-col-numeric">' . esc_html__('Last site count', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
+            echo '<th colspan="3">' . esc_html__('Last active', 'rrze-multisite-manager') . '</th>';
+            echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Last site count', 'rrze-multisite-manager') . '</th>';
+            echo '<th rowspan="2">' . esc_html__('Next run', 'rrze-multisite-manager') . '</th>';
+            echo '<th rowspan="2">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
+            echo '</tr><tr>';
+            echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('End', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Duration', 'rrze-multisite-manager') . '</th>';
             echo '</tr></thead><tbody>';
 
             foreach ($processes as $process) {
@@ -1221,12 +1234,15 @@ class Settings {
                 echo '<td>' . esc_html((string)($process['title'] ?? '')) . '</td>';
                 echo '<td>' . $this->renderProcessDescriptionHtml($process) . '</td>';
                 echo '<td>' . $this->renderProcessStatusHtml($process) . '</td>';
-                echo '<td class="rrze-msm-col-numeric">' . esc_html(!empty($process['interval_label']) ? (string)$process['interval_label'] : number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
                 if ($showProgressColumns) {
                     echo '<td>' . $this->renderProcessProgressHtml($process) . '</td>';
                     echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatProcessRemaining($process)) . '</td>';
                 }
-                echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['last_run'] ?? ''))) . '</td>';
+                $finishedAt = (string)($process['finished_at'] ?? '');
+                echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['started_at'] ?? ''))) . '</td>';
+                echo '<td>' . esc_html($finishedAt === '' ? '-' : $this->formatProcessTimestamp($finishedAt)) . '</td>';
+                echo '<td>' . esc_html($this->formatProcessDurationInMinutes((int)($process['last_duration_seconds'] ?? 0), $finishedAt !== '')) . '</td>';
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
                 echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
                 echo '<td>' . $this->renderProcessActionsHtml($process, $this->getMonitoringPageUrl()) . '</td>';
@@ -1509,6 +1525,26 @@ class Settings {
         }
 
         return implode(' ', $parts);
+    }
+
+    protected function formatProcessDurationInMinutes(int $seconds, bool $hasFinished): string {
+        if (!$hasFinished) {
+            return '-';
+        }
+
+        $minutes = (int)floor($seconds / MINUTE_IN_SECONDS);
+
+        if ($minutes <= 0) {
+            return sprintf(
+                _n('%d sec.', '%d sec.', $seconds, 'rrze-multisite-manager'),
+                $seconds
+            );
+        }
+
+        return sprintf(
+            _n('%d min.', '%d min.', $minutes, 'rrze-multisite-manager'),
+            $minutes
+        );
     }
 
     protected function formatProcessProgress(array $process): string {

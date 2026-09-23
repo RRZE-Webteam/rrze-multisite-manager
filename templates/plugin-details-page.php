@@ -7,7 +7,6 @@ defined('ABSPATH') || exit;
         <div class="rrze-msm-page-header">
             <div>
                 <h1><?php echo esc_html__('Plugin Details', 'rrze-multisite-manager'); ?></h1>
-                <p><?php echo esc_html__('Detailed view of a single plugin with metadata, usage, and technical code analysis.', 'rrze-multisite-manager'); ?></p>
             </div>
             <div class="rrze-msm-header-controls">
                 <?php if (!empty($plugin_details)) { ?>

@@ -337,16 +337,12 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function getUnscheduledActiveSiteCount(): int {
-        $count = 0;
-        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
-
-        foreach ($siteIds as $siteId) {
-            if ($this->isSiteUnscheduled((int)$siteId)) {
-                $count++;
-            }
-        }
-
-        return $count;
+        /*
+         * This value only controls whether the initialization action is shown.
+         * A complete per-site status scan here would make the paginated
+         * monitoring page load all websites again.
+         */
+        return (bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false) ? 0 : 1;
     }
 
     public function initializeUnscheduledActiveSites(): int {

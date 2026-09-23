@@ -144,21 +144,12 @@ class StorageAnalysisSchedulerService {
     }
 
     public function getUnscheduledEligibleSiteCount(): int {
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
-        $count = 0;
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if ($this->isSiteAwaitingInitialSchedule($siteId)) {
-                $count++;
-            }
-        }
-
-        return $count;
+        /*
+         * This value only controls whether the initialization action is shown.
+         * Scanning every blog and its options during table rendering defeats
+         * server-side pagination and can exhaust the request on large networks.
+         */
+        return (bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false) ? 0 : 1;
     }
 
     public function reconcileSiteSchedule(int $siteId): void {
