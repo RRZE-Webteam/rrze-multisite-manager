@@ -413,10 +413,11 @@ class PluginUsageWidget extends Widgets {
 
     protected function renderPluginActiveSitesHtml(array $plugin): string {
         $activeSites = is_array($plugin['active_sites'] ?? null) ? $plugin['active_sites'] : [];
-        $isTruncated = !empty($plugin['active_sites_truncated']);
         $siteCount = (int)($plugin['site_count'] ?? count($activeSites));
         $site = [];
         $perPage = 20;
+        $isTruncated = !empty($plugin['active_sites_truncated']) || count($activeSites) > $perPage;
+        $activeSites = array_slice($activeSites, 0, $perPage);
         $totalPages = (int)ceil(count($activeSites) / $perPage);
         $index = 0;
         $page = 1;

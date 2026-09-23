@@ -42,7 +42,8 @@ class MetricsService {
     protected const STORAGE_CONTENT_USAGE_MATCHES_LIMIT = 50;
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
     protected const DASHBOARD_LOCK_TTL = 900;
-    protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 100;
+    // Site lists are embedded in every matching plugin and theme row.
+    protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 20;
     protected const DASHBOARD_BATCH_EVENT_ARGS = ['rrze_msm_dashboard_metrics_batch' => true];
     protected ?Settings $settings;
     protected Config $config;
