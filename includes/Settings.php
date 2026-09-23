@@ -780,7 +780,6 @@ class Settings {
         echo '<div class="rrze-msm-page-header">';
         echo '<div>';
         echo '<h1>' . esc_html__('Monitoring', 'rrze-multisite-manager') . '</h1>';
-        echo '<p>' . esc_html__('Overview of monitoring processes, completed runs, and the latest detected issues.', 'rrze-multisite-manager') . '</p>';
         echo '</div>';
         echo '<div class="rrze-msm-header-controls">';
         echo '<button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="' . esc_attr($this->getColorMode() === 'dark' ? 'light' : 'dark') . '">';
@@ -900,12 +899,12 @@ class Settings {
         echo '<thead><tr>';
         echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="url" data-sort-direction="asc"><span>' . esc_html__('URL', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
         echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="status" data-sort-direction="asc"><span>' . esc_html__('Status', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
-        echo '<th>' . esc_html__('Base analysis', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Orphan check', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Metadata analysis', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('File index', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Orphans', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Metadata', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Runtime', 'rrze-multisite-manager') . '</th>';
-        echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="last-run" data-sort-direction="desc"><span>' . esc_html__('Last run', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
-        echo '<th>' . esc_html__('Cycle', 'rrze-multisite-manager') . '</th>';
+        echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="last-run" data-sort-direction="desc"><span>' . esc_html__('Finished', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
         echo '<th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th>';
         echo '<th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
@@ -939,7 +938,8 @@ class Settings {
             echo '</div>';
             echo '</td>';
             echo '<td><span class="rrze-msm-badge ' . esc_attr($statusClass) . '">' . esc_html((string)($process['status'] ?? '')) . '</span></td>';
-            echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base');
+            echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
+            echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base', true);
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'orphan', true);
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'metadata', true);
             $durationSeconds = (int)($process['last_duration_seconds'] ?? 0);
@@ -950,7 +950,6 @@ class Settings {
                     : $this->formatProcessDuration($durationSeconds));
             echo '<td>' . esc_html($durationLabel) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp($lastRun)) . '</td>';
-            echo '<td>' . esc_html((string)($process['cycle'] ?? '')) . '</td>';
             echo '<td>' . esc_html(!empty($process['is_due']) ? __('Waiting for cron', 'rrze-multisite-manager') : $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
             echo '<td class="rrze-msm-col-actions">';
 
@@ -982,7 +981,7 @@ class Settings {
             echo '<button type="submit" class="button button-secondary">' . esc_html__('Initialize storage analysis for newly created websites', 'rrze-multisite-manager') . '</button>';
             echo '</form>';
         }
-        echo '<button type="button" class="button button-secondary rrze-msm-button-danger rrze-msm-open-storage-schedule-reset-modal">' . esc_html__('Reinitialize all scheduler tasks', 'rrze-multisite-manager') . '</button>';
+        echo '<button type="button" class="button button-secondary rrze-msm-button-danger rrze-msm-open-storage-schedule-reset-modal">' . esc_html__('Reset storage analysis schedulers', 'rrze-multisite-manager') . '</button>';
         echo '</p>';
         echo '<div class="rrze-msm-modal" id="rrze-msm-storage-schedule-reset-modal" hidden>';
         echo '<div class="rrze-msm-modal-backdrop rrze-msm-close-storage-schedule-reset-modal"></div>';
@@ -1043,12 +1042,12 @@ class Settings {
             echo '</select>';
             echo '</div></div>';
             echo '<table class="widefat striped rrze-msm-table"><thead><tr>';
-            echo '<th>' . esc_html__('URL', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Shortcode analysis', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Block analysis', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Last run', 'rrze-multisite-manager') . '</th>';
-            echo '<th>' . esc_html__('Cycle', 'rrze-multisite-manager') . '</th>';
+            echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="url" data-sort-direction="asc"><span>' . esc_html__('URL', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
+            echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="status" data-sort-direction="asc"><span>' . esc_html__('Status', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
+            echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Shortcodes', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Blocks', 'rrze-multisite-manager') . '</th>';
+            echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="last-run" data-sort-direction="desc"><span>' . esc_html__('Finished', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
             echo '<th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
             echo '</tr></thead><tbody>';
@@ -1091,10 +1090,10 @@ class Settings {
                 echo '</div>';
                 echo '</td>';
                 echo '<td><span class="rrze-msm-badge ' . esc_attr($statusClass) . '">' . esc_html($statusLabels[$statusKey] ?? $statusLabels['not_scheduled']) . '</span></td>';
-                echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'shortcodes');
+                echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
+                echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'shortcodes', true);
                 echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'blocks', true);
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['last_finished_at'] ?? ''))) . '</td>';
-                echo '<td>' . esc_html((string)($process['cycle'] ?? '')) . '</td>';
                 echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
                 echo '<td class="rrze-msm-col-actions">';
 
@@ -1128,7 +1127,7 @@ class Settings {
             echo '<button type="submit" class="button button-secondary">' . esc_html__('Initialize shortcode and block analysis for newly created websites', 'rrze-multisite-manager') . '</button>';
             echo '</form>';
         }
-        echo '<button type="button" class="button button-secondary rrze-msm-button-danger rrze-msm-open-shortcode-block-schedule-reset-modal">' . esc_html__('Reinitialize all scheduler tasks', 'rrze-multisite-manager') . '</button>';
+        echo '<button type="button" class="button button-secondary rrze-msm-button-danger rrze-msm-open-shortcode-block-schedule-reset-modal">' . esc_html__('Reset shortcode/block analysis schedulers', 'rrze-multisite-manager') . '</button>';
         echo '</p>';
         echo '<div class="rrze-msm-modal" id="rrze-msm-shortcode-block-schedule-reset-modal" hidden>';
         echo '<div class="rrze-msm-modal-backdrop rrze-msm-close-shortcode-block-schedule-reset-modal"></div>';
