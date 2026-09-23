@@ -95,7 +95,7 @@ class MetricsService {
     }
 
     /**
-     * Deletes obsolete, potentially very large storage-analysis results in small batches.
+     * Deletes obsolete, potentially very large storage-analysis transient data in small batches.
      */
     public function runLegacyStorageAnalysisCleanup(): void {
         if (!$this->acquireLegacyStorageAnalysisCleanupLock()) {
@@ -118,20 +118,6 @@ class MetricsService {
             'orderby' => 'id',
             'order' => 'ASC',
         ]);
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if ($siteId <= 0) {
-                continue;
-            }
-
-            switch_to_blog($siteId);
-            delete_option(self::SITE_STORAGE_ANALYSIS_RESULT_OPTION);
-            delete_option(self::SITE_STORAGE_ANALYSIS_RESULT_META_OPTION);
-            delete_option(self::SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION);
-            restore_current_blog();
-        }
 
         $hasRemainingTransients = $this->deleteLegacyStorageAnalysisTransients();
 

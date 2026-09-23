@@ -564,7 +564,9 @@ abstract class Widgets {
     }
 
     public function renderPieChart(array $items, string $emptyMessage, array $args = []): string {
-        $items = $this->normalizePieChartItems($items);
+        if (!array_key_exists('aggregate_small_items', $args) || !empty($args['aggregate_small_items'])) {
+            $items = $this->normalizePieChartItems($items);
+        }
         $gradient = $this->getPieGradient($items);
         $centerTitle = trim((string)($args['center_title'] ?? ''));
         $centerValue = trim((string)($args['center_value'] ?? ''));
@@ -625,6 +627,26 @@ abstract class Widgets {
         echo '</div>';
 
         return (string)ob_get_clean();
+    }
+
+    protected function formatWebsiteUsageItems(array $items): array {
+        $item = [];
+        $value = 0;
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $value = max(0, (int)($item['value'] ?? 0));
+            $items[$index]['value_label'] = sprintf(
+                /* translators: %d: number of websites. */
+                _n('%d website', '%d websites', $value, 'rrze-multisite-manager'),
+                number_format_i18n($value)
+            );
+        }
+
+        return $items;
     }
 
     /**

@@ -11,5 +11,5 @@ defined('ABSPATH') || exit;
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
-    <?php echo $this->renderPieChart($items, $empty_message); ?>
+    <?php echo $this->renderPieChart($items, $empty_message, ['aggregate_small_items' => false]); ?>
 </section>

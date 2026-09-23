@@ -27,7 +27,7 @@ class EditorUsageWidget extends Widgets {
 
     protected function getTemplateData(array $dashboardData): array {
         return [
-            'items' => $dashboardData['editor_usage'] ?? [],
+            'items' => $this->formatWebsiteUsageItems((array)($dashboardData['editor_usage'] ?? [])),
             'empty_message' => __('No editor data available.', 'rrze-multisite-manager'),
         ];
     }
