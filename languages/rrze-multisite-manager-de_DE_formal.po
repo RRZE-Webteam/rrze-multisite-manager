@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-09-23T08:19:57+00:00\n"
+"POT-Creation-Date: 2026-09-23T08:50:22+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -127,40 +127,40 @@ msgid "How often the scheduled storage analysis is run for each website."
 msgstr "Wie oft die geplante Speicheranalyse für jede Website ausgeführt wird."
 
 #: includes/Config.php:122 includes/Config.php:136
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:33
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1000
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:35
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1123
 #: includes/StorageAnalysisSchedulerService.php:39
 #: includes/StorageAnalysisSchedulerService.php:637
 msgid "Once weekly"
 msgstr "Einmal wöchentlich"
 
 #: includes/Config.php:123 includes/Config.php:137
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:37
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1001
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:39
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1124
 #: includes/StorageAnalysisSchedulerService.php:43
 #: includes/StorageAnalysisSchedulerService.php:638
 msgid "Twice weekly"
 msgstr "Zweimal wöchentlich"
 
 #: includes/Config.php:124 includes/Config.php:138
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:41
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1002
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:43
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1125
 #: includes/StorageAnalysisSchedulerService.php:47
 #: includes/StorageAnalysisSchedulerService.php:639
 msgid "Once daily"
 msgstr "Einmal täglich"
 
 #: includes/Config.php:125 includes/Config.php:139
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:45
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1003
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:47
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1126
 #: includes/StorageAnalysisSchedulerService.php:51
 #: includes/StorageAnalysisSchedulerService.php:640
 msgid "Twice daily"
 msgstr "Zweimal täglich"
 
 #: includes/Config.php:126 includes/Config.php:140
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:49
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1004
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:51
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1127
 #: includes/StorageAnalysisSchedulerService.php:55
 #: includes/StorageAnalysisSchedulerService.php:641
 msgid "Four times daily"
@@ -863,10 +863,11 @@ msgstr "Benutzer-ID %d"
 #: includes/Dashboard.php:3246 includes/MetricsService.php:2479
 #: includes/MetricsService.php:2627 includes/MetricsService.php:3479
 #: includes/MetricsService.php:8560 includes/Settings.php:1889
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:550
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:575
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:647
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:747
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:552
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:577
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:649
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:749
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:765
 #: includes/Widgets/NetworkStorageUsageWidget.php:77
 #: includes/Widgets/Widgets.php:186 includes/Widgets/Widgets.php:310
 #: includes/Widgets/Widgets.php:811 includes/Widgets/Widgets.php:1017
@@ -1060,7 +1061,7 @@ msgid "Theme/plugin"
 msgstr "Theme/Plugin"
 
 #: includes/MetricsService.php:1614 includes/MetricsService.php:8248
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:574
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:576
 msgid "WordPress Core"
 msgstr "WordPress Core"
 
@@ -1612,7 +1613,7 @@ msgstr "Fehlt"
 
 #: includes/MetricsService.php:8558 includes/Settings.php:1066
 #: includes/Settings.php:1885
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:261
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:263
 #: includes/StorageAnalysisSchedulerService.php:676
 msgid "Error"
 msgstr "Fehler"
@@ -2180,7 +2181,7 @@ msgstr "Website-Status:"
 
 #: includes/Settings.php:884 includes/Settings.php:1030
 #: includes/Settings.php:1064
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:259
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:261
 #: includes/StorageAnalysisSchedulerService.php:673
 msgid "Inactive"
 msgstr "Deaktiv"
@@ -2269,7 +2270,7 @@ msgid "<1 sec."
 msgstr "<1 Sek."
 
 #: includes/Settings.php:953 includes/Settings.php:1067
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:262
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:264
 #: includes/StorageAnalysisSchedulerService.php:674
 msgid "Waiting for cron"
 msgstr "Wartet auf Cron"
@@ -2277,7 +2278,7 @@ msgstr "Wartet auf Cron"
 #: includes/Settings.php:959 includes/Settings.php:1065
 #: includes/Settings.php:1103 includes/Settings.php:1407
 #: includes/Settings.php:1515
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:260
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:262
 #: includes/StorageAnalysisSchedulerService.php:672
 msgid "Running"
 msgstr "Läuft"
@@ -2368,20 +2369,20 @@ msgid "Blocks"
 msgstr "Blöcke"
 
 #: includes/Settings.php:1068
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:263
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:265
 #: includes/StorageAnalysisSchedulerService.php:677
 msgid "Ok"
 msgstr "Ok"
 
 #: includes/Settings.php:1069 includes/Settings.php:1411
 #: includes/Settings.php:1519
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:264
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:266
 #: includes/StorageAnalysisSchedulerService.php:678
 msgid "Scheduled"
 msgstr "Eingeplant"
 
 #: includes/Settings.php:1070 includes/Settings.php:1443
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:265
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:267
 #: includes/StorageAnalysisSchedulerService.php:679
 msgid "Not scheduled"
 msgstr "Nicht geplant"
@@ -2719,8 +2720,8 @@ msgstr "HTTP nicht erreichbar"
 msgid "Decommissioned"
 msgstr "Stillgelegt"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:385
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:860
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:387
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:983
 msgid ""
 "The shortcode and block analysis was aborted because it exceeded the "
 "configured runtime limit."
@@ -2728,22 +2729,22 @@ msgstr ""
 "Die Shortcode- und Blockanalyse wurde abgebrochen, weil sie die "
 "konfigurierte Laufzeitgrenze überschritten hat."
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:666
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:668
 #: includes/Widgets/PluginUsageWidget.php:89
 msgid "Plugin"
 msgstr "Plugin"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:670
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:744
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:672
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:746
 #: templates/site-details-page.php:105 templates/theme-details-page.php:39
 msgid "Theme"
 msgstr "Theme"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:740
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:742
 msgid "MU-plugin"
 msgstr "MU-Plugin"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1063
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1186
 msgid ""
 "The shortcode and block analysis was interrupted before it could finish."
 msgstr ""

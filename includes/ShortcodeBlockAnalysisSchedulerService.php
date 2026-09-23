@@ -16,6 +16,8 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const BLOCK_PHASE = 'blocks';
 
     protected Config $config;
+    /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
+    protected array $activeSiteShortcodeRegistrations = [];
 
     public function __construct(?Config $config = null) {
         $this->config = $config ?? new Config();
@@ -535,20 +537,20 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         foreach ($matchesByRawShortcode as $match) {
             $tag = (string)$match['tag'];
-            $isRegistered = shortcode_exists($tag);
+            $registration = $this->getShortcodeRegistration($tag);
+            $isRegistered = !empty($registration);
 
             if (!$isRegistered && !$allowUnregistered) {
                 continue;
             }
 
-            $provider = $this->getShortcodeProviderDetails($tag);
             $shortcodes[] = array_merge(
                 [
                     'shortcode' => $tag,
                     'raw_shortcode' => (string)$match['raw_shortcode'],
                     'registered' => $isRegistered,
-                    'provider' => (string)($provider['name'] ?? __('Unknown', 'rrze-multisite-manager')),
-                    'provider_plugin_file' => (string)($provider['plugin_file'] ?? ''),
+                    'provider' => (string)($registration['name'] ?? __('Unknown', 'rrze-multisite-manager')),
+                    'provider_plugin_file' => (string)($registration['plugin_file'] ?? ''),
                 ],
                 $location
             );
@@ -745,6 +747,127 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         return ['name' => __('Unknown', 'rrze-multisite-manager')];
+    }
+
+    /**
+     * Checks the runtime registry and shortcode declarations of plugins active on the current site.
+     *
+     * switch_to_blog() does not load plugins that are active only on the target site. Inspecting
+     * their add_shortcode() declarations prevents those shortcodes from being reported as missing.
+     *
+     * @return array{name: string, plugin_file: string}
+     */
+    protected function getShortcodeRegistration(string $tag): array {
+        if (shortcode_exists($tag)) {
+            $provider = $this->getShortcodeProviderDetails($tag);
+
+            return [
+                'name' => (string)($provider['name'] ?? __('Unknown', 'rrze-multisite-manager')),
+                'plugin_file' => (string)($provider['plugin_file'] ?? ''),
+            ];
+        }
+
+        $registrations = $this->getActiveSiteShortcodeRegistrations();
+
+        return $registrations[$tag] ?? [];
+    }
+
+    /**
+     * @return array<string, array{name: string, plugin_file: string}>
+     */
+    protected function getActiveSiteShortcodeRegistrations(): array {
+        $siteId = get_current_blog_id();
+
+        if (isset($this->activeSiteShortcodeRegistrations[$siteId])) {
+            return $this->activeSiteShortcodeRegistrations[$siteId];
+        }
+
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $activePluginFiles = array_merge(
+            array_values(array_filter((array)get_option('active_plugins', []), 'is_string')),
+            array_keys((array)get_site_option('active_sitewide_plugins', []))
+        );
+        $availablePlugins = get_plugins();
+        $registrations = [];
+        $pluginFile = '';
+
+        foreach (array_unique($activePluginFiles) as $pluginFile) {
+            if (!isset($availablePlugins[$pluginFile]) || !is_array($availablePlugins[$pluginFile])) {
+                continue;
+            }
+
+            foreach ($this->getPluginShortcodeTags($pluginFile) as $shortcodeTag) {
+                if (!isset($registrations[$shortcodeTag])) {
+                    $registrations[$shortcodeTag] = [
+                        'name' => (string)($availablePlugins[$pluginFile]['Name'] ?? $pluginFile),
+                        'plugin_file' => $pluginFile,
+                    ];
+                }
+            }
+        }
+
+        $this->activeSiteShortcodeRegistrations[$siteId] = $registrations;
+
+        return $registrations;
+    }
+
+    /**
+     * @return string[]
+     */
+    protected function getPluginShortcodeTags(string $pluginFile): array {
+        $mainFilePath = trailingslashit(WP_PLUGIN_DIR) . ltrim($pluginFile, '/');
+        $pluginDirectory = is_file($mainFilePath) ? dirname($mainFilePath) : '';
+        $files = [];
+        $iterator = null;
+        $current = null;
+        $source = '';
+        $matches = [];
+        $tags = [];
+
+        if ($mainFilePath === '' || !is_readable($mainFilePath)) {
+            return [];
+        }
+
+        $files[] = $mainFilePath;
+
+        if ($pluginDirectory !== '' && is_dir($pluginDirectory)) {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($pluginDirectory, \FilesystemIterator::SKIP_DOTS)
+            );
+
+            foreach ($iterator as $current) {
+                if (!$current instanceof \SplFileInfo || !$current->isFile() || strtolower($current->getExtension()) !== 'php') {
+                    continue;
+                }
+
+                $files[] = (string)$current->getPathname();
+            }
+        }
+
+        foreach (array_unique($files) as $file) {
+            if (!is_readable($file)) {
+                continue;
+            }
+
+            $source = (string)file_get_contents($file);
+
+            if ($source === '' || !preg_match_all('/\badd_shortcode\s*\(\s*[\'\"]([^\'\"]+)[\'\"]/m', $source, $matches)) {
+                continue;
+            }
+
+            foreach ((array)($matches[1] ?? []) as $tag) {
+                $tag = (string)$tag;
+
+                if ($tag !== '') {
+                    $tags[$tag] = $tag;
+                }
+            }
+        }
+
+        return array_values($tags);
     }
 
     protected function markStarted(int $siteId, array $state): void {
