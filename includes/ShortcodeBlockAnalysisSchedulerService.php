@@ -55,11 +55,26 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function ensureRecurringSchedules(): void {
-        if ((string)get_site_option(self::SCHEDULE_SIGNATURE_OPTION, '') === $this->getScheduleSignature()) {
+        $signature = $this->getScheduleSignature();
+        $storedSignature = get_site_option(self::SCHEDULE_SIGNATURE_OPTION, null);
+
+        if ($storedSignature === null || $storedSignature === false) {
+            $this->markScheduleConfigurationCurrent();
+            return;
+        }
+
+        if ((string)$storedSignature === $signature) {
             return;
         }
 
         $this->syncRecurringSchedules();
+    }
+
+    /**
+     * Marks the current scheduler configuration without creating site-specific tasks.
+     */
+    public function markScheduleConfigurationCurrent(): void {
+        update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
     }
 
     public function syncRecurringSchedules(): void {

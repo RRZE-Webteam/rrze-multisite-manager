@@ -26,6 +26,7 @@ trait MetricsServiceEnvironmentTrait {
         $dropins = [];
         $registrationMode = (string)get_site_option('registration', 'none');
         $defaultSiteQuota = (int)get_site_option('blog_upload_space', 100);
+        $databaseSizeBytes = $this->getDatabaseSizeBytes();
         $siteUserCount = function_exists('get_user_count') ? (int)get_user_count() : 0;
         $enabledThemeCount = count(array_filter($themes, [self::class, 'isNetworkEnabledTheme']));
         $unusedThemeCount = count(array_filter($themes, [self::class, 'isUnusedTheme']));
@@ -59,6 +60,12 @@ trait MetricsServiceEnvironmentTrait {
                 ['label' => __('WordPress environment', 'rrze-multisite-manager'), 'value' => function_exists('wp_get_environment_type') ? wp_get_environment_type() : ''],
                 ['label' => __('PHP version', 'rrze-multisite-manager'), 'value' => PHP_VERSION],
                 ['label' => __('Database server', 'rrze-multisite-manager'), 'value' => method_exists($wpdb, 'db_server_info') ? (string)$wpdb->db_server_info() : ''],
+                [
+                    'label' => __('Database size (data and indexes)', 'rrze-multisite-manager'),
+                    'value' => $databaseSizeBytes !== null
+                        ? size_format($databaseSizeBytes, 2)
+                        : __('Not available', 'rrze-multisite-manager'),
+                ],
                 ['label' => __('Webserver', 'rrze-multisite-manager'), 'value' => isset($_SERVER['SERVER_SOFTWARE']) ? (string)$_SERVER['SERVER_SOFTWARE'] : ''],
                 ['label' => __('Locale', 'rrze-multisite-manager'), 'value' => get_locale()],
                 ['label' => __('Timezone', 'rrze-multisite-manager'), 'value' => wp_timezone_string()],
@@ -206,6 +213,19 @@ trait MetricsServiceEnvironmentTrait {
                 'total_sites' => (int)($summary['total_sites'] ?? 0),
             ],
         ];
+    }
+
+    protected function getDatabaseSizeBytes(): ?int {
+        global $wpdb;
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The environment overview needs the current total size of the active database, including table indexes.
+        $size = $wpdb->get_var(
+            'SELECT SUM(data_length + index_length)
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()'
+        );
+
+        return is_numeric($size) ? max(0, (int)$size) : null;
     }
 
     protected function getRegistrationModeLabel(string $registrationMode): string {

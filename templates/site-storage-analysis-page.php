@@ -534,7 +534,12 @@ defined('ABSPATH') || exit;
                     <?php } ?>
                     <?php if (!empty($storage_analysis['orphan_files_truncated'])) { ?>
                         <div class="notice notice-warning inline">
-                            <p><?php echo esc_html__('For performance reasons, the analysis for the detail tables was limited to a larger but still bounded subset of potentially orphaned files.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html(sprintf(
+                                /* translators: 1: total number of potentially orphaned files, 2: configured limit for detailed checks. */
+                                __('%1$s potentially orphaned files were found. For performance reasons, only the %2$s largest files are checked and shown in detail.', 'rrze-multisite-manager'),
+                                number_format_i18n((int)($storage_analysis['orphan_file_count'] ?? 0)),
+                                number_format_i18n((int)($storage_analysis['orphan_files_limit'] ?? 250))
+                            )); ?></p>
                         </div>
                     <?php } ?>
                     <?php if (!empty($storage_analysis['largest_orphan_files']) || ($orphanAnalysisComplete && !empty($storage_analysis['unused_attachment_files']))) { ?>
