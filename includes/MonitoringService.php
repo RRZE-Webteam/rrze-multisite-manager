@@ -34,6 +34,7 @@ class MonitoringService {
     protected const LOCK_TTL = 900;
     protected const MAX_SITE_HISTORY_ENTRIES = 10;
     protected const MAX_RUN_EVENT_ENTRIES = 12;
+    protected const BATCH_EVENT_ARGS = ['rrze_msm_monitoring_batch' => true];
 
     protected Plugin $plugin;
     protected Config $config;
@@ -73,9 +74,37 @@ class MonitoringService {
         if (!wp_next_scheduled($hook)) {
             wp_schedule_event(time() + MINUTE_IN_SECONDS, $schedule, $hook);
         }
+
+        if (
+            $this->isMonitoringRunInProgress()
+            && !$this->isMonitoringLocked()
+            && $this->getNextScheduledHookTimestamp($hook, false) <= 0
+        ) {
+            $this->scheduleNextBatch(5);
+        }
     }
 
-    public function runScheduledChecks(): void {
+    /**
+     * Replaces only the recurring monitoring event without interrupting a running batch.
+     */
+    public function rescheduleRecurringEvent(): void {
+        $hook = $this->config->getMonitoringHook();
+        $cron = _get_cron_array();
+
+        foreach ((array)$cron as $timestamp => $events) {
+            foreach ((array)($events[$hook] ?? []) as $event) {
+                if (empty($event['schedule'])) {
+                    continue;
+                }
+
+                wp_unschedule_event((int)$timestamp, $hook, (array)($event['args'] ?? []));
+            }
+        }
+
+        $this->ensureScheduledEvent();
+    }
+
+    public function runScheduledChecks(...$args): void {
         $process = [];
 
         LoggingService::info(
@@ -121,11 +150,12 @@ class MonitoringService {
     public static function clearScheduledEvent(?Config $config = null): void {
         $config = $config ?? new Config();
         $hook = $config->getMonitoringHook();
-        $timestamp = wp_next_scheduled($hook);
+        $cron = _get_cron_array();
 
-        while ($timestamp) {
-            wp_unschedule_event($timestamp, $hook);
-            $timestamp = wp_next_scheduled($hook);
+        foreach ((array)$cron as $timestamp => $events) {
+            foreach ((array)($events[$hook] ?? []) as $event) {
+                wp_unschedule_event((int)$timestamp, $hook, (array)($event['args'] ?? []));
+            }
         }
 
         delete_site_option(self::OPTION_BATCH_OFFSET);
@@ -315,7 +345,17 @@ class MonitoringService {
     }
 
     protected function scheduleNextBatch(int $delay = 30): void {
-        wp_schedule_single_event(time() + max(5, $delay), $this->config->getMonitoringHook());
+        $hook = $this->config->getMonitoringHook();
+
+        if ($this->getNextScheduledHookTimestamp($hook, false) > 0) {
+            return;
+        }
+
+        wp_schedule_single_event(
+            time() + max(5, $delay),
+            $hook,
+            self::BATCH_EVENT_ARGS
+        );
     }
 
     protected function resetBatchState(): void {
