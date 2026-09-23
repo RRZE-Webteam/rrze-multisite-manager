@@ -59,12 +59,25 @@ class StorageAnalysisSchedulerService {
 
     public function ensureRecurringSchedules(): void {
         $signature = $this->getScheduleSignature();
+        $storedSignature = get_site_option(self::SCHEDULE_SIGNATURE_OPTION, null);
 
-        if ((string)get_site_option(self::SCHEDULE_SIGNATURE_OPTION, '') === $signature) {
+        if ($storedSignature === null || $storedSignature === false) {
+            $this->markScheduleConfigurationCurrent();
+            return;
+        }
+
+        if ((string)$storedSignature === $signature) {
             return;
         }
 
         $this->syncRecurringSchedules();
+    }
+
+    /**
+     * Marks the current scheduler configuration without creating site-specific tasks.
+     */
+    public function markScheduleConfigurationCurrent(): void {
+        update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
     }
 
     public function syncRecurringSchedules(): void {

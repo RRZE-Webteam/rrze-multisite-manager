@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.2.6
+ * Version:         1.2.7
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -47,6 +47,7 @@ add_action('init', __NAMESPACE__ . '\loadTextdomain', 0);
 add_action('init', __NAMESPACE__ . '\loaded', 5);
 add_action('admin_init', __NAMESPACE__ . '\loadTextdomain', 0);
 add_filter('load_textdomain_mofile', __NAMESPACE__ . '\preferBundledTextdomainMofile', 10, 2);
+register_activation_hook(__FILE__, __NAMESPACE__ . '\activate');
 register_deactivation_hook(__FILE__, __NAMESPACE__ . '\deactivate');
 
 function loadTextdomain(): void {
@@ -140,6 +141,15 @@ function showSystemRequirementNotice(): void {
             esc_html($error)
         )
     );
+}
+
+function activate(bool $networkWide = false): void {
+    $config = new Config();
+    $metrics = new MetricsService(null, $config);
+
+    // Activation must not synchronously iterate over every site in a large network.
+    (new StorageAnalysisSchedulerService($metrics, $config))->markScheduleConfigurationCurrent();
+    (new ShortcodeBlockAnalysisSchedulerService($config))->markScheduleConfigurationCurrent();
 }
 
 function deactivate(): void {

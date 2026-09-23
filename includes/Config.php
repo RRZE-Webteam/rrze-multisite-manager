@@ -150,6 +150,15 @@ class Config {
                         'max' => 1440,
                     ],
                     [
+                        'name' => 'storage_analysis_orphan_files_limit',
+                        'label' => __('Maximum number of files for the orphan check', 'rrze-multisite-manager'),
+                        'desc' => __('Only the largest potentially orphaned files up to this limit are checked for references in post and page content. The total number of detected files remains visible.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 250,
+                        'min' => 10,
+                        'max' => 5000,
+                    ],
+                    [
                         'name' => 'shortcode_block_analysis_timeout_minutes',
                         'label' => __('Maximum shortcode and block analysis runtime in minutes', 'rrze-multisite-manager'),
                         'desc' => __('A shortcode and block analysis runs in one scheduled process and is aborted when this runtime limit is reached.', 'rrze-multisite-manager'),
@@ -268,6 +277,13 @@ class Config {
 
     public function getStorageAnalysisHook(): string {
         return (string)($this->config['constants']['storage_analysis_hook'] ?? 'rrze_msm_run_site_storage_analysis');
+    }
+
+    public function getStorageAnalysisOrphanFilesLimit(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_orphan_files_limit'] ?? 250) : 250;
+
+        return max(10, min(5000, $limit));
     }
 
     public function getShortcodeBlockAnalysisHook(): string {
