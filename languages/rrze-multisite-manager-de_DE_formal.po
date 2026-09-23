@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-09-23T14:15:19+00:00\n"
+"POT-Creation-Date: 2026-09-23T14:36:54+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -892,7 +892,7 @@ msgstr "Benutzer-ID %d"
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:690
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:790
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:806
-#: includes/Widgets/NetworkStorageUsageWidget.php:112
+#: includes/Widgets/NetworkStorageUsageWidget.php:111
 #: includes/Widgets/Widgets.php:189 includes/Widgets/Widgets.php:316
 #: includes/Widgets/Widgets.php:927 includes/Widgets/Widgets.php:1133
 #: includes/Widgets/Widgets.php:1155 includes/Widgets/Widgets.php:1256
@@ -2902,26 +2902,25 @@ msgid "No storage usage data available."
 msgstr "Keine Speicherverbrauchsdaten vorhanden."
 
 #: includes/Widgets/NetworkStorageUsageWidget.php:50
-#, fuzzy
-msgid "Other websites"
-msgstr "Aktive Websites"
+msgid "Sonstige (Summe aller Websites unter 5%)"
+msgstr ""
 
 #. translators: %s: total used storage label.
-#: includes/Widgets/NetworkStorageUsageWidget.php:111
+#: includes/Widgets/NetworkStorageUsageWidget.php:110
 msgid "Total used storage space: %s"
 msgstr "Verwendeter Speicherplatz gesamt: %s"
 
 #. translators: 1: used storage label, 2: maximum storage label, 3: used percentage.
-#: includes/Widgets/NetworkStorageUsageWidget.php:119
+#: includes/Widgets/NetworkStorageUsageWidget.php:118
 msgid "%1$s of %2$s used (%3$d%%)"
 msgstr "%1$s von %2$s belegt (%3$d%%)"
 
 #. translators: 1: used storage label, 2: maximum storage label.
-#: includes/Widgets/NetworkStorageUsageWidget.php:129
+#: includes/Widgets/NetworkStorageUsageWidget.php:128
 msgid "%1$s of %2$s used"
 msgstr "%1$s von %2$s belegt"
 
-#: includes/Widgets/NetworkStorageUsageWidget.php:140
+#: includes/Widgets/NetworkStorageUsageWidget.php:139
 msgid ""
 "The pie chart shows the used storage share per website relative to the total "
 "available storage capacity of the network."
@@ -2929,7 +2928,7 @@ msgstr ""
 "Die Tortengrafik zeigt die belegten Speicheranteile je Website bezogen auf "
 "die gesamte verfügbare Speicherkapazität des Netzwerks."
 
-#: includes/Widgets/NetworkStorageUsageWidget.php:143
+#: includes/Widgets/NetworkStorageUsageWidget.php:142
 msgid ""
 "At least one website has unlimited storage. Therefore, the pie chart shows "
 "only the distribution of currently used storage per website."
@@ -5159,6 +5158,10 @@ msgstr "Derzeit liegen keine aktiven Plugins im Netzwerk vor."
 #: templates/widgets/status-widget.php:14
 msgid "Quick explanation"
 msgstr "Kurz erklärt"
+
+#, fuzzy
+#~ msgid "Other websites"
+#~ msgstr "Aktive Websites"
 
 #~ msgid "Last site count"
 #~ msgstr "Letzte Site-Anzahl"
