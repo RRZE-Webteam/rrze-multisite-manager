@@ -28,8 +28,13 @@ class MetricsService {
     protected const STORAGE_ANALYSIS_CLEANUP_OFFSET_OPTION = 'rrze_msm_storage_analysis_cleanup_offset';
     protected const STORAGE_ANALYSIS_CLEANUP_VERSION = 1;
     protected const STORAGE_ANALYSIS_CLEANUP_BATCH_SIZE = 25;
+    protected const STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE = 250;
+    protected const STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION = 'rrze_msm_storage_analysis_cleanup_lock';
+    protected const STORAGE_ANALYSIS_CLEANUP_LOCK_TTL = 300;
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
+    protected const DETAIL_OPTION_VALUE_MAX_BYTES = 16384;
+    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 2;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
     protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
@@ -77,6 +82,18 @@ class MetricsService {
      * Deletes obsolete, potentially very large storage-analysis results in small batches.
      */
     public function runLegacyStorageAnalysisCleanup(): void {
+        if (!$this->acquireLegacyStorageAnalysisCleanupLock()) {
+            return;
+        }
+
+        try {
+            $this->runLegacyStorageAnalysisCleanupBatch();
+        } finally {
+            $this->releaseLegacyStorageAnalysisCleanupLock();
+        }
+    }
+
+    protected function runLegacyStorageAnalysisCleanupBatch(): void {
         $offset = max(0, (int)get_site_option(self::STORAGE_ANALYSIS_CLEANUP_OFFSET_OPTION, 0));
         $siteIds = get_sites([
             'fields' => 'ids',
@@ -100,9 +117,14 @@ class MetricsService {
             restore_current_blog();
         }
 
-        $this->deleteLegacyStorageAnalysisTransients();
+        $hasRemainingTransients = $this->deleteLegacyStorageAnalysisTransients();
 
         if (count($siteIds) < self::STORAGE_ANALYSIS_CLEANUP_BATCH_SIZE) {
+            if ($hasRemainingTransients) {
+                wp_schedule_single_event(time() + MINUTE_IN_SECONDS, self::STORAGE_ANALYSIS_CLEANUP_HOOK);
+                return;
+            }
+
             delete_site_option(self::STORAGE_ANALYSIS_CLEANUP_OFFSET_OPTION);
             update_site_option(self::STORAGE_ANALYSIS_CLEANUP_VERSION_OPTION, self::STORAGE_ANALYSIS_CLEANUP_VERSION);
             return;
@@ -113,9 +135,9 @@ class MetricsService {
     }
 
     /**
-     * Deletes only obsolete site-transient families created by storage analyses.
+     * Deletes a bounded number of obsolete transient rows and returns whether more may remain.
      */
-    protected function deleteLegacyStorageAnalysisTransients(): void {
+    protected function deleteLegacyStorageAnalysisTransients(): bool {
         global $wpdb;
 
         $prefixes = [
@@ -123,15 +145,82 @@ class MetricsService {
             'rrze_msm_site_storage_analysis_v%',
             'rrze_msm_site_media_metadata_analysis_%',
         ];
+        $statePrefixes = [
+            'rrze_msm_site_storage_analysis_base_state_%',
+            'rrze_msm_site_storage_analysis_orphan_state_%',
+        ];
+        $hasRemainingRows = false;
 
         foreach ($prefixes as $prefix) {
             $escapedPrefix = $wpdb->esc_like(rtrim($prefix, '%')) . '%';
             $valueKey = $wpdb->esc_like('_site_transient_') . $escapedPrefix;
             $timeoutKey = $wpdb->esc_like('_site_transient_timeout_') . $escapedPrefix;
 
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Old storage-analysis site transients have dynamic cache versions and must be removed by their strictly scoped key prefixes.
-            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s OR meta_key LIKE %s", $valueKey, $timeoutKey));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Old storage-analysis site transients have dynamic cache versions and are removed in bounded batches by their strictly scoped key prefixes.
+            $deletedValues = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $valueKey, self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Matching timeout rows are removed in a separate bounded batch.
+            $deletedTimeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $timeoutKey, self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE));
+            $hasRemainingRows = $hasRemainingRows
+                || $deletedValues >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
+                || $deletedTimeouts >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE;
         }
+
+        foreach ($statePrefixes as $prefix) {
+            $escapedPrefix = $wpdb->esc_like(rtrim($prefix, '%')) . '%';
+            $valueKey = $wpdb->esc_like('_site_transient_') . $escapedPrefix;
+            $timeoutKey = $wpdb->esc_like('_site_transient_timeout_') . $escapedPrefix;
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Only expired work states from older analyses are selected; active runs must remain untouched.
+            $stateIds = (array)$wpdb->get_col(
+                $wpdb->prepare(
+                    "SELECT value_row.meta_id
+                    FROM {$wpdb->sitemeta} AS value_row
+                    LEFT JOIN {$wpdb->sitemeta} AS timeout_row
+                        ON timeout_row.meta_key = CONCAT('_site_transient_timeout_', SUBSTRING(value_row.meta_key, %d))
+                    WHERE value_row.meta_key LIKE %s
+                    AND (timeout_row.meta_value IS NULL OR CAST(timeout_row.meta_value AS UNSIGNED) < %d)
+                    LIMIT %d",
+                    strlen('_site_transient_') + 1,
+                    $valueKey,
+                    time(),
+                    self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
+                )
+            );
+
+            if (!empty($stateIds)) {
+                $stateIds = array_map('absint', $stateIds);
+                $placeholders = implode(', ', array_fill(0, count($stateIds), '%d'));
+
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- IDs were selected above from the same strictly scoped transient family.
+                $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_id IN ({$placeholders})", ...$stateIds));
+            }
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Expired timeout rows no longer belong to active states and are removed in a bounded batch.
+            $deletedTimeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s AND CAST(meta_value AS UNSIGNED) < %d LIMIT %d", $timeoutKey, time(), self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE));
+            $hasRemainingRows = $hasRemainingRows
+                || count($stateIds) >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
+                || $deletedTimeouts >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE;
+        }
+
+        return $hasRemainingRows;
+    }
+
+    protected function acquireLegacyStorageAnalysisCleanupLock(): bool {
+        $existingLock = (int)get_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION, 0);
+
+        if ($existingLock > 0 && (time() - $existingLock) < self::STORAGE_ANALYSIS_CLEANUP_LOCK_TTL) {
+            return false;
+        }
+
+        if ($existingLock > 0) {
+            delete_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION);
+        }
+
+        return add_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION, time());
+    }
+
+    protected function releaseLegacyStorageAnalysisCleanupLock(): void {
+        delete_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION);
     }
 
     public function getDashboardData(): array {
@@ -7529,20 +7618,27 @@ class MetricsService {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Group-filtered option inspection is cached per site and group.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT option_name, option_value, autoload
+                    "SELECT option_name, autoload, OCTET_LENGTH(option_value) AS value_bytes,
+                    CASE WHEN OCTET_LENGTH(option_value) <= %d THEN option_value ELSE NULL END AS option_value
                     FROM {$wpdb->options}
                     WHERE " . (string)$whereData['where'] . '
                     ORDER BY option_name ASC
                     LIMIT %d',
-                    ...array_merge((array)($whereData['params'] ?? []), [$limit])
+                    ...array_merge([self::DETAIL_OPTION_VALUE_MAX_BYTES], (array)($whereData['params'] ?? []), [$limit])
                 )
             );
         } else {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Full option inspection fallback is cached per site and group.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The detail view returns only bounded values, preventing large option payloads from entering PHP or its cache.
             $rows = $wpdb->get_results(
-                "SELECT option_name, option_value, autoload
+                $wpdb->prepare(
+                    "SELECT option_name, autoload, OCTET_LENGTH(option_value) AS value_bytes,
+                    CASE WHEN OCTET_LENGTH(option_value) <= %d THEN option_value ELSE NULL END AS option_value
                 FROM {$wpdb->options}
-                ORDER BY option_name ASC"
+                    ORDER BY option_name ASC
+                    LIMIT %d",
+                    self::DETAIL_OPTION_VALUE_MAX_BYTES,
+                    $limit
+                )
             );
         }
 
@@ -7557,12 +7653,17 @@ class MetricsService {
                 continue;
             }
 
+            $valueBytes = max(0, (int)($row->value_bytes ?? 0));
+            $isValueTooLarge = $valueBytes > self::DETAIL_OPTION_VALUE_MAX_BYTES;
+            $rawValue = !$isValueTooLarge && is_string($row->option_value ?? null) ? (string)$row->option_value : '';
             $options[] = [
                 'name' => $optionName,
-                'value' => $this->formatOptionValue((string)($row->option_value ?? '')),
-                'raw_value' => (string)($row->option_value ?? ''),
-                'editable_value' => $this->getEditableOptionValue((string)($row->option_value ?? '')),
-                'is_editable' => $this->isEditableOptionValue((string)($row->option_value ?? '')),
+                'value' => $isValueTooLarge ? '' : $this->formatOptionValue($rawValue),
+                'raw_value' => $rawValue,
+                'editable_value' => $isValueTooLarge ? '' : $this->getEditableOptionValue($rawValue),
+                'is_editable' => !$isValueTooLarge && $this->isEditableOptionValue($rawValue),
+                'value_bytes' => $valueBytes,
+                'is_value_too_large' => $isValueTooLarge,
                 'autoload' => (string)($row->autoload ?? ''),
                 'is_core' => $this->isWordPressCoreOption($optionName),
             ];
@@ -7604,7 +7705,13 @@ class MetricsService {
                 return false;
             }
 
-            if (!array_key_exists('raw_value', $option) || !array_key_exists('editable_value', $option) || !array_key_exists('is_editable', $option)) {
+            if (
+                !array_key_exists('raw_value', $option)
+                || !array_key_exists('editable_value', $option)
+                || !array_key_exists('is_editable', $option)
+                || !array_key_exists('value_bytes', $option)
+                || !array_key_exists('is_value_too_large', $option)
+            ) {
                 return false;
             }
         }
@@ -7670,7 +7777,8 @@ class MetricsService {
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transient listing is cached per site detail section.
         $rows = $wpdb->get_results(
-            "SELECT option_name, option_value
+            "SELECT option_name,
+            CASE WHEN option_name LIKE '\\_transient\\_timeout\\_%' THEN option_value ELSE NULL END AS option_value
             FROM {$wpdb->options}
             WHERE option_name LIKE '\\_transient\\_%'
             OR option_name LIKE '\\_transient\\_timeout\\_%'
@@ -7819,6 +7927,7 @@ class MetricsService {
         $updated = false;
         $decodedValue = null;
         $currentRawValue = null;
+        $currentValueBytes = null;
         global $wpdb;
 
         if ($siteId <= 0 || trim($optionName) === '') {
@@ -7826,6 +7935,22 @@ class MetricsService {
         }
 
         switch_to_blog($siteId);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Check the value size before retrieving an option for an explicit edit action.
+        $currentValueBytes = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT OCTET_LENGTH(option_value)
+                FROM {$wpdb->options}
+                WHERE option_name = %s
+                LIMIT 1",
+                $optionName
+            )
+        );
+
+        if (!is_numeric($currentValueBytes) || (int)$currentValueBytes > self::DETAIL_OPTION_VALUE_MAX_BYTES) {
+            restore_current_blog();
+            return false;
+        }
+
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Single option row lookup for explicit admin edit action.
         $currentRawValue = $wpdb->get_var(
             $wpdb->prepare(
@@ -9121,7 +9246,7 @@ class MetricsService {
     }
 
     protected function getSiteDetailSectionCacheKey(int $siteId, string $section, string $suffix = ''): string {
-        return 'rrze_msm_site_detail_section_' . $this->getDetailCacheVersion() . '_' . $this->getSiteDetailCacheVersion($siteId) . '_' . md5($siteId . '|' . $section . '|' . $suffix);
+        return 'rrze_msm_site_detail_section_' . self::DETAIL_SECTION_CACHE_FORMAT_VERSION . '_' . $this->getDetailCacheVersion() . '_' . $this->getSiteDetailCacheVersion($siteId) . '_' . md5($siteId . '|' . $section . '|' . $suffix);
     }
 
     protected function getCachedCurrentSiteDetailSection(string $section, string $suffix = ''): mixed {

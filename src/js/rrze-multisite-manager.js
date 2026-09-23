@@ -1020,6 +1020,17 @@ function renderSiteTable(wrapper) {
 
     sortSiteTableRows(wrapper, rows);
     filteredRows = filterSiteTableRows(wrapper, rows);
+
+    if (wrapper.classList.contains('rrze-msm-server-paginated')) {
+        for (i = 0; i < rows.length; i++) {
+            rows[i].parentNode.appendChild(rows[i]);
+            rows[i].style.display = filteredRows.indexOf(rows[i]) === -1 ? 'none' : '';
+        }
+
+        updateSiteTableSortButtons(wrapper);
+        return;
+    }
+
     totalPages = Math.max(1, Math.ceil(filteredRows.length / perPage));
 
     if (currentPage > totalPages) {

@@ -483,48 +483,88 @@ class StorageAnalysisSchedulerService {
         $processes = [];
 
         foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-            $site = get_site($siteId);
-            $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
-            $scheduleStatus = $this->getStatus($siteId);
+            $process = $this->getSiteProcess((int)$siteId);
 
-            $this->recoverInterruptedRun($siteId, $analysisStatus, $scheduleStatus);
-            $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
-            $scheduleStatus = $this->getStatus($siteId);
-            $isEligible = $this->isSiteEligible($siteId);
-            $nextRunTimestamp = $isEligible ? (int)($scheduleStatus['next_recurring_run_timestamp'] ?? 0) : 0;
-            $isDue = $nextRunTimestamp > 0 && $nextRunTimestamp <= time();
-
-            if (!$site) {
-                continue;
+            if ($process !== null) {
+                $processes[] = $process;
             }
-
-            if (!$isEligible) {
-                $this->deactivateIneligibleSite($siteId);
-            }
-
-            $processes[] = [
-                'site_id' => $siteId,
-                'url' => get_home_url($siteId, '/'),
-                'website_status_key' => $this->getWebsiteStatusFilterKey($site),
-                'status' => $this->getSiteProcessStatus($isEligible, $isDue, $analysisStatus, $scheduleStatus),
-                'status_key' => $this->getSiteProcessStatusKey($isEligible, $isDue, $analysisStatus, $scheduleStatus),
-                'is_running' => $isEligible && $this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
-                'is_eligible' => $isEligible,
-                'is_due' => $isDue,
-                'cycle' => $isEligible ? $this->getScheduleLabel() : '',
-                'last_started_at' => (string)($scheduleStatus['last_started_at'] ?? ''),
-                'last_run' => (string)($scheduleStatus['last_completed_at'] ?? ''),
-                // The monitoring table describes the configured recurrence, not internal follow-up batches.
-                'next_run_timestamp' => $nextRunTimestamp,
-                'last_duration_seconds' => (int)($scheduleStatus['last_duration_seconds'] ?? 0),
-                'last_was_aborted' => !empty($scheduleStatus['last_was_aborted']),
-                'phases' => is_array($scheduleStatus['phases'] ?? null) ? $scheduleStatus['phases'] : [],
-                'can_start_now' => $isEligible && !$isDue && !$this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
-            ];
         }
 
         return $processes;
+    }
+
+    /**
+     * Returns one bounded page for the monitoring table.  Rendering a page
+     * must not load scheduler data for every site in a large network.
+     *
+     * @return array{processes: array<int, array<string, mixed>>, has_more: bool}
+     */
+    public function getSiteProcessesPage(int $page, int $perPage): array {
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => $perPage + 1,
+            'offset' => ($page - 1) * $perPage,
+            'orderby' => 'id',
+            'order' => 'ASC',
+        ]);
+        $hasMore = count($siteIds) > $perPage;
+        $processes = [];
+
+        foreach (array_slice($siteIds, 0, $perPage) as $siteId) {
+            $process = $this->getSiteProcess((int)$siteId);
+
+            if ($process !== null) {
+                $processes[] = $process;
+            }
+        }
+
+        return [
+            'processes' => $processes,
+            'has_more' => $hasMore,
+        ];
+    }
+
+    protected function getSiteProcess(int $siteId): ?array {
+        $site = get_site($siteId);
+        $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+        $scheduleStatus = $this->getStatus($siteId);
+
+        $this->recoverInterruptedRun($siteId, $analysisStatus, $scheduleStatus);
+        $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+        $scheduleStatus = $this->getStatus($siteId);
+        $isEligible = $this->isSiteEligible($siteId);
+        $nextRunTimestamp = $isEligible ? (int)($scheduleStatus['next_recurring_run_timestamp'] ?? 0) : 0;
+        $isDue = $nextRunTimestamp > 0 && $nextRunTimestamp <= time();
+
+        if (!$site) {
+            return null;
+        }
+
+        if (!$isEligible) {
+            $this->deactivateIneligibleSite($siteId);
+        }
+
+        return [
+            'site_id' => $siteId,
+            'url' => get_home_url($siteId, '/'),
+            'website_status_key' => $this->getWebsiteStatusFilterKey($site),
+            'status' => $this->getSiteProcessStatus($isEligible, $isDue, $analysisStatus, $scheduleStatus),
+            'status_key' => $this->getSiteProcessStatusKey($isEligible, $isDue, $analysisStatus, $scheduleStatus),
+            'is_running' => $isEligible && $this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
+            'is_eligible' => $isEligible,
+            'is_due' => $isDue,
+            'cycle' => $isEligible ? $this->getScheduleLabel() : '',
+            'last_started_at' => (string)($scheduleStatus['last_started_at'] ?? ''),
+            'last_run' => (string)($scheduleStatus['last_completed_at'] ?? ''),
+            // The monitoring table describes the configured recurrence, not internal follow-up batches.
+            'next_run_timestamp' => $nextRunTimestamp,
+            'last_duration_seconds' => (int)($scheduleStatus['last_duration_seconds'] ?? 0),
+            'last_was_aborted' => !empty($scheduleStatus['last_was_aborted']),
+            'phases' => is_array($scheduleStatus['phases'] ?? null) ? $scheduleStatus['phases'] : [],
+            'can_start_now' => $isEligible && !$isDue && !$this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
+        ];
     }
 
     /**

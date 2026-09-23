@@ -649,7 +649,13 @@ defined('ABSPATH') || exit;
                                                 <td>
                                                     <details class="rrze-msm-option-value">
                                                         <summary><?php echo esc_html__('Show value', 'rrze-multisite-manager'); ?></summary>
-                                                        <?php if (!empty($can_manage_network_actions) && empty($site_option['is_core']) && !empty($site_option['is_editable'])) { ?>
+                                                        <?php if (!empty($site_option['is_value_too_large'])) { ?>
+                                                            <p class="description"><?php echo esc_html(sprintf(
+                                                                /* translators: %s: option value size. */
+                                                                __('This option value is %s and is not loaded or displayed here.', 'rrze-multisite-manager'),
+                                                                size_format((int)($site_option['value_bytes'] ?? 0), 2)
+                                                            )); ?></p>
+                                                        <?php } elseif (!empty($can_manage_network_actions) && empty($site_option['is_core']) && !empty($site_option['is_editable'])) { ?>
                                                             <form method="post" action="<?php echo esc_url($site_option_update_action); ?>" class="rrze-msm-option-edit-form" data-initial-value="<?php echo esc_attr((string)($site_option['editable_value'] ?? '')); ?>">
                                                                 <?php wp_nonce_field('rrze_multisite_manager_update_site_option_' . (int)$site_id . '_' . (string)$site_option['name']); ?>
                                                                 <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">

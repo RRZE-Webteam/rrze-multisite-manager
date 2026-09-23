@@ -203,48 +203,78 @@ class ShortcodeBlockAnalysisSchedulerService {
         $processes = [];
 
         foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-            $status = $this->getStatus($siteId);
-            $result = $this->getResult($siteId);
-            $nextRun = $this->getNextRecurringScheduledTimestamp($siteId);
-
-            $this->recoverInterruptedAnalysis($siteId, $status);
-            $status = $this->getStatus($siteId);
-            $isActive = $this->isSiteActive($siteId);
-            $isRunning = $this->isRunning($siteId);
-            $lastFinishedAt = (string)($result['generated_at'] ?? '');
-
-            // Older completed runs may not yet have stored a separate result.
-            if ($lastFinishedAt === '' && (string)($status['status'] ?? '') === 'complete' && empty($status['last_error'])) {
-                $lastFinishedAt = (string)($status['last_finished_at'] ?? '');
-            }
-
-            $statusKey = $this->getProcessStatusKey($isActive, $isRunning, $nextRun, $status, $lastFinishedAt);
-
-            if (empty($status) && empty($result) && $nextRun <= 0) {
-                continue;
-            }
-
-            $processes[] = [
-                'site_id' => $siteId,
-                'url' => get_home_url($siteId, '/'),
-                'status' => $this->getProcessStatusLabel($statusKey),
-                'status_key' => $statusKey,
-                'is_active' => $isActive,
-                'website_status_key' => $isActive ? 'active' : 'inactive',
-                'is_running' => $isRunning,
-                'last_started_at' => (string)($status['last_started_at'] ?? ''),
-                // Only a persisted result represents a successfully completed analysis.
-                'last_finished_at' => $lastFinishedAt,
-                'next_run_timestamp' => $nextRun,
-                'cycle' => $isActive ? $this->getScheduleLabel() : '',
-                'processed_posts' => (int)($status['processed_posts'] ?? 0),
-                'total_posts' => (int)($status['total_posts'] ?? 0),
-                'phases' => $this->getProcessPhases($status, $lastFinishedAt),
-            ];
+            $processes[] = $this->getSiteProcess((int)$siteId);
         }
 
         return $processes;
+    }
+
+    /**
+     * Returns one bounded page for the monitoring table.  This deliberately
+     * includes unscheduled sites so pagination never requires scanning every
+     * site merely to find rows with an existing analysis record.
+     *
+     * @return array{processes: array<int, array<string, mixed>>, has_more: bool}
+     */
+    public function getSiteProcessesPage(int $page, int $perPage): array {
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => $perPage + 1,
+            'offset' => ($page - 1) * $perPage,
+            'orderby' => 'id',
+            'order' => 'ASC',
+        ]);
+        $hasMore = count($siteIds) > $perPage;
+        $processes = [];
+
+        foreach (array_slice($siteIds, 0, $perPage) as $siteId) {
+            $processes[] = $this->getSiteProcess((int)$siteId);
+        }
+
+        return [
+            'processes' => $processes,
+            'has_more' => $hasMore,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    protected function getSiteProcess(int $siteId): array {
+        $status = $this->getStatus($siteId);
+        $result = $this->getResult($siteId);
+        $nextRun = $this->getNextRecurringScheduledTimestamp($siteId);
+
+        $this->recoverInterruptedAnalysis($siteId, $status);
+        $status = $this->getStatus($siteId);
+        $isActive = $this->isSiteActive($siteId);
+        $isRunning = $this->isRunning($siteId);
+        $lastFinishedAt = (string)($result['generated_at'] ?? '');
+
+        // Older completed runs may not yet have stored a separate result.
+        if ($lastFinishedAt === '' && (string)($status['status'] ?? '') === 'complete' && empty($status['last_error'])) {
+            $lastFinishedAt = (string)($status['last_finished_at'] ?? '');
+        }
+
+        $statusKey = $this->getProcessStatusKey($isActive, $isRunning, $nextRun, $status, $lastFinishedAt);
+
+        return [
+            'site_id' => $siteId,
+            'url' => get_home_url($siteId, '/'),
+            'status' => $this->getProcessStatusLabel($statusKey),
+            'status_key' => $statusKey,
+            'is_active' => $isActive,
+            'website_status_key' => $isActive ? 'active' : 'inactive',
+            'is_running' => $isRunning,
+            'last_started_at' => (string)($status['last_started_at'] ?? ''),
+            // Only a persisted result represents a successfully completed analysis.
+            'last_finished_at' => $lastFinishedAt,
+            'next_run_timestamp' => $nextRun,
+            'cycle' => $isActive ? $this->getScheduleLabel() : '',
+            'processed_posts' => (int)($status['processed_posts'] ?? 0),
+            'total_posts' => (int)($status['total_posts'] ?? 0),
+            'phases' => $this->getProcessPhases($status, $lastFinishedAt),
+        ];
     }
 
     protected function getProcessStatusKey(bool $isActive, bool $isRunning, int $nextRun, array $status, string $lastFinishedAt): string {
