@@ -541,7 +541,6 @@ class Dashboard {
         $tabs = [];
         $tabTables = [];
         $metricsStatus = [];
-        $returnUrl = '';
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -555,14 +554,6 @@ class Dashboard {
         if (!in_array($currentTab, ['all', 'active', 'archived', 'blocked', 'deleted', 'provisioning', 'dns-missing', 'unreachable'], true)) {
             $currentTab = 'all';
         }
-
-        $returnUrl = add_query_arg(
-            [
-                'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
-                'tab' => $currentTab,
-            ],
-            $this->getAdminPageBaseUrl()
-        );
 
         $tabs = [
             [
@@ -692,13 +683,6 @@ class Dashboard {
 
         if ($currentTab !== 'all' && !$this->siteOverviewTabExists($tabs, $currentTab)) {
             $currentTab = 'all';
-            $returnUrl = add_query_arg(
-                [
-                    'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
-                    'tab' => $currentTab,
-                ],
-                $this->getAdminPageBaseUrl()
-            );
         }
 
         $tableOptions = [
@@ -731,7 +715,7 @@ class Dashboard {
                 'status_updated' => !empty($_GET['status-updated']),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
-                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus, $returnUrl),
+                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus),
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
                 'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
                 'inactive_status_labels' => $inactiveStatusLabels,
@@ -1278,7 +1262,6 @@ class Dashboard {
         $inactivePlugins = [];
         $missingPlugins = [];
         $metricsStatus = [];
-        $returnUrl = '';
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -1312,14 +1295,6 @@ class Dashboard {
         if (!in_array($currentTab, ['all', 'network', 'active', 'inactive'], true)) {
             $currentTab = 'all';
         }
-
-        $returnUrl = add_query_arg(
-            [
-                'page' => (string)($this->config->getMenuSettings()['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview'),
-                'tab' => $currentTab,
-            ],
-            $this->getAdminPageBaseUrl()
-        );
 
         $tabs = [
             [
@@ -1453,7 +1428,7 @@ class Dashboard {
                     : '',
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
-                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus, $returnUrl),
+                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus),
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
                 'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
             ],
@@ -1496,7 +1471,6 @@ class Dashboard {
         $themeWidget = null;
         $themes = [];
         $metricsStatus = [];
-        $returnUrl = '';
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -1506,13 +1480,6 @@ class Dashboard {
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $themeWidget = new ThemeOverviewWidget($this->plugin, $this->config);
         $themes = is_array($dashboardData['themes'] ?? null) ? $dashboardData['themes'] : [];
-        $returnUrl = add_query_arg(
-            [
-                'page' => (string)($this->config->getMenuSettings()['theme_overview_slug'] ?? 'rrze-multisite-manager-theme-overview'),
-            ],
-            $this->getAdminPageBaseUrl()
-        );
-
         echo $this->template->render(
             'theme-overview-page',
             [
@@ -1520,7 +1487,7 @@ class Dashboard {
                 'theme_widget' => $themeWidget,
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
-                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus, $returnUrl),
+                'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus),
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
                 'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
             ],
@@ -3185,58 +3152,11 @@ class Dashboard {
         return get_date_from_gmt($dateValue, get_option('date_format') . ' ' . get_option('time_format'));
     }
 
-    protected function renderMetricsStatusNoticeHtml(array $status, string $returnUrl): string {
-        $lastRunLabel = !empty($status['last_run_timestamp'])
-            ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$status['last_run_timestamp'])
-            : __('Never', 'rrze-multisite-manager');
-        $nextRunLabel = !empty($status['next_run_timestamp'])
-            ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$status['next_run_timestamp'])
-            : __('Not scheduled yet', 'rrze-multisite-manager');
-        $noticeClass = !empty($status['has_data']) ? 'notice-info' : 'notice-warning';
-        $message = '';
-        $html = '';
+    protected function renderMetricsStatusNoticeHtml(array $status): string {
+        $finishedAt = (int)($status['last_finished_at_timestamp'] ?? 0);
+        $label = $finishedAt > 0 ? wp_date('d.m.Y H:i', $finishedAt) : '-';
 
-        if (empty($status['has_data'])) {
-            $message = __('There are no precomputed metrics for this view yet. The data will only be generated in the scheduler\'s next metrics run.', 'rrze-multisite-manager');
-        } elseif (!empty($status['is_running'])) {
-            $message = __('The metrics are currently being updated in the background. Until completion, the most recently available data is still shown.', 'rrze-multisite-manager');
-        } elseif (!empty($status['needs_refresh'])) {
-            $message = __('The displayed metrics are outdated. A refresh has been scheduled for the next metrics run.', 'rrze-multisite-manager');
-        }
-
-        if ($message === '') {
-            return '';
-        }
-
-        $html .= '<div class="notice ' . esc_attr($noticeClass) . ' inline">';
-        $html .= '<p>' . esc_html($message) . '</p>';
-        $html .= '<p><strong>' . esc_html__('Last metrics run:', 'rrze-multisite-manager') . '</strong> ' . esc_html($lastRunLabel) . '<br>';
-        $html .= '<strong>' . esc_html__('Next metrics run:', 'rrze-multisite-manager') . '</strong> ' . esc_html($nextRunLabel);
-
-        if (!empty($status['batch_total'])) {
-            $html .= '<br><strong>' . esc_html__('Batch progress:', 'rrze-multisite-manager') . '</strong> '
-                . esc_html(
-                    sprintf(
-                        __('%1$s of %2$s websites', 'rrze-multisite-manager'),
-                        number_format_i18n((int)($status['batch_offset'] ?? 0)),
-                        number_format_i18n((int)($status['batch_total'] ?? 0))
-                    )
-                );
-        }
-
-        $html .= '</p>';
-
-        if ($this->currentUserCanUseNetworkAdminFeatures()) {
-            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_metrics')) . '">';
-            $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($returnUrl) . '">';
-            $html .= wp_nonce_field('rrze_multisite_manager_refresh_metrics', '_wpnonce', true, false);
-            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Update now anyway', 'rrze-multisite-manager') . '</button>';
-            $html .= '</form>';
-        }
-
-        $html .= '</div>';
-
-        return $html;
+        return '<p class="rrze-msm-metrics-status">' . esc_html__('Stand:', 'rrze-multisite-manager') . ' ' . esc_html($label) . '</p>';
     }
 
     protected function getOperationalStatusOptions(): array {

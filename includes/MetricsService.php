@@ -75,7 +75,7 @@ class MetricsService {
         if (
             $this->isDashboardRefreshInProgress()
             && !$this->isDashboardRefreshLocked()
-            && $this->getNextDashboardRefreshEventTimestamp() <= 0
+            && $this->getNextDashboardBatchRefreshEventTimestamp() <= 0
         ) {
             $this->scheduleDashboardRefresh(5, true);
         }
@@ -512,7 +512,8 @@ class MetricsService {
         $cached = $this->getStoredDashboardCache();
         $hasData = $this->isUsableDashboardCache($cached);
         $needsRefresh = $this->shouldRefreshDashboardCache($cached);
-        $nextRunTimestamp = $this->getNextDashboardRefreshEventTimestamp();
+        $nextRunTimestamp = $this->getNextDashboardRefreshEventTimestamp(false);
+        $nextBatchRunTimestamp = $this->getNextDashboardBatchRefreshEventTimestamp();
         $siteCount = 0;
         $batchOffset = (int)get_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, 0);
         $batchTotal = (int)get_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
@@ -528,7 +529,10 @@ class MetricsService {
         $progressPercent = ($batchTotal > 0 && $checkedSites > 0)
             ? (int)round(($checkedSites / $batchTotal) * 100)
             : 0;
-        $isStale = $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
+        $nextProgressRunTimestamp = $isRunning && $batchTotal > $checkedSites && $nextBatchRunTimestamp > 0
+            ? $nextBatchRunTimestamp
+            : $nextRunTimestamp;
+        $isStale = $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
 
         if ($hasData) {
             $siteCount = count((array)($cached['data']['site_overview'] ?? []));
@@ -543,6 +547,7 @@ class MetricsService {
             'last_started_at_timestamp' => (int)($cached['started_at'] ?? 0),
             'last_finished_at_timestamp' => (int)($cached['generated_at'] ?? 0),
             'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
+            'next_batch_run_timestamp' => $nextBatchRunTimestamp ? (int)$nextBatchRunTimestamp : 0,
             'last_site_count' => $siteCount,
             'batch_offset' => $batchOffset,
             'batch_total' => $batchTotal,
@@ -693,6 +698,8 @@ class MetricsService {
             $this->finalizeDashboardRefreshBatchState($state);
             $this->resetDashboardRefreshBatchState();
             $this->releaseDashboardRefreshLock();
+            // Keep the next complete refresh scheduled independently of batch continuations.
+            $this->scheduleDashboardRefresh();
             return;
         }
 
@@ -9196,7 +9203,9 @@ class MetricsService {
             return;
         }
 
-        $scheduledEvent = $this->getNextDashboardRefreshEvent();
+        $scheduledEvent = $isBatchContinuation
+            ? $this->getNextDashboardBatchRefreshEvent()
+            : $this->getNextDashboardRefreshEvent(false);
         $scheduledAt = (int)($scheduledEvent['timestamp'] ?? 0);
         $cached = $this->getStoredDashboardCache();
         $generatedAt = (int)($cached['generated_at'] ?? 0);
@@ -9241,7 +9250,7 @@ class MetricsService {
     /**
      * Returns the earliest pending dashboard refresh event, including batch continuations.
      */
-    protected function getNextDashboardRefreshEvent(): array {
+    protected function getNextDashboardRefreshEvent(bool $includeBatchContinuations = true): array {
         $nextEvent = [
             'timestamp' => 0,
             'args' => [],
@@ -9258,6 +9267,10 @@ class MetricsService {
         ];
 
         foreach ($scheduledEvents as $scheduledEvent) {
+            if (!$includeBatchContinuations && (array)($scheduledEvent['args'] ?? []) === self::DASHBOARD_BATCH_EVENT_ARGS) {
+                continue;
+            }
+
             $timestamp = (int)($scheduledEvent['timestamp'] ?? 0);
 
             if (!$timestamp || ((int)$nextEvent['timestamp'] > 0 && (int)$nextEvent['timestamp'] <= (int)$timestamp)) {
@@ -9276,13 +9289,19 @@ class MetricsService {
             }
 
             foreach ($events[self::DASHBOARD_REFRESH_HOOK] as $event) {
+                $eventArgs = (array)($event['args'] ?? []);
+
+                if (!$includeBatchContinuations && $eventArgs === self::DASHBOARD_BATCH_EVENT_ARGS) {
+                    continue;
+                }
+
                 if ((int)$nextEvent['timestamp'] > 0 && (int)$nextEvent['timestamp'] <= (int)$timestamp) {
                     continue;
                 }
 
                 $nextEvent = [
                     'timestamp' => (int)$timestamp,
-                    'args' => (array)($event['args'] ?? []),
+                    'args' => $eventArgs,
                 ];
             }
         }
@@ -9290,8 +9309,38 @@ class MetricsService {
         return $nextEvent;
     }
 
-    protected function getNextDashboardRefreshEventTimestamp(): int {
-        $event = $this->getNextDashboardRefreshEvent();
+    protected function getNextDashboardRefreshEventTimestamp(bool $includeBatchContinuations = true): int {
+        $event = $this->getNextDashboardRefreshEvent($includeBatchContinuations);
+
+        return (int)($event['timestamp'] ?? 0);
+    }
+
+    protected function getNextDashboardBatchRefreshEvent(): array {
+        $cron = _get_cron_array();
+
+        foreach ((array)$cron as $timestamp => $events) {
+            if (!is_numeric($timestamp) || empty($events[self::DASHBOARD_REFRESH_HOOK]) || !is_array($events[self::DASHBOARD_REFRESH_HOOK])) {
+                continue;
+            }
+
+            foreach ($events[self::DASHBOARD_REFRESH_HOOK] as $event) {
+                if ((array)($event['args'] ?? []) === self::DASHBOARD_BATCH_EVENT_ARGS) {
+                    return [
+                        'timestamp' => (int)$timestamp,
+                        'args' => self::DASHBOARD_BATCH_EVENT_ARGS,
+                    ];
+                }
+            }
+        }
+
+        return [
+            'timestamp' => 0,
+            'args' => self::DASHBOARD_BATCH_EVENT_ARGS,
+        ];
+    }
+
+    protected function getNextDashboardBatchRefreshEventTimestamp(): int {
+        $event = $this->getNextDashboardBatchRefreshEvent();
 
         return (int)($event['timestamp'] ?? 0);
     }

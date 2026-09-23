@@ -1218,7 +1218,6 @@ class Settings {
             echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Interval (hrs.)', 'rrze-multisite-manager') . '</th>';
             if ($showProgressColumns) {
                 echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Progress', 'rrze-multisite-manager') . '</th>';
-                echo '<th class="rrze-msm-col-numeric" rowspan="2">' . esc_html__('Remaining', 'rrze-multisite-manager') . '</th>';
             }
             echo '<th colspan="3">' . esc_html__('Last active', 'rrze-multisite-manager') . '</th>';
             echo '<th rowspan="2">' . esc_html__('Next run', 'rrze-multisite-manager') . '</th>';
@@ -1238,7 +1237,6 @@ class Settings {
                 echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['interval_hours'] ?? 0))) . '</td>';
                 if ($showProgressColumns) {
                     echo '<td>' . $this->renderProcessProgressHtml($process) . '</td>';
-                    echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatProcessRemaining($process)) . '</td>';
                 }
                 $finishedAt = (string)($process['finished_at'] ?? '');
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['started_at'] ?? ''))) . '</td>';

@@ -214,10 +214,10 @@ class MonitoringService {
         $hasOpenBatch = $batchTotal > 0 && $checkedSites < $batchTotal;
         $nextRecurringRunTimestamp = $this->getNextScheduledHookTimestamp($hook, true);
         $nextBatchRunTimestamp = $this->getNextScheduledHookTimestamp($hook, false);
-        $nextRunTimestamp = $hasOpenBatch && $nextBatchRunTimestamp > 0
+        $nextProgressRunTimestamp = $hasOpenBatch && $nextBatchRunTimestamp > 0
             ? $nextBatchRunTimestamp
             : $nextRecurringRunTimestamp;
-        $isStale = $this->isMonitoringRunStale($isExecuting, $batchTotal, $checkedSites, $nextRunTimestamp, $currentDurationSeconds);
+        $isStale = $this->isMonitoringRunStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
 
         return [
             [
@@ -232,7 +232,8 @@ class MonitoringService {
                 'started_at' => $isRunning ? (string)($runState['started_at'] ?? '') : $lastStartedAt,
                 'finished_at' => $isRunning ? '' : $lastFinishedAt,
                 'last_site_count' => $lastSiteCount,
-                'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
+                // The table displays the next complete run, never a batch continuation.
+                'next_run_timestamp' => $nextRecurringRunTimestamp ? (int)$nextRecurringRunTimestamp : 0,
                 'next_recurring_run_timestamp' => $nextRecurringRunTimestamp,
                 'next_batch_run_timestamp' => $nextBatchRunTimestamp,
                 'batch_offset' => $batchOffset,
