@@ -31,6 +31,7 @@ class MonitoringService {
     protected const OPTION_RUN_STATE = 'rrze_msm_monitoring_run_state';
     protected const OPTION_RUN_LOG = 'rrze_msm_monitoring_run_log';
     protected const LOCK_KEY = 'rrze_msm_monitoring_lock';
+    protected const LOCK_OPTION = 'rrze_msm_monitoring_lock_state';
     protected const LOCK_TTL = 900;
     protected const MAX_SITE_HISTORY_ENTRIES = 10;
     protected const MAX_RUN_EVENT_ENTRIES = 12;
@@ -69,10 +70,14 @@ class MonitoringService {
 
     public function ensureScheduledEvent(): void {
         $hook = $this->config->getMonitoringHook();
-        $schedule = $this->config->getMonitoringScheduleSlug();
+        $nextRecurringTimestamp = $this->getNextScheduledHookTimestamp($hook, true);
+        $lastRunTimestamp = strtotime((string)get_site_option(self::OPTION_LAST_RUN, '') . ' GMT');
+        $minimumNextRunTimestamp = $lastRunTimestamp > 0 ? $lastRunTimestamp + $this->getMonitoringInterval() : 0;
 
-        if (!wp_next_scheduled($hook)) {
-            wp_schedule_event(time() + MINUTE_IN_SECONDS, $schedule, $hook);
+        if ($nextRecurringTimestamp <= 0) {
+            $this->scheduleRecurringEvent($this->getMonitoringInterval());
+        } elseif ($minimumNextRunTimestamp > time() && $nextRecurringTimestamp < $minimumNextRunTimestamp) {
+            $this->rescheduleRecurringEvent($minimumNextRunTimestamp - time());
         }
 
         if (
@@ -87,7 +92,7 @@ class MonitoringService {
     /**
      * Replaces only the recurring monitoring event without interrupting a running batch.
      */
-    public function rescheduleRecurringEvent(): void {
+    public function rescheduleRecurringEvent(?int $delay = null): void {
         $hook = $this->config->getMonitoringHook();
         $cron = _get_cron_array();
 
@@ -101,7 +106,7 @@ class MonitoringService {
             }
         }
 
-        $this->ensureScheduledEvent();
+        $this->scheduleRecurringEvent($delay ?? $this->getMonitoringInterval());
     }
 
     public function runScheduledChecks(...$args): void {
@@ -161,6 +166,7 @@ class MonitoringService {
         delete_site_option(self::OPTION_BATCH_OFFSET);
         delete_site_option(self::OPTION_BATCH_TOTAL);
         delete_site_option(self::OPTION_RUN_STATE);
+        delete_site_option(self::LOCK_OPTION);
         delete_site_transient(self::LOCK_KEY);
     }
 
@@ -175,6 +181,7 @@ class MonitoringService {
         delete_site_option(self::OPTION_BATCH_OFFSET);
         delete_site_option(self::OPTION_BATCH_TOTAL);
         delete_site_option(self::OPTION_RUN_STATE);
+        delete_site_option(self::LOCK_OPTION);
         delete_site_transient(self::LOCK_KEY);
     }
 
@@ -223,7 +230,7 @@ class MonitoringService {
             [
                 'id' => 'site-availability',
                 'title' => __('Website availability', 'rrze-multisite-manager'),
-                'description' => __('Checks DNS and HTTP reachability of all registered websites and updates the plugin\'s monitoring meta fields.', 'rrze-multisite-manager'),
+                'description' => __('Checks DNS and HTTP reachability of all active websites and updates the plugin\'s monitoring meta fields.', 'rrze-multisite-manager'),
                 'interval_hours' => $this->getMonitoringIntervalHours(),
                 'provisioning_grace_hours' => $this->getProvisioningGraceHours(),
                 'dns_failure_threshold' => $this->getDnsFailureThreshold(),
@@ -303,10 +310,10 @@ class MonitoringService {
         }
 
         if ($offset <= 0 || $totalSites <= 0) {
-            $totalSites = (int)get_sites([
+            $totalSites = (int)get_sites($this->getActiveSiteQueryArgs([
                 'count' => true,
                 'number' => 1,
-            ]);
+            ]));
             update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
             $runState['total_sites'] = $totalSites;
             $this->saveRunState($runState);
@@ -317,13 +324,13 @@ class MonitoringService {
             }
         }
 
-        $siteIds = get_sites([
+        $siteIds = get_sites($this->getActiveSiteQueryArgs([
             'fields' => 'ids',
             'number' => $batchSize,
             'offset' => max(0, $offset),
             'orderby' => 'id',
             'order' => 'ASC',
-        ]);
+        ]));
 
         foreach ($siteIds as $siteId) {
             $result = $this->checkSiteAvailability((int)$siteId);
@@ -339,6 +346,7 @@ class MonitoringService {
             $this->finalizeRunState($timestamp);
             $this->resetBatchState();
             $this->releaseMonitoringLock();
+            $this->rescheduleRecurringEvent($this->getMonitoringInterval());
             (new MetricsService(null, $this->config))->invalidateCaches();
             return;
         }
@@ -353,6 +361,21 @@ class MonitoringService {
         return $this->config->getMonitoringBatchSize();
     }
 
+    /**
+     * @param array<string, mixed> $args
+     * @return array<string, mixed>
+     */
+    protected function getActiveSiteQueryArgs(array $args = []): array {
+        return array_merge(
+            [
+                'archived' => 0,
+                'spam' => 0,
+                'deleted' => 0,
+            ],
+            $args
+        );
+    }
+
     protected function scheduleNextBatch(int $delay = 30): void {
         $hook = $this->config->getMonitoringHook();
 
@@ -364,6 +387,20 @@ class MonitoringService {
             time() + max(5, $delay),
             $hook,
             self::BATCH_EVENT_ARGS
+        );
+    }
+
+    protected function scheduleRecurringEvent(int $delay): void {
+        $hook = $this->config->getMonitoringHook();
+
+        if ($this->getNextScheduledHookTimestamp($hook, true) > 0) {
+            return;
+        }
+
+        wp_schedule_event(
+            time() + max(MINUTE_IN_SECONDS, $delay),
+            $this->config->getMonitoringScheduleSlug(),
+            $hook
         );
     }
 
@@ -417,19 +454,41 @@ class MonitoringService {
     }
 
     protected function acquireMonitoringLock(): bool {
-        if ($this->isMonitoringLocked()) {
+        $timestamp = time();
+
+        if (add_site_option(self::LOCK_OPTION, $timestamp)) {
+            return true;
+        }
+
+        $existingLock = (int)get_site_option(self::LOCK_OPTION, 0);
+
+        if ($existingLock > 0 && ($timestamp - $existingLock) < self::LOCK_TTL) {
             return false;
         }
 
-        return (bool)set_site_transient(self::LOCK_KEY, time(), self::LOCK_TTL);
+        delete_site_option(self::LOCK_OPTION);
+
+        return add_site_option(self::LOCK_OPTION, $timestamp);
     }
 
     protected function releaseMonitoringLock(): void {
+        delete_site_option(self::LOCK_OPTION);
         delete_site_transient(self::LOCK_KEY);
     }
 
     protected function isMonitoringLocked(): bool {
-        return (int)get_site_transient(self::LOCK_KEY) > 0;
+        $timestamp = (int)get_site_option(self::LOCK_OPTION, 0);
+
+        if ($timestamp <= 0) {
+            return false;
+        }
+
+        if ((time() - $timestamp) >= self::LOCK_TTL) {
+            delete_site_option(self::LOCK_OPTION);
+            return false;
+        }
+
+        return true;
     }
 
     public function isMonitoringRunInProgress(): bool {
@@ -583,9 +642,11 @@ class MonitoringService {
             return [];
         }
 
-        if ((int)$site->spam === 1 || (int)$site->deleted === 1) {
+        if (!$this->isActiveSite($site)) {
             (new StorageAnalysisSchedulerService(new MetricsService(null, $this->config), $this->config))
                 ->deactivateIneligibleSite($siteId);
+            (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
+            return [];
         }
 
         $siteUrl = get_home_url($siteId, '/');
@@ -679,6 +740,12 @@ class MonitoringService {
             __('Site %d', 'rrze-multisite-manager'),
             (int)$site->blog_id
         );
+    }
+
+    protected function isActiveSite(\WP_Site $site): bool {
+        return (int)$site->archived === 0
+            && (int)$site->spam === 0
+            && (int)$site->deleted === 0;
     }
 
     protected function updateOperationalStatus(int $siteId, string $currentStatus, string $nextStatus, string $timestamp, string $source): bool {

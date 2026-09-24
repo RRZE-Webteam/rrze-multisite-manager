@@ -14,19 +14,22 @@ class MetricsService {
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
     protected const DASHBOARD_LOCK_KEY = 'rrze_msm_dashboard_metrics_refresh_lock';
+    protected const DASHBOARD_LOCK_OPTION = 'rrze_msm_dashboard_metrics_refresh_lock_state';
     protected const DASHBOARD_BATCH_OFFSET_OPTION = 'rrze_msm_dashboard_metrics_batch_offset';
     protected const DASHBOARD_BATCH_TOTAL_OPTION = 'rrze_msm_dashboard_metrics_batch_total';
     protected const DASHBOARD_BATCH_STATE_OPTION = 'rrze_msm_dashboard_metrics_batch_state';
+    protected const DASHBOARD_CACHE_VERSION = 2;
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
     protected const SITE_DETAIL_CACHE_VERSION_META = 'rrze_msm_site_detail_cache_version';
     protected const SITE_STORAGE_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_storage_analysis_result';
     protected const SITE_STORAGE_ANALYSIS_RESULT_META_OPTION = 'rrze_msm_site_storage_analysis_result_meta';
     protected const SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_media_metadata_analysis_result';
+    protected const CLASSIC_EDITOR_PLUGIN_FILE = 'classic-editor/classic-editor.php';
     protected const STORAGE_ANALYSIS_CLEANUP_HOOK = 'rrze_msm_cleanup_legacy_storage_analysis_data';
     protected const STORAGE_ANALYSIS_CLEANUP_VERSION_OPTION = 'rrze_msm_storage_analysis_cleanup_version';
     protected const STORAGE_ANALYSIS_CLEANUP_OFFSET_OPTION = 'rrze_msm_storage_analysis_cleanup_offset';
-    // Version 2 also removes expired legacy base/orphan work states added after the initial cleanup.
-    protected const STORAGE_ANALYSIS_CLEANUP_VERSION = 2;
+    // Version 3 also removes completed legacy base/orphan work states that left timeout rows behind.
+    protected const STORAGE_ANALYSIS_CLEANUP_VERSION = 3;
     protected const STORAGE_ANALYSIS_CLEANUP_BATCH_SIZE = 25;
     protected const STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION = 'rrze_msm_storage_analysis_cleanup_lock';
@@ -78,6 +81,25 @@ class MetricsService {
             && $this->getNextDashboardBatchRefreshEventTimestamp() <= 0
         ) {
             $this->scheduleDashboardRefresh(5, true);
+            return;
+        }
+
+        if ($this->isDashboardRefreshInProgress()) {
+            return;
+        }
+
+        $cached = $this->getStoredDashboardCache();
+        $generatedAt = (int)($cached['generated_at'] ?? 0);
+        $nextRunTimestamp = $this->getNextDashboardRefreshEventTimestamp(false);
+
+        if (
+            $this->isUsableDashboardCache($cached)
+            && (
+                $nextRunTimestamp <= 0
+                || $nextRunTimestamp < ($generatedAt + $this->getMetricsRefreshIntervalSeconds())
+            )
+        ) {
+            $this->scheduleDashboardRefresh(5);
         }
     }
 
@@ -172,35 +194,60 @@ class MetricsService {
             $valueKey = $wpdb->esc_like('_site_transient_') . $escapedPrefix;
             $timeoutKey = $wpdb->esc_like('_site_transient_timeout_') . $escapedPrefix;
 
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Only expired work states from older analyses are selected; active runs must remain untouched.
-            $stateIds = (array)$wpdb->get_col(
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Only expired or completed work states are selected; active runs must remain untouched.
+            $stateRows = (array)$wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT value_row.meta_id
+                    "SELECT value_row.meta_id, value_row.meta_key
                     FROM {$wpdb->sitemeta} AS value_row
                     LEFT JOIN {$wpdb->sitemeta} AS timeout_row
                         ON timeout_row.meta_key = CONCAT('_site_transient_timeout_', SUBSTRING(value_row.meta_key, %d))
                     WHERE value_row.meta_key LIKE %s
-                    AND (timeout_row.meta_value IS NULL OR CAST(timeout_row.meta_value AS UNSIGNED) < %d)
+                    AND (
+                        timeout_row.meta_value IS NULL
+                        OR CAST(timeout_row.meta_value AS UNSIGNED) < %d
+                        OR value_row.meta_value LIKE %s
+                    )
                     LIMIT %d",
                     strlen('_site_transient_') + 1,
                     $valueKey,
                     time(),
+                    '%"status";s:8:"complete"%',
                     self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
                 )
             );
+            $stateIds = array_map('absint', wp_list_pluck($stateRows, 'meta_id'));
+            $stateTimeoutKeys = [];
+
+            foreach ($stateRows as $stateRow) {
+                $stateKey = is_object($stateRow) ? (string)($stateRow->meta_key ?? '') : '';
+
+                if (str_starts_with($stateKey, '_site_transient_')) {
+                    $stateTimeoutKeys[] = '_site_transient_timeout_' . substr($stateKey, strlen('_site_transient_'));
+                }
+            }
 
             if (!empty($stateIds)) {
-                $stateIds = array_map('absint', $stateIds);
                 $placeholders = implode(', ', array_fill(0, count($stateIds), '%d'));
 
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- IDs were selected above from the same strictly scoped transient family.
                 $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_id IN ({$placeholders})", ...$stateIds));
             }
 
+            $deletedStateTimeouts = 0;
+
+            if (!empty($stateTimeoutKeys)) {
+                $stateTimeoutKeys = array_values(array_unique($stateTimeoutKeys));
+                $placeholders = implode(', ', array_fill(0, count($stateTimeoutKeys), '%s'));
+
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Matching timeout rows belong to completed or expired states selected above.
+                $deletedStateTimeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key IN ({$placeholders})", ...$stateTimeoutKeys));
+            }
+
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Expired timeout rows no longer belong to active states and are removed in a bounded batch.
             $deletedTimeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s AND CAST(meta_value AS UNSIGNED) < %d LIMIT %d", $timeoutKey, time(), self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE));
             $hasRemainingRows = $hasRemainingRows
                 || count($stateIds) >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
+                || $deletedStateTimeouts >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
                 || $deletedTimeouts >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE;
         }
 
@@ -267,6 +314,7 @@ class MetricsService {
         update_site_option(
             $this->getCacheKey(),
             [
+                'version' => self::DASHBOARD_CACHE_VERSION,
                 'data' => $data,
                 'generated_at' => time(),
                 'started_at' => time(),
@@ -520,7 +568,9 @@ class MetricsService {
             : $nextRunTimestamp;
         $isStale = $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
 
-        if ($hasData) {
+        if ($batchTotal > 0) {
+            $siteCount = $batchTotal;
+        } elseif ($hasData) {
             $siteCount = count((array)($cached['data']['site_overview'] ?? []));
         }
 
@@ -2523,7 +2573,8 @@ class MetricsService {
             'number' => 0,
         ]);
         $networkActivePlugins = get_site_option('active_sitewide_plugins', []);
-        $classicEverywhere = isset($networkActivePlugins['classic-editor/classic-editor.php']);
+        $classicEverywhere = $this->hasClassicEditorMustUsePlugin()
+            || $this->hasClassicEditorPlugin(array_keys($networkActivePlugins));
         $classicSites = 0;
         $blockSites = 0;
         $siteId = 0;
@@ -2538,7 +2589,7 @@ class MetricsService {
 
             $activePlugins = get_blog_option((int)$siteId, 'active_plugins', []);
 
-            if (is_array($activePlugins) && in_array('classic-editor/classic-editor.php', $activePlugins, true)) {
+            if (is_array($activePlugins) && $this->hasClassicEditorPlugin($activePlugins)) {
                 $classicSites++;
             } else {
                 $blockSites++;
@@ -2563,6 +2614,78 @@ class MetricsService {
                 'accent' => 'info',
             ],
         ];
+    }
+
+    /**
+     * @param array<int, mixed> $pluginFiles
+     */
+    protected function hasClassicEditorPlugin(array $pluginFiles): bool {
+        $classicEditorPluginFiles = $this->getClassicEditorPluginFiles();
+
+        foreach ($pluginFiles as $pluginFile) {
+            if (in_array(ltrim((string)$pluginFile, '/'), $classicEditorPluginFiles, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function getClassicEditorPluginFiles(): array {
+        static $pluginFiles = null;
+        $plugins = [];
+        $pluginFile = '';
+        $pluginData = [];
+
+        if (is_array($pluginFiles)) {
+            return $pluginFiles;
+        }
+
+        $pluginFiles = [self::CLASSIC_EDITOR_PLUGIN_FILE];
+
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $plugins = get_plugins();
+
+        foreach ($plugins as $pluginFile => $pluginData) {
+            if (is_array($pluginData) && strtolower(trim((string)($pluginData['Name'] ?? ''))) === 'classic editor') {
+                $pluginFiles[] = ltrim((string)$pluginFile, '/');
+            }
+        }
+
+        return array_values(array_unique($pluginFiles));
+    }
+
+    protected function hasClassicEditorMustUsePlugin(): bool {
+        static $hasClassicEditor = null;
+        $muPlugins = [];
+        $pluginData = [];
+
+        if (is_bool($hasClassicEditor)) {
+            return $hasClassicEditor;
+        }
+
+        if (!function_exists('get_mu_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $muPlugins = function_exists('get_mu_plugins') ? get_mu_plugins() : [];
+
+        foreach ($muPlugins as $pluginData) {
+            if (is_array($pluginData) && strtolower(trim((string)($pluginData['Name'] ?? ''))) === 'classic editor') {
+                $hasClassicEditor = true;
+                return true;
+            }
+        }
+
+        $hasClassicEditor = false;
+
+        return false;
     }
 
     protected function countSites(array $args = []): int {
@@ -4677,11 +4800,9 @@ class MetricsService {
             )
         );
 
-        $state['status'] = 'complete';
-        $state['finished_at'] = current_time('mysql', true);
-        $state['updated_at'] = $state['finished_at'];
-        $state['message'] = __('The base analysis is complete. The orphan check can now be started separately.', 'rrze-multisite-manager');
-        set_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId), $state, $this->getDetailCacheTtl());
+        // The persistent result already records completion. Keeping an additional completed
+        // transient only produces an unnecessary value/timeout pair in the network table.
+        delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
         delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
     }
 
@@ -5205,11 +5326,8 @@ class MetricsService {
         $analysis['generated_at'] = current_time('mysql', true);
         $this->saveCurrentSiteStorageAnalysisResult($this->normalizeSiteStorageAnalysis($analysis));
 
-        $state['status'] = 'complete';
-        $state['finished_at'] = current_time('mysql', true);
-        $state['updated_at'] = $state['finished_at'];
-        $state['message'] = __('The orphan check has been completed.', 'rrze-multisite-manager');
-        set_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId), $state, $this->getDetailCacheTtl());
+        // The completed orphan status is part of the persistent analysis result.
+        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
     }
 
     protected function buildStorageAnalysisPayload(
@@ -9072,7 +9190,10 @@ class MetricsService {
     }
 
     protected function isUsableDashboardCache(array $cached): bool {
-        return !empty($cached['data']) && is_array($cached['data']) && $this->isCompleteDashboardData((array)$cached['data']);
+        return (int)($cached['version'] ?? 0) === self::DASHBOARD_CACHE_VERSION
+            && !empty($cached['data'])
+            && is_array($cached['data'])
+            && $this->isCompleteDashboardData((array)$cached['data']);
     }
 
     protected function shouldRefreshDashboardCache(array $cached): bool {
@@ -9201,7 +9322,18 @@ class MetricsService {
         $scheduleTimestamp = $isBatchContinuation ? $requestedTimestamp : max($requestedTimestamp, $minimumRunTimestamp);
 
         if ($scheduledAt && (int)$scheduledAt > 0) {
-            if ((int)$scheduledAt <= $scheduleTimestamp) {
+            if (
+                $isBatchContinuation
+                && (int)$scheduledAt <= $scheduleTimestamp
+            ) {
+                return;
+            }
+
+            if (
+                !$isBatchContinuation
+                && (int)$scheduledAt >= $minimumRunTimestamp
+                && (int)$scheduledAt <= $scheduleTimestamp
+            ) {
                 return;
             }
 
@@ -9349,19 +9481,41 @@ class MetricsService {
     }
 
     protected function acquireDashboardRefreshLock(): bool {
-        if ($this->isDashboardRefreshLocked()) {
+        $timestamp = time();
+
+        if (add_site_option(self::DASHBOARD_LOCK_OPTION, $timestamp)) {
+            return true;
+        }
+
+        $existingLock = (int)get_site_option(self::DASHBOARD_LOCK_OPTION, 0);
+
+        if ($existingLock > 0 && ($timestamp - $existingLock) < self::DASHBOARD_LOCK_TTL) {
             return false;
         }
 
-        return (bool)set_site_transient(self::DASHBOARD_LOCK_KEY, time(), self::DASHBOARD_LOCK_TTL);
+        delete_site_option(self::DASHBOARD_LOCK_OPTION);
+
+        return add_site_option(self::DASHBOARD_LOCK_OPTION, $timestamp);
     }
 
     protected function releaseDashboardRefreshLock(): void {
+        delete_site_option(self::DASHBOARD_LOCK_OPTION);
         delete_site_transient(self::DASHBOARD_LOCK_KEY);
     }
 
     protected function isDashboardRefreshLocked(): bool {
-        return (int)get_site_transient(self::DASHBOARD_LOCK_KEY) > 0;
+        $timestamp = (int)get_site_option(self::DASHBOARD_LOCK_OPTION, 0);
+
+        if ($timestamp <= 0) {
+            return false;
+        }
+
+        if ((time() - $timestamp) >= self::DASHBOARD_LOCK_TTL) {
+            delete_site_option(self::DASHBOARD_LOCK_OPTION);
+            return false;
+        }
+
+        return true;
     }
 
     public function isDashboardRefreshInProgress(): bool {
@@ -9514,7 +9668,8 @@ class MetricsService {
                 'total_sites' => $siteCount,
                 'classic_sites' => 0,
                 'block_sites' => 0,
-                'classic_everywhere' => isset(((array)get_site_option('active_sitewide_plugins', []))['classic-editor/classic-editor.php']),
+                'classic_everywhere' => $this->hasClassicEditorMustUsePlugin()
+                    || $this->hasClassicEditorPlugin(array_keys((array)get_site_option('active_sitewide_plugins', []))),
             ],
         ];
     }
@@ -9527,6 +9682,7 @@ class MetricsService {
         update_site_option(
             $this->getCacheKey(),
             [
+                'version' => self::DASHBOARD_CACHE_VERSION,
                 'data' => $data,
                 'generated_at' => $generatedAt,
                 'started_at' => $startedAt,
@@ -9810,9 +9966,11 @@ class MetricsService {
     }
 
     protected function accumulateDashboardBatchEditorUsage(array &$editorState, array $sitePluginFiles, array $networkActivePlugins = []): void {
-        $classicEverywhere = !empty($editorState['classic_everywhere']) || isset($networkActivePlugins['classic-editor/classic-editor.php']);
+        $classicEverywhere = !empty($editorState['classic_everywhere'])
+            || $this->hasClassicEditorMustUsePlugin()
+            || $this->hasClassicEditorPlugin(array_keys($networkActivePlugins));
 
-        if ($classicEverywhere || in_array('classic-editor/classic-editor.php', $sitePluginFiles, true)) {
+        if ($classicEverywhere || $this->hasClassicEditorPlugin($sitePluginFiles)) {
             $editorState['classic_sites'] = (int)($editorState['classic_sites'] ?? 0) + 1;
             return;
         }
