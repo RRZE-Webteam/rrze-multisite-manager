@@ -373,6 +373,10 @@ class Dashboard {
                 'themeSearchNonce' => wp_create_nonce('rrze-msm-search-themes'),
                 'themeSearchMinLength' => 3,
                 'themeSearchNoResults' => __('No themes found.', 'rrze-multisite-manager'),
+                'firstPageLabel' => __('First page', 'rrze-multisite-manager'),
+                'previousPageLabel' => __('Previous page', 'rrze-multisite-manager'),
+                'nextPageLabel' => __('Next page', 'rrze-multisite-manager'),
+                'lastPageLabel' => __('Last page', 'rrze-multisite-manager'),
                 'siteMediaSearchNonce' => wp_create_nonce('rrze-msm-search-site-media'),
                 'siteMediaSearchMinLength' => 3,
                 'siteMediaSearchNoResults' => __('No media files found.', 'rrze-multisite-manager'),
@@ -463,6 +467,7 @@ class Dashboard {
         }
 
         $dashboardData = $this->metrics->getDashboardData();
+        $dashboardData['site_table_default_limit'] = max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10));
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $metricsLastRunLabel = !empty($metricsStatus['last_run_timestamp'])
             ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$metricsStatus['last_run_timestamp'])
@@ -554,6 +559,7 @@ class Dashboard {
         }
 
         $dashboardData = $this->metrics->getDashboardData();
+        $dashboardData['site_table_default_limit'] = max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10));
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $widget = new SiteOverviewWidget($this->plugin, $this->config);
         $summary = is_array($dashboardData['summary'] ?? null) ? $dashboardData['summary'] : [];

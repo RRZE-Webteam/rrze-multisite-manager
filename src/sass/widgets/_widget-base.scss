@@ -220,18 +220,18 @@
     gap: 4px;
 }
 
-.rrze-msm-site-table-pagination .button[disabled] {
+.rrze-msm-site-table-pagination .tablenav-pages-navspan.disabled {
     opacity: 0.45;
     cursor: default;
 }
 
-.rrze-msm-monitoring-site-url .row-actions {
+.rrze-msm-monitoring-site-identity .row-actions {
     visibility: hidden;
     margin-top: 4px;
 }
 
-.rrze-msm-table tbody tr:hover .rrze-msm-monitoring-site-url .row-actions,
-.rrze-msm-table tbody tr:focus-within .rrze-msm-monitoring-site-url .row-actions {
+.rrze-msm-monitoring-site-identity:hover .row-actions,
+.rrze-msm-monitoring-site-identity:focus-within .row-actions {
     visibility: visible;
 }
 

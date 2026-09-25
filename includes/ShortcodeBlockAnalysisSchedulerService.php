@@ -232,7 +232,7 @@ class ShortcodeBlockAnalysisSchedulerService {
      * includes unscheduled sites so pagination never requires scanning every
      * site merely to find rows with an existing analysis record.
      *
-     * @return array{processes: array<int, array<string, mixed>>, has_more: bool}
+     * @return array{processes: array<int, array<string, mixed>>, has_more: bool, total: int}
      */
     public function getSiteProcessesPage(int $page, int $perPage): array {
         $page = max(1, $page);
@@ -245,6 +245,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             'order' => 'ASC',
         ]);
         $hasMore = count($siteIds) > $perPage;
+        $total = (int)get_sites(['count' => true]);
         $processes = [];
 
         foreach (array_slice($siteIds, 0, $perPage) as $siteId) {
@@ -254,6 +255,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         return [
             'processes' => $processes,
             'has_more' => $hasMore,
+            'total' => $total,
         ];
     }
 
@@ -278,6 +280,7 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         return [
             'site_id' => $siteId,
+            'name' => (string)get_blog_option($siteId, 'blogname', ''),
             'url' => get_home_url($siteId, '/'),
             'status' => $this->getProcessStatusLabel($statusKey),
             'status_key' => $statusKey,
@@ -355,20 +358,28 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function getUnscheduledActiveSiteCount(): int {
-        /*
-         * This value only controls whether the initialization action is shown.
-         * A complete per-site status scan here would make the paginated
-         * monitoring page load all websites again.
-         */
-        if ((bool)get_site_option(self::TASK_REMOVAL_OPTION, false)) {
-            return 0;
+        $scheduledSiteIds = $this->getRecurringScheduledSiteIds();
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'archived' => 0,
+            'spam' => 0,
+            'deleted' => 0,
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if (isset($scheduledSiteIds[$siteId])) {
+                continue;
+            }
+
+            if ($this->isSiteUnscheduled($siteId)) {
+                return 1;
+            }
         }
 
-        if (!(bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
-            return 1;
-        }
-
-        return $this->hasAnyRecurringScheduledAnalysis() ? 0 : 1;
+        return 0;
     }
 
     public function initializeUnscheduledActiveSites(): int {
@@ -1182,6 +1193,26 @@ class ShortcodeBlockAnalysisSchedulerService {
         return false;
     }
 
+    /**
+     * @return array<int, true>
+     */
+    protected function getRecurringScheduledSiteIds(): array {
+        $siteIds = [];
+        $cron = _get_cron_array();
+
+        foreach ((array)$cron as $events) {
+            foreach ((array)($events[$this->getHook()] ?? []) as $event) {
+                $args = (array)($event['args'] ?? []);
+
+                if (!empty($event['schedule']) && (int)($args[0] ?? 0) > 0) {
+                    $siteIds[(int)$args[0]] = true;
+                }
+            }
+        }
+
+        return $siteIds;
+    }
+
     protected function hasAnyRecurringScheduledAnalysis(): bool {
         $cron = _get_cron_array();
 
@@ -1254,8 +1285,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         return !$this->isRunning($siteId)
-            && $this->getNextRecurringScheduledTimestamp($siteId) <= 0
-            && empty($this->getResult($siteId)['generated_at']);
+            && $this->getNextRecurringScheduledTimestamp($siteId) <= 0;
     }
 
     protected function isRunning(int $siteId): bool {
