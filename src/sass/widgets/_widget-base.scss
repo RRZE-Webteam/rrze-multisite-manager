@@ -720,6 +720,25 @@ td.rrze-msm-plugin-col-active-sites {
     gap: 6px;
 }
 
+.rrze-msm-monitoring-site-search,
+.rrze-msm-site-overview-search {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.rrze-msm-site-overview-search {
+    margin: 0;
+}
+
+.rrze-msm-site-table-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
 .rrze-msm-attachment-debug-form {
     align-items: flex-start;
 }

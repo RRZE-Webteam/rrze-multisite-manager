@@ -120,10 +120,26 @@ class ShortcodeBlockAnalysisSchedulerService {
         $cron = _get_cron_array();
         $removed = 0;
 
-        foreach ((array)$cron as $timestamp => $events) {
-            foreach ((array)($events[$scheduler->getHook()] ?? []) as $event) {
-                if (wp_unschedule_event((int)$timestamp, $scheduler->getHook(), (array)($event['args'] ?? []))) {
-                    $removed++;
+        if (is_array($cron)) {
+            foreach ($cron as $timestamp => $events) {
+                if (empty($events[$scheduler->getHook()])) {
+                    continue;
+                }
+
+                $removed += count((array)$events[$scheduler->getHook()]);
+                unset($cron[$timestamp][$scheduler->getHook()]);
+
+                if (empty($cron[$timestamp])) {
+                    unset($cron[$timestamp]);
+                }
+            }
+
+            if ($removed > 0) {
+                // Write the Cron array once. Calling wp_unschedule_event() for
+                // every website rewrites this large option repeatedly and can
+                // time out before all events have been removed.
+                if (!_set_cron_array($cron)) {
+                    return 0;
                 }
             }
         }
@@ -242,18 +258,26 @@ class ShortcodeBlockAnalysisSchedulerService {
      *
      * @return array{processes: array<int, array<string, mixed>>, has_more: bool, total: int}
      */
-    public function getSiteProcessesPage(int $page, int $perPage): array {
+    public function getSiteProcessesPage(int $page, int $perPage, string $urlSearch = ''): array {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
-        $siteIds = get_sites([
+        $queryArgs = [
             'fields' => 'ids',
             'number' => $perPage + 1,
             'offset' => ($page - 1) * $perPage,
             'orderby' => 'id',
             'order' => 'ASC',
-        ]);
+        ];
+
+        if ($urlSearch !== '') {
+            $queryArgs['search'] = $urlSearch;
+        }
+
+        $siteIds = get_sites($queryArgs);
         $hasMore = count($siteIds) > $perPage;
-        $total = (int)get_sites(['count' => true]);
+        $queryArgs['count'] = true;
+        unset($queryArgs['fields'], $queryArgs['number'], $queryArgs['offset'], $queryArgs['orderby'], $queryArgs['order']);
+        $total = (int)get_sites($queryArgs);
         $processes = [];
 
         foreach (array_slice($siteIds, 0, $perPage) as $siteId) {

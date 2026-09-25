@@ -240,17 +240,20 @@ abstract class Widgets {
         $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionModeClass = $actionMode === 'text' ? 'rrze-msm-site-overview-text-actions' : 'rrze-msm-site-overview-icon-actions';
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
+        $topControlsHtml = (string)($args['top_controls_html'] ?? '');
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
 
         if (empty($sites)) {
-            return '<p>' . esc_html__('No entries available.', 'rrze-multisite-manager') . '</p>';
+            return ($topControlsHtml !== '' ? '<div class="tablenav top rrze-msm-site-table-controls">' . $topControlsHtml . '</div>' : '')
+                . '<p>' . esc_html__('No entries available.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
         echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-site-overview-wrap ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
-        echo '<div class="tablenav top">';
+        echo '<div class="tablenav top rrze-msm-site-table-controls">';
+        echo $topControlsHtml;
         echo $this->renderSiteTablePerPageControl($tableId, 'rrze-msm-overview-per-page-' . $tableId, $defaultPerPage, $perPage);
         echo '</div>';
         echo '<table class="widefat striped rrze-msm-table rrze-msm-site-overview-table rrze-msm-site-hover-actions-table">';
@@ -363,17 +366,20 @@ abstract class Widgets {
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
         $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
+        $topControlsHtml = (string)($args['top_controls_html'] ?? '');
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
 
         if (empty($sites)) {
-            return '<p>' . esc_html__('No problematic websites found.', 'rrze-multisite-manager') . '</p>';
+            return ($topControlsHtml !== '' ? '<div class="tablenav top rrze-msm-site-table-controls">' . $topControlsHtml . '</div>' : '')
+                . '<p>' . esc_html__('No problematic websites found.', 'rrze-multisite-manager') . '</p>';
         }
 
         ob_start();
         echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-status-site-table-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
-        echo '<div class="tablenav top">';
+        echo '<div class="tablenav top rrze-msm-site-table-controls">';
+        echo $topControlsHtml;
         echo $this->renderSiteTablePerPageControl($tableId, 'rrze-msm-operational-per-page-' . $tableId, $defaultPerPage, $perPage);
         echo '</div>';
         echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table rrze-msm-site-hover-actions-table">';
