@@ -181,11 +181,11 @@ class Settings {
         }
 
         if ($storageAnalysisFrequencyChanged) {
-            (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->syncRecurringSchedules();
+            (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->markScheduleConfigurationCurrent();
         }
 
         if ($shortcodeAnalysisFrequencyChanged) {
-            (new ShortcodeBlockAnalysisSchedulerService($this->config))->syncRecurringSchedules();
+            (new ShortcodeBlockAnalysisSchedulerService($this->config))->markScheduleConfigurationCurrent();
         }
 
         $redirectUrl = add_query_arg(
@@ -413,14 +413,17 @@ class Settings {
 
         check_admin_referer('rrze_multisite_manager_initialize_site_storage_analysis_schedules');
         $scheduler = new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config);
-        $siteCount = $scheduler->initializeActiveSiteSchedules();
+        $batch = $scheduler->initializeActiveSiteSchedulesBatch();
 
         wp_safe_redirect(
             add_query_arg(
                 [
                     'page' => $this->getMonitoringSlug(),
                     'monitoring_tab' => 'websites',
-                    'site-storage-schedules-initialized' => $siteCount,
+                    'site-storage-schedules-initialized' => $batch['initialized'],
+                    'site-storage-schedules-processed' => $batch['processed'],
+                    'site-storage-schedules-total' => $batch['total'],
+                    'site-storage-schedules-complete' => $batch['complete'] ? 'true' : 'false',
                 ],
                 admin_url('admin.php')
             )
@@ -435,14 +438,17 @@ class Settings {
 
         check_admin_referer('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules');
         $scheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
-        $siteCount = $scheduler->initializeUnscheduledActiveSites();
+        $batch = $scheduler->initializeUnscheduledActiveSitesBatch();
 
         wp_safe_redirect(
             add_query_arg(
                 [
                     'page' => $this->getMonitoringSlug(),
                     'monitoring_tab' => 'websites',
-                    'shortcode-block-schedules-initialized' => $siteCount,
+                    'shortcode-block-schedules-initialized' => $batch['initialized'],
+                    'shortcode-block-schedules-processed' => $batch['processed'],
+                    'shortcode-block-schedules-total' => $batch['total'],
+                    'shortcode-block-schedules-complete' => $batch['complete'] ? 'true' : 'false',
                 ],
                 admin_url('admin.php')
             )
@@ -1039,7 +1045,18 @@ class Settings {
         }
 
         if (isset($_GET['site-storage-schedules-initialized'])) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(__('Storage analysis schedules were initialized for %d active websites.', 'rrze-multisite-manager'), absint(wp_unslash($_GET['site-storage-schedules-initialized'])))) . '</p></div>';
+            $processed = isset($_GET['site-storage-schedules-processed']) ? absint(wp_unslash($_GET['site-storage-schedules-processed'])) : 0;
+            $total = isset($_GET['site-storage-schedules-total']) ? absint(wp_unslash($_GET['site-storage-schedules-total'])) : 0;
+            $initialized = absint(wp_unslash($_GET['site-storage-schedules-initialized']));
+            $complete = !empty($_GET['site-storage-schedules-complete']);
+            $message = $processed > 0 || $total > 0
+                ? sprintf(__('Storage-analysis setup: %1$d of %2$d websites checked; %3$d tasks created.', 'rrze-multisite-manager'), $processed, $total, $initialized)
+                : sprintf(__('Storage analysis schedules were initialized for %d active websites.', 'rrze-multisite-manager'), $initialized);
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($message) . '</p>';
+            if (!$complete && $total > 0) {
+                echo '<p>' . esc_html__('Use the same button to continue with the next batch.', 'rrze-multisite-manager') . '</p>';
+            }
+            echo '</div>';
         }
 
         if (!empty($_GET['shortcode-block-analysis-requested'])) {
@@ -1047,7 +1064,18 @@ class Settings {
         }
 
         if (isset($_GET['shortcode-block-schedules-initialized'])) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(__('Shortcode and block analysis schedules were initialized for %d active websites.', 'rrze-multisite-manager'), absint(wp_unslash($_GET['shortcode-block-schedules-initialized'])))) . '</p></div>';
+            $processed = isset($_GET['shortcode-block-schedules-processed']) ? absint(wp_unslash($_GET['shortcode-block-schedules-processed'])) : 0;
+            $total = isset($_GET['shortcode-block-schedules-total']) ? absint(wp_unslash($_GET['shortcode-block-schedules-total'])) : 0;
+            $initialized = absint(wp_unslash($_GET['shortcode-block-schedules-initialized']));
+            $complete = !empty($_GET['shortcode-block-schedules-complete']);
+            $message = $processed > 0 || $total > 0
+                ? sprintf(__('Shortcode/block-analysis setup: %1$d of %2$d websites checked; %3$d tasks created.', 'rrze-multisite-manager'), $processed, $total, $initialized)
+                : sprintf(__('Shortcode and block analysis schedules were initialized for %d active websites.', 'rrze-multisite-manager'), $initialized);
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($message) . '</p>';
+            if (!$complete && $total > 0) {
+                echo '<p>' . esc_html__('Use the same button to continue with the next batch.', 'rrze-multisite-manager') . '</p>';
+            }
+            echo '</div>';
         }
 
     }
@@ -1088,7 +1116,7 @@ class Settings {
             return add_query_arg($arguments, $baseUrl);
         };
 
-        echo '<div class="tablenav bottom"><div class="tablenav-pages' . ($totalPages <= 1 ? ' one-page' : '') . '" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '">';
+        echo '<div class="tablenav bottom"><div class="tablenav-pages rrze-msm-site-table-pagination' . ($totalPages <= 1 ? ' one-page' : '') . '" aria-label="' . esc_attr__('Pagination', 'rrze-multisite-manager') . '">';
         /* translators: %s: number of websites. */
         echo '<span class="displaying-num">' . esc_html(sprintf(_n('%s website', '%s websites', $totalItems, 'rrze-multisite-manager'), number_format_i18n($totalItems))) . '</span>';
         echo '<span class="pagination-links">';
@@ -1123,7 +1151,6 @@ class Settings {
         $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage);
         $processes = $processPage['processes'];
         $totalItems = (int)($processPage['total'] ?? 0);
-        $unscheduledSiteCount = $scheduler->getUnscheduledEligibleSiteCount();
 
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
         echo '<header class="rrze-msm-widget-header">';
@@ -1227,12 +1254,10 @@ class Settings {
         $this->renderMonitoringTablePagination('storage_monitoring_page', $currentPage, $totalItems, $perPage);
         echo '</div>';
         echo '<div class="rrze-msm-site-actions">';
-        if ($unscheduledSiteCount > 0) {
-            echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_site_storage_analysis_schedules')) . '">';
-            wp_nonce_field('rrze_multisite_manager_initialize_site_storage_analysis_schedules');
-            echo '<button type="submit" class="button button-secondary">' . esc_html__('Reschedule storage analysis tasks for websites without a schedule', 'rrze-multisite-manager') . '</button>';
-            echo '</form>';
-        }
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_site_storage_analysis_schedules')) . '">';
+        wp_nonce_field('rrze_multisite_manager_initialize_site_storage_analysis_schedules');
+        echo '<button type="submit" class="button button-secondary">' . esc_html__('Reschedule storage analysis tasks for websites without a schedule', 'rrze-multisite-manager') . '</button>';
+        echo '</form>';
         echo '</div>';
         echo '</section>';
         $this->renderWebsiteShortcodeBlockMonitoringTable();
@@ -1245,7 +1270,6 @@ class Settings {
         $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage);
         $processes = $processPage['processes'];
         $totalItems = (int)($processPage['total'] ?? 0);
-        $unscheduledSiteCount = $scheduler->getUnscheduledActiveSiteCount();
         $monitoringUrl = add_query_arg(
             [
                 'page' => $this->getMonitoringSlug(),
@@ -1351,12 +1375,10 @@ class Settings {
         }
 
         echo '<div class="rrze-msm-site-actions">';
-        if ($unscheduledSiteCount > 0) {
-            echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules')) . '">';
-            wp_nonce_field('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules');
-            echo '<button type="submit" class="button button-secondary">' . esc_html__('Reschedule shortcode and block analysis tasks for websites without a schedule', 'rrze-multisite-manager') . '</button>';
-            echo '</form>';
-        }
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules')) . '">';
+        wp_nonce_field('rrze_multisite_manager_initialize_shortcode_block_analysis_schedules');
+        echo '<button type="submit" class="button button-secondary">' . esc_html__('Reschedule shortcode and block analysis tasks for websites without a schedule', 'rrze-multisite-manager') . '</button>';
+        echo '</form>';
         echo '</div>';
         echo '</section>';
     }
@@ -1825,6 +1847,13 @@ class Settings {
     protected function getProcessStatusLabel(array $process): string {
         if (!empty($process['is_running'])) {
             return __('Running', 'rrze-multisite-manager');
+        }
+
+        // A stopped process may retain completed data or a dirty marker. Those
+        // must not make it appear scheduled when its recurring event was
+        // deliberately removed.
+        if ((int)($process['next_run_timestamp'] ?? 0) <= 0) {
+            return __('Not scheduled', 'rrze-multisite-manager');
         }
 
         if (!empty($process['run_state']['needs_refresh']) || !empty($process['run_state']['is_dirty'])) {

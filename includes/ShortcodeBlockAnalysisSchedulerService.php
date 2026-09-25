@@ -12,6 +12,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const SCHEDULE_SIGNATURE_OPTION = 'rrze_msm_shortcode_block_analysis_schedule_signature';
     protected const GLOBAL_INITIALIZATION_OPTION = 'rrze_msm_shortcode_block_analysis_global_initialization';
     protected const TASK_REMOVAL_OPTION = 'rrze_msm_shortcode_block_analysis_tasks_removed';
+    protected const SCHEDULE_INITIALIZATION_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_schedule_initialization_offset';
     protected const BATCH_SIZE = 20;
     protected const SHORTCODE_PHASE = 'shortcodes';
     protected const BLOCK_PHASE = 'blocks';
@@ -72,7 +73,9 @@ class ShortcodeBlockAnalysisSchedulerService {
             return;
         }
 
-        $this->syncRecurringSchedules();
+        // Never scan and reschedule an entire network during an arbitrary
+        // admin request. Explicit setup runs are processed in small batches.
+        $this->markScheduleConfigurationCurrent();
     }
 
     /**
@@ -126,6 +129,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         delete_site_option(self::SCHEDULE_SIGNATURE_OPTION);
+        delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
         // Removing tasks is an explicit administrator decision. Do not make the
         // automatic initialization action reappear and recreate these tasks.
         update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
@@ -362,27 +366,8 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function getUnscheduledActiveSiteCount(): int {
-        $scheduledSiteIds = $this->getRecurringScheduledSiteIds();
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-            'archived' => 0,
-            'spam' => 0,
-            'deleted' => 0,
-        ]);
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if (isset($scheduledSiteIds[$siteId])) {
-                continue;
-            }
-
-            if ($this->isSiteUnscheduled($siteId)) {
-                return 1;
-            }
-        }
-
+        // Kept for backward compatibility. The monitoring page always shows
+        // the explicit setup action instead of scanning every site on load.
         return 0;
     }
 
@@ -406,6 +391,54 @@ class ShortcodeBlockAnalysisSchedulerService {
         update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
 
         return $initialized;
+    }
+
+    /**
+     * Schedules one bounded group of active websites after an explicit
+     * administrator request.
+     *
+     * @return array{initialized: int, processed: int, total: int, complete: bool}
+     */
+    public function initializeUnscheduledActiveSitesBatch(int $batchSize = 25): array {
+        $batchSize = max(1, $batchSize);
+        $offset = max(0, (int)get_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION, 0));
+        $total = (int)get_sites(['count' => true]);
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => $batchSize,
+            'offset' => $offset,
+            'orderby' => 'id',
+            'order' => 'ASC',
+        ]);
+        $initialized = 0;
+
+        delete_site_option(self::TASK_REMOVAL_OPTION);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($this->isSiteUnscheduled($siteId) && $this->scheduleRecurringAnalysis($siteId)) {
+                $initialized++;
+            }
+        }
+
+        $processed = min($total, $offset + count($siteIds));
+        $complete = $processed >= $total;
+
+        if ($complete) {
+            delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
+            update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
+            update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
+        } else {
+            update_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION, $processed);
+        }
+
+        return [
+            'initialized' => $initialized,
+            'processed' => $processed,
+            'total' => $total,
+            'complete' => $complete,
+        ];
     }
 
     public function resetAllSiteAnalyses(): int {

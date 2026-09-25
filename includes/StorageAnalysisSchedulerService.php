@@ -14,6 +14,7 @@ class StorageAnalysisSchedulerService {
     protected const LEGACY_ACTIVE_PHASE = 'active';
     protected const SCHEDULE_SIGNATURE_OPTION = 'rrze_msm_storage_analysis_schedule_signature';
     protected const GLOBAL_INITIALIZATION_OPTION = 'rrze_msm_storage_analysis_global_initialization';
+    protected const SCHEDULE_INITIALIZATION_OFFSET_OPTION = 'rrze_msm_storage_analysis_schedule_initialization_offset';
     protected const LOCK_OPTION_PREFIX = 'rrze_msm_storage_analysis_lock_';
     protected const META_OPERATIONAL_STATUS = 'rrze_msm_operational_status';
     protected const META_DNS_STATUS = 'rrze_msm_dns_status';
@@ -74,7 +75,9 @@ class StorageAnalysisSchedulerService {
             return;
         }
 
-        $this->syncRecurringSchedules();
+        // Never reschedule every website while an arbitrary admin request is
+        // being rendered. Explicit setup runs are processed in small batches.
+        $this->markScheduleConfigurationCurrent();
     }
 
     /**
@@ -146,30 +149,60 @@ class StorageAnalysisSchedulerService {
         return $initialized;
     }
 
-    public function getUnscheduledEligibleSiteCount(): int {
-        $scheduledSiteIds = $this->getRecurringScheduledSiteIds();
+    /**
+     * Schedules one bounded group of websites after an explicit administrator
+     * request. Option reads therefore never happen for all sites on page load.
+     *
+     * @return array{initialized: int, processed: int, total: int, complete: bool}
+     */
+    public function initializeActiveSiteSchedulesBatch(int $batchSize = 25): array {
+        $batchSize = max(1, $batchSize);
+        $offset = max(0, (int)get_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION, 0));
+        $total = (int)get_sites(['count' => true]);
         $siteIds = get_sites([
             'fields' => 'ids',
-            'number' => 0,
-            'archived' => 0,
-            'spam' => 0,
-            'deleted' => 0,
+            'number' => $batchSize,
+            'offset' => $offset,
+            'orderby' => 'id',
+            'order' => 'ASC',
         ]);
+        $initialized = 0;
+
+        update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
 
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
 
-            // Avoid reading per-site scheduler options when an event already
-            // exists. This keeps the check cheap even for large networks.
-            if (isset($scheduledSiteIds[$siteId])) {
+            if (!$this->isSiteAwaitingInitialSchedule($siteId)) {
                 continue;
             }
 
-            if ($this->isSiteAwaitingInitialSchedule($siteId)) {
-                return 1;
-            }
+            $this->scheduleRecurringAnalysis($siteId);
+            $initialized++;
         }
 
+        $processed = min($total, $offset + count($siteIds));
+        $complete = $processed >= $total;
+
+        if ($complete) {
+            delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
+            update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
+        } else {
+            update_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION, $processed);
+        }
+
+        return [
+            'initialized' => $initialized,
+            'processed' => $processed,
+            'total' => $total,
+            'complete' => $complete,
+        ];
+    }
+
+    public function getUnscheduledEligibleSiteCount(): int {
+        // Kept for backward compatibility. The monitoring page deliberately
+        // does not determine this dynamically, because that opens options for
+        // every website in a network.
         return 0;
     }
 
@@ -282,6 +315,7 @@ class StorageAnalysisSchedulerService {
         }
 
         delete_site_option(self::SCHEDULE_SIGNATURE_OPTION);
+        delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
 
         return $removed;
     }
