@@ -29,6 +29,8 @@ defined('ABSPATH') || exit;
 
         <?php if (!empty($metrics_notice_html)) { echo $metrics_notice_html; } ?>
 
+        <?php if (!empty($metrics_missing_notice_html)) { echo $metrics_missing_notice_html; } ?>
+
         <?php if (!empty($metrics_has_data)) { ?>
             <section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-overview-page-section">
                 <nav class="rrze-msm-overview-tabs" aria-label="<?php echo esc_attr__('Status filter for websites', 'rrze-multisite-manager'); ?>">

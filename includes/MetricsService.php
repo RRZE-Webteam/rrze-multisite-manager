@@ -13,6 +13,7 @@ class MetricsService {
     protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v7_';
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
+    protected const DASHBOARD_SCHEDULING_ENABLED_OPTION = 'rrze_msm_dashboard_metrics_scheduling_enabled';
     protected const DASHBOARD_LOCK_KEY = 'rrze_msm_dashboard_metrics_refresh_lock';
     protected const DASHBOARD_LOCK_OPTION = 'rrze_msm_dashboard_metrics_refresh_lock_state';
     protected const DASHBOARD_BATCH_OFFSET_OPTION = 'rrze_msm_dashboard_metrics_batch_offset';
@@ -34,6 +35,12 @@ class MetricsService {
     protected const STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION = 'rrze_msm_storage_analysis_cleanup_lock';
     protected const STORAGE_ANALYSIS_CLEANUP_LOCK_TTL = 300;
+    protected const FULL_DATA_CLEANUP_HOOK = 'rrze_msm_run_full_data_cleanup';
+    protected const FULL_DATA_CLEANUP_STATE_OPTION = 'rrze_msm_full_data_cleanup_state';
+    protected const FULL_DATA_CLEANUP_LOCK_OPTION = 'rrze_msm_full_data_cleanup_lock';
+    protected const FULL_DATA_CLEANUP_BATCH_SIZE = 25;
+    protected const FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE = 250;
+    protected const FULL_DATA_CLEANUP_LOCK_TTL = 300;
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const DETAIL_OPTION_VALUE_MAX_BYTES = 16384;
@@ -66,6 +73,7 @@ class MetricsService {
     public function onLoaded(): void {
         add_action(self::DASHBOARD_REFRESH_HOOK, [$this, 'handleScheduledDashboardRefresh']);
         add_action(self::STORAGE_ANALYSIS_CLEANUP_HOOK, [$this, 'runLegacyStorageAnalysisCleanup']);
+        add_action(self::FULL_DATA_CLEANUP_HOOK, [$this, 'runFullDataCleanup']);
         add_action('init', [$this, 'ensureDashboardRefreshContinuation'], 24);
         add_action('init', [$this, 'scheduleLegacyStorageAnalysisCleanup'], 25);
         $this->registerInvalidationHooks();
@@ -75,6 +83,10 @@ class MetricsService {
      * Restores a missing continuation without scheduling work alongside an active batch.
      */
     public function ensureDashboardRefreshContinuation(): void {
+        if (!$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
         if (
             $this->isDashboardRefreshInProgress()
             && !$this->isDashboardRefreshLocked()
@@ -93,7 +105,7 @@ class MetricsService {
         $nextRunTimestamp = $this->getNextDashboardRefreshEventTimestamp(false);
 
         if (
-            $this->isUsableDashboardCache($cached)
+            $this->hasCompleteDashboardCache($cached)
             && (
                 $nextRunTimestamp <= 0
                 || $nextRunTimestamp < ($generatedAt + $this->getMetricsRefreshIntervalSeconds())
@@ -107,6 +119,10 @@ class MetricsService {
      * Schedules a one-time, batched cleanup of analysis data produced by older releases.
      */
     public function scheduleLegacyStorageAnalysisCleanup(): void {
+        if (self::isFullDataCleanupInProgress()) {
+            return;
+        }
+
         if ((int)get_site_option(self::STORAGE_ANALYSIS_CLEANUP_VERSION_OPTION, 0) >= self::STORAGE_ANALYSIS_CLEANUP_VERSION) {
             return;
         }
@@ -120,6 +136,10 @@ class MetricsService {
      * Deletes obsolete, potentially very large storage-analysis transient data in small batches.
      */
     public function runLegacyStorageAnalysisCleanup(): void {
+        if (self::isFullDataCleanupInProgress()) {
+            return;
+        }
+
         if (!$this->acquireLegacyStorageAnalysisCleanupLock()) {
             return;
         }
@@ -272,10 +292,232 @@ class MetricsService {
         delete_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION);
     }
 
+    /**
+     * Returns whether the administrator-initiated cleanup currently blocks MSM jobs.
+     */
+    public static function isFullDataCleanupInProgress(): bool {
+        $state = get_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, []);
+
+        return is_array($state) && in_array((string)($state['status'] ?? ''), ['waiting', 'running'], true);
+    }
+
+    /**
+     * Starts a destructive, batched cleanup of obsolete metrics, MSM transients and storage-analysis data.
+     *
+     * @return array<string, mixed>
+     */
+    public function startFullDataCleanup(): array {
+        $existingState = $this->getFullDataCleanupState();
+
+        if (self::isFullDataCleanupInProgress()) {
+            return $existingState;
+        }
+
+        $state = [
+            'status' => 'waiting',
+            'started_at' => current_time('mysql', true),
+            'updated_at' => current_time('mysql', true),
+            'finished_at' => '',
+            'site_offset' => 0,
+            'site_total' => (int)get_sites(['count' => true]),
+            'deleted_site_options' => 0,
+            'deleted_transient_values' => 0,
+            'deleted_transient_timeouts' => 0,
+            'found_transient_rows' => 0,
+            'found_transient_bytes' => 0,
+            'message' => __('Waiting until active MSM tasks have finished.', 'rrze-multisite-manager'),
+        ];
+        $inventory = $this->getFullDataCleanupTransientInventory();
+        $state['found_transient_rows'] = $inventory['rows'];
+        $state['found_transient_bytes'] = $inventory['bytes'];
+
+        update_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, $state);
+        // Start the first bounded batch in the confirmed admin request. This gives
+        // immediate feedback even on installations where WP-Cron is not triggered
+        // by every request; all following batches remain asynchronous.
+        $this->runFullDataCleanup();
+
+        return $this->getFullDataCleanupState();
+    }
+
+    /**
+     * Processes one cleanup batch. Existing MSM work is allowed to finish before data is removed.
+     */
+    public function runFullDataCleanup(): void {
+        if (!self::isFullDataCleanupInProgress() || !$this->acquireFullDataCleanupLock()) {
+            return;
+        }
+
+        try {
+            $state = $this->getFullDataCleanupState();
+
+            if ($this->hasActiveMsmTask()) {
+                $state['status'] = 'waiting';
+                $state['updated_at'] = current_time('mysql', true);
+                $state['message'] = __('Waiting until active MSM tasks have finished.', 'rrze-multisite-manager');
+                update_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, $state);
+                $this->scheduleFullDataCleanup(MINUTE_IN_SECONDS);
+                return;
+            }
+
+            $state['status'] = 'running';
+            $state['updated_at'] = current_time('mysql', true);
+            $state['message'] = __('Cleanup is running.', 'rrze-multisite-manager');
+            $transientResult = $this->deleteFullDataCleanupTransientBatch();
+            $state['deleted_transient_values'] = (int)($state['deleted_transient_values'] ?? 0) + $transientResult['values'];
+            $state['deleted_transient_timeouts'] = (int)($state['deleted_transient_timeouts'] ?? 0) + $transientResult['timeouts'];
+
+            $siteIds = get_sites([
+                'fields' => 'ids',
+                'number' => self::FULL_DATA_CLEANUP_BATCH_SIZE,
+                'offset' => max(0, (int)($state['site_offset'] ?? 0)),
+                'orderby' => 'id',
+                'order' => 'ASC',
+            ]);
+
+            foreach ($siteIds as $siteId) {
+                $state['deleted_site_options'] = (int)($state['deleted_site_options'] ?? 0) + $this->deleteSiteStorageAnalysisData((int)$siteId);
+            }
+
+            $state['site_offset'] = max(0, (int)($state['site_offset'] ?? 0)) + count($siteIds);
+
+            if (count($siteIds) < self::FULL_DATA_CLEANUP_BATCH_SIZE && !$transientResult['has_more']) {
+                $this->clearDashboardDataCaches();
+                $state['status'] = 'complete';
+                $state['finished_at'] = current_time('mysql', true);
+                $state['message'] = __('Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden.', 'rrze-multisite-manager');
+                update_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, $state);
+                return;
+            }
+
+            update_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, $state);
+            $this->scheduleFullDataCleanup(MINUTE_IN_SECONDS);
+        } finally {
+            $this->releaseFullDataCleanupLock();
+        }
+    }
+
+    /** @return array<string, mixed> */
+    public function getFullDataCleanupStatus(): array {
+        return $this->getFullDataCleanupState();
+    }
+
+    /** @return array<string, mixed> */
+    protected function getFullDataCleanupState(): array {
+        $state = get_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, []);
+
+        return is_array($state) ? $state : [];
+    }
+
+    /** @return array{rows: int, bytes: int} */
+    protected function getFullDataCleanupTransientInventory(): array {
+        global $wpdb;
+
+        $valueKey = $wpdb->esc_like('_site_transient_rrze_msm_') . '%';
+        $timeoutKey = $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The administrator explicitly requested an inventory of scoped, obsolete plugin transient rows.
+        $row = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS row_count, COALESCE(SUM(OCTET_LENGTH(meta_value)), 0) AS byte_count FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s OR meta_key LIKE %s", $valueKey, $timeoutKey), ARRAY_A);
+
+        return [
+            'rows' => max(0, (int)($row['row_count'] ?? 0)),
+            'bytes' => max(0, (int)($row['byte_count'] ?? 0)),
+        ];
+    }
+
+    /** @return array{values: int, timeouts: int, has_more: bool} */
+    protected function deleteFullDataCleanupTransientBatch(): array {
+        global $wpdb;
+
+        $valueKey = $wpdb->esc_like('_site_transient_rrze_msm_') . '%';
+        $timeoutKey = $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The cleanup is explicitly administrator-initiated and deletes only this plugin's transient namespace in bounded batches.
+        $values = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $valueKey, self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Matching timeout rows are part of the same scoped transient namespace.
+        $timeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $timeoutKey, self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE));
+
+        return [
+            'values' => $values,
+            'timeouts' => $timeouts,
+            'has_more' => $values >= self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE || $timeouts >= self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE,
+        ];
+    }
+
+    protected function deleteSiteStorageAnalysisData(int $siteId): int {
+        $deleted = 0;
+        $optionNames = [
+            self::SITE_STORAGE_ANALYSIS_RESULT_OPTION,
+            self::SITE_STORAGE_ANALYSIS_RESULT_META_OPTION,
+            self::SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION,
+            'rrze_msm_storage_analysis_scheduler_status',
+        ];
+
+        foreach ($optionNames as $optionName) {
+            if (delete_blog_option($siteId, $optionName)) {
+                $deleted++;
+            }
+        }
+
+        return $deleted;
+    }
+
+    protected function clearDashboardDataCaches(): void {
+        $this->resetDashboardRefreshState();
+        delete_site_option($this->getCacheKey());
+
+        for ($version = 1; $version <= 7; $version++) {
+            delete_site_transient('rrze_multisite_manager_dashboard_metrics_v' . $version . '_' . (string)get_current_network_id());
+        }
+    }
+
+    protected function hasActiveMsmTask(): bool {
+        global $wpdb;
+
+        if ($this->isDashboardRefreshInProgress() || $this->isDashboardRefreshLocked()) {
+            return true;
+        }
+
+        $monitoringState = get_site_option('rrze_msm_monitoring_run_state', []);
+
+        if (is_array($monitoringState) && !empty($monitoringState)) {
+            return true;
+        }
+
+        $storageLock = $wpdb->esc_like('rrze_msm_storage_analysis_lock_') . '%';
+        $shortcodeLock = $wpdb->esc_like('rrze_msm_shortcode_block_analysis_lock_') . '%';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Locks are network options. Only a bounded existence check is needed to avoid deleting active analysis state.
+        $activeLock = $wpdb->get_var($wpdb->prepare("SELECT meta_id FROM {$wpdb->sitemeta} WHERE (meta_key LIKE %s OR meta_key LIKE %s) AND CAST(meta_value AS UNSIGNED) > %d LIMIT 1", $storageLock, $shortcodeLock, time() - HOUR_IN_SECONDS));
+
+        return !empty($activeLock);
+    }
+
+    protected function scheduleFullDataCleanup(int $delay): void {
+        if (!wp_next_scheduled(self::FULL_DATA_CLEANUP_HOOK)) {
+            wp_schedule_single_event(time() + max(5, $delay), self::FULL_DATA_CLEANUP_HOOK);
+        }
+    }
+
+    protected function acquireFullDataCleanupLock(): bool {
+        $existingLock = (int)get_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION, 0);
+
+        if ($existingLock > 0 && (time() - $existingLock) < self::FULL_DATA_CLEANUP_LOCK_TTL) {
+            return false;
+        }
+
+        if ($existingLock > 0) {
+            delete_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION);
+        }
+
+        return add_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION, time());
+    }
+
+    protected function releaseFullDataCleanupLock(): void {
+        delete_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION);
+    }
+
     public function getDashboardData(): array {
         $cached = $this->getStoredDashboardCache();
 
-        if ($this->isUsableDashboardCache($cached)) {
+        if ($this->hasCompleteDashboardCache($cached)) {
             if ($this->shouldRefreshDashboardCache($cached)) {
                 $this->scheduleDashboardRefresh();
             }
@@ -295,13 +537,13 @@ class MetricsService {
         $data = [];
 
         if (!$force && $this->isDashboardRefreshLocked()) {
-            if ($this->isUsableDashboardCache($cached)) {
+            if ($this->hasCompleteDashboardCache($cached)) {
                 return (array)($cached['data'] ?? []);
             }
         }
 
         if (!$this->acquireDashboardRefreshLock()) {
-            if ($this->isUsableDashboardCache($cached)) {
+            if ($this->hasCompleteDashboardCache($cached)) {
                 return (array)($cached['data'] ?? []);
             }
         }
@@ -583,11 +825,29 @@ class MetricsService {
      * complete network during the current administrative request.
      */
     public function queueDashboardRefresh(): void {
-        $this->scheduleDashboardRefresh(5, true);
+        if (self::isFullDataCleanupInProgress() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        // A changed website invalidates the cached metrics, but must not turn a
+        // pending regular run into an immediate full network calculation. Only
+        // an already active run needs an immediate batch continuation.
+        $this->scheduleDashboardRefresh(5, $this->isDashboardRefreshInProgress());
     }
 
     public function handleScheduledDashboardRefresh(...$args): void {
         $status = [];
+
+        if (self::isFullDataCleanupInProgress() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        // A single batch event is only a continuation of an existing run. It
+        // can remain in the cron table after an interrupted or completed run;
+        // in that case it must never start a new full metrics run by itself.
+        if ($this->isDashboardBatchContinuation($args) && !$this->isDashboardRefreshInProgress()) {
+            return;
+        }
 
         LoggingService::info(
             $this->config,
@@ -691,6 +951,12 @@ class MetricsService {
     }
 
     public function startDashboardRefreshRun(bool $runImmediately = true): void {
+        if (self::isFullDataCleanupInProgress()) {
+            return;
+        }
+
+        $this->enableDashboardScheduling();
+
         if ($this->isDashboardRefreshLocked()) {
             return;
         }
@@ -715,6 +981,20 @@ class MetricsService {
     public function resetDashboardRefreshState(): void {
         $this->resetDashboardRefreshBatchState();
         $this->releaseDashboardRefreshLock();
+    }
+
+    /**
+     * Stops the metrics process and prevents automatic scheduling until it is
+     * explicitly started again from the Monitoring page.
+     */
+    public function disableDashboardScheduling(): int {
+        $removed = $this->clearScheduledDashboardRefreshEvents();
+
+        update_site_option(self::DASHBOARD_SCHEDULING_ENABLED_OPTION, 0);
+        $this->resetDashboardRefreshBatchState();
+        $this->releaseDashboardRefreshLock();
+
+        return $removed;
     }
 
     protected function buildDashboardDataPayload(array $siteOverview, array $networkStorageUsage): array {
@@ -793,7 +1073,7 @@ class MetricsService {
 
     public function getDashboardDataStatus(): array {
         $cached = $this->getStoredDashboardCache();
-        $hasData = $this->isUsableDashboardCache($cached);
+        $hasData = $this->hasCompleteDashboardCache($cached);
         $needsRefresh = $this->shouldRefreshDashboardCache($cached);
         $nextRunTimestamp = $this->getNextDashboardRefreshEventTimestamp(false);
         $nextBatchRunTimestamp = $this->getNextDashboardBatchRefreshEventTimestamp();
@@ -9439,11 +9719,15 @@ class MetricsService {
         return true;
     }
 
-    protected function isUsableDashboardCache(array $cached): bool {
-        return (int)($cached['version'] ?? 0) === self::DASHBOARD_CACHE_VERSION
-            && !empty($cached['data'])
+    protected function hasCompleteDashboardCache(array $cached): bool {
+        return !empty($cached['data'])
             && is_array($cached['data'])
             && $this->isCompleteDashboardData((array)$cached['data']);
+    }
+
+    protected function isUsableDashboardCache(array $cached): bool {
+        return (int)($cached['version'] ?? 0) === self::DASHBOARD_CACHE_VERSION
+            && $this->hasCompleteDashboardCache($cached);
     }
 
     protected function shouldRefreshDashboardCache(array $cached): bool {
@@ -9556,6 +9840,10 @@ class MetricsService {
     }
 
     protected function scheduleDashboardRefresh(int $delay = 60, bool $isBatchContinuation = false): void {
+        if (!$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
         if (!$isBatchContinuation && $this->isDashboardRefreshInProgress()) {
             return;
         }
@@ -9601,18 +9889,43 @@ class MetricsService {
         );
     }
 
-    protected function clearScheduledDashboardRefreshEvents(): void {
+    /**
+     * Determines whether the current cron invocation is an internal batch continuation.
+     *
+     * WordPress passes cron event arguments as individual action arguments, so the
+     * associative marker stored in the event arrives here as its boolean value.
+     *
+     * @param array<int, mixed> $args Cron action arguments.
+     */
+    protected function isDashboardBatchContinuation(array $args): bool {
+        return in_array(true, $args, true);
+    }
+
+    protected function clearScheduledDashboardRefreshEvents(): int {
         $cron = _get_cron_array();
+        $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
             foreach ((array)($events[self::DASHBOARD_REFRESH_HOOK] ?? []) as $event) {
-                wp_unschedule_event(
+                if (wp_unschedule_event(
                     (int)$timestamp,
                     self::DASHBOARD_REFRESH_HOOK,
                     (array)($event['args'] ?? [])
-                );
+                )) {
+                    $removed++;
+                }
             }
         }
+
+        return $removed;
+    }
+
+    protected function enableDashboardScheduling(): void {
+        update_site_option(self::DASHBOARD_SCHEDULING_ENABLED_OPTION, 1);
+    }
+
+    protected function isDashboardSchedulingEnabled(): bool {
+        return (bool)get_site_option(self::DASHBOARD_SCHEDULING_ENABLED_OPTION, false);
     }
 
     /**

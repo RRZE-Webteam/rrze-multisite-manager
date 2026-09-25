@@ -11,6 +11,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const LOCK_OPTION_PREFIX = 'rrze_msm_shortcode_block_analysis_lock_';
     protected const SCHEDULE_SIGNATURE_OPTION = 'rrze_msm_shortcode_block_analysis_schedule_signature';
     protected const GLOBAL_INITIALIZATION_OPTION = 'rrze_msm_shortcode_block_analysis_global_initialization';
+    protected const TASK_REMOVAL_OPTION = 'rrze_msm_shortcode_block_analysis_tasks_removed';
     protected const BATCH_SIZE = 20;
     protected const SHORTCODE_PHASE = 'shortcodes';
     protected const BLOCK_PHASE = 'blocks';
@@ -107,18 +108,26 @@ class ShortcodeBlockAnalysisSchedulerService {
         update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
     }
 
-    public static function clearScheduledEvents(?Config $config = null): void {
+    public static function clearScheduledEvents(?Config $config = null): int {
         $scheduler = new self($config);
         $cron = _get_cron_array();
+        $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
             foreach ((array)($events[$scheduler->getHook()] ?? []) as $event) {
-                wp_unschedule_event((int)$timestamp, $scheduler->getHook(), (array)($event['args'] ?? []));
+                if (wp_unschedule_event((int)$timestamp, $scheduler->getHook(), (array)($event['args'] ?? []))) {
+                    $removed++;
+                }
             }
         }
 
         delete_site_option(self::SCHEDULE_SIGNATURE_OPTION);
-        delete_site_option(self::GLOBAL_INITIALIZATION_OPTION);
+        // Removing tasks is an explicit administrator decision. Do not make the
+        // automatic initialization action reappear and recreate these tasks.
+        update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
+        update_site_option(self::TASK_REMOVAL_OPTION, 1);
+
+        return $removed;
     }
 
     public function requestAnalysis(int $siteId): bool {
@@ -152,6 +161,10 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function runScheduledAnalysis(int $siteId): void {
+        if (MetricsService::isFullDataCleanupInProgress()) {
+            return;
+        }
+
         if ($siteId <= 0 || !get_site($siteId)) {
             return;
         }
@@ -347,19 +360,30 @@ class ShortcodeBlockAnalysisSchedulerService {
          * A complete per-site status scan here would make the paginated
          * monitoring page load all websites again.
          */
-        return (bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false) ? 0 : 1;
+        if ((bool)get_site_option(self::TASK_REMOVAL_OPTION, false)) {
+            return 0;
+        }
+
+        if (!(bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
+            return 1;
+        }
+
+        return $this->hasAnyRecurringScheduledAnalysis() ? 0 : 1;
     }
 
     public function initializeUnscheduledActiveSites(): int {
         $initialized = 0;
         $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
 
+        delete_site_option(self::TASK_REMOVAL_OPTION);
+
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
 
             if ($this->isSiteUnscheduled($siteId)) {
-                $this->scheduleRecurringAnalysis($siteId);
-                $initialized++;
+                if ($this->scheduleRecurringAnalysis($siteId)) {
+                    $initialized++;
+                }
             }
         }
 
@@ -1103,20 +1127,20 @@ class ShortcodeBlockAnalysisSchedulerService {
         // A newly active site must not recreate a removed recurring event.
     }
 
-    protected function scheduleRecurringAnalysis(int $siteId): void {
+    protected function scheduleRecurringAnalysis(int $siteId): bool {
         $delay = MINUTE_IN_SECONDS + ($siteId % (5 * MINUTE_IN_SECONDS));
-        $this->scheduleRecurringAnalysisAt($siteId, time() + $delay);
+        return $this->scheduleRecurringAnalysisAt($siteId, time() + $delay);
     }
 
-    protected function scheduleRecurringAnalysisAt(int $siteId, int $timestamp): void {
+    protected function scheduleRecurringAnalysisAt(int $siteId, int $timestamp): bool {
         if (!$this->isSiteActive($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
-            return;
+            return false;
         }
 
         // Replace one-off events from older plugin versions before adding the recurring event.
         $this->unschedule($siteId);
         $this->markScheduled($siteId);
-        wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->getHook(), [$siteId]);
+        return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->getHook(), [$siteId]);
     }
 
     protected function getNextRecurringScheduledTimestamp(int $siteId): int {
@@ -1150,6 +1174,20 @@ class ShortcodeBlockAnalysisSchedulerService {
         foreach ($cron as $events) {
             foreach ((array)($events[$this->getHook()] ?? []) as $event) {
                 if ((array)($event['args'] ?? []) === [$siteId] && !empty($event['schedule'])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    protected function hasAnyRecurringScheduledAnalysis(): bool {
+        $cron = _get_cron_array();
+
+        foreach ((array)$cron as $events) {
+            foreach ((array)($events[$this->getHook()] ?? []) as $event) {
+                if (!empty($event['schedule'])) {
                     return true;
                 }
             }
@@ -1215,12 +1253,9 @@ class ShortcodeBlockAnalysisSchedulerService {
             return false;
         }
 
-        $status = $this->getStatus($siteId);
-
-        return (string)($status['status'] ?? '') !== 'running'
+        return !$this->isRunning($siteId)
             && $this->getNextRecurringScheduledTimestamp($siteId) <= 0
-            && empty($status['last_started_at'])
-            && empty($status['last_finished_at']);
+            && empty($this->getResult($siteId)['generated_at']);
     }
 
     protected function isRunning(int $siteId): bool {

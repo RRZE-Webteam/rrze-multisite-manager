@@ -34,6 +34,8 @@ defined('ABSPATH') || exit;
             </div>
         </div>
 
+        <?php if (!empty($metrics_missing_notice_html)) { echo $metrics_missing_notice_html; } ?>
+
         <div class="rrze-msm-view-caption">
             <strong><?php echo esc_html__('Active view:', 'rrze-multisite-manager'); ?></strong>
             <span><?php echo esc_html($current_view_label); ?></span>

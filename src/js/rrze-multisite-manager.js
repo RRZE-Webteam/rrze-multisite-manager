@@ -2305,6 +2305,125 @@ function initStorageAnalysisRunner() {
     }
 }
 
+function getFullDataCleanupRunner() {
+    return document.getElementById('rrze-msm-full-data-cleanup');
+}
+
+function formatFullDataCleanupNumber(value) {
+    return Number(value || 0).toLocaleString();
+}
+
+function replaceFullDataCleanupPlaceholders(template, values) {
+    var result = String(template || '');
+    var index = 0;
+
+    for (index = 0; index < values.length; index++) {
+        result = result.replace('%' + String(index + 1) + '$s', String(values[index]));
+    }
+
+    return result;
+}
+
+function updateFullDataCleanupRunner(status) {
+    var runner = getFullDataCleanupRunner();
+    var config = getAdminConfig();
+    var statusElement = null;
+    var progressElement = null;
+    var deletedElement = null;
+    var siteOffset = 0;
+    var siteTotal = 0;
+
+    if (!runner || !status) {
+        return;
+    }
+
+    statusElement = runner.querySelector('[data-full-cleanup-status]');
+    progressElement = runner.querySelector('[data-full-cleanup-progress]');
+    deletedElement = runner.querySelector('[data-full-cleanup-deleted]');
+    siteOffset = Math.min(Number(status.site_offset || 0), Number(status.site_total || 0));
+    siteTotal = Number(status.site_total || 0);
+
+    if (statusElement) {
+        statusElement.textContent = String(status.status || '') === 'complete'
+            ? String((config && config.fullDataCleanupCompleted) || '')
+            : String(status.message || '');
+    }
+
+    if (progressElement) {
+        progressElement.textContent = replaceFullDataCleanupPlaceholders(
+            String((config && config.fullDataCleanupProgress) || ''),
+            [formatFullDataCleanupNumber(siteOffset), formatFullDataCleanupNumber(siteTotal)]
+        );
+    }
+
+    if (deletedElement) {
+        deletedElement.textContent = replaceFullDataCleanupPlaceholders(
+            String((config && config.fullDataCleanupDeleted) || ''),
+            [
+                formatFullDataCleanupNumber(status.deleted_transient_values),
+                formatFullDataCleanupNumber(status.deleted_transient_timeouts),
+                formatFullDataCleanupNumber(status.deleted_site_options)
+            ]
+        );
+    }
+}
+
+function runFullDataCleanupBatch() {
+    var runner = getFullDataCleanupRunner();
+    var config = getAdminConfig();
+    var url = '';
+
+    if (!runner || !config || runner.getAttribute('data-auto-run') !== '1') {
+        return;
+    }
+
+    url = String(config.ajaxUrl || '') + '?action=rrze_msm_run_full_data_cleanup_batch&nonce=' + encodeURIComponent(String(config.fullDataCleanupNonce || ''));
+
+    fetch(url, { credentials: 'same-origin' })
+        .then(function (response) {
+            return response.json();
+        })
+        .then(function (response) {
+            var status = response && response.data ? response.data : null;
+            var delay = 500;
+
+            if (!response || response.success !== true || !status) {
+                throw new Error('cleanup_request_failed');
+            }
+
+            updateFullDataCleanupRunner(status);
+
+            if (String(status.status || '') === 'complete') {
+                runner.setAttribute('data-auto-run', '0');
+                window.setTimeout(function () {
+                    window.location.reload();
+                }, 600);
+                return;
+            }
+
+            if (String(status.status || '') === 'waiting') {
+                delay = 3000;
+            }
+
+            window.setTimeout(runFullDataCleanupBatch, delay);
+        })
+        .catch(function () {
+            var statusElement = runner.querySelector('[data-full-cleanup-status]');
+
+            if (statusElement) {
+                statusElement.textContent = String((config && config.fullDataCleanupFailed) || '');
+            }
+
+            window.setTimeout(runFullDataCleanupBatch, 3000);
+        });
+}
+
+function initFullDataCleanupRunner() {
+    if (getFullDataCleanupRunner()) {
+        runFullDataCleanupBatch();
+    }
+}
+
 function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = '';
@@ -2337,6 +2456,7 @@ function initRrzeMultisiteManager() {
     initReadmeToggles();
     initOptionEditForms();
     initStorageAnalysisRunner();
+    initFullDataCleanupRunner();
 }
 
 document.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);

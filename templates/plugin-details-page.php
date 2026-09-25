@@ -1,6 +1,15 @@
 <?php
 defined('ABSPATH') || exit;
 // phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal admin markup fragments.
+
+$pluginShortcodeFilter = implode(', ', array_values(array_filter(array_map(
+    static fn($shortcode): string => is_string($shortcode) ? trim($shortcode) : '',
+    (array)($plugin_details['shortcodes'] ?? [])
+))));
+$pluginBlockFilter = implode(', ', array_values(array_filter(array_map(
+    static fn($block): string => is_array($block) ? trim((string)($block['name'] ?? '')) : '',
+    (array)($plugin_details['blocks'] ?? [])
+))));
 ?>
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
     <div class="rrze-msm-page-shell">
@@ -246,10 +255,39 @@ defined('ABSPATH') || exit;
                                 </thead>
                                 <tbody>
                                     <?php foreach ($plugin_details['active_sites'] as $plugin_site) { ?>
+                                        <?php
+                                        $pluginSiteId = (int)($plugin_site['id'] ?? 0);
+                                        $shortcodeAnalysisUrl = $pluginShortcodeFilter !== '' && $pluginSiteId > 0
+                                            ? add_query_arg(
+                                                [
+                                                    'analysis_tab' => 'shortcodes',
+                                                    'analysis_filter' => $pluginShortcodeFilter,
+                                                ],
+                                                $this->getShortcodeBlockAnalysisUrl($pluginSiteId)
+                                            )
+                                            : '';
+                                        $blockAnalysisUrl = $pluginBlockFilter !== '' && $pluginSiteId > 0
+                                            ? add_query_arg(
+                                                [
+                                                    'analysis_tab' => 'blocks',
+                                                    'analysis_filter' => $pluginBlockFilter,
+                                                ],
+                                                $this->getShortcodeBlockAnalysisUrl($pluginSiteId)
+                                            )
+                                            : '';
+                                        ?>
                                         <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($plugin_site['name'] ?? ''))); ?>">
                                             <td><strong><?php echo esc_html((string)($plugin_site['name'] ?? '')); ?></strong></td>
                                             <td><a href="<?php echo esc_url((string)($plugin_site['url'] ?? '')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html((string)($plugin_site['url'] ?? '')); ?></a></td>
-                                            <td><a class="button button-small" href="<?php echo esc_url($this->getSiteDetailsUrl((int)($plugin_site['id'] ?? 0))); ?>"><?php echo esc_html__('Website Details', 'rrze-multisite-manager'); ?></a></td>
+                                            <td>
+                                                <a href="<?php echo esc_url($this->getSiteDetailsUrl($pluginSiteId)); ?>"><?php echo esc_html__('Website Details', 'rrze-multisite-manager'); ?></a>
+                                                <?php if ($shortcodeAnalysisUrl !== '') { ?>
+                                                    <span aria-hidden="true"> | </span><a href="<?php echo esc_url($shortcodeAnalysisUrl); ?>"><?php echo esc_html__('Shortcodes', 'rrze-multisite-manager'); ?></a>
+                                                <?php } ?>
+                                                <?php if ($blockAnalysisUrl !== '') { ?>
+                                                    <span aria-hidden="true"> | </span><a href="<?php echo esc_url($blockAnalysisUrl); ?>"><?php echo esc_html__('Blocks', 'rrze-multisite-manager'); ?></a>
+                                                <?php } ?>
+                                            </td>
                                         </tr>
                                     <?php } ?>
                                 </tbody>

@@ -235,15 +235,16 @@ class StorageAnalysisSchedulerService {
         return true;
     }
 
-    public static function clearScheduledEvents(?Config $config = null): void {
+    public static function clearScheduledEvents(?Config $config = null): int {
         $config = $config ?? new Config();
         $cron = _get_cron_array();
         $timestamp = 0;
         $events = [];
         $event = [];
+        $removed = 0;
 
         if (!is_array($cron)) {
-            return;
+            return 0;
         }
 
         foreach ($cron as $timestamp => $events) {
@@ -252,11 +253,15 @@ class StorageAnalysisSchedulerService {
             }
 
             foreach ($events[$config->getStorageAnalysisHook()] as $event) {
-                wp_unschedule_event((int)$timestamp, $config->getStorageAnalysisHook(), (array)($event['args'] ?? []));
+                if (wp_unschedule_event((int)$timestamp, $config->getStorageAnalysisHook(), (array)($event['args'] ?? []))) {
+                    $removed++;
+                }
             }
         }
 
         delete_site_option(self::SCHEDULE_SIGNATURE_OPTION);
+
+        return $removed;
     }
 
     public function startAnalysisNow(int $siteId): bool {
@@ -309,6 +314,10 @@ class StorageAnalysisSchedulerService {
     }
 
     public function runScheduledAnalysis(int $siteId = 0, string $phase = self::BASE_PHASE): void {
+        if (MetricsService::isFullDataCleanupInProgress()) {
+            return;
+        }
+
         if (!$this->isSiteEligible($siteId)) {
             $this->deactivateIneligibleSite($siteId);
             return;

@@ -4,6 +4,10 @@ defined('ABSPATH') || exit;
 
 $analysisTab = $analysis_tab === 'blocks' ? 'blocks' : 'shortcodes';
 $filter = isset($_GET['analysis_filter']) ? sanitize_text_field((string)wp_unslash($_GET['analysis_filter'])) : '';
+$filterTerms = array_values(array_unique(array_filter(array_map(
+    static fn(string $term): string => strtolower(trim($term)),
+    explode(',', $filter)
+), static fn(string $term): bool => $term !== '')));
 $entries = is_array($analysis_result[$analysisTab] ?? null) ? $analysis_result[$analysisTab] : [];
 $entryNameKey = $analysisTab === 'blocks' ? 'block' : 'shortcode';
 $baseArgs = ['site_id' => (int)$site_id, 'analysis_tab' => $analysisTab];
@@ -102,9 +106,21 @@ $renderLocation = static function (array $location): string {
     return $html . '</li>';
 };
 
-if ($filter !== '') {
-    $entries = array_values(array_filter($entries, static function ($entry) use ($entryNameKey, $filter) {
-        return is_array($entry) && str_contains(strtolower((string)($entry[$entryNameKey] ?? '')), strtolower($filter));
+if (!empty($filterTerms)) {
+    $entries = array_values(array_filter($entries, static function ($entry) use ($entryNameKey, $filterTerms) {
+        if (!is_array($entry)) {
+            return false;
+        }
+
+        $entryName = strtolower((string)($entry[$entryNameKey] ?? ''));
+
+        foreach ($filterTerms as $filterTerm) {
+            if (str_contains($entryName, $filterTerm)) {
+                return true;
+            }
+        }
+
+        return false;
     }));
 }
 
