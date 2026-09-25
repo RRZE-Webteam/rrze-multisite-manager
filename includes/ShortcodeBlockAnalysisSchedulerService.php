@@ -19,6 +19,10 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected Config $config;
     /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
     protected array $activeSiteShortcodeRegistrations = [];
+    /** @var array<int, int>|null */
+    protected ?array $currentRecurringScheduleTimestamps = null;
+    /** @var array<int, true>|null */
+    protected ?array $recurringScheduledSiteIds = null;
 
     public function __construct(?Config $config = null) {
         $this->config = $config ?? new Config();
@@ -1125,6 +1129,8 @@ class ShortcodeBlockAnalysisSchedulerService {
             wp_unschedule_event($timestamp, $this->getHook(), [$siteId]);
             $timestamp = (int)wp_next_scheduled($this->getHook(), [$siteId]);
         }
+
+        $this->clearRecurringScheduleCache();
     }
 
     public function reconcileSiteSchedule(int $siteId): void {
@@ -1151,66 +1157,71 @@ class ShortcodeBlockAnalysisSchedulerService {
         // Replace one-off events from older plugin versions before adding the recurring event.
         $this->unschedule($siteId);
         $this->markScheduled($siteId);
-        return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->getHook(), [$siteId]);
+        $scheduled = (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->getHook(), [$siteId]);
+        $this->clearRecurringScheduleCache();
+
+        return $scheduled;
     }
 
     protected function getNextRecurringScheduledTimestamp(int $siteId): int {
-        $cron = _get_cron_array();
-        $expectedSchedule = $this->getScheduleKey();
+        $this->loadRecurringScheduleCache();
 
-        if (!is_array($cron)) {
-            return 0;
-        }
-
-        foreach ($cron as $timestamp => $events) {
-            foreach ((array)($events[$this->getHook()] ?? []) as $event) {
-                if ((array)($event['args'] ?? []) === [$siteId] && (string)($event['schedule'] ?? '') === $expectedSchedule) {
-                    return (int)$timestamp;
-                }
-            }
-        }
-
-        return 0;
+        return (int)($this->currentRecurringScheduleTimestamps[$siteId] ?? 0);
     }
 
     protected function hasRecurringScheduledAnalysis(int $siteId): bool {
-        $cron = _get_cron_array();
-        $events = [];
-        $event = [];
+        $this->loadRecurringScheduleCache();
 
-        if (!is_array($cron)) {
-            return false;
-        }
-
-        foreach ($cron as $events) {
-            foreach ((array)($events[$this->getHook()] ?? []) as $event) {
-                if ((array)($event['args'] ?? []) === [$siteId] && !empty($event['schedule'])) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return isset($this->recurringScheduledSiteIds[$siteId]);
     }
 
     /**
      * @return array<int, true>
      */
     protected function getRecurringScheduledSiteIds(): array {
+        $this->loadRecurringScheduleCache();
+
+        return $this->recurringScheduledSiteIds ?? [];
+    }
+
+    protected function clearRecurringScheduleCache(): void {
+        $this->currentRecurringScheduleTimestamps = null;
+        $this->recurringScheduledSiteIds = null;
+    }
+
+    protected function loadRecurringScheduleCache(): void {
+        if ($this->currentRecurringScheduleTimestamps !== null && $this->recurringScheduledSiteIds !== null) {
+            return;
+        }
+
+        $currentTimestamps = [];
         $siteIds = [];
         $cron = _get_cron_array();
+        $expectedSchedule = $this->getScheduleKey();
 
-        foreach ((array)$cron as $events) {
+        foreach ((array)$cron as $timestamp => $events) {
             foreach ((array)($events[$this->getHook()] ?? []) as $event) {
                 $args = (array)($event['args'] ?? []);
+                $siteId = (int)($args[0] ?? 0);
 
-                if (!empty($event['schedule']) && (int)($args[0] ?? 0) > 0) {
-                    $siteIds[(int)$args[0]] = true;
+                if (empty($event['schedule']) || $siteId <= 0) {
+                    continue;
+                }
+
+                $siteIds[$siteId] = true;
+
+                if ((string)($event['schedule'] ?? '') === $expectedSchedule) {
+                    $eventTimestamp = (int)$timestamp;
+
+                    if ($eventTimestamp > 0 && (!isset($currentTimestamps[$siteId]) || $eventTimestamp < $currentTimestamps[$siteId])) {
+                        $currentTimestamps[$siteId] = $eventTimestamp;
+                    }
                 }
             }
         }
 
-        return $siteIds;
+        $this->currentRecurringScheduleTimestamps = $currentTimestamps;
+        $this->recurringScheduledSiteIds = $siteIds;
     }
 
     protected function hasAnyRecurringScheduledAnalysis(): bool {

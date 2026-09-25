@@ -21,6 +21,10 @@ class StorageAnalysisSchedulerService {
 
     protected MetricsService $metrics;
     protected Config $config;
+    /** @var array<int, int>|null */
+    protected ?array $currentRecurringScheduleTimestamps = null;
+    /** @var array<int, true>|null */
+    protected ?array $recurringScheduledSiteIds = null;
 
     public function __construct(MetricsService $metrics, ?Config $config = null) {
         $this->metrics = $metrics;
@@ -616,6 +620,7 @@ class StorageAnalysisSchedulerService {
         }
 
         wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->config->getStorageAnalysisHook(), [$siteId, self::SCHEDULED_PHASE]);
+        $this->clearRecurringScheduleCache();
     }
 
     protected function scheduleRecurringAnalyses(array $siteIds): void {
@@ -642,6 +647,8 @@ class StorageAnalysisSchedulerService {
             wp_unschedule_event($timestamp, $this->config->getStorageAnalysisHook(), [$siteId, $phase]);
             $timestamp = $this->getNextScheduledTimestamp($siteId, $phase);
         }
+
+        $this->clearRecurringScheduleCache();
     }
 
     protected function getNextScheduledTimestamp(int $siteId, string $phase): int {
@@ -649,74 +656,64 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function getNextRecurringScheduledTimestamp(int $siteId): int {
-        $cron = _get_cron_array();
-        $timestamp = 0;
-        $events = [];
-        $event = [];
-        $expectedArgs = [$siteId, self::SCHEDULED_PHASE];
-        $expectedSchedule = $this->getScheduleKey();
+        $this->loadRecurringScheduleCache();
 
-        if (!is_array($cron)) {
-            return 0;
-        }
-
-        foreach ($cron as $timestamp => $events) {
-            if (!is_array($events) || empty($events[$this->config->getStorageAnalysisHook()])) {
-                continue;
-            }
-
-            foreach ($events[$this->config->getStorageAnalysisHook()] as $event) {
-                if (
-                    (array)($event['args'] ?? []) === $expectedArgs
-                    && (string)($event['schedule'] ?? '') === $expectedSchedule
-                ) {
-                    return (int)$timestamp;
-                }
-            }
-        }
-
-        return 0;
+        return (int)($this->currentRecurringScheduleTimestamps[$siteId] ?? 0);
     }
 
     protected function hasRecurringScheduledAnalysis(int $siteId): bool {
-        $cron = _get_cron_array();
-        $events = [];
-        $event = [];
-        $expectedArgs = [$siteId, self::SCHEDULED_PHASE];
+        $this->loadRecurringScheduleCache();
 
-        if (!is_array($cron)) {
-            return false;
-        }
-
-        foreach ($cron as $events) {
-            foreach ((array)($events[$this->config->getStorageAnalysisHook()] ?? []) as $event) {
-                if ((array)($event['args'] ?? []) === $expectedArgs && !empty($event['schedule'])) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return isset($this->recurringScheduledSiteIds[$siteId]);
     }
 
     /**
      * @return array<int, true>
      */
     protected function getRecurringScheduledSiteIds(): array {
+        $this->loadRecurringScheduleCache();
+
+        return $this->recurringScheduledSiteIds ?? [];
+    }
+
+    protected function clearRecurringScheduleCache(): void {
+        $this->currentRecurringScheduleTimestamps = null;
+        $this->recurringScheduledSiteIds = null;
+    }
+
+    protected function loadRecurringScheduleCache(): void {
+        if ($this->currentRecurringScheduleTimestamps !== null && $this->recurringScheduledSiteIds !== null) {
+            return;
+        }
+
+        $currentTimestamps = [];
         $siteIds = [];
         $cron = _get_cron_array();
+        $expectedSchedule = $this->getScheduleKey();
 
-        foreach ((array)$cron as $events) {
+        foreach ((array)$cron as $timestamp => $events) {
             foreach ((array)($events[$this->config->getStorageAnalysisHook()] ?? []) as $event) {
                 $args = (array)($event['args'] ?? []);
+                $siteId = (int)($args[0] ?? 0);
 
-                if (!empty($event['schedule']) && ($args[1] ?? '') === self::SCHEDULED_PHASE && (int)($args[0] ?? 0) > 0) {
-                    $siteIds[(int)$args[0]] = true;
+                if (empty($event['schedule']) || ($args[1] ?? '') !== self::SCHEDULED_PHASE || $siteId <= 0) {
+                    continue;
+                }
+
+                $siteIds[$siteId] = true;
+
+                if ((string)($event['schedule'] ?? '') === $expectedSchedule) {
+                    $eventTimestamp = (int)$timestamp;
+
+                    if ($eventTimestamp > 0 && (!isset($currentTimestamps[$siteId]) || $eventTimestamp < $currentTimestamps[$siteId])) {
+                        $currentTimestamps[$siteId] = $eventTimestamp;
+                    }
                 }
             }
         }
 
-        return $siteIds;
+        $this->currentRecurringScheduleTimestamps = $currentTimestamps;
+        $this->recurringScheduledSiteIds = $siteIds;
     }
 
     protected function getScheduleKey(): string {
