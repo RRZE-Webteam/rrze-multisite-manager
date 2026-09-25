@@ -101,7 +101,7 @@ class StorageAnalysisSchedulerService {
                 continue;
             }
 
-            if ($this->getNextRecurringScheduledTimestamp($siteId) <= 0) {
+            if (!$this->hasRecurringScheduledAnalysis($siteId)) {
                 continue;
             }
 
@@ -113,8 +113,7 @@ class StorageAnalysisSchedulerService {
     }
 
     /**
-     * Enables automatic scheduling for sites that become eligible in the future.
-     * Existing schedules are left untouched, so this is safe to repeat.
+     * Schedules currently eligible, unscheduled sites after an explicit user request.
      */
     public function initializeActiveSiteSchedules(): int {
         $siteIds = get_sites([
@@ -155,11 +154,6 @@ class StorageAnalysisSchedulerService {
     public function reconcileSiteSchedule(int $siteId): void {
         if (!$this->isSiteEligible($siteId)) {
             $this->deactivateIneligibleSite($siteId);
-            return;
-        }
-
-        if ((bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
-            $this->scheduleNewSiteRecurringAnalysis($siteId);
         }
     }
 
@@ -191,11 +185,8 @@ class StorageAnalysisSchedulerService {
     }
 
     public function scheduleNewSiteRecurringAnalysis(int $siteId): void {
-        if (!$this->isSiteEligible($siteId) || !(bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
-            return;
-        }
-
-        $this->scheduleRecurringAnalysis($siteId);
+        // Scheduling is deliberately only initiated by an explicit user action.
+        // A newly eligible site must not recreate a removed recurring event.
     }
 
     public function isSiteEligible(int $siteId): bool {
@@ -655,6 +646,27 @@ class StorageAnalysisSchedulerService {
         }
 
         return 0;
+    }
+
+    protected function hasRecurringScheduledAnalysis(int $siteId): bool {
+        $cron = _get_cron_array();
+        $events = [];
+        $event = [];
+        $expectedArgs = [$siteId, self::SCHEDULED_PHASE];
+
+        if (!is_array($cron)) {
+            return false;
+        }
+
+        foreach ($cron as $events) {
+            foreach ((array)($events[$this->config->getStorageAnalysisHook()] ?? []) as $event) {
+                if ((array)($event['args'] ?? []) === $expectedArgs && !empty($event['schedule'])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     protected function getScheduleKey(): string {

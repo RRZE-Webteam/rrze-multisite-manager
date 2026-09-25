@@ -1942,16 +1942,16 @@ class Dashboard {
 
         $storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
 
-        if ($storageAnalysisScheduler->isSiteEligible($siteId)) {
-            $storageAnalysisScheduler->scheduleNewSiteRecurringAnalysis($siteId);
-        } else {
+        if (!$storageAnalysisScheduler->isSiteEligible($siteId)) {
             $storageAnalysisScheduler->deactivateIneligibleSite($siteId);
         }
 
         (new ShortcodeBlockAnalysisSchedulerService($this->config))->reconcileSiteSchedule($siteId);
 
-        $this->metrics->clearCache();
-        $this->metrics->rebuildDashboardData(true);
+        if (!$this->metrics->refreshDashboardSiteStatus($siteId)) {
+            $this->metrics->clearCache();
+            $this->metrics->queueDashboardRefresh();
+        }
         $redirectUrl = $this->getSiteOverviewRedirectUrl(
             [
                 'status-updated' => 'true',
@@ -1983,8 +1983,10 @@ class Dashboard {
         (new StorageAnalysisSchedulerService($this->metrics, $this->config))->deactivateIneligibleSite($siteId);
         (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
 
-        $this->metrics->clearCache();
-        $this->metrics->rebuildDashboardData(true);
+        if (!$this->metrics->refreshDashboardSiteStatus($siteId)) {
+            $this->metrics->clearCache();
+            $this->metrics->queueDashboardRefresh();
+        }
 
         wp_safe_redirect(
             $this->getSiteOverviewRedirectUrl(

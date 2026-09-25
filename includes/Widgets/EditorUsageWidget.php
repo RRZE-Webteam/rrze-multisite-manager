@@ -14,7 +14,7 @@ class EditorUsageWidget extends Widgets {
     }
 
     public function getDescription(): string {
-        return __('Estimate based on whether the Classic Editor plugin is active per site or network-wide.', 'rrze-multisite-manager');
+        return __('Estimate based on whether the Classic Editor plugin is active per site, network-wide, or as an MU plugin.', 'rrze-multisite-manager');
     }
 
     public function getLayoutClass(): string {
