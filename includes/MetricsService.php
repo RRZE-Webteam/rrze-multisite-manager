@@ -18,7 +18,7 @@ class MetricsService {
     protected const DASHBOARD_BATCH_OFFSET_OPTION = 'rrze_msm_dashboard_metrics_batch_offset';
     protected const DASHBOARD_BATCH_TOTAL_OPTION = 'rrze_msm_dashboard_metrics_batch_total';
     protected const DASHBOARD_BATCH_STATE_OPTION = 'rrze_msm_dashboard_metrics_batch_state';
-    protected const DASHBOARD_CACHE_VERSION = 2;
+    protected const DASHBOARD_CACHE_VERSION = 3;
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
     protected const SITE_DETAIL_CACHE_VERSION_META = 'rrze_msm_site_detail_cache_version';
     protected const SITE_STORAGE_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_storage_analysis_result';
@@ -335,6 +335,255 @@ class MetricsService {
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v4_' . (string)get_current_network_id());
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v5_' . (string)get_current_network_id());
         delete_site_transient('rrze_multisite_manager_dashboard_metrics_v6_' . (string)get_current_network_id());
+    }
+
+    /**
+     * Updates the cached dashboard representation of one website without
+     * recalculating metrics for the complete network.
+     */
+    public function refreshDashboardSiteStatus(int $siteId): bool {
+        $cached = $this->getStoredDashboardCache();
+        $data = [];
+        $siteOverview = [];
+        $site = null;
+        $updatedSite = [];
+        $previousSite = [];
+        $found = false;
+
+        if (
+            $siteId <= 0
+            || empty($cached['data'])
+            || !is_array($cached['data'])
+            || !$this->isCompleteDashboardData((array)$cached['data'])
+        ) {
+            return false;
+        }
+
+        $data = (array)$cached['data'];
+        $siteOverview = array_values((array)($data['site_overview'] ?? []));
+        $site = get_site($siteId);
+
+        foreach ($siteOverview as $index => $storedSite) {
+            if ((int)($storedSite['id'] ?? 0) !== $siteId) {
+                continue;
+            }
+
+            $found = true;
+            $previousSite = (array)$storedSite;
+
+            if (!$site instanceof \WP_Site) {
+                unset($siteOverview[$index]);
+                continue;
+            }
+
+            $updatedSite = array_merge(
+                (array)$storedSite,
+                [
+                    'status' => $this->getSiteStatus($siteId, $site),
+                    'is_archived' => (int)$site->archived === 1,
+                    'is_spam' => (int)$site->spam === 1,
+                    'is_deleted' => (int)$site->deleted === 1,
+                    'is_public' => (int)$site->public === 1,
+                ],
+                $this->getSiteStatusMeta($siteId)
+            );
+            $siteOverview[$index] = $updatedSite;
+        }
+
+        if (!$found) {
+            return false;
+        }
+
+        $siteOverview = array_values($siteOverview);
+        $data['site_overview'] = $siteOverview;
+        $data['archived_sites'] = $this->filterFormattedSitesByFlag($siteOverview, 'is_archived');
+        $data['blocked_sites'] = $this->filterFormattedSitesByFlag($siteOverview, 'is_spam');
+        $data['deleted_sites'] = $this->filterFormattedSitesByFlag($siteOverview, 'is_deleted');
+        $data['problem_sites'] = $this->getProblemSites($siteOverview);
+        $data['new_monitoring_alerts'] = $this->getNewMonitoringAlerts($siteOverview);
+        $data['provisioning_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'provisioning');
+        $data['dns_missing_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'dns_missing');
+        $data['unreachable_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'unreachable');
+        $data['summary'] = $this->refreshDashboardSummarySiteCounts((array)($data['summary'] ?? []), $siteOverview);
+        if ($this->hasDashboardSitePublicStatus($siteOverview)) {
+            $data['status_distribution'] = $this->buildDashboardStatusDistribution($siteOverview);
+        } elseif (!empty($updatedSite) && $site instanceof \WP_Site) {
+            $data['status_distribution'] = $this->updateDashboardStatusDistribution(
+                (array)($data['status_distribution'] ?? []),
+                $previousSite,
+                $updatedSite,
+                (int)$site->public === 1,
+                count($siteOverview)
+            );
+        }
+        $data['recent_sites'] = $this->replaceDashboardSiteInRows((array)($data['recent_sites'] ?? []), $updatedSite, $siteId);
+        $data['recently_updated_sites'] = $this->replaceDashboardSiteInRows((array)($data['recently_updated_sites'] ?? []), $updatedSite, $siteId);
+        $data['inactive_sites'] = $this->replaceDashboardSiteInRows((array)($data['inactive_sites'] ?? []), $updatedSite, $siteId);
+
+        $cached['data'] = $data;
+        $cached['version'] = self::DASHBOARD_CACHE_VERSION;
+        $cached['dirty'] = true;
+        update_site_option($this->getCacheKey(), $cached);
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @param array<int, array<string, mixed>> $sites
+     * @return array<string, mixed>
+     */
+    protected function refreshDashboardSummarySiteCounts(array $summary, array $sites): array {
+        $totalSites = count($sites);
+        $archivedSites = count($this->filterFormattedSitesByFlag($sites, 'is_archived'));
+        $blockedSites = count($this->filterFormattedSitesByFlag($sites, 'is_spam'));
+        $deletedSites = count($this->filterFormattedSitesByFlag($sites, 'is_deleted'));
+        $activeSites = 0;
+
+        foreach ($sites as $site) {
+            if (empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted'])) {
+                $activeSites++;
+            }
+        }
+
+        $summary['total_sites'] = $totalSites;
+        $summary['active_sites'] = $activeSites;
+        $summary['archived_sites'] = $archivedSites;
+        $summary['spam_sites'] = $blockedSites;
+        $summary['deleted_sites'] = $deletedSites;
+
+        return $summary;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $sites
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildDashboardStatusDistribution(array $sites): array {
+        $buckets = [
+            'active_public' => 0,
+            'active_private' => 0,
+            'archived' => 0,
+            'spam' => 0,
+            'deleted' => 0,
+        ];
+        $site = [];
+
+        foreach ($sites as $site) {
+            if (!empty($site['is_deleted'])) {
+                $buckets['deleted']++;
+            } elseif (!empty($site['is_spam'])) {
+                $buckets['spam']++;
+            } elseif (!empty($site['is_archived'])) {
+                $buckets['archived']++;
+            } elseif (!empty($site['is_public'])) {
+                $buckets['active_public']++;
+            } else {
+                $buckets['active_private']++;
+            }
+        }
+
+        $totalSites = max(1, count($sites));
+        $rows = [
+            ['label' => __('Active and public', 'rrze-multisite-manager'), 'value' => $buckets['active_public'], 'accent' => 'positive'],
+            ['label' => __('Active, excluded from search engines', 'rrze-multisite-manager'), 'value' => $buckets['active_private'], 'accent' => 'info'],
+            ['label' => __('Archived', 'rrze-multisite-manager'), 'value' => $buckets['archived'], 'accent' => 'warning'],
+            ['label' => __('Blocked', 'rrze-multisite-manager'), 'value' => $buckets['spam'], 'accent' => 'blocked'],
+            ['label' => __('Marked for deletion', 'rrze-multisite-manager'), 'value' => $buckets['deleted'], 'accent' => 'danger'],
+        ];
+
+        foreach ($rows as $index => $row) {
+            $rows[$index]['percent'] = (int)round(((int)$row['value'] / $totalSites) * 100);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $sites
+     */
+    protected function hasDashboardSitePublicStatus(array $sites): bool {
+        foreach ($sites as $site) {
+            if (!array_key_exists('is_public', $site)) {
+                return false;
+            }
+        }
+
+        return !empty($sites);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $distribution
+     * @param array<string, mixed> $previousSite
+     * @param array<string, mixed> $updatedSite
+     * @return array<int, array<string, mixed>>
+     */
+    protected function updateDashboardStatusDistribution(array $distribution, array $previousSite, array $updatedSite, bool $isPublic, int $totalSites): array {
+        $buckets = [
+            'active_public' => 0,
+            'active_private' => 1,
+            'archived' => 2,
+            'spam' => 3,
+            'deleted' => 4,
+        ];
+        $previousBucket = $this->getDashboardStatusBucket($previousSite, $isPublic);
+        $updatedBucket = $this->getDashboardStatusBucket($updatedSite, $isPublic);
+
+        if (isset($distribution[$buckets[$previousBucket]])) {
+            $distribution[$buckets[$previousBucket]]['value'] = max(0, (int)($distribution[$buckets[$previousBucket]]['value'] ?? 0) - 1);
+        }
+
+        if (isset($distribution[$buckets[$updatedBucket]])) {
+            $distribution[$buckets[$updatedBucket]]['value'] = (int)($distribution[$buckets[$updatedBucket]]['value'] ?? 0) + 1;
+        }
+
+        foreach ($distribution as $index => $row) {
+            $distribution[$index]['percent'] = (int)round((((int)($row['value'] ?? 0)) / max(1, $totalSites)) * 100);
+        }
+
+        return $distribution;
+    }
+
+    /**
+     * @param array<string, mixed> $site
+     */
+    protected function getDashboardStatusBucket(array $site, bool $isPublic): string {
+        if (!empty($site['is_deleted'])) {
+            return 'deleted';
+        }
+
+        if (!empty($site['is_spam'])) {
+            return 'spam';
+        }
+
+        if (!empty($site['is_archived'])) {
+            return 'archived';
+        }
+
+        return $isPublic ? 'active_public' : 'active_private';
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<string, mixed> $updatedSite
+     * @return array<int, array<string, mixed>>
+     */
+    protected function replaceDashboardSiteInRows(array $rows, array $updatedSite, int $siteId): array {
+        foreach ($rows as $index => $row) {
+            if ((int)($row['id'] ?? 0) === $siteId) {
+                $rows[$index] = empty($updatedSite) ? [] : array_merge((array)$row, $updatedSite);
+            }
+        }
+
+        return array_values(array_filter($rows));
+    }
+
+    /**
+     * Queues a bounded dashboard metrics refresh without calculating the
+     * complete network during the current administrative request.
+     */
+    public function queueDashboardRefresh(): void {
+        $this->scheduleDashboardRefresh(5, true);
     }
 
     public function handleScheduledDashboardRefresh(...$args): void {
@@ -2751,6 +3000,7 @@ class MetricsService {
                 'is_archived' => ((int)$site->archived === 1),
                 'is_spam' => ((int)$site->spam === 1),
                 'is_deleted' => ((int)$site->deleted === 1),
+                'is_public' => ((int)$site->public === 1),
             ];
 
             if ($includeOverviewMetrics) {

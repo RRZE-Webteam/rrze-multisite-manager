@@ -94,11 +94,16 @@ class ShortcodeBlockAnalysisSchedulerService {
                 continue;
             }
 
+            // A removed schedule is an explicit administrator decision. Frequency
+            // changes may reschedule existing tasks, but must never recreate them.
+            if (!$this->hasRecurringScheduledAnalysis($siteId)) {
+                continue;
+            }
+
             $this->unschedule($siteId);
             $this->scheduleRecurringAnalysis($siteId);
         }
 
-        update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
         update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
     }
 
@@ -1090,20 +1095,12 @@ class ShortcodeBlockAnalysisSchedulerService {
     public function reconcileSiteSchedule(int $siteId): void {
         if (!$this->isSiteActive($siteId)) {
             $this->deactivateSite($siteId);
-            return;
-        }
-
-        if ((bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
-            $this->scheduleNewSiteRecurringAnalysis($siteId);
         }
     }
 
     public function scheduleNewSiteRecurringAnalysis(int $siteId): void {
-        if (!$this->isSiteActive($siteId) || !(bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false)) {
-            return;
-        }
-
-        $this->scheduleRecurringAnalysis($siteId);
+        // Scheduling is deliberately only initiated by an explicit user action.
+        // A newly active site must not recreate a removed recurring event.
     }
 
     protected function scheduleRecurringAnalysis(int $siteId): void {
@@ -1139,6 +1136,26 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         return 0;
+    }
+
+    protected function hasRecurringScheduledAnalysis(int $siteId): bool {
+        $cron = _get_cron_array();
+        $events = [];
+        $event = [];
+
+        if (!is_array($cron)) {
+            return false;
+        }
+
+        foreach ($cron as $events) {
+            foreach ((array)($events[$this->getHook()] ?? []) as $event) {
+                if ((array)($event['args'] ?? []) === [$siteId] && !empty($event['schedule'])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     protected function getScheduleKey(): string {
