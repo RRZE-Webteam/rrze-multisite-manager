@@ -293,9 +293,6 @@ class StorageAnalysisSchedulerService {
     public static function clearScheduledEvents(?Config $config = null): int {
         $config = $config ?? new Config();
         $cron = _get_cron_array();
-        $timestamp = 0;
-        $events = [];
-        $event = [];
         $removed = 0;
 
         if (!is_array($cron)) {
@@ -307,10 +304,19 @@ class StorageAnalysisSchedulerService {
                 continue;
             }
 
-            foreach ($events[$config->getStorageAnalysisHook()] as $event) {
-                if (wp_unschedule_event((int)$timestamp, $config->getStorageAnalysisHook(), (array)($event['args'] ?? []))) {
-                    $removed++;
-                }
+            $removed += count((array)$events[$config->getStorageAnalysisHook()]);
+            unset($cron[$timestamp][$config->getStorageAnalysisHook()]);
+
+            if (empty($cron[$timestamp])) {
+                unset($cron[$timestamp]);
+            }
+        }
+
+        if ($removed > 0) {
+            // Write the Cron array once. Removing hundreds of events one by
+            // one can time out and leave a partially removed schedule behind.
+            if (!_set_cron_array($cron)) {
+                return 0;
             }
         }
 
@@ -546,18 +552,26 @@ class StorageAnalysisSchedulerService {
      *
      * @return array{processes: array<int, array<string, mixed>>, has_more: bool, total: int}
      */
-    public function getSiteProcessesPage(int $page, int $perPage): array {
+    public function getSiteProcessesPage(int $page, int $perPage, string $urlSearch = ''): array {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
-        $siteIds = get_sites([
+        $queryArgs = [
             'fields' => 'ids',
             'number' => $perPage + 1,
             'offset' => ($page - 1) * $perPage,
             'orderby' => 'id',
             'order' => 'ASC',
-        ]);
+        ];
+
+        if ($urlSearch !== '') {
+            $queryArgs['search'] = $urlSearch;
+        }
+
+        $siteIds = get_sites($queryArgs);
         $hasMore = count($siteIds) > $perPage;
-        $total = (int)get_sites(['count' => true]);
+        $queryArgs['count'] = true;
+        unset($queryArgs['fields'], $queryArgs['number'], $queryArgs['offset'], $queryArgs['orderby'], $queryArgs['order']);
+        $total = (int)get_sites($queryArgs);
         $processes = [];
 
         foreach (array_slice($siteIds, 0, $perPage) as $siteId) {

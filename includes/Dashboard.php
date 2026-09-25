@@ -561,6 +561,7 @@ class Dashboard {
         $dashboardData = $this->metrics->getDashboardData();
         $dashboardData['site_table_default_limit'] = max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10));
         $metricsStatus = $this->metrics->getDashboardDataStatus();
+        $siteSearch = $this->getSiteOverviewSearchTerm();
         $widget = new SiteOverviewWidget($this->plugin, $this->config);
         $summary = is_array($dashboardData['summary'] ?? null) ? $dashboardData['summary'] : [];
 
@@ -694,6 +695,13 @@ class Dashboard {
 
         $tabs = $availableTabs;
 
+        if ($siteSearch !== '') {
+            foreach ($tabs as &$tab) {
+                $tab['url'] = add_query_arg('site_overview_search', $siteSearch, (string)$tab['url']);
+            }
+            unset($tab);
+        }
+
         if ($currentTab !== 'all' && !$this->siteOverviewTabExists($tabs, $currentTab)) {
             $currentTab = 'all';
         }
@@ -704,6 +712,7 @@ class Dashboard {
             'sort_key' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'name' : 'registered',
             'sort_direction' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'asc' : 'desc',
             'action_mode' => 'text',
+            'top_controls_html' => $this->renderSiteOverviewSearchControl($siteSearch, $currentTab),
         ];
         $tableSites = match ($currentTab) {
             'active' => array_values(array_filter($dashboardData['site_overview'] ?? [], static fn(array $site): bool => empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']))),
@@ -715,6 +724,15 @@ class Dashboard {
             'unreachable' => $dashboardData['unreachable_sites'] ?? [],
             default => $dashboardData['site_overview'] ?? [],
         };
+
+        if ($siteSearch !== '') {
+            $tableSites = array_values(array_filter(
+                $tableSites,
+                static fn(array $site): bool => stripos((string)($site['url'] ?? ''), $siteSearch) !== false
+                    || stripos((string)($site['name'] ?? ''), $siteSearch) !== false
+            ));
+        }
+
         $siteOverviewTable = in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true)
             ? $widget->renderOperationalStatusSiteTable($tableSites, $tableOptions)
             : $widget->renderSiteOverviewTable($tableSites, $tableOptions);
@@ -748,6 +766,26 @@ class Dashboard {
         }
 
         return false;
+    }
+
+    protected function getSiteOverviewSearchTerm(): string {
+        $search = isset($_GET['site_overview_search'])
+            ? trim(sanitize_text_field(wp_unslash($_GET['site_overview_search'])))
+            : '';
+
+        return strlen($search) >= 3 ? $search : '';
+    }
+
+    protected function renderSiteOverviewSearchControl(string $search, string $currentTab): string {
+        $slug = (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview');
+
+        return '<div class="rrze-msm-site-overview-search"><form method="get" action="' . esc_url(admin_url('admin.php')) . '">'
+            . '<input type="hidden" name="page" value="' . esc_attr($slug) . '">'
+            . '<input type="hidden" name="tab" value="' . esc_attr($currentTab) . '">'
+            . '<label for="rrze-msm-site-overview-search">' . esc_html__('Search website', 'rrze-multisite-manager') . '</label> '
+            . '<input type="search" id="rrze-msm-site-overview-search" name="site_overview_search" value="' . esc_attr($search) . '" minlength="3" required> '
+            . '<button type="submit" class="button">' . esc_html__('Search', 'rrze-multisite-manager') . '</button>'
+            . '</form></div>';
     }
 
     public function renderEnvironmentOverviewPage(): void {

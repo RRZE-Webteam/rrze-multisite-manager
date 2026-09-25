@@ -1088,6 +1088,24 @@ class Settings {
         return isset($_GET[$parameter]) ? max(1, absint(wp_unslash($_GET[$parameter]))) : 1;
     }
 
+    protected function getMonitoringWebsiteSearchTerm(): string {
+        $search = isset($_GET['monitoring_site_search'])
+            ? trim(sanitize_text_field(wp_unslash($_GET['monitoring_site_search'])))
+            : '';
+
+        return strlen($search) >= 3 ? $search : '';
+    }
+
+    protected function renderMonitoringWebsiteSearchForm(string $search, string $fieldId): void {
+        echo '<form method="get" action="' . esc_url(admin_url('admin.php')) . '" class="rrze-msm-monitoring-site-search">';
+        echo '<input type="hidden" name="page" value="' . esc_attr($this->getMonitoringSlug()) . '">';
+        echo '<input type="hidden" name="monitoring_tab" value="websites">';
+        echo '<label for="' . esc_attr($fieldId) . '">' . esc_html__('Search URL:', 'rrze-multisite-manager') . '</label> ';
+        echo '<input type="search" id="' . esc_attr($fieldId) . '" name="monitoring_site_search" value="' . esc_attr($search) . '" minlength="3" required> ';
+        echo '<button type="submit" class="button">' . esc_html__('Search', 'rrze-multisite-manager') . '</button>';
+        echo '</form>';
+    }
+
     protected function renderMonitoringTablePagination(string $parameter, int $currentPage, int $totalItems, int $perPage): void {
         $arguments = [
             'page' => $this->getMonitoringSlug(),
@@ -1100,6 +1118,12 @@ class Settings {
             if ($page > 1) {
                 $arguments[$pageParameter] = $page;
             }
+        }
+
+        $search = $this->getMonitoringWebsiteSearchTerm();
+
+        if ($search !== '') {
+            $arguments['monitoring_site_search'] = $search;
         }
 
         $baseUrl = admin_url('admin.php');
@@ -1148,7 +1172,8 @@ class Settings {
         $process = [];
         $perPage = min(100, max(10, (int)$this->getOption('dashboard', 'activity_site_limit', 10)));
         $currentPage = $this->getMonitoringTablePage('storage_monitoring_page');
-        $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage);
+        $search = $this->getMonitoringWebsiteSearchTerm();
+        $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage, $search);
         $processes = $processPage['processes'];
         $totalItems = (int)($processPage['total'] ?? 0);
 
@@ -1158,6 +1183,7 @@ class Settings {
         echo '</header>';
 
         if (empty($processes)) {
+            $this->renderMonitoringWebsiteSearchForm($search, 'rrze-msm-search-monitoring-site-storage');
             echo '<p>' . esc_html__('There are currently no websites registered.', 'rrze-multisite-manager') . '</p>';
             echo '</section>';
             return;
@@ -1165,8 +1191,7 @@ class Settings {
 
         echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-site-storage" data-sort-key="name" data-sort-direction="asc">';
         echo '<div class="tablenav top"><div class="alignleft actions">';
-        echo '<label for="rrze-msm-search-monitoring-site-storage">' . esc_html__('Search website:', 'rrze-multisite-manager') . '</label> ';
-        echo '<input type="search" class="rrze-msm-site-table-search" id="rrze-msm-search-monitoring-site-storage" placeholder="' . esc_attr__('Search by URL', 'rrze-multisite-manager') . '"> ';
+        $this->renderMonitoringWebsiteSearchForm($search, 'rrze-msm-search-monitoring-site-storage');
         echo '<label for="rrze-msm-status-filter-monitoring-site-storage">' . esc_html__('Website status:', 'rrze-multisite-manager') . '</label> ';
         echo '<select class="rrze-msm-site-table-status-filter" id="rrze-msm-status-filter-monitoring-site-storage">';
         echo '<option value="active">' . esc_html__('Active', 'rrze-multisite-manager') . '</option>';
@@ -1267,7 +1292,8 @@ class Settings {
         $scheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
         $perPage = min(100, max(10, (int)$this->getOption('dashboard', 'activity_site_limit', 10)));
         $currentPage = $this->getMonitoringTablePage('shortcode_monitoring_page');
-        $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage);
+        $search = $this->getMonitoringWebsiteSearchTerm();
+        $processPage = $scheduler->getSiteProcessesPage($currentPage, $perPage, $search);
         $processes = $processPage['processes'];
         $totalItems = (int)($processPage['total'] ?? 0);
         $monitoringUrl = add_query_arg(
@@ -1282,12 +1308,12 @@ class Settings {
         echo '<header class="rrze-msm-widget-header"><h2>' . esc_html__('Website shortcode and block analyses', 'rrze-multisite-manager') . '</h2></header>';
 
         if (empty($processes)) {
+            $this->renderMonitoringWebsiteSearchForm($search, 'rrze-msm-search-monitoring-shortcode-block');
             echo '<p>' . esc_html__('No shortcode or block analysis has been requested yet.', 'rrze-multisite-manager') . '</p>';
         } else {
             echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-shortcode-block" data-sort-key="name" data-sort-direction="asc">';
             echo '<div class="tablenav top"><div class="alignleft actions">';
-            echo '<label for="rrze-msm-search-monitoring-shortcode-block">' . esc_html__('Search website:', 'rrze-multisite-manager') . '</label> ';
-            echo '<input type="search" class="rrze-msm-site-table-search" id="rrze-msm-search-monitoring-shortcode-block" placeholder="' . esc_attr__('Search by URL', 'rrze-multisite-manager') . '"> ';
+            $this->renderMonitoringWebsiteSearchForm($search, 'rrze-msm-search-monitoring-shortcode-block');
             echo '<label for="rrze-msm-status-filter-monitoring-shortcode-block">' . esc_html__('Website status:', 'rrze-multisite-manager') . '</label> ';
             echo '<select class="rrze-msm-site-table-status-filter" id="rrze-msm-status-filter-monitoring-shortcode-block">';
             echo '<option value="active">' . esc_html__('Active', 'rrze-multisite-manager') . '</option>';
