@@ -459,126 +459,6 @@ function initOrphanFileDeleteModal() {
     }
 }
 
-function closeStorageScheduleResetModal() {
-    var modal = document.querySelector('#rrze-msm-storage-schedule-reset-modal');
-
-    if (!modal) {
-        return;
-    }
-
-    modal.setAttribute('hidden', 'hidden');
-}
-
-function updateStorageScheduleResetSubmitState() {
-    var checkbox = document.querySelector('#rrze-msm-storage-schedule-reset-confirm');
-    var submit = document.querySelector('#rrze-msm-storage-schedule-reset-submit');
-
-    if (!checkbox || !submit) {
-        return;
-    }
-
-    submit.disabled = !checkbox.checked;
-}
-
-function onOpenStorageScheduleResetModalClick(event) {
-    var modal = document.querySelector('#rrze-msm-storage-schedule-reset-modal');
-    var checkbox = document.querySelector('#rrze-msm-storage-schedule-reset-confirm');
-
-    event.preventDefault();
-
-    if (!modal || !checkbox) {
-        return;
-    }
-
-    checkbox.checked = false;
-    updateStorageScheduleResetSubmitState();
-    modal.removeAttribute('hidden');
-}
-
-function onCloseStorageScheduleResetModalClick(event) {
-    event.preventDefault();
-    closeStorageScheduleResetModal();
-}
-
-function initStorageScheduleResetModal() {
-    var openButton = document.querySelector('.rrze-msm-open-storage-schedule-reset-modal');
-    var closeButtons = document.querySelectorAll('.rrze-msm-close-storage-schedule-reset-modal');
-    var checkbox = document.querySelector('#rrze-msm-storage-schedule-reset-confirm');
-    var i = 0;
-
-    if (openButton) {
-        openButton.addEventListener('click', onOpenStorageScheduleResetModalClick);
-    }
-
-    for (i = 0; i < closeButtons.length; i++) {
-        closeButtons[i].addEventListener('click', onCloseStorageScheduleResetModalClick);
-    }
-
-    if (checkbox) {
-        checkbox.addEventListener('change', updateStorageScheduleResetSubmitState);
-    }
-}
-
-function closeShortcodeBlockScheduleResetModal() {
-    var modal = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-modal');
-
-    if (!modal) {
-        return;
-    }
-
-    modal.setAttribute('hidden', 'hidden');
-}
-
-function updateShortcodeBlockScheduleResetSubmitState() {
-    var checkbox = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-confirm');
-    var submit = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-submit');
-
-    if (!checkbox || !submit) {
-        return;
-    }
-
-    submit.disabled = !checkbox.checked;
-}
-
-function onOpenShortcodeBlockScheduleResetModalClick(event) {
-    var modal = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-modal');
-    var checkbox = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-confirm');
-
-    event.preventDefault();
-
-    if (!modal || !checkbox) {
-        return;
-    }
-
-    checkbox.checked = false;
-    updateShortcodeBlockScheduleResetSubmitState();
-    modal.removeAttribute('hidden');
-}
-
-function onCloseShortcodeBlockScheduleResetModalClick(event) {
-    event.preventDefault();
-    closeShortcodeBlockScheduleResetModal();
-}
-
-function initShortcodeBlockScheduleResetModal() {
-    var openButton = document.querySelector('.rrze-msm-open-shortcode-block-schedule-reset-modal');
-    var closeButtons = document.querySelectorAll('.rrze-msm-close-shortcode-block-schedule-reset-modal');
-    var checkbox = document.querySelector('#rrze-msm-shortcode-block-schedule-reset-confirm');
-    var i = 0;
-
-    if (openButton) {
-        openButton.addEventListener('click', onOpenShortcodeBlockScheduleResetModalClick);
-    }
-
-    for (i = 0; i < closeButtons.length; i++) {
-        closeButtons[i].addEventListener('click', onCloseShortcodeBlockScheduleResetModalClick);
-    }
-
-    if (checkbox) {
-        checkbox.addEventListener('change', updateShortcodeBlockScheduleResetSubmitState);
-    }
-}
-
 function moveWidget(widget, direction) {
     var sibling = null;
     var parent = null;
@@ -977,6 +857,10 @@ function renderSiteTablePagination(wrapper, totalRows, perPage, currentPage) {
     var startItem = 0;
     var endItem = 0;
     var html = '';
+    var firstPageLabel = getAdminI18nString('firstPageLabel', 'First page');
+    var previousPageLabel = getAdminI18nString('previousPageLabel', 'Previous page');
+    var nextPageLabel = getAdminI18nString('nextPageLabel', 'Next page');
+    var lastPageLabel = getAdminI18nString('lastPageLabel', 'Last page');
 
     if (!pagination) {
         return;
@@ -991,11 +875,25 @@ function renderSiteTablePagination(wrapper, totalRows, perPage, currentPage) {
     endItem = Math.min(totalRows, currentPage * perPage);
     html += '<span class="displaying-num">' + String(startItem) + '–' + String(endItem) + ' / ' + String(totalRows) + '</span>';
     html += '<span class="pagination-links">';
-    html += '<button type="button" class="first-page button rrze-msm-site-table-page" data-page="1"' + (currentPage === 1 ? ' disabled aria-disabled="true"' : '') + '><span aria-hidden="true">«</span></button>';
-    html += '<button type="button" class="prev-page button rrze-msm-site-table-page" data-page="' + String(Math.max(1, currentPage - 1)) + '"' + (currentPage === 1 ? ' disabled aria-disabled="true"' : '') + '><span aria-hidden="true">‹</span></button>';
+
+    if (currentPage > 1) {
+        html += '<button type="button" class="first-page button rrze-msm-site-table-page" data-page="1"><span class="screen-reader-text">' + escapeHtml(firstPageLabel) + '</span><span aria-hidden="true">«</span></button>';
+        html += '<button type="button" class="prev-page button rrze-msm-site-table-page" data-page="' + String(currentPage - 1) + '"><span class="screen-reader-text">' + escapeHtml(previousPageLabel) + '</span><span aria-hidden="true">‹</span></button>';
+    } else {
+        html += '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">«</span>';
+        html += '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">‹</span>';
+    }
+
     html += '<span class="paging-input"><span class="tablenav-paging-text">' + String(currentPage) + ' / <span class="total-pages">' + String(totalPages) + '</span></span></span>';
-    html += '<button type="button" class="next-page button rrze-msm-site-table-page" data-page="' + String(Math.min(totalPages, currentPage + 1)) + '"' + (currentPage === totalPages ? ' disabled aria-disabled="true"' : '') + '><span aria-hidden="true">›</span></button>';
-    html += '<button type="button" class="last-page button rrze-msm-site-table-page" data-page="' + String(totalPages) + '"' + (currentPage === totalPages ? ' disabled aria-disabled="true"' : '') + '><span aria-hidden="true">»</span></button>';
+
+    if (currentPage < totalPages) {
+        html += '<button type="button" class="next-page button rrze-msm-site-table-page" data-page="' + String(currentPage + 1) + '"><span class="screen-reader-text">' + escapeHtml(nextPageLabel) + '</span><span aria-hidden="true">›</span></button>';
+        html += '<button type="button" class="last-page button rrze-msm-site-table-page" data-page="' + String(totalPages) + '"><span class="screen-reader-text">' + escapeHtml(lastPageLabel) + '</span><span aria-hidden="true">»</span></button>';
+    } else {
+        html += '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">›</span>';
+        html += '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">»</span>';
+    }
+
     html += '</span>';
     pagination.innerHTML = html;
 }
@@ -1090,8 +988,25 @@ function onSiteTableClick(event) {
 
 function onSiteTablePerPageChange(event) {
     var wrapper = event.currentTarget.closest('.rrze-msm-site-table-wrap');
+    var tableId = '';
+    var url = null;
 
     if (!wrapper) {
+        return;
+    }
+
+    if (wrapper.classList.contains('rrze-msm-server-paginated')) {
+        tableId = wrapper.getAttribute('data-table-id') || '';
+
+        if (tableId === '') {
+            return;
+        }
+
+        url = new window.URL(window.location.href);
+        url.searchParams.set('rrze_msm_' + tableId + '_per_page', event.currentTarget.value);
+        url.searchParams.delete('rrze_msm_' + tableId + '_page');
+        url.hash = 'rrze-msm-site-table-' + tableId;
+        window.location.assign(url.toString());
         return;
     }
 
@@ -1148,6 +1063,23 @@ function initSiteTables() {
 
         renderSiteTable(wrappers[i]);
     }
+}
+
+function restoreSiteTableAnchorFocus() {
+    var anchorId = window.location.hash.replace(/^#/, '');
+    var table = null;
+
+    if (anchorId.indexOf('rrze-msm-site-table-') !== 0) {
+        return;
+    }
+
+    table = document.getElementById(anchorId);
+
+    if (!table) {
+        return;
+    }
+
+    table.focus({preventScroll: true});
 }
 
 function setModeButtonState(button, mode, label) {
@@ -2305,6 +2237,125 @@ function initStorageAnalysisRunner() {
     }
 }
 
+function getFullDataCleanupRunner() {
+    return document.getElementById('rrze-msm-full-data-cleanup');
+}
+
+function formatFullDataCleanupNumber(value) {
+    return Number(value || 0).toLocaleString();
+}
+
+function replaceFullDataCleanupPlaceholders(template, values) {
+    var result = String(template || '');
+    var index = 0;
+
+    for (index = 0; index < values.length; index++) {
+        result = result.replace('%' + String(index + 1) + '$s', String(values[index]));
+    }
+
+    return result;
+}
+
+function updateFullDataCleanupRunner(status) {
+    var runner = getFullDataCleanupRunner();
+    var config = getAdminConfig();
+    var statusElement = null;
+    var progressElement = null;
+    var deletedElement = null;
+    var siteOffset = 0;
+    var siteTotal = 0;
+
+    if (!runner || !status) {
+        return;
+    }
+
+    statusElement = runner.querySelector('[data-full-cleanup-status]');
+    progressElement = runner.querySelector('[data-full-cleanup-progress]');
+    deletedElement = runner.querySelector('[data-full-cleanup-deleted]');
+    siteOffset = Math.min(Number(status.site_offset || 0), Number(status.site_total || 0));
+    siteTotal = Number(status.site_total || 0);
+
+    if (statusElement) {
+        statusElement.textContent = String(status.status || '') === 'complete'
+            ? String((config && config.fullDataCleanupCompleted) || '')
+            : String(status.message || '');
+    }
+
+    if (progressElement) {
+        progressElement.textContent = replaceFullDataCleanupPlaceholders(
+            String((config && config.fullDataCleanupProgress) || ''),
+            [formatFullDataCleanupNumber(siteOffset), formatFullDataCleanupNumber(siteTotal)]
+        );
+    }
+
+    if (deletedElement) {
+        deletedElement.textContent = replaceFullDataCleanupPlaceholders(
+            String((config && config.fullDataCleanupDeleted) || ''),
+            [
+                formatFullDataCleanupNumber(status.deleted_transient_values),
+                formatFullDataCleanupNumber(status.deleted_transient_timeouts),
+                formatFullDataCleanupNumber(status.deleted_site_options)
+            ]
+        );
+    }
+}
+
+function runFullDataCleanupBatch() {
+    var runner = getFullDataCleanupRunner();
+    var config = getAdminConfig();
+    var url = '';
+
+    if (!runner || !config || runner.getAttribute('data-auto-run') !== '1') {
+        return;
+    }
+
+    url = String(config.ajaxUrl || '') + '?action=rrze_msm_run_full_data_cleanup_batch&nonce=' + encodeURIComponent(String(config.fullDataCleanupNonce || ''));
+
+    fetch(url, { credentials: 'same-origin' })
+        .then(function (response) {
+            return response.json();
+        })
+        .then(function (response) {
+            var status = response && response.data ? response.data : null;
+            var delay = 500;
+
+            if (!response || response.success !== true || !status) {
+                throw new Error('cleanup_request_failed');
+            }
+
+            updateFullDataCleanupRunner(status);
+
+            if (String(status.status || '') === 'complete') {
+                runner.setAttribute('data-auto-run', '0');
+                window.setTimeout(function () {
+                    window.location.reload();
+                }, 600);
+                return;
+            }
+
+            if (String(status.status || '') === 'waiting') {
+                delay = 3000;
+            }
+
+            window.setTimeout(runFullDataCleanupBatch, delay);
+        })
+        .catch(function () {
+            var statusElement = runner.querySelector('[data-full-cleanup-status]');
+
+            if (statusElement) {
+                statusElement.textContent = String((config && config.fullDataCleanupFailed) || '');
+            }
+
+            window.setTimeout(runFullDataCleanupBatch, 3000);
+        });
+}
+
+function initFullDataCleanupRunner() {
+    if (getFullDataCleanupRunner()) {
+        runFullDataCleanupBatch();
+    }
+}
+
 function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = '';
@@ -2321,6 +2372,7 @@ function initRrzeMultisiteManager() {
     initViewSelect();
     initSortableWidgets();
     initSiteTables();
+    restoreSiteTableAnchorFocus();
     initModeToggle();
     initSiteSearch();
     initSiteMediaSearch();
@@ -2330,13 +2382,12 @@ function initRrzeMultisiteManager() {
     initPluginDeactivateModal();
     initSiteDeleteModal();
     initOrphanFileDeleteModal();
-    initStorageScheduleResetModal();
-    initShortcodeBlockScheduleResetModal();
     initPluginSitesTextToggles();
     initPluginSitesPagers();
     initReadmeToggles();
     initOptionEditForms();
     initStorageAnalysisRunner();
+    initFullDataCleanupRunner();
 }
 
 document.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);

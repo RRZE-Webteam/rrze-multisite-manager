@@ -30,6 +30,7 @@ class MonitoringService {
     protected const OPTION_BATCH_TOTAL = 'rrze_msm_monitoring_batch_total';
     protected const OPTION_RUN_STATE = 'rrze_msm_monitoring_run_state';
     protected const OPTION_RUN_LOG = 'rrze_msm_monitoring_run_log';
+    protected const SCHEDULING_ENABLED_OPTION = 'rrze_msm_monitoring_scheduling_enabled';
     protected const LOCK_KEY = 'rrze_msm_monitoring_lock';
     protected const LOCK_OPTION = 'rrze_msm_monitoring_lock_state';
     protected const LOCK_TTL = 900;
@@ -69,6 +70,10 @@ class MonitoringService {
     }
 
     public function ensureScheduledEvent(): void {
+        if (!$this->isMonitoringSchedulingEnabled()) {
+            return;
+        }
+
         $hook = $this->config->getMonitoringHook();
         $nextRecurringTimestamp = $this->getNextScheduledHookTimestamp($hook, true);
         $lastRunTimestamp = strtotime((string)get_site_option(self::OPTION_LAST_RUN, '') . ' GMT');
@@ -112,6 +117,17 @@ class MonitoringService {
     public function runScheduledChecks(...$args): void {
         $process = [];
 
+        if (MetricsService::isFullDataCleanupInProgress() || !$this->isMonitoringSchedulingEnabled()) {
+            return;
+        }
+
+        // A one-time event marked as a batch continuation must only continue
+        // an active network pass. A stale event must not silently begin a new
+        // availability run before the regular interval has elapsed.
+        if ($this->isMonitoringBatchContinuation($args) && !$this->isMonitoringRunInProgress()) {
+            return;
+        }
+
         LoggingService::info(
             $this->config,
             'RRZE-MSM: Monitoring-Scheduler gestartet',
@@ -152,14 +168,17 @@ class MonitoringService {
         }
     }
 
-    public static function clearScheduledEvent(?Config $config = null): void {
+    public static function clearScheduledEvent(?Config $config = null): int {
         $config = $config ?? new Config();
         $hook = $config->getMonitoringHook();
         $cron = _get_cron_array();
+        $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
             foreach ((array)($events[$hook] ?? []) as $event) {
-                wp_unschedule_event((int)$timestamp, $hook, (array)($event['args'] ?? []));
+                if (wp_unschedule_event((int)$timestamp, $hook, (array)($event['args'] ?? []))) {
+                    $removed++;
+                }
             }
         }
 
@@ -168,6 +187,24 @@ class MonitoringService {
         delete_site_option(self::OPTION_RUN_STATE);
         delete_site_option(self::LOCK_OPTION);
         delete_site_transient(self::LOCK_KEY);
+
+        return $removed;
+    }
+
+    /**
+     * Stops availability monitoring and disables all automatic rescheduling.
+     */
+    public function disableMonitoringScheduling(): int {
+        return self::disableScheduledChecks($this->config);
+    }
+
+    /**
+     * Disables automatic availability monitoring without requiring a service instance.
+     */
+    public static function disableScheduledChecks(?Config $config = null): int {
+        update_site_option(self::SCHEDULING_ENABLED_OPTION, 0);
+
+        return self::clearScheduledEvent($config);
     }
 
     public function resetMonitoringRunState(bool $clearSchedule = false): void {
@@ -271,6 +308,12 @@ class MonitoringService {
     }
 
     public function startMonitoringRun(bool $runImmediately = true): void {
+        if (MetricsService::isFullDataCleanupInProgress()) {
+            return;
+        }
+
+        $this->enableMonitoringScheduling();
+
         if ($this->isMonitoringLocked() || $this->isMonitoringRunInProgress()) {
             $this->scheduleNextBatch(5);
             return;
@@ -377,6 +420,10 @@ class MonitoringService {
     }
 
     protected function scheduleNextBatch(int $delay = 30): void {
+        if (!$this->isMonitoringSchedulingEnabled()) {
+            return;
+        }
+
         $hook = $this->config->getMonitoringHook();
 
         if ($this->getNextScheduledHookTimestamp($hook, false) > 0) {
@@ -390,7 +437,23 @@ class MonitoringService {
         );
     }
 
+    /**
+     * Determines whether the current cron invocation is an internal batch continuation.
+     *
+     * WordPress passes cron event arguments as individual action arguments, so the
+     * associative marker stored in the event arrives here as its boolean value.
+     *
+     * @param array<int, mixed> $args Cron action arguments.
+     */
+    protected function isMonitoringBatchContinuation(array $args): bool {
+        return in_array(true, $args, true);
+    }
+
     protected function scheduleRecurringEvent(int $delay): void {
+        if (!$this->isMonitoringSchedulingEnabled()) {
+            return;
+        }
+
         $hook = $this->config->getMonitoringHook();
 
         if ($this->getNextScheduledHookTimestamp($hook, true) > 0) {
@@ -614,6 +677,14 @@ class MonitoringService {
         }
 
         return $default;
+    }
+
+    protected function enableMonitoringScheduling(): void {
+        update_site_option(self::SCHEDULING_ENABLED_OPTION, 1);
+    }
+
+    protected function isMonitoringSchedulingEnabled(): bool {
+        return (bool)get_site_option(self::SCHEDULING_ENABLED_OPTION, false);
     }
 
     protected function checkSiteAvailability(int $siteId): array {

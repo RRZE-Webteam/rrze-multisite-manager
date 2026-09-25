@@ -79,6 +79,7 @@ class Dashboard {
         add_action('wp_ajax_rrze_msm_search_themes', [$this, 'ajaxSearchThemes']);
         add_action('wp_ajax_rrze_msm_search_site_media', [$this, 'ajaxSearchSiteMedia']);
         add_action('wp_ajax_rrze_msm_get_site_storage_analysis_status', [$this, 'ajaxGetSiteStorageAnalysisStatus']);
+        add_action('wp_ajax_rrze_msm_run_full_data_cleanup_batch', [$this, 'ajaxRunFullDataCleanupBatch']);
         add_action('admin_post_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('admin_post_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
         add_action('admin_post_rrze_multisite_manager_site_permanent_delete', [$this, 'handleSitePermanentDelete']);
@@ -372,6 +373,10 @@ class Dashboard {
                 'themeSearchNonce' => wp_create_nonce('rrze-msm-search-themes'),
                 'themeSearchMinLength' => 3,
                 'themeSearchNoResults' => __('No themes found.', 'rrze-multisite-manager'),
+                'firstPageLabel' => __('First page', 'rrze-multisite-manager'),
+                'previousPageLabel' => __('Previous page', 'rrze-multisite-manager'),
+                'nextPageLabel' => __('Next page', 'rrze-multisite-manager'),
+                'lastPageLabel' => __('Last page', 'rrze-multisite-manager'),
                 'siteMediaSearchNonce' => wp_create_nonce('rrze-msm-search-site-media'),
                 'siteMediaSearchMinLength' => 3,
                 'siteMediaSearchNoResults' => __('No media files found.', 'rrze-multisite-manager'),
@@ -379,6 +384,7 @@ class Dashboard {
                 'siteMediaSearchRunning' => __('Searching media library ...', 'rrze-multisite-manager'),
                 'siteMediaSearchFailed' => __('The media library could not be searched.', 'rrze-multisite-manager'),
                 'siteStorageAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-analysis'),
+                'fullDataCleanupNonce' => wp_create_nonce('rrze-msm-full-data-cleanup'),
                 'siteStorageOrphanAnalysisNonce' => wp_create_nonce('rrze-msm-site-storage-orphan-analysis'),
                 'siteStorageStatusNonce' => wp_create_nonce('rrze-msm-site-storage-status'),
                 'siteStorageAnalysisCompleted' => __('The storage analysis is complete. The page is being reloaded.', 'rrze-multisite-manager'),
@@ -390,6 +396,10 @@ class Dashboard {
                 'storageAnalysisStart' => __('Start analysis', 'rrze-multisite-manager'),
                 'storageOrphanAnalysisRunning' => __('Orphan check running ...', 'rrze-multisite-manager'),
                 'storageOrphanAnalysisStart' => __('Start orphan check', 'rrze-multisite-manager'),
+                'fullDataCleanupProgress' => __('Websites processed: %1$s of %2$s', 'rrze-multisite-manager'),
+                'fullDataCleanupDeleted' => __('Deleted so far: %1$s transient values, %2$s timeout rows, %3$s website options.', 'rrze-multisite-manager'),
+                'fullDataCleanupFailed' => __('The cleanup request failed. Retrying shortly.', 'rrze-multisite-manager'),
+                'fullDataCleanupCompleted' => __('Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden.', 'rrze-multisite-manager'),
             ]
         );
     }
@@ -457,6 +467,7 @@ class Dashboard {
         }
 
         $dashboardData = $this->metrics->getDashboardData();
+        $dashboardData['site_table_default_limit'] = max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10));
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $metricsLastRunLabel = !empty($metricsStatus['last_run_timestamp'])
             ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$metricsStatus['last_run_timestamp'])
@@ -490,6 +501,7 @@ class Dashboard {
                 'mode_toggle_label' => $this->getModeToggleLabel(),
                 'metrics_last_run_label' => $metricsLastRunLabel,
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
+                'metrics_missing_notice_html' => empty($metricsStatus['has_data']) ? $this->renderMissingMetricsNoticeHtml() : '',
             ],
             $this
         );
@@ -547,6 +559,7 @@ class Dashboard {
         }
 
         $dashboardData = $this->metrics->getDashboardData();
+        $dashboardData['site_table_default_limit'] = max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10));
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $widget = new SiteOverviewWidget($this->plugin, $this->config);
         $summary = is_array($dashboardData['summary'] ?? null) ? $dashboardData['summary'] : [];
@@ -717,6 +730,7 @@ class Dashboard {
                 'mode_toggle_label' => $this->getModeToggleLabel(),
                 'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus),
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
+                'metrics_missing_notice_html' => empty($metricsStatus['has_data']) ? $this->renderMissingMetricsNoticeHtml() : '',
                 'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
                 'inactive_status_labels' => $inactiveStatusLabels,
             ],
@@ -1430,6 +1444,7 @@ class Dashboard {
                 'mode_toggle_label' => $this->getModeToggleLabel(),
                 'metrics_notice_html' => $this->renderMetricsStatusNoticeHtml($metricsStatus),
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
+                'metrics_missing_notice_html' => empty($metricsStatus['has_data']) ? $this->renderMissingMetricsNoticeHtml() : '',
                 'metrics_refreshed' => !empty($_GET['metrics-refreshed']),
             ],
             $this
@@ -1764,6 +1779,22 @@ class Dashboard {
         }
 
         wp_send_json_success(['results' => $results]);
+    }
+
+    public function ajaxRunFullDataCleanupBatch(): void {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_send_json_error(['message' => 'forbidden'], 403);
+        }
+
+        check_ajax_referer('rrze-msm-full-data-cleanup', 'nonce');
+
+        try {
+            $this->metrics->runFullDataCleanup();
+        } catch (\Throwable $exception) {
+            wp_send_json_error(['message' => $exception->getMessage()], 500);
+        }
+
+        wp_send_json_success($this->metrics->getFullDataCleanupStatus());
     }
 
     public function ajaxRunSiteStorageAnalysis(): void {
@@ -3159,6 +3190,12 @@ class Dashboard {
         $label = $finishedAt > 0 ? wp_date('d.m.Y H:i', $finishedAt) : '-';
 
         return '<p class="rrze-msm-metrics-status">' . esc_html__('Stand:', 'rrze-multisite-manager') . ' ' . esc_html($label) . '</p>';
+    }
+
+    protected function renderMissingMetricsNoticeHtml(): string {
+        return '<div class="notice notice-warning"><p>'
+            . esc_html__('Dashboard metrics are not available yet. Start the “Dashboard metrics” job under Monitoring first.', 'rrze-multisite-manager')
+            . '</p></div>';
     }
 
     protected function getOperationalStatusOptions(): array {

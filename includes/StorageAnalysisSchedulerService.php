@@ -143,12 +143,30 @@ class StorageAnalysisSchedulerService {
     }
 
     public function getUnscheduledEligibleSiteCount(): int {
-        /*
-         * This value only controls whether the initialization action is shown.
-         * Scanning every blog and its options during table rendering defeats
-         * server-side pagination and can exhaust the request on large networks.
-         */
-        return (bool)get_site_option(self::GLOBAL_INITIALIZATION_OPTION, false) ? 0 : 1;
+        $scheduledSiteIds = $this->getRecurringScheduledSiteIds();
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'archived' => 0,
+            'spam' => 0,
+            'deleted' => 0,
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            // Avoid reading per-site scheduler options when an event already
+            // exists. This keeps the check cheap even for large networks.
+            if (isset($scheduledSiteIds[$siteId])) {
+                continue;
+            }
+
+            if ($this->isSiteAwaitingInitialSchedule($siteId)) {
+                return 1;
+            }
+        }
+
+        return 0;
     }
 
     public function reconcileSiteSchedule(int $siteId): void {
@@ -235,15 +253,16 @@ class StorageAnalysisSchedulerService {
         return true;
     }
 
-    public static function clearScheduledEvents(?Config $config = null): void {
+    public static function clearScheduledEvents(?Config $config = null): int {
         $config = $config ?? new Config();
         $cron = _get_cron_array();
         $timestamp = 0;
         $events = [];
         $event = [];
+        $removed = 0;
 
         if (!is_array($cron)) {
-            return;
+            return 0;
         }
 
         foreach ($cron as $timestamp => $events) {
@@ -252,11 +271,15 @@ class StorageAnalysisSchedulerService {
             }
 
             foreach ($events[$config->getStorageAnalysisHook()] as $event) {
-                wp_unschedule_event((int)$timestamp, $config->getStorageAnalysisHook(), (array)($event['args'] ?? []));
+                if (wp_unschedule_event((int)$timestamp, $config->getStorageAnalysisHook(), (array)($event['args'] ?? []))) {
+                    $removed++;
+                }
             }
         }
 
         delete_site_option(self::SCHEDULE_SIGNATURE_OPTION);
+
+        return $removed;
     }
 
     public function startAnalysisNow(int $siteId): bool {
@@ -309,6 +332,10 @@ class StorageAnalysisSchedulerService {
     }
 
     public function runScheduledAnalysis(int $siteId = 0, string $phase = self::BASE_PHASE): void {
+        if (MetricsService::isFullDataCleanupInProgress()) {
+            return;
+        }
+
         if (!$this->isSiteEligible($siteId)) {
             $this->deactivateIneligibleSite($siteId);
             return;
@@ -479,7 +506,7 @@ class StorageAnalysisSchedulerService {
      * Returns one bounded page for the monitoring table.  Rendering a page
      * must not load scheduler data for every site in a large network.
      *
-     * @return array{processes: array<int, array<string, mixed>>, has_more: bool}
+     * @return array{processes: array<int, array<string, mixed>>, has_more: bool, total: int}
      */
     public function getSiteProcessesPage(int $page, int $perPage): array {
         $page = max(1, $page);
@@ -492,6 +519,7 @@ class StorageAnalysisSchedulerService {
             'order' => 'ASC',
         ]);
         $hasMore = count($siteIds) > $perPage;
+        $total = (int)get_sites(['count' => true]);
         $processes = [];
 
         foreach (array_slice($siteIds, 0, $perPage) as $siteId) {
@@ -505,6 +533,7 @@ class StorageAnalysisSchedulerService {
         return [
             'processes' => $processes,
             'has_more' => $hasMore,
+            'total' => $total,
         ];
     }
 
@@ -530,6 +559,7 @@ class StorageAnalysisSchedulerService {
 
         return [
             'site_id' => $siteId,
+            'name' => (string)get_blog_option($siteId, 'blogname', ''),
             'url' => get_home_url($siteId, '/'),
             'website_status_key' => $this->getWebsiteStatusFilterKey($site),
             'status' => $this->getSiteProcessStatus($isEligible, $isDue, $analysisStatus, $scheduleStatus),
@@ -667,6 +697,26 @@ class StorageAnalysisSchedulerService {
         }
 
         return false;
+    }
+
+    /**
+     * @return array<int, true>
+     */
+    protected function getRecurringScheduledSiteIds(): array {
+        $siteIds = [];
+        $cron = _get_cron_array();
+
+        foreach ((array)$cron as $events) {
+            foreach ((array)($events[$this->config->getStorageAnalysisHook()] ?? []) as $event) {
+                $args = (array)($event['args'] ?? []);
+
+                if (!empty($event['schedule']) && ($args[1] ?? '') === self::SCHEDULED_PHASE && (int)($args[0] ?? 0) > 0) {
+                    $siteIds[(int)$args[0]] = true;
+                }
+            }
+        }
+
+        return $siteIds;
     }
 
     protected function getScheduleKey(): string {
