@@ -44,7 +44,7 @@ class MetricsService {
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const DETAIL_OPTION_VALUE_MAX_BYTES = 16384;
-    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 2;
+    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 3;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
     protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
@@ -8417,12 +8417,16 @@ class MetricsService {
                     continue;
                 }
 
-                foreach ($hooks as $events) {
+                foreach ($hooks as $hook => $events) {
                     if (!is_array($events)) {
                         continue;
                     }
 
-                    $cronEventCount += count($events);
+                    foreach ($events as $event) {
+                        if (is_array($event) && $this->isCurrentSiteCronEvent((string)$hook, $event)) {
+                            $cronEventCount++;
+                        }
+                    }
                 }
             }
         }
@@ -8530,6 +8534,10 @@ class MetricsService {
                         continue;
                     }
 
+                    if (!$this->isCurrentSiteCronEvent((string)$hook, $event)) {
+                        continue;
+                    }
+
                     $results[] = [
                         'hook' => (string)$hook,
                         'next_run' => $this->formatTimestamp((int)$timestamp),
@@ -8546,6 +8554,25 @@ class MetricsService {
         $this->setCachedCurrentSiteDetailSection('cron_events', $results);
 
         return $results;
+    }
+
+    /**
+     * The two website-analysis schedulers store their events in the network's
+     * main cron array and carry the target site ID as their first argument.
+     * When details for the main site are displayed, events for every other
+     * site must therefore be excluded.
+     *
+     * @param array<string, mixed> $event
+     */
+    protected function isCurrentSiteCronEvent(string $hook, array $event): bool {
+        if (!in_array($hook, [$this->config->getStorageAnalysisHook(), $this->config->getShortcodeBlockAnalysisHook()], true)) {
+            return true;
+        }
+
+        $args = (array)($event['args'] ?? []);
+        $eventSiteId = (int)($args[0] ?? 0);
+
+        return $eventSiteId > 0 && $eventSiteId === get_current_blog_id();
     }
 
     protected function getOptionGroupWhereData(string $groupKey): array {

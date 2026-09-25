@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.2.22\n"
+"Project-Id-Version: RRZE Multisite Manager 1.2.22-1\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-25T14:46:34+00:00\n"
-"PO-Revision-Date: 2026-09-25 14:46+0000\n"
+"POT-Creation-Date: 2026-09-25T14:57:58+00:00\n"
+"PO-Revision-Date: 2026-09-25 14:57+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -1069,7 +1069,7 @@ msgstr ""
 
 #. translators: %d: interval in hours for the monitoring schedule.
 #: includes/MetricsService.php:1140
-#: includes/MonitoringService.php:63
+#: includes/MonitoringService.php:64
 msgid "Every %d hours"
 msgstr ""
 
@@ -2046,59 +2046,59 @@ msgstr ""
 msgid "Update %s available"
 msgstr ""
 
-#: includes/MonitoringService.php:269
+#: includes/MonitoringService.php:270
 msgid "Website availability"
 msgstr ""
 
-#: includes/MonitoringService.php:270
+#: includes/MonitoringService.php:271
 msgid "Checks DNS and HTTP reachability of all active websites and updates the plugin's monitoring meta fields."
 msgstr ""
 
-#: includes/MonitoringService.php:732
+#: includes/MonitoringService.php:787
 msgid "No host could be determined from the site URL."
 msgstr ""
 
-#: includes/MonitoringService.php:733
+#: includes/MonitoringService.php:788
 msgid "HTTP check skipped because no host could be determined from the site URL."
 msgstr ""
 
-#: includes/MonitoringService.php:751
+#: includes/MonitoringService.php:806
 msgid "HTTP check skipped because DNS resolution failed."
 msgstr ""
 
 #. translators: %d: site ID.
-#: includes/MonitoringService.php:811
+#: includes/MonitoringService.php:866
 #: includes/Settings.php:2245
 msgid "Site %d"
 msgstr ""
 
 #. translators: %s: IP address.
-#: includes/MonitoringService.php:911
+#: includes/MonitoringService.php:966
 msgid "Direct IP address: %s"
 msgstr ""
 
-#: includes/MonitoringService.php:930
+#: includes/MonitoringService.php:985
 msgid "DNS lookup failed."
 msgstr ""
 
-#: includes/MonitoringService.php:939
-#: includes/MonitoringService.php:1199
+#: includes/MonitoringService.php:994
+#: includes/MonitoringService.php:1254
 msgid "DNS record found."
 msgstr ""
 
-#: includes/MonitoringService.php:945
+#: includes/MonitoringService.php:1000
 msgid "No A, AAAA, or CNAME record found."
 msgstr ""
 
-#: includes/MonitoringService.php:951
+#: includes/MonitoringService.php:1006
 msgid "DNS checks are not available on this server."
 msgstr ""
 
-#: includes/MonitoringService.php:1234
+#: includes/MonitoringService.php:1289
 msgid "No HTTP status code received."
 msgstr ""
 
-#: includes/MonitoringService.php:1264
+#: includes/MonitoringService.php:1319
 msgid "HTTP request failed."
 msgstr ""
 

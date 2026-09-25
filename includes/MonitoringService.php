@@ -30,6 +30,7 @@ class MonitoringService {
     protected const OPTION_BATCH_TOTAL = 'rrze_msm_monitoring_batch_total';
     protected const OPTION_RUN_STATE = 'rrze_msm_monitoring_run_state';
     protected const OPTION_RUN_LOG = 'rrze_msm_monitoring_run_log';
+    protected const OPTION_LAST_FINALIZED_RUN_ID = 'rrze_msm_monitoring_last_finalized_run_id';
     protected const SCHEDULING_ENABLED_OPTION = 'rrze_msm_monitoring_scheduling_enabled';
     protected const LOCK_KEY = 'rrze_msm_monitoring_lock';
     protected const LOCK_OPTION = 'rrze_msm_monitoring_lock_state';
@@ -298,7 +299,17 @@ class MonitoringService {
     public function getRunHistory(): array {
         $history = get_site_option(self::OPTION_RUN_LOG, []);
 
-        return is_array($history) ? $history : [];
+        if (!is_array($history)) {
+            return [];
+        }
+
+        $deduplicatedHistory = $this->deduplicateRunHistory($history);
+
+        if (count($deduplicatedHistory) !== count($history)) {
+            update_site_option(self::OPTION_RUN_LOG, $deduplicatedHistory);
+        }
+
+        return $deduplicatedHistory;
     }
 
     public function getSiteHistory(int $siteId): array {
@@ -474,6 +485,7 @@ class MonitoringService {
 
     protected function initializeRunState(string $trigger): void {
         $this->saveRunState([
+            'run_id' => wp_generate_uuid4(),
             'started_at' => current_time('mysql', true),
             'finished_at' => '',
             'trigger' => $trigger,
@@ -509,11 +521,54 @@ class MonitoringService {
             return;
         }
 
+        $runId = (string)($state['run_id'] ?? '');
+
+        if ($runId === '') {
+            $runId = md5(serialize([
+                $state['started_at'] ?? '',
+                $state['trigger'] ?? '',
+                $state['total_sites'] ?? 0,
+            ]));
+        }
+
+        if (hash_equals((string)get_site_option(self::OPTION_LAST_FINALIZED_RUN_ID, ''), $runId)) {
+            delete_site_option(self::OPTION_RUN_STATE);
+            return;
+        }
+
         $state['finished_at'] = $finishedAt;
+        $state['run_id'] = $runId;
         array_unshift($history, $state);
-        $history = array_slice($history, 0, $this->getRunLogEntryLimit());
+        $history = array_slice($this->deduplicateRunHistory($history), 0, $this->getRunLogEntryLimit());
         update_site_option(self::OPTION_RUN_LOG, $history);
+        update_site_option(self::OPTION_LAST_FINALIZED_RUN_ID, $runId);
         delete_site_option(self::OPTION_RUN_STATE);
+    }
+
+    /**
+     * @param array<int, mixed> $history
+     * @return array<int, array<string, mixed>>
+     */
+    protected function deduplicateRunHistory(array $history): array {
+        $deduplicated = [];
+        $seen = [];
+
+        foreach ($history as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $signature = md5(wp_json_encode($entry));
+
+            if (isset($seen[$signature])) {
+                continue;
+            }
+
+            $seen[$signature] = true;
+            $deduplicated[] = $entry;
+        }
+
+        return $deduplicated;
     }
 
     protected function acquireMonitoringLock(): bool {

@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-09-25T14:45:17+00:00\n"
+"POT-Creation-Date: 2026-09-25T14:57:58+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -1023,7 +1023,7 @@ msgstr ""
 "Plugin- und Theme-Übersichten."
 
 #. translators: %d: interval in hours for the monitoring schedule.
-#: includes/MetricsService.php:1140 includes/MonitoringService.php:63
+#: includes/MetricsService.php:1140 includes/MonitoringService.php:64
 msgid "Every %d hours"
 msgstr "Alle %d Stunden"
 
@@ -2010,11 +2010,11 @@ msgstr "Nicht aktiviert"
 msgid "Update %s available"
 msgstr "Update %s verfügbar"
 
-#: includes/MonitoringService.php:269
+#: includes/MonitoringService.php:270
 msgid "Website availability"
 msgstr "Erreichbarkeit von Websites"
 
-#: includes/MonitoringService.php:270
+#: includes/MonitoringService.php:271
 #, fuzzy
 msgid ""
 "Checks DNS and HTTP reachability of all active websites and updates the "
@@ -2023,52 +2023,52 @@ msgstr ""
 "Prüft DNS und HTTP-Erreichbarkeit aller registrierten Websites und "
 "aktualisiert die eigenen Monitoring-Metafelder."
 
-#: includes/MonitoringService.php:732
+#: includes/MonitoringService.php:787
 msgid "No host could be determined from the site URL."
 msgstr "Aus der Website-URL konnte kein Host ermittelt werden."
 
-#: includes/MonitoringService.php:733
+#: includes/MonitoringService.php:788
 msgid ""
 "HTTP check skipped because no host could be determined from the site URL."
 msgstr ""
 "HTTP-Prüfung übersprungen, weil aus der Website-URL kein Host ermittelt "
 "werden konnte."
 
-#: includes/MonitoringService.php:751
+#: includes/MonitoringService.php:806
 msgid "HTTP check skipped because DNS resolution failed."
 msgstr "HTTP-Prüfung übersprungen, weil die DNS-Auflösung fehlgeschlagen ist."
 
 #. translators: %d: site ID.
-#: includes/MonitoringService.php:811 includes/Settings.php:2245
+#: includes/MonitoringService.php:866 includes/Settings.php:2245
 msgid "Site %d"
 msgstr "Site %d"
 
 #. translators: %s: IP address.
-#: includes/MonitoringService.php:911
+#: includes/MonitoringService.php:966
 msgid "Direct IP address: %s"
 msgstr "Direkte IP-Adresse: %s"
 
-#: includes/MonitoringService.php:930
+#: includes/MonitoringService.php:985
 msgid "DNS lookup failed."
 msgstr "DNS-Abfrage fehlgeschlagen."
 
-#: includes/MonitoringService.php:939 includes/MonitoringService.php:1199
+#: includes/MonitoringService.php:994 includes/MonitoringService.php:1254
 msgid "DNS record found."
 msgstr "DNS-Eintrag gefunden."
 
-#: includes/MonitoringService.php:945
+#: includes/MonitoringService.php:1000
 msgid "No A, AAAA, or CNAME record found."
 msgstr "Kein A-, AAAA- oder CNAME-Eintrag gefunden."
 
-#: includes/MonitoringService.php:951
+#: includes/MonitoringService.php:1006
 msgid "DNS checks are not available on this server."
 msgstr "DNS-Prüfungen sind auf diesem Server nicht verfügbar."
 
-#: includes/MonitoringService.php:1234
+#: includes/MonitoringService.php:1289
 msgid "No HTTP status code received."
 msgstr "Kein HTTP-Statuscode empfangen."
 
-#: includes/MonitoringService.php:1264
+#: includes/MonitoringService.php:1319
 msgid "HTTP request failed."
 msgstr "HTTP-Anfrage fehlgeschlagen."
 
