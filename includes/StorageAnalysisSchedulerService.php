@@ -136,7 +136,7 @@ class StorageAnalysisSchedulerService {
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
 
-            if (!$this->isSiteAwaitingInitialSchedule($siteId)) {
+            if (!$this->isSiteAwaitingSchedule($siteId)) {
                 continue;
             }
 
@@ -173,7 +173,7 @@ class StorageAnalysisSchedulerService {
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
 
-            if (!$this->isSiteAwaitingInitialSchedule($siteId)) {
+            if (!$this->isSiteAwaitingSchedule($siteId)) {
                 continue;
             }
 
@@ -197,6 +197,40 @@ class StorageAnalysisSchedulerService {
             'total' => $total,
             'complete' => $complete,
         ];
+    }
+
+    /** @param array<int, int> $siteIds */
+    public function scheduleSelectedActiveSites(array $siteIds): int {
+        $initialized = 0;
+
+        foreach (array_unique(array_map('absint', $siteIds)) as $siteId) {
+            if ($siteId <= 0 || !$this->isSiteEligible($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
+                continue;
+            }
+
+            $this->scheduleRecurringAnalysis($siteId);
+            $initialized++;
+        }
+
+        return $initialized;
+    }
+
+    /** @param array<int, int> $siteIds */
+    public function removeSelectedScheduledSites(array $siteIds): int {
+        $removed = 0;
+
+        foreach (array_unique(array_map('absint', $siteIds)) as $siteId) {
+            if ($siteId <= 0 || !$this->hasRecurringScheduledAnalysis($siteId)) {
+                continue;
+            }
+
+            foreach ([self::BASE_PHASE, self::ORPHAN_PHASE, self::METADATA_PHASE, self::SCHEDULED_PHASE, self::LEGACY_ACTIVE_PHASE] as $phase) {
+                $this->unschedule($siteId, $phase);
+            }
+            $removed++;
+        }
+
+        return $removed;
     }
 
     public function getUnscheduledEligibleSiteCount(): int {
@@ -292,31 +326,54 @@ class StorageAnalysisSchedulerService {
 
     public static function clearScheduledEvents(?Config $config = null): int {
         $config = $config ?? new Config();
-        $cron = _get_cron_array();
         $removed = 0;
+        $currentSiteId = get_current_blog_id();
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+        ]);
 
-        if (!is_array($cron)) {
-            return 0;
+        if (empty($siteIds)) {
+            $siteIds = [$currentSiteId];
         }
 
-        foreach ($cron as $timestamp => $events) {
-            if (!is_array($events) || empty($events[$config->getStorageAnalysisHook()])) {
-                continue;
+        foreach (array_unique(array_map('absint', $siteIds)) as $siteId) {
+            $switched = $siteId > 0 && $siteId !== $currentSiteId;
+
+            if ($switched) {
+                switch_to_blog($siteId);
             }
 
-            $removed += count((array)$events[$config->getStorageAnalysisHook()]);
-            unset($cron[$timestamp][$config->getStorageAnalysisHook()]);
+            try {
+                $cron = _get_cron_array();
+                $removedOnSite = 0;
 
-            if (empty($cron[$timestamp])) {
-                unset($cron[$timestamp]);
-            }
-        }
+                if (!is_array($cron)) {
+                    continue;
+                }
 
-        if ($removed > 0) {
-            // Write the Cron array once. Removing hundreds of events one by
-            // one can time out and leave a partially removed schedule behind.
-            if (!_set_cron_array($cron)) {
-                return 0;
+                foreach ($cron as $timestamp => $events) {
+                    if (!is_array($events) || empty($events[$config->getStorageAnalysisHook()])) {
+                        continue;
+                    }
+
+                    $removedOnSite += count((array)$events[$config->getStorageAnalysisHook()]);
+                    unset($cron[$timestamp][$config->getStorageAnalysisHook()]);
+
+                    if (empty($cron[$timestamp])) {
+                        unset($cron[$timestamp]);
+                    }
+                }
+
+                if ($removedOnSite > 0 && !_set_cron_array($cron)) {
+                    continue;
+                }
+
+                $removed += $removedOnSite;
+            } finally {
+                if ($switched) {
+                    restore_current_blog();
+                }
             }
         }
 
@@ -553,8 +610,28 @@ class StorageAnalysisSchedulerService {
      * @return array{processes: array<int, array<string, mixed>>, has_more: bool, total: int}
      */
     public function getSiteProcessesPage(int $page, int $perPage, string $urlSearch = ''): array {
+        return $this->getSiteProcessesPageBySchedule($page, $perPage, $urlSearch, true);
+    }
+
+    /**
+     * @return array{processes: array<int, array<string, mixed>>, has_more: bool, total: int}
+     */
+    public function getUnscheduledActiveSiteProcessesPage(int $page, int $perPage, string $urlSearch = ''): array {
+        return $this->getSiteProcessesPageBySchedule($page, $perPage, $urlSearch, false);
+    }
+
+    /**
+     * @return array{processes: array<int, array<string, mixed>>, has_more: bool, total: int}
+     */
+    protected function getSiteProcessesPageBySchedule(int $page, int $perPage, string $urlSearch, bool $scheduled): array {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
+        $scheduledSiteIds = array_keys($this->getRecurringScheduledSiteIds());
+
+        if ($scheduled && empty($scheduledSiteIds)) {
+            return ['processes' => [], 'has_more' => false, 'total' => 0];
+        }
+
         $queryArgs = [
             'fields' => 'ids',
             'number' => $perPage + 1,
@@ -562,6 +639,18 @@ class StorageAnalysisSchedulerService {
             'orderby' => 'id',
             'order' => 'ASC',
         ];
+
+        if ($scheduled) {
+            $queryArgs['site__in'] = $scheduledSiteIds;
+        } else {
+            $queryArgs['archived'] = 0;
+            $queryArgs['spam'] = 0;
+            $queryArgs['deleted'] = 0;
+
+            if (!empty($scheduledSiteIds)) {
+                $queryArgs['site__not_in'] = $scheduledSiteIds;
+            }
+        }
 
         if ($urlSearch !== '') {
             $queryArgs['search'] = $urlSearch;
@@ -644,17 +733,18 @@ class StorageAnalysisSchedulerService {
         return 'inactive';
     }
 
-    protected function isSiteAwaitingInitialSchedule(int $siteId): bool {
+    protected function isSiteAwaitingSchedule(int $siteId): bool {
         if (!$this->isSiteEligible($siteId)) {
             return false;
         }
 
         $status = $this->getStatus($siteId);
 
-        return (int)($status['next_recurring_run_timestamp'] ?? 0) <= 0
-            && empty($status['last_started_at'])
-            && empty($status['last_finished_at'])
-            && empty($status['last_completed_at']);
+        // The setup action applies to every eligible website without a current
+        // recurring task. A completed historic analysis must not prevent a
+        // website from being scheduled again after tasks were removed.
+        return $this->getNextRecurringScheduledTimestamp($siteId) <= 0
+            && empty($status['is_running']);
     }
 
     protected function scheduleRecurringAnalysis(int $siteId): void {

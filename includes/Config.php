@@ -20,7 +20,8 @@ class Config {
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
                 'monitoring_hook' => 'rrze_msm_check_site_availability',
                 'storage_analysis_hook' => 'rrze_msm_run_site_storage_analysis',
-                'shortcode_block_analysis_hook' => 'rrze_msm_run_shortcode_block_analysis',
+                'shortcode_block_analysis_hook' => 'rrze_msm_run_shortcode_block_analysis_site',
+                'shortcode_block_analysis_batch_hook' => 'rrze_msm_run_shortcode_block_analysis_batch',
                 'shortcode_block_analysis_timeout_minutes' => 60,
                 'monitoring_user_agent' => 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)',
             ],
@@ -303,7 +304,15 @@ class Config {
     }
 
     public function getShortcodeBlockAnalysisHook(): string {
-        return (string)($this->config['constants']['shortcode_block_analysis_hook'] ?? 'rrze_msm_run_shortcode_block_analysis');
+        return (string)($this->config['constants']['shortcode_block_analysis_hook'] ?? 'rrze_msm_run_shortcode_block_analysis_site');
+    }
+
+    public function getShortcodeBlockAnalysisBatchHook(): string {
+        return (string)($this->config['constants']['shortcode_block_analysis_batch_hook'] ?? 'rrze_msm_run_shortcode_block_analysis_batch');
+    }
+
+    public function getLegacyShortcodeBlockAnalysisHook(): string {
+        return 'rrze_msm_run_shortcode_block_analysis';
     }
 
     public function getShortcodeBlockAnalysisTimeoutSeconds(): int {

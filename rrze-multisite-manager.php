@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.2.22-1
+ * Version:         1.2.22-48
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -147,6 +147,14 @@ function activate(bool $networkWide = false): void {
     $config = new Config();
     $metrics = new MetricsService(null, $config);
 
+    // Activation must never restore or create background work. Every process
+    // must be explicitly started again from Monitoring.
+    MonitoringService::disableScheduledChecks($config);
+    $metrics->disableDashboardScheduling();
+    MetricsService::disableMaintenanceScheduling();
+    StorageAnalysisSchedulerService::clearScheduledEvents($config);
+    ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents($config);
+
     // Activation must not synchronously iterate over every site in a large network.
     (new StorageAnalysisSchedulerService($metrics, $config))->markScheduleConfigurationCurrent();
     (new ShortcodeBlockAnalysisSchedulerService($config))->markScheduleConfigurationCurrent();
@@ -155,6 +163,7 @@ function activate(bool $networkWide = false): void {
 function deactivate(): void {
     MonitoringService::disableScheduledChecks();
     (new MetricsService())->disableDashboardScheduling();
+    MetricsService::disableMaintenanceScheduling();
     StorageAnalysisSchedulerService::clearScheduledEvents();
     ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents();
 }

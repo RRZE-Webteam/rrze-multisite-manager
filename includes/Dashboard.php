@@ -470,7 +470,7 @@ class Dashboard {
         $dashboardData['site_table_default_limit'] = max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10));
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $metricsLastRunLabel = !empty($metricsStatus['last_run_timestamp'])
-            ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$metricsStatus['last_run_timestamp'])
+            ? wp_date('d.m.Y H:i', (int)$metricsStatus['last_run_timestamp'])
             : __('No metrics run yet', 'rrze-multisite-manager');
         $widgets = $this->getWidgetInstances();
         $views = $this->viewManager->getViews(array_keys($widgets));
@@ -1167,6 +1167,7 @@ class Dashboard {
                 'site_summary' => $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [],
                 'analysis_status' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getStatus($siteId) : [],
                 'analysis_result' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getResult($siteId) : [],
+                'analysis_assignment_mode' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getSiteAssignmentMode($siteId) : 'unassigned',
                 'analysis_next_run_timestamp' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getNextScheduledRunTimestamp($siteId) : 0,
                 'analysis_tab' => $tab,
                 'is_local_page' => $isLocalPage,
@@ -3220,7 +3221,7 @@ class Dashboard {
             return __('Not set', 'rrze-multisite-manager');
         }
 
-        return get_date_from_gmt($dateValue, get_option('date_format') . ' ' . get_option('time_format'));
+        return get_date_from_gmt($dateValue, 'd.m.Y H:i');
     }
 
     protected function renderMetricsStatusNoticeHtml(array $status): string {

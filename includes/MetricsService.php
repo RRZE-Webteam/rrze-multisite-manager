@@ -55,6 +55,7 @@ class MetricsService {
     // Site lists are embedded in every matching plugin and theme row.
     protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 20;
     protected const DASHBOARD_BATCH_EVENT_ARGS = ['rrze_msm_dashboard_metrics_batch' => true];
+    protected const CENTRAL_CRON_MIGRATION_OPTION = 'rrze_msm_dashboard_metrics_central_cron_migration';
     protected ?Settings $settings;
     protected Config $config;
     protected array $siteNameCache = [];
@@ -75,7 +76,6 @@ class MetricsService {
         add_action(self::STORAGE_ANALYSIS_CLEANUP_HOOK, [$this, 'runLegacyStorageAnalysisCleanup']);
         add_action(self::FULL_DATA_CLEANUP_HOOK, [$this, 'runFullDataCleanup']);
         add_action('init', [$this, 'ensureDashboardRefreshContinuation'], 24);
-        add_action('init', [$this, 'scheduleLegacyStorageAnalysisCleanup'], 25);
         $this->registerInvalidationHooks();
     }
 
@@ -83,6 +83,15 @@ class MetricsService {
      * Restores a missing continuation without scheduling work alongside an active batch.
      */
     public function ensureDashboardRefreshContinuation(): void {
+        if (!$this->isCentralNetworkCronSite()) {
+            // Dashboard metrics are a network-wide process. Remove stale events
+            // from subsite cron tables as soon as that site is loaded.
+            $this->clearScheduledDashboardRefreshEvents();
+            return;
+        }
+
+        $this->removeSubsiteDashboardRefreshEventsOnce();
+
         if (!$this->isDashboardSchedulingEnabled()) {
             return;
         }
@@ -838,7 +847,7 @@ class MetricsService {
     public function handleScheduledDashboardRefresh(...$args): void {
         $status = [];
 
-        if (self::isFullDataCleanupInProgress() || !$this->isDashboardSchedulingEnabled()) {
+        if (!$this->isCentralNetworkCronSite() || self::isFullDataCleanupInProgress() || !$this->isDashboardSchedulingEnabled()) {
             return;
         }
 
@@ -988,11 +997,69 @@ class MetricsService {
      * explicitly started again from the Monitoring page.
      */
     public function disableDashboardScheduling(): int {
-        $removed = $this->clearScheduledDashboardRefreshEvents();
+        $removed = $this->clearDashboardRefreshEventsAcrossNetwork();
 
         update_site_option(self::DASHBOARD_SCHEDULING_ENABLED_OPTION, 0);
         $this->resetDashboardRefreshBatchState();
         $this->releaseDashboardRefreshLock();
+
+        return $removed;
+    }
+
+    /**
+     * Removes one-time maintenance jobs when the plugin is deactivated.
+     * Their state remains available so no analysis data is deleted merely by
+     * disabling the plugin.
+     */
+    public static function disableMaintenanceScheduling(): int {
+        $removed = 0;
+        $currentSiteId = get_current_blog_id();
+        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            if ($siteId !== $currentSiteId) {
+                switch_to_blog($siteId);
+            }
+
+            $removed += self::disableMaintenanceSchedulingOnCurrentSite();
+
+            if ($siteId !== $currentSiteId) {
+                restore_current_blog();
+            }
+        }
+
+        return $removed;
+    }
+
+    protected static function disableMaintenanceSchedulingOnCurrentSite(): int {
+        $cron = _get_cron_array();
+        $removed = 0;
+        $hooks = [self::STORAGE_ANALYSIS_CLEANUP_HOOK, self::FULL_DATA_CLEANUP_HOOK];
+
+        foreach ((array)$cron as $timestamp => $events) {
+            foreach ($hooks as $hook) {
+                if (empty($events[$hook])) {
+                    continue;
+                }
+
+                $removed += count((array)$events[$hook]);
+                unset($cron[$timestamp][$hook]);
+            }
+
+            if (empty($cron[$timestamp])) {
+                unset($cron[$timestamp]);
+            }
+        }
+
+        if ($removed > 0) {
+            _set_cron_array($cron);
+        }
 
         return $removed;
     }
@@ -3327,7 +3394,7 @@ class MetricsService {
             return __('Unknown', 'rrze-multisite-manager');
         }
 
-        return wp_date(get_option('date_format') . ' ' . get_option('time_format'), $timestamp);
+        return wp_date('d.m.Y H:i', $timestamp);
     }
 
     protected function getSiteLastUpdatedTimestamp(string $lastUpdatedDate, string $fallbackDate): int {
@@ -8565,7 +8632,17 @@ class MetricsService {
      * @param array<string, mixed> $event
      */
     protected function isCurrentSiteCronEvent(string $hook, array $event): bool {
-        if (!in_array($hook, [$this->config->getStorageAnalysisHook(), $this->config->getShortcodeBlockAnalysisHook()], true)) {
+        if ($hook === $this->config->getShortcodeBlockAnalysisBatchHook()) {
+            // The central queue does not belong to one website and is therefore
+            // not useful in a single website's detail view.
+            return false;
+        }
+
+        if (!in_array($hook, [
+            $this->config->getStorageAnalysisHook(),
+            $this->config->getShortcodeBlockAnalysisHook(),
+            $this->config->getLegacyShortcodeBlockAnalysisHook(),
+        ], true)) {
             return true;
         }
 
@@ -9867,7 +9944,7 @@ class MetricsService {
     }
 
     protected function scheduleDashboardRefresh(int $delay = 60, bool $isBatchContinuation = false): void {
-        if (!$this->isDashboardSchedulingEnabled()) {
+        if (!$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
             return;
         }
 
@@ -9941,6 +10018,65 @@ class MetricsService {
                 )) {
                     $removed++;
                 }
+            }
+        }
+
+        return $removed;
+    }
+
+    protected function isCentralNetworkCronSite(): bool {
+        $network = get_network();
+        $networkId = $network instanceof \WP_Network ? (int)$network->id : get_current_network_id();
+        $mainSiteId = function_exists('get_main_site_id')
+            ? (int)get_main_site_id($networkId)
+            : (int)($network->site_id ?? 1);
+
+        return get_current_blog_id() === max(1, $mainSiteId);
+    }
+
+    protected function removeSubsiteDashboardRefreshEventsOnce(): void {
+        if ((int)get_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 0) >= 1) {
+            return;
+        }
+
+        $currentSiteId = get_current_blog_id();
+        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0 || $siteId === $currentSiteId) {
+                continue;
+            }
+
+            switch_to_blog($siteId);
+            $this->clearScheduledDashboardRefreshEvents();
+            restore_current_blog();
+        }
+
+        update_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 1);
+    }
+
+    protected function clearDashboardRefreshEventsAcrossNetwork(): int {
+        $removed = 0;
+        $currentSiteId = get_current_blog_id();
+        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            if ($siteId !== $currentSiteId) {
+                switch_to_blog($siteId);
+            }
+
+            $removed += $this->clearScheduledDashboardRefreshEvents();
+
+            if ($siteId !== $currentSiteId) {
+                restore_current_blog();
             }
         }
 

@@ -43,6 +43,23 @@ function initViewSelect() {
     select.addEventListener('change', submitViewForm);
 }
 
+function initVisibleSiteSelection() {
+    var toggles = document.querySelectorAll('.rrze-msm-select-visible-sites');
+    var i = 0;
+
+    for (i = 0; i < toggles.length; i++) {
+        toggles[i].addEventListener('change', function (event) {
+            var table = event.currentTarget.closest('table');
+            var checkboxes = table ? table.querySelectorAll('input[name="site_ids[]"]') : [];
+            var index = 0;
+
+            for (index = 0; index < checkboxes.length; index++) {
+                checkboxes[index].checked = event.currentTarget.checked;
+            }
+        });
+    }
+}
+
 function closeDeleteCptModal() {
     var modal = document.querySelector('#rrze-msm-delete-cpt-modal');
 
@@ -2370,6 +2387,7 @@ function initRrzeMultisiteManager() {
 
     initWidgetControls();
     initViewSelect();
+    initVisibleSiteSelection();
     initSortableWidgets();
     initSiteTables();
     restoreSiteTableAnchorFocus();

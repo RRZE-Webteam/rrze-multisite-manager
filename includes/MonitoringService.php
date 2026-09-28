@@ -5,6 +5,7 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 class MonitoringService {
+    protected const CENTRAL_CRON_MIGRATION_OPTION = 'rrze_msm_site_availability_central_cron_migration';
     protected const META_OPERATIONAL_STATUS = 'rrze_msm_operational_status';
     protected const META_OPERATIONAL_STATUS_SOURCE = 'rrze_msm_operational_status_source';
     protected const META_PREVIOUS_OPERATIONAL_STATUS = 'rrze_msm_previous_operational_status';
@@ -71,6 +72,15 @@ class MonitoringService {
     }
 
     public function ensureScheduledEvent(): void {
+        if (!$this->isCentralNetworkCronSite()) {
+            // Availability monitoring is a network-wide process. A subsite
+            // must never retain a stale copy of its central cron event.
+            self::clearScheduledEventOnCurrentSite($this->config);
+            return;
+        }
+
+        $this->removeSubsiteScheduledEventsOnce();
+
         if (!$this->isMonitoringSchedulingEnabled()) {
             return;
         }
@@ -118,7 +128,7 @@ class MonitoringService {
     public function runScheduledChecks(...$args): void {
         $process = [];
 
-        if (MetricsService::isFullDataCleanupInProgress() || !$this->isMonitoringSchedulingEnabled()) {
+        if (!$this->isCentralNetworkCronSite() || MetricsService::isFullDataCleanupInProgress() || !$this->isMonitoringSchedulingEnabled()) {
             return;
         }
 
@@ -170,6 +180,18 @@ class MonitoringService {
     }
 
     public static function clearScheduledEvent(?Config $config = null): int {
+        $removed = self::clearScheduledEventOnCurrentSite($config);
+
+        delete_site_option(self::OPTION_BATCH_OFFSET);
+        delete_site_option(self::OPTION_BATCH_TOTAL);
+        delete_site_option(self::OPTION_RUN_STATE);
+        delete_site_option(self::LOCK_OPTION);
+        delete_site_transient(self::LOCK_KEY);
+
+        return $removed;
+    }
+
+    protected static function clearScheduledEventOnCurrentSite(?Config $config = null): int {
         $config = $config ?? new Config();
         $hook = $config->getMonitoringHook();
         $cron = _get_cron_array();
@@ -182,12 +204,6 @@ class MonitoringService {
                 }
             }
         }
-
-        delete_site_option(self::OPTION_BATCH_OFFSET);
-        delete_site_option(self::OPTION_BATCH_TOTAL);
-        delete_site_option(self::OPTION_RUN_STATE);
-        delete_site_option(self::LOCK_OPTION);
-        delete_site_transient(self::LOCK_KEY);
 
         return $removed;
     }
@@ -205,12 +221,12 @@ class MonitoringService {
     public static function disableScheduledChecks(?Config $config = null): int {
         update_site_option(self::SCHEDULING_ENABLED_OPTION, 0);
 
-        return self::clearScheduledEvent($config);
+        return self::clearScheduledEventsAcrossNetwork($config);
     }
 
     public function resetMonitoringRunState(bool $clearSchedule = false): void {
         if ($clearSchedule) {
-            self::clearScheduledEvent($this->config);
+            self::clearScheduledEventOnCurrentSite($this->config);
             $this->ensureScheduledEvent();
             return;
         }
@@ -431,7 +447,7 @@ class MonitoringService {
     }
 
     protected function scheduleNextBatch(int $delay = 30): void {
-        if (!$this->isMonitoringSchedulingEnabled()) {
+        if (!$this->isCentralNetworkCronSite() || !$this->isMonitoringSchedulingEnabled()) {
             return;
         }
 
@@ -461,7 +477,7 @@ class MonitoringService {
     }
 
     protected function scheduleRecurringEvent(int $delay): void {
-        if (!$this->isMonitoringSchedulingEnabled()) {
+        if (!$this->isCentralNetworkCronSite() || !$this->isMonitoringSchedulingEnabled()) {
             return;
         }
 
@@ -740,6 +756,71 @@ class MonitoringService {
 
     protected function isMonitoringSchedulingEnabled(): bool {
         return (bool)get_site_option(self::SCHEDULING_ENABLED_OPTION, false);
+    }
+
+    protected function isCentralNetworkCronSite(): bool {
+        $network = get_network();
+        $networkId = $network instanceof \WP_Network ? (int)$network->id : get_current_network_id();
+        $mainSiteId = function_exists('get_main_site_id')
+            ? (int)get_main_site_id($networkId)
+            : (int)($network->site_id ?? 1);
+
+        return get_current_blog_id() === max(1, $mainSiteId);
+    }
+
+    protected function removeSubsiteScheduledEventsOnce(): void {
+        if ((int)get_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 0) >= 1) {
+            return;
+        }
+
+        $currentSiteId = get_current_blog_id();
+        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0 || $siteId === $currentSiteId) {
+                continue;
+            }
+
+            switch_to_blog($siteId);
+            self::clearScheduledEventOnCurrentSite($this->config);
+            restore_current_blog();
+        }
+
+        update_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 1);
+    }
+
+    protected static function clearScheduledEventsAcrossNetwork(?Config $config = null): int {
+        $removed = 0;
+        $currentSiteId = get_current_blog_id();
+        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            if ($siteId !== $currentSiteId) {
+                switch_to_blog($siteId);
+            }
+
+            $removed += self::clearScheduledEventOnCurrentSite($config);
+
+            if ($siteId !== $currentSiteId) {
+                restore_current_blog();
+            }
+        }
+
+        delete_site_option(self::OPTION_BATCH_OFFSET);
+        delete_site_option(self::OPTION_BATCH_TOTAL);
+        delete_site_option(self::OPTION_RUN_STATE);
+        delete_site_option(self::LOCK_OPTION);
+        delete_site_transient(self::LOCK_KEY);
+
+        return $removed;
     }
 
     protected function checkSiteAvailability(int $siteId): array {
