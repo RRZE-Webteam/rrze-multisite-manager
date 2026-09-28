@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.2.22-48\n"
+"Project-Id-Version: RRZE Multisite Manager 1.2.23\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-28T15:13:32+00:00\n"
-"PO-Revision-Date: 2026-09-28 15:13+0000\n"
+"POT-Creation-Date: 2026-09-28T15:20:47+00:00\n"
+"PO-Revision-Date: 2026-09-28 15:20+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
