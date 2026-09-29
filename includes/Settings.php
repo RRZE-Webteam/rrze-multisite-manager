@@ -67,11 +67,15 @@ class Settings {
             add_action('admin_post_rrze_multisite_manager_remove_shortcode_block_analysis_tasks', [$this, 'removeShortcodeBlockAnalysisTasks']);
             add_action('admin_post_rrze_multisite_manager_start_site_storage_analysis', [$this, 'startSiteStorageAnalysis']);
             add_action('admin_post_rrze_multisite_manager_initialize_site_storage_analysis_schedules', [$this, 'initializeSiteStorageAnalysisSchedules']);
+            add_action('admin_post_rrze_multisite_manager_migrate_storage_analysis_schedules', [$this, 'migrateStorageAnalysisSchedules']);
             add_action('admin_post_rrze_multisite_manager_initialize_shortcode_block_analysis_schedules', [$this, 'initializeShortcodeBlockAnalysisSchedules']);
             add_action('admin_post_rrze_multisite_manager_schedule_selected_storage_analysis_sites', [$this, 'scheduleSelectedStorageAnalysisSites']);
             add_action('admin_post_rrze_multisite_manager_schedule_selected_shortcode_block_analysis_sites', [$this, 'scheduleSelectedShortcodeBlockAnalysisSites']);
             add_action('admin_post_rrze_multisite_manager_remove_selected_storage_analysis_sites', [$this, 'removeSelectedStorageAnalysisSites']);
             add_action('admin_post_rrze_multisite_manager_remove_selected_shortcode_block_analysis_sites', [$this, 'removeSelectedShortcodeBlockAnalysisSites']);
+            add_action('admin_post_rrze_multisite_manager_start_shared_analysis_batch', [$this, 'startSharedAnalysisBatch']);
+            add_action('wp_ajax_rrze_msm_start_analysis_schedule_initialization', [$this, 'ajaxStartAnalysisScheduleInitialization']);
+            add_action('wp_ajax_rrze_msm_run_analysis_schedule_initialization_batch', [$this, 'ajaxRunAnalysisScheduleInitializationBatch']);
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
             add_action('network_admin_edit_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
@@ -84,11 +88,13 @@ class Settings {
             add_action('network_admin_edit_rrze_multisite_manager_remove_shortcode_block_analysis_tasks', [$this, 'removeShortcodeBlockAnalysisTasks']);
             add_action('network_admin_edit_rrze_multisite_manager_start_site_storage_analysis', [$this, 'startSiteStorageAnalysis']);
             add_action('network_admin_edit_rrze_multisite_manager_initialize_site_storage_analysis_schedules', [$this, 'initializeSiteStorageAnalysisSchedules']);
+            add_action('network_admin_edit_rrze_multisite_manager_migrate_storage_analysis_schedules', [$this, 'migrateStorageAnalysisSchedules']);
             add_action('network_admin_edit_rrze_multisite_manager_initialize_shortcode_block_analysis_schedules', [$this, 'initializeShortcodeBlockAnalysisSchedules']);
             add_action('network_admin_edit_rrze_multisite_manager_schedule_selected_storage_analysis_sites', [$this, 'scheduleSelectedStorageAnalysisSites']);
             add_action('network_admin_edit_rrze_multisite_manager_schedule_selected_shortcode_block_analysis_sites', [$this, 'scheduleSelectedShortcodeBlockAnalysisSites']);
             add_action('network_admin_edit_rrze_multisite_manager_remove_selected_storage_analysis_sites', [$this, 'removeSelectedStorageAnalysisSites']);
             add_action('network_admin_edit_rrze_multisite_manager_remove_selected_shortcode_block_analysis_sites', [$this, 'removeSelectedShortcodeBlockAnalysisSites']);
+            add_action('network_admin_edit_rrze_multisite_manager_start_shared_analysis_batch', [$this, 'startSharedAnalysisBatch']);
         }
     }
 
@@ -135,12 +141,15 @@ class Settings {
         $options = wp_parse_args($options, $defaults);
         $options = array_intersect_key($options, $defaults);
 
-        if (
-            is_array($storedOptions)
-            && !array_key_exists('monitoring_metrics_interval_hours', $storedOptions)
-            && isset($storedOptions['monitoring_metrics_interval_minutes'])
-        ) {
-            $options['monitoring_metrics_interval_hours'] = max(1, min(168, (int)ceil((int)$storedOptions['monitoring_metrics_interval_minutes'] / 60)));
+        if (is_array($storedOptions) && !array_key_exists('monitoring_metrics_frequency', $storedOptions)) {
+            $interval = isset($storedOptions['monitoring_metrics_interval_hours'])
+                ? (int)$storedOptions['monitoring_metrics_interval_hours']
+                : (int)ceil((int)($storedOptions['monitoring_metrics_interval_minutes'] ?? 120) / 60);
+            $options['monitoring_metrics_frequency'] = $this->getCycleFrequencyFromHours($interval);
+        }
+
+        if (is_array($storedOptions) && !array_key_exists('monitoring_monitoring_frequency', $storedOptions)) {
+            $options['monitoring_monitoring_frequency'] = $this->getCycleFrequencyFromHours((int)($storedOptions['monitoring_monitoring_interval_hours'] ?? 6));
         }
 
         return $this->normalizeOptions($options);
@@ -161,7 +170,12 @@ class Settings {
             return $this->options;
         }
 
-        $merged = array_merge($this->defaultOptions(), $options);
+        // Each settings tab submits only its own fields. Start with the stored,
+        // already normalized values so saving one tab cannot reset the others.
+        $defaults = $this->defaultOptions();
+        $stored = array_intersect_key($this->options, $defaults);
+        $submitted = array_intersect_key($options, $defaults);
+        $merged = array_merge($defaults, $stored, $submitted);
         return $this->normalizeOptions($merged);
     }
 
@@ -178,14 +192,19 @@ class Settings {
         $options = $this->sanitizeOptions($rawOptions);
         $previousOptions = $this->options;
 
-        $monitoringIntervalChanged = (int)($previousOptions['monitoring_monitoring_interval_hours'] ?? 0) !== (int)($options['monitoring_monitoring_interval_hours'] ?? 0);
+        $monitoringFrequencyChanged = (string)($previousOptions['monitoring_monitoring_frequency'] ?? '') !== (string)($options['monitoring_monitoring_frequency'] ?? '');
+        $metricsFrequencyChanged = (string)($previousOptions['monitoring_metrics_frequency'] ?? '') !== (string)($options['monitoring_metrics_frequency'] ?? '');
         $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_frequency'] ?? '');
         $shortcodeAnalysisFrequencyChanged = (string)($previousOptions['monitoring_shortcode_block_analysis_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? '');
 
         update_site_option($this->optionName, $options);
 
-        if ($monitoringIntervalChanged) {
+        if ($monitoringFrequencyChanged) {
             (new MonitoringService($this->plugin, $this->config))->rescheduleRecurringEvent();
+        }
+
+        if ($metricsFrequencyChanged) {
+            (new MetricsService($this, $this->config))->rescheduleDashboardRefreshCycle();
         }
 
         if ($storageAnalysisFrequencyChanged) {
@@ -306,6 +325,8 @@ class Settings {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The website operational status has been updated.', 'rrze-multisite-manager') . '</p></div>';
         }
 
+        $this->renderCentralScheduleActionNotices();
+
         $this->renderSettingsTabs($currentTab);
 
         if ($currentTab === 'views') {
@@ -327,21 +348,20 @@ class Settings {
         }
 
         check_admin_referer('rrze_multisite_manager_refresh_metrics');
-        (new MetricsService($this, $this->config))->startDashboardRefreshRun(true);
+        $scheduleAction = (new MetricsService($this, $this->config))->scheduleDashboardRefreshFromNow();
 
         $redirectUrl = $redirectTo !== ''
             ? $redirectTo
             : add_query_arg(
                 [
                     'page' => $this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings',
-                    'metrics-refreshed' => 'true',
                 ],
                 admin_url('admin.php')
             );
 
         $redirectUrl = add_query_arg(
             [
-                'metrics-refreshed' => 'true',
+                'metrics-schedule-action' => $scheduleAction,
             ],
             $redirectUrl
         );
@@ -362,19 +382,19 @@ class Settings {
         check_admin_referer('rrze_multisite_manager_run_monitoring');
 
         $monitoringService = new MonitoringService($this->plugin, $this->config);
-        $monitoringService->startMonitoringRun(true);
+        $scheduleAction = $monitoringService->scheduleMonitoringFromNow();
 
         $redirectUrl = $redirectTo !== ''
             ? add_query_arg(
                 [
-                    'monitoring-ran' => 'true',
+                    'monitoring-schedule-action' => $scheduleAction,
                 ],
                 $redirectTo
             )
             : add_query_arg(
                 [
                     'page' => $this->getMonitoringSlug(),
-                    'monitoring-ran' => 'true',
+                    'monitoring-schedule-action' => $scheduleAction,
                 ],
                 admin_url('admin.php')
             );
@@ -452,6 +472,31 @@ class Settings {
         exit;
     }
 
+    public function migrateStorageAnalysisSchedules(): void {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_migrate_storage_analysis_schedules');
+
+        if (empty($_POST['confirm_storage_schedule_migration'])) {
+            wp_safe_redirect(add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => 'storage', 'storage-migration-confirmation-required' => 'true'], admin_url('admin.php')));
+            exit;
+        }
+
+        $migration = (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->migrateSchedulesBatch();
+        wp_safe_redirect(add_query_arg([
+            'page' => $this->getMonitoringSlug(),
+            'monitoring_tab' => 'storage',
+            'storage-migration-phase' => $migration['phase'],
+            'storage-migration-processed' => $migration['processed'],
+            'storage-migration-total' => $migration['total'],
+            'storage-migration-scheduled' => $migration['scheduled'],
+            'storage-migration-complete' => $migration['complete'] ? 'true' : 'false',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
     public function initializeShortcodeBlockAnalysisSchedules(): void {
         if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
@@ -488,6 +533,58 @@ class Settings {
             )
         );
         exit;
+    }
+
+    public function ajaxStartAnalysisScheduleInitialization(): void {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_send_json_error(['message' => __('You are not allowed to manage these settings.', 'rrze-multisite-manager')], 403);
+        }
+
+        check_ajax_referer('rrze_msm_analysis_schedule_initialization', 'nonce');
+        $scheduler = $this->getAnalysisScheduleInitializationScheduler();
+
+        if ($scheduler === null) {
+            wp_send_json_error(['message' => __('The requested analysis type is invalid.', 'rrze-multisite-manager')], 400);
+        }
+
+        wp_send_json_success($scheduler->startScheduleInitialization());
+    }
+
+    public function ajaxRunAnalysisScheduleInitializationBatch(): void {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_send_json_error(['message' => __('You are not allowed to manage these settings.', 'rrze-multisite-manager')], 403);
+        }
+
+        check_ajax_referer('rrze_msm_analysis_schedule_initialization', 'nonce');
+        $scheduler = $this->getAnalysisScheduleInitializationScheduler();
+        $runId = sanitize_text_field(wp_unslash($_POST['run_id'] ?? ''));
+
+        if ($scheduler === null || $runId === '') {
+            wp_send_json_error(['message' => __('The requested analysis setup is no longer available. Please start it again.', 'rrze-multisite-manager')], 400);
+        }
+
+        $progress = $scheduler->runScheduleInitializationBatch($runId);
+
+        if (($progress['run_id'] ?? '') === '') {
+            wp_send_json_error(['message' => __('The requested analysis setup is no longer available. Please start it again.', 'rrze-multisite-manager')], 409);
+        }
+
+        wp_send_json_success($progress);
+    }
+
+    /** @return StorageAnalysisSchedulerService|ShortcodeBlockAnalysisSchedulerService|null */
+    protected function getAnalysisScheduleInitializationScheduler() {
+        $analysisType = sanitize_key(wp_unslash($_POST['analysis_type'] ?? ''));
+
+        if ($analysisType === 'storage') {
+            return new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config);
+        }
+
+        if ($analysisType === 'shortcode-block') {
+            return new ShortcodeBlockAnalysisSchedulerService($this->config);
+        }
+
+        return null;
     }
 
     public function scheduleSelectedStorageAnalysisSites(): void {
@@ -744,6 +841,23 @@ class Settings {
         );
     }
 
+    public function startSharedAnalysisBatch(): void {
+        $type = isset($_POST['analysis_type']) ? sanitize_key((string)wp_unslash($_POST['analysis_type'])) : '';
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+        check_admin_referer('rrze_multisite_manager_start_shared_analysis_batch_' . $type);
+        if (empty($_POST['confirm_start_shared_batch'])) {
+            wp_safe_redirect(add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => $type], admin_url('admin.php')));
+            exit;
+        }
+        $started = $type === 'storage'
+            ? (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->startBatchNow()
+            : ($type === 'shortcode-block' ? (new ShortcodeBlockAnalysisSchedulerService($this->config))->startBatchNow() : false);
+        wp_safe_redirect(add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => $type, 'shared-batch-started' => $started ? 'true' : 'false'], admin_url('admin.php')));
+        exit;
+    }
+
     /**
      * @param callable(Config): int $removeTasks
      */
@@ -961,6 +1075,22 @@ class Settings {
         return sanitize_text_field((string)$value);
     }
 
+    protected function getCycleFrequencyFromHours(int $hours): string {
+        if ($hours <= 6) {
+            return 'fourtimesdaily';
+        }
+
+        if ($hours <= 12) {
+            return 'twicedaily';
+        }
+
+        if ($hours <= 24) {
+            return 'daily';
+        }
+
+        return $hours <= 84 ? 'twiceweekly' : 'weekly';
+    }
+
     public function getSettingsSlug(): string {
         return (string)($this->settingsMenu['settings_slug'] ?? 'rrze-multisite-manager-settings');
     }
@@ -1033,10 +1163,84 @@ class Settings {
         echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="monitoring">';
-        $this->renderFields(['monitoring']);
+        $this->renderMonitoringFieldGroup(__('Network-wide', 'rrze-multisite-manager'), [
+            'metrics_frequency',
+            'monitoring_frequency',
+            'batch_size',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
+            'provisioning_grace_hours',
+            'dns_failure_threshold',
+            'http_failure_threshold',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Storage analyses', 'rrze-multisite-manager'), [
+            'storage_analysis_frequency',
+            'storage_analysis_batch_media_threshold',
+            'storage_analysis_batch_runtime_threshold_seconds',
+            'storage_analysis_timeout_minutes',
+            'storage_analysis_orphan_files_limit',
+            'storage_analysis_browser_max_megabytes',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Shortcodes and Blocks', 'rrze-multisite-manager'), [
+            'shortcode_block_analysis_frequency',
+            'shortcode_block_analysis_timeout_minutes',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Monitoring', 'rrze-multisite-manager'), [
+            'run_log_entries',
+            'recent_event_entries',
+        ]);
         submit_button();
         echo '</form>';
         $this->renderMonitoringManagementNotice();
+    }
+
+    /** @param array<int, string> $fieldNames */
+    protected function renderMonitoringFieldGroup(string $title, array $fieldNames): void {
+        $availableFields = $this->settingsFields['monitoring'] ?? [];
+        $fieldsByName = [];
+
+        foreach ($availableFields as $field) {
+            if (is_array($field) && !empty($field['name'])) {
+                $fieldsByName[(string)$field['name']] = $field;
+            }
+        }
+
+        $fields = [];
+
+        foreach ($fieldNames as $fieldName) {
+            if (isset($fieldsByName[$fieldName])) {
+                $fields[] = $fieldsByName[$fieldName];
+            }
+        }
+
+        if (empty($fields)) {
+            return;
+        }
+
+        echo '<section class="rrze-msm-settings-group">';
+        echo '<header class="rrze-msm-settings-group-header"><h2>' . esc_html($title) . '</h2></header>';
+        echo '<table class="form-table" role="presentation"><tbody>';
+
+        foreach ($fields as $field) {
+            $fieldName = 'monitoring_' . (string)$field['name'];
+            $fieldId = $this->settingsPrefix . $fieldName;
+            $value = $this->options[$fieldName] ?? ($field['default'] ?? '');
+
+            echo '<tr>';
+            echo '<th scope="row"><label for="' . esc_attr($fieldId) . '">' . esc_html((string)$field['label']) . '</label></th>';
+            echo '<td>';
+            $this->renderFieldInput($fieldId, $fieldName, $field, $value);
+
+            if (!empty($field['desc'])) {
+                echo '<p class="description">' . esc_html((string)$field['desc']) . '</p>';
+            }
+
+            echo '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+        echo '</section>';
     }
 
     protected function renderMonitoringManagementNotice(): void {
@@ -1109,7 +1313,31 @@ class Settings {
         echo '</div>';
     }
 
+    protected function renderCentralScheduleActionNotices(): void {
+        $metricsAction = isset($_GET['metrics-schedule-action'])
+            ? sanitize_key((string)wp_unslash($_GET['metrics-schedule-action']))
+            : '';
+        $monitoringAction = isset($_GET['monitoring-schedule-action'])
+            ? sanitize_key((string)wp_unslash($_GET['monitoring-schedule-action']))
+            : '';
+        $messages = [
+            'metrics-created' => __('The metrics task was created.', 'rrze-multisite-manager'),
+            'metrics-rescheduled' => __('The metrics task was rescheduled to start now.', 'rrze-multisite-manager'),
+            'monitoring-created' => __('The website availability task was created.', 'rrze-multisite-manager'),
+            'monitoring-rescheduled' => __('The website availability task was rescheduled to start now.', 'rrze-multisite-manager'),
+        ];
+        $messageKey = $metricsAction !== '' ? 'metrics-' . $metricsAction : 'monitoring-' . $monitoringAction;
+
+        if (!isset($messages[$messageKey])) {
+            return;
+        }
+
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($messages[$messageKey]) . '</p></div>';
+    }
+
     protected function renderMonitoringNotices(): void {
+        $this->renderCentralScheduleActionNotices();
+
         if (!empty($_GET['monitoring-ran'])) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Monitoring has been started and is now processing the websites in batches.', 'rrze-multisite-manager') . '</p></div>';
         }
@@ -1170,6 +1398,28 @@ class Settings {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Please confirm the scheduling of the website analysis tasks before continuing.', 'rrze-multisite-manager') . '</p></div>';
         }
 
+        if (!empty($_GET['storage-migration-confirmation-required'])) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Please confirm the schedule migration before continuing.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (isset($_GET['storage-migration-phase'])) {
+            $phase = sanitize_key((string)wp_unslash($_GET['storage-migration-phase']));
+            $processed = absint(wp_unslash($_GET['storage-migration-processed'] ?? 0));
+            $total = absint(wp_unslash($_GET['storage-migration-total'] ?? 0));
+            $scheduled = absint(wp_unslash($_GET['storage-migration-scheduled'] ?? 0));
+            $complete = !empty($_GET['storage-migration-complete']);
+            $message = $complete
+                /* translators: %d: number of websites scheduled during migration. */
+                ? sprintf(__('Storage-analysis schedule migration completed; %d websites were scheduled.', 'rrze-multisite-manager'), $scheduled)
+                /* translators: 1: migration phase, 2: processed websites, 3: total websites. */
+                : sprintf(__('Storage-analysis schedule migration (%1$s): %2$d of %3$d websites processed.', 'rrze-multisite-manager'), $phase, $processed, $total);
+            echo '<div class="notice notice-' . ($complete ? 'success' : 'warning') . ' is-dismissible"><p>' . esc_html($message) . '</p>';
+            if (!$complete) {
+                echo '<p>' . esc_html__('Use the migration button again to continue. Storage analyses remain paused until it is complete.', 'rrze-multisite-manager') . '</p>';
+            }
+            echo '</div>';
+        }
+
         if (isset($_GET['selected-storage-analysis-sites-scheduled'])) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(
                 /* translators: %d: number of scheduled storage analyses. */
@@ -1228,7 +1478,9 @@ class Settings {
             $initialized = absint(wp_unslash($_GET['site-storage-schedules-initialized']));
             $complete = !empty($_GET['site-storage-schedules-complete']);
             $message = $processed > 0 || $total > 0
+                /* translators: 1: processed websites, 2: total websites, 3: created tasks. */
                 ? sprintf(__('Storage-analysis setup: %1$d of %2$d websites checked; %3$d tasks created.', 'rrze-multisite-manager'), $processed, $total, $initialized)
+                /* translators: %d: number of active websites with initialized schedules. */
                 : sprintf(__('Storage analysis schedules were initialized for %d active websites.', 'rrze-multisite-manager'), $initialized);
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($message) . '</p>';
             if (!$complete && $total > 0) {
@@ -1247,7 +1499,9 @@ class Settings {
             $initialized = absint(wp_unslash($_GET['shortcode-block-schedules-initialized']));
             $complete = !empty($_GET['shortcode-block-schedules-complete']);
             $message = $processed > 0 || $total > 0
+                /* translators: 1: processed websites, 2: total websites, 3: created tasks. */
                 ? sprintf(__('Shortcode/block-analysis setup: %1$d of %2$d websites checked; %3$d tasks created.', 'rrze-multisite-manager'), $processed, $total, $initialized)
+                /* translators: %d: number of active websites with initialized schedules. */
                 : sprintf(__('Shortcode and block analysis schedules were initialized for %d active websites.', 'rrze-multisite-manager'), $initialized);
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($message) . '</p>';
             if (!$complete && $total > 0) {
@@ -1390,9 +1644,9 @@ class Settings {
         echo '<form id="' . esc_attr($selectionFormId) . '" method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_remove_selected_storage_analysis_sites')) . '">';
         wp_nonce_field('rrze_multisite_manager_remove_selected_storage_analysis_sites');
         echo '</form>';
-        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-site-storage" data-sort-key="name" data-sort-direction="asc">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-site-storage" data-sort-key="url" data-sort-direction="asc">';
         echo '<div class="tablenav top">';
-        $this->renderSelectedSiteBulkActions($selectionFormId, 'top', 'remove', __('Remove tasks', 'rrze-multisite-manager'));
+        $this->renderSelectedSiteBulkActions($selectionFormId, 'top', 'remove', __('Remove selected tasks', 'rrze-multisite-manager'));
         echo '<div class="alignleft actions">';
         echo '</div><div class="alignright">';
         $this->renderMonitoringWebsiteSearchForm($search, 'rrze-msm-search-monitoring-site-storage');
@@ -1400,8 +1654,9 @@ class Settings {
         echo '<table class="widefat striped rrze-msm-table">';
         echo '<thead><tr>';
         echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all"></th>';
-        echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span>' . esc_html__('Site', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
+        echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="url" data-sort-direction="asc"><span>' . esc_html__('Site', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
         echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="status" data-sort-direction="asc"><span>' . esc_html__('Status', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
+        echo '<th>' . esc_html__('Execution', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('File index', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Orphans', 'rrze-multisite-manager') . '</th>';
@@ -1435,10 +1690,15 @@ class Settings {
             echo '<th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th>';
             echo '<td class="rrze-msm-monitoring-site-url">';
             echo '<div class="rrze-msm-monitoring-site-identity"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
-            $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteStorageAnalysisPageUrl($siteId), __('Storage Analysis', 'rrze-multisite-manager'));
+            $cronSiteId = ($process['schedule_mode'] ?? '') === 'batch'
+                ? (int)get_main_site_id(get_current_network_id())
+                : $siteId;
+            $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteStorageAnalysisPageUrl($siteId), __('Storage Analysis', 'rrze-multisite-manager'), $cronSiteId);
             echo '</div>';
             echo '</td>';
             echo '<td><span class="rrze-msm-badge ' . esc_attr($statusClass) . '">' . esc_html((string)($process['status'] ?? '')) . '</span></td>';
+            $assignment = ($process['schedule_mode'] ?? '') === 'batch' ? __('Shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager');
+            echo '<td>' . esc_html($assignment) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base', true);
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'orphan', true);
@@ -1458,6 +1718,8 @@ class Settings {
                 echo '&mdash;';
             } elseif (!empty($process['is_running'])) {
                 echo esc_html__('Running', 'rrze-multisite-manager');
+            } elseif (($process['schedule_mode'] ?? '') === 'batch') {
+                echo '&mdash;';
             } else {
                 $hasSuccessfulRun = $statusKey === 'ok'
                     && (int)($process['next_run_timestamp'] ?? 0) > time();
@@ -1474,14 +1736,17 @@ class Settings {
 
         echo '</tbody><tfoot><tr>';
         echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all-bottom">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all-bottom"></th>';
-        echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th><th>' . esc_html__('File index', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Orphans', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Metadata', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Runtime', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Finished', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Execution', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th><th>' . esc_html__('File index', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Orphans', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Metadata', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Runtime', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Finished', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
         echo '</tr></tfoot></table>';
         echo '<div class="tablenav bottom">';
-        $this->renderSelectedSiteBulkActions($selectionFormId, 'bottom', 'remove', __('Remove tasks', 'rrze-multisite-manager'));
+        $this->renderSelectedSiteBulkActions($selectionFormId, 'bottom', 'remove', __('Remove selected tasks', 'rrze-multisite-manager'));
         echo '<br class="clear"></div>';
         $this->renderMonitoringTablePagination('storage_monitoring_page', $currentPage, $totalItems, $perPage);
         echo '</div>';
         echo '<div class="rrze-msm-site-actions">';
+        if ($scheduler->canStartBatchNow()) {
+            $this->renderStartSharedBatchForm('storage');
+        }
         $this->renderWebsiteAnalysisTaskRemovalForm('storage');
         echo '</div>';
         }
@@ -1541,19 +1806,14 @@ class Settings {
             $this->renderMonitoringTablePagination('storage_unassigned_monitoring_page', $currentPage, $totalItems, $perPage);
         }
 
-        if (!empty($processes)) {
-            echo '<div class="rrze-msm-site-actions">';
-            $this->renderTaskRemovalForm(
-                'rrze_multisite_manager_initialize_site_storage_analysis_schedules',
-                'confirm_storage_schedule_initialization',
+        echo '<div class="rrze-msm-site-actions">';
+        $this->renderAnalysisScheduleInitializationDialog(
+            'storage',
                 __('Reschedule storage analysis tasks for websites without a schedule', 'rrze-multisite-manager'),
                 __('Storage-analysis tasks will be created for all active websites that do not yet have a scheduled task.', 'rrze-multisite-manager'),
-                '',
-                __('I understand that analysis tasks will be scheduled for websites without a schedule.', 'rrze-multisite-manager'),
-                false
-            );
-            echo '</div>';
-        }
+            __('I understand that analysis tasks will be scheduled for websites without a schedule.', 'rrze-multisite-manager')
+        );
+        echo '</div>';
         echo '<p class="description">' . esc_html__('Only active websites can be selected for analysis tasks.', 'rrze-multisite-manager') . '</p>';
         echo '</section>';
     }
@@ -1590,18 +1850,18 @@ class Settings {
             echo '<form id="' . esc_attr($selectionFormId) . '" method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_remove_selected_shortcode_block_analysis_sites')) . '">';
             wp_nonce_field('rrze_multisite_manager_remove_selected_shortcode_block_analysis_sites');
             echo '</form>';
-            echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-shortcode-block" data-sort-key="name" data-sort-direction="asc">';
+            echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-shortcode-block" data-sort-key="url" data-sort-direction="asc">';
             echo '<div class="tablenav top">';
-            $this->renderSelectedSiteBulkActions($selectionFormId, 'top', 'remove', __('Remove tasks', 'rrze-multisite-manager'));
+            $this->renderSelectedSiteBulkActions($selectionFormId, 'top', 'remove', __('Remove selected tasks', 'rrze-multisite-manager'));
             echo '<div class="alignleft actions">';
             echo '</div><div class="alignright">';
             $this->renderMonitoringWebsiteSearchForm($search, 'rrze-msm-search-monitoring-shortcode-block', 'shortcode-block');
             echo '</div><br class="clear"></div>';
             echo '<table class="widefat striped rrze-msm-table"><thead><tr>';
             echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all"></th>';
-            echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span>' . esc_html__('Site', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
+            echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="url" data-sort-direction="asc"><span>' . esc_html__('Site', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
             echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="status" data-sort-direction="asc"><span>' . esc_html__('Status', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
-            echo '<th>' . esc_html__('Assignment', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Execution', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Shortcodes', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Blocks', 'rrze-multisite-manager') . '</th>';
@@ -1651,7 +1911,7 @@ class Settings {
                 $assignmentLabel = $assignmentMode === 'batch'
                     ? __('Shared batch', 'rrze-multisite-manager')
                     : ($assignmentMode === 'site'
-                        ? __('Individual task', 'rrze-multisite-manager')
+                        ? __('Individual schedule', 'rrze-multisite-manager')
                         : __('Not assigned', 'rrze-multisite-manager'));
                 echo '<td>' . esc_html($assignmentLabel) . '</td>';
                 echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
@@ -1688,14 +1948,17 @@ class Settings {
 
             echo '</tbody><tfoot><tr>';
             echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all-bottom">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all-bottom"></th>';
-            echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Assignment', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Shortcodes', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Blocks', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Runtime', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Finished', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Execution', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Shortcodes', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Blocks', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Runtime', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Finished', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
             echo '</tr></tfoot></table>';
             echo '<div class="tablenav bottom">';
-            $this->renderSelectedSiteBulkActions($selectionFormId, 'bottom', 'remove', __('Remove tasks', 'rrze-multisite-manager'));
+            $this->renderSelectedSiteBulkActions($selectionFormId, 'bottom', 'remove', __('Remove selected tasks', 'rrze-multisite-manager'));
             echo '<br class="clear"></div>';
             $this->renderMonitoringTablePagination('shortcode_monitoring_page', $currentPage, $totalItems, $perPage, 'shortcode-block');
             echo '</div>';
             echo '<div class="rrze-msm-site-actions">';
+            if ($scheduler->canStartBatchNow()) {
+                $this->renderStartSharedBatchForm('shortcode-block');
+            }
             $this->renderWebsiteAnalysisTaskRemovalForm('shortcode-block');
             echo '</div>';
         }
@@ -1758,31 +2021,26 @@ class Settings {
             $this->renderMonitoringTablePagination('shortcode_unassigned_monitoring_page', $currentPage, $totalItems, $perPage, 'shortcode-block');
         }
 
-        if (!empty($processes)) {
-            echo '<div class="rrze-msm-site-actions">';
-            $this->renderTaskRemovalForm(
-                'rrze_multisite_manager_initialize_shortcode_block_analysis_schedules',
-                'confirm_shortcode_block_schedule_initialization',
+        echo '<div class="rrze-msm-site-actions">';
+        $this->renderAnalysisScheduleInitializationDialog(
+            'shortcode-block',
                 __('Reschedule shortcode and block analysis tasks for websites without a schedule', 'rrze-multisite-manager'),
                 __('Shortcode and block analysis tasks will be created for all active websites that do not yet have a scheduled task.', 'rrze-multisite-manager'),
-                '',
-                __('I understand that analysis tasks will be scheduled for websites without a schedule.', 'rrze-multisite-manager'),
-                false
-            );
-            echo '</div>';
-        }
+            __('I understand that analysis tasks will be scheduled for websites without a schedule.', 'rrze-multisite-manager')
+        );
+        echo '</div>';
         echo '<p class="description">' . esc_html__('Only active websites can be selected for analysis tasks.', 'rrze-multisite-manager') . '</p>';
         echo '</section>';
     }
 
-    protected function renderMonitoringSiteHoverLinks(int $siteId, string $analysisUrl, string $analysisLabel): void {
+    protected function renderMonitoringSiteHoverLinks(int $siteId, string $analysisUrl, string $analysisLabel, int $cronSiteId = 0): void {
         echo '<div class="row-actions">';
         echo '<span class="rrze-msm-row-action-dashboard"><a href="' . esc_url(get_admin_url($siteId)) . '">' . esc_html__('Dashboard', 'rrze-multisite-manager') . '</a></span>';
         echo ' | ';
         echo '<span class="rrze-msm-row-action-details"><a href="' . esc_url($this->getSiteDetailsPageUrl($siteId)) . '">' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
         echo ' | ';
         echo '<span class="rrze-msm-row-action-analysis"><a href="' . esc_url($analysisUrl) . '">' . esc_html($analysisLabel) . '</a></span>';
-        $crontrolUrl = $this->getSiteCrontrolUrl($siteId);
+        $crontrolUrl = $this->getSiteCrontrolUrl($cronSiteId > 0 ? $cronSiteId : $siteId);
 
         if ($crontrolUrl !== '') {
             echo ' | ';
@@ -1831,6 +2089,40 @@ class Settings {
         );
 
         $this->renderTaskRemovalForm($action, $confirmation, $label, $warning, $redirectUrl);
+    }
+
+    protected function renderStartSharedBatchForm(string $analysisType): void {
+        $modalId = wp_unique_id('rrze-msm-start-shared-batch-');
+        $label = __('Start shared batches early', 'rrze-multisite-manager');
+        $warning = __('Start the shared batch now for all websites assigned to it?', 'rrze-multisite-manager');
+        echo '<button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').showModal();") . '">' . esc_html($label) . '</button>';
+        echo '<dialog class="rrze-msm-task-removal-dialog" id="' . esc_attr($modalId) . '"><h3>' . esc_html($label) . '</h3><p class="rrze-msm-modal-text">' . esc_html($warning) . '</p>';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_shared_analysis_batch')) . '"><input type="hidden" name="analysis_type" value="' . esc_attr($analysisType) . '">';
+        wp_nonce_field('rrze_multisite_manager_start_shared_analysis_batch_' . $analysisType);
+        echo '<label class="rrze-msm-modal-checkbox"><input type="checkbox" name="confirm_start_shared_batch" value="1" required><span>' . esc_html__('I understand that all websites in the shared batch will be started now.', 'rrze-multisite-manager') . '</span></label>';
+        echo '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="submit" class="button button-secondary">' . esc_html($label) . '</button></div></form></dialog>';
+    }
+
+    protected function renderAnalysisScheduleInitializationDialog(string $analysisType, string $label, string $warning, string $confirmationText): void {
+        $modalId = wp_unique_id('rrze-msm-schedule-initialization-');
+        $openDialog = "document.getElementById('{$modalId}').showModal();";
+        $closeDialog = "document.getElementById('{$modalId}').close();";
+
+        echo '<button type="button" class="button button-secondary rrze-msm-open-schedule-initialization-dialog" data-dialog-id="' . esc_attr($modalId) . '">' . esc_html($label) . '</button>';
+        echo '<dialog class="rrze-msm-task-removal-dialog rrze-msm-schedule-initialization-dialog" id="' . esc_attr($modalId) . '" data-analysis-type="' . esc_attr($analysisType) . '" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr(wp_create_nonce('rrze_msm_analysis_schedule_initialization')) . '" data-running-text="' . esc_attr__('Setup in progress.', 'rrze-multisite-manager') . '" data-completed-text="' . esc_attr__('Setup completed.', 'rrze-multisite-manager') . '" data-failed-text="' . esc_attr__('The setup request failed. You can reopen this dialog to continue.', 'rrze-multisite-manager') . '" aria-labelledby="' . esc_attr($modalId) . '-title">';
+        echo '<h3 id="' . esc_attr($modalId) . '-title">' . esc_html($label) . '</h3>';
+        echo '<p class="rrze-msm-modal-text">' . esc_html($warning) . '</p>';
+        echo '<p class="rrze-msm-modal-text">' . esc_html__('The complete network is processed in groups of 25 websites. The setup batches are not run via Cron.', 'rrze-multisite-manager') . '</p>';
+        echo '<div class="rrze-msm-schedule-initialization-progress" hidden aria-live="polite">';
+        echo '<p data-schedule-initialization-status></p>';
+        echo '<p><strong>' . esc_html__('Processed websites:', 'rrze-multisite-manager') . '</strong> <span data-schedule-initialization-processed>0</span> / <span data-schedule-initialization-total>0</span><br><strong>' . esc_html__('Created tasks:', 'rrze-multisite-manager') . '</strong> <span data-schedule-initialization-created>0</span></p>';
+        echo '</div>';
+        echo '<label class="rrze-msm-modal-checkbox" data-schedule-initialization-confirmation><input type="checkbox" data-schedule-initialization-confirm><span>' . esc_html($confirmationText) . '</span></label>';
+        echo '<div class="rrze-msm-modal-actions">';
+        echo '<button type="button" class="button button-secondary" data-schedule-initialization-close data-close-label="' . esc_attr__('Close', 'rrze-multisite-manager') . '" onclick="' . esc_attr($closeDialog) . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button>';
+        echo '<button type="button" class="button button-secondary" data-schedule-initialization-start disabled>' . esc_html__('Start setup', 'rrze-multisite-manager') . '</button>';
+        echo '<button type="button" class="button button-secondary" data-schedule-initialization-reload hidden>' . esc_html__('Reload page', 'rrze-multisite-manager') . '</button>';
+        echo '</div></dialog>';
     }
 
     protected function renderTaskRemovalForm(string $action, string $confirmation, string $label, string $warning, string $redirectUrl = '', string $confirmationText = '', bool $isDestructive = true): void {
@@ -1998,6 +2290,9 @@ class Settings {
             echo '<p>' . esc_html__('There are currently no monitoring processes registered.', 'rrze-multisite-manager') . '</p>';
         }
 
+        $mainSiteId = (int)get_main_site_id(get_current_network_id());
+        $crontrolUrl = $this->getSiteCrontrolUrl($mainSiteId);
+
         echo '<p>' . esc_html__('Total number of websites in the multisite:', 'rrze-multisite-manager') . ' <strong>';
         echo esc_html(sprintf(
             /* translators: 1: total website count, 2: active website count. */
@@ -2005,8 +2300,21 @@ class Settings {
             number_format_i18n($websiteCount),
             number_format_i18n($activeWebsiteCount)
         ));
-        echo '</strong>.</p>';
-        echo '<p>' . esc_html__('Website availability is checked only for active websites. Websites with the status "Archived", "Blocked", or "Marked for deletion" are excluded from the check.', 'rrze-multisite-manager') . '</p>';
+        echo '</strong>.<br>';
+        echo esc_html__('Website availability is checked only for active websites. Websites with the status "Archived", "Blocked", or "Marked for deletion" are excluded from the check.', 'rrze-multisite-manager');
+
+        if ($crontrolUrl !== '') {
+            $crontrolUrl = add_query_arg(
+                [
+                    'page' => 'wp-crontrol',
+                    's' => 'msm',
+                ],
+                get_admin_url($mainSiteId, 'tools.php')
+            );
+            echo '<br><a href="' . esc_url($crontrolUrl) . '">' . esc_html__('Check Cron events.', 'rrze-multisite-manager') . '</a>';
+        }
+
+        echo '</p>';
 
         echo '</section>';
 
@@ -2267,14 +2575,17 @@ class Settings {
         $remainingSeconds = $seconds % MINUTE_IN_SECONDS;
 
         if ($hours > 0) {
+            /* translators: %d: number of hours. */
             $parts[] = sprintf(_n('%d hr.', '%d hr.', $hours, 'rrze-multisite-manager'), $hours);
         }
 
         if ($minutes > 0) {
+            /* translators: %d: number of minutes. */
             $parts[] = sprintf(_n('%d min.', '%d min.', $minutes, 'rrze-multisite-manager'), $minutes);
         }
 
         if ($remainingSeconds > 0 || empty($parts)) {
+            /* translators: %d: number of seconds. */
             $parts[] = sprintf(_n('%d sec.', '%d sec.', $remainingSeconds, 'rrze-multisite-manager'), $remainingSeconds);
         }
 
@@ -2290,12 +2601,14 @@ class Settings {
 
         if ($minutes <= 0) {
             return sprintf(
+                /* translators: %d: number of seconds. */
                 _n('%d sec.', '%d sec.', $seconds, 'rrze-multisite-manager'),
                 $seconds
             );
         }
 
         return sprintf(
+            /* translators: %d: number of minutes. */
             _n('%d min.', '%d min.', $minutes, 'rrze-multisite-manager'),
             $minutes
         );
@@ -2308,6 +2621,7 @@ class Settings {
 
         if ($batchTotal > 0) {
             return sprintf(
+                /* translators: 1: checked websites, 2: total websites, 3: completion percentage. */
                 __('%1$s / %2$s (%3$d%%)', 'rrze-multisite-manager'),
                 number_format_i18n($checkedSites),
                 number_format_i18n($batchTotal),
@@ -2317,6 +2631,7 @@ class Settings {
 
         if ((int)($process['last_site_count'] ?? 0) > 0) {
             return sprintf(
+                /* translators: 1: checked websites, 2: total websites. */
                 __('%1$s / %2$s', 'rrze-multisite-manager'),
                 number_format_i18n($checkedSites),
                 number_format_i18n((int)($process['last_site_count'] ?? 0))
@@ -2365,6 +2680,7 @@ class Settings {
 
         if ((int)($process['batch_size'] ?? 0) > 0) {
             $meta[] = sprintf(
+                /* translators: %s: batch size. */
                 __('Batch size: %s', 'rrze-multisite-manager'),
                 number_format_i18n((int)($process['batch_size'] ?? 0))
             );
@@ -2372,6 +2688,7 @@ class Settings {
 
         if ((int)($process['checked_sites'] ?? 0) > 0) {
             $meta[] = sprintf(
+                /* translators: %s: number of processed websites. */
                 __('Last processed: %s sites', 'rrze-multisite-manager'),
                 number_format_i18n((int)($process['checked_sites'] ?? 0))
             );
@@ -2438,14 +2755,19 @@ class Settings {
 
     protected function renderProcessActionsHtml(array $process, string $redirectTo = ''): string {
         $processId = (string)($process['id'] ?? '');
+        $scheduleActionState = (string)($process['schedule_action_state'] ?? 'create');
         $html = '<div class="rrze-msm-process-actions">';
 
-        if (!empty($process['is_running'])) {
-            $html .= '<span>' . esc_html__('Running', 'rrze-multisite-manager') . '</span>';
+        if (!empty($process['is_running']) || $scheduleActionState === 'running') {
+            $html .= '<span aria-hidden="true">—</span>';
             $html .= '</div>';
 
             return $html;
         }
+
+        $actionLabel = $scheduleActionState === 'start'
+            ? __('Start early now', 'rrze-multisite-manager')
+            : __('Create task', 'rrze-multisite-manager');
 
         if ($processId === 'dashboard-metrics') {
             $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_metrics')) . '">';
@@ -2453,7 +2775,7 @@ class Settings {
                 $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
             }
             $html .= wp_nonce_field('rrze_multisite_manager_refresh_metrics', '_wpnonce', true, false);
-            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Start now', 'rrze-multisite-manager') . '</button>';
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html($actionLabel) . '</button>';
             $html .= '</form>';
 
             if (!empty($process['is_stale'])) {
@@ -2479,7 +2801,7 @@ class Settings {
                 $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
             }
             $html .= wp_nonce_field('rrze_multisite_manager_run_monitoring', '_wpnonce', true, false);
-            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Start now', 'rrze-multisite-manager') . '</button>';
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html($actionLabel) . '</button>';
             $html .= '</form>';
 
             if (!empty($process['is_stale'])) {
@@ -2642,6 +2964,7 @@ class Settings {
 
         if (!empty($event['dns_status'])) {
             $details[] = sprintf(
+                /* translators: %s: DNS status. */
                 __('DNS: %s', 'rrze-multisite-manager'),
                 $this->formatMonitoringStatusValue(
                     (string)$event['dns_status'],
@@ -2652,6 +2975,7 @@ class Settings {
 
         if (!empty($event['http_status'])) {
             $details[] = sprintf(
+                /* translators: %s: HTTP status. */
                 __('HTTP: %s', 'rrze-multisite-manager'),
                 $this->formatMonitoringStatusValue(
                     (string)$event['http_status'],
@@ -2730,6 +3054,7 @@ class Settings {
 
         if (!empty($event['status_changed']) && $previous !== '' && $current !== '') {
             return sprintf(
+                /* translators: 1: previous status, 2: current status. */
                 __('%1$s -> %2$s', 'rrze-multisite-manager'),
                 $this->getOperationalStatusLabel($previous),
                 $this->getOperationalStatusLabel($current)

@@ -20,6 +20,7 @@ class Config {
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
                 'monitoring_hook' => 'rrze_msm_check_site_availability',
                 'storage_analysis_hook' => 'rrze_msm_run_site_storage_analysis',
+                'storage_analysis_batch_hook' => 'rrze_msm_run_site_storage_analysis_batch',
                 'shortcode_block_analysis_hook' => 'rrze_msm_run_shortcode_block_analysis_site',
                 'shortcode_block_analysis_batch_hook' => 'rrze_msm_run_shortcode_block_analysis_batch',
                 'shortcode_block_analysis_timeout_minutes' => 60,
@@ -96,13 +97,18 @@ class Config {
                 ],
                 'monitoring' => [
                     [
-                        'name' => 'metrics_interval_hours',
-                        'label' => __('Metrics interval in hours', 'rrze-multisite-manager'),
-                        'desc' => __('Minimum interval between automatically scheduled metrics runs. Manually started runs are not affected.', 'rrze-multisite-manager'),
-                        'type' => 'number',
-                        'default' => 2,
-                        'min' => 1,
-                        'max' => 168,
+                        'name' => 'metrics_frequency',
+                        'label' => __('Metrics cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the centrally scheduled metrics collection starts. Internal batch continuations are not affected.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'fourtimesdaily',
+                        'choices' => [
+                            'weekly' => __('Once weekly', 'rrze-multisite-manager'),
+                            'twiceweekly' => __('Twice weekly', 'rrze-multisite-manager'),
+                            'daily' => __('Once daily', 'rrze-multisite-manager'),
+                            'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
+                            'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
+                        ],
                     ],
                     [
                         'name' => 'batch_size',
@@ -135,6 +141,24 @@ class Config {
                             'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
                             'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
                         ],
+                    ],
+                    [
+                        'name' => 'storage_analysis_batch_media_threshold',
+                        'label' => __('Media threshold for shared storage analysis', 'rrze-multisite-manager'),
+                        'desc' => __('Websites with fewer media attachments than this value are initially assigned to the shared batch. Websites at or above it receive an individual task.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 100,
+                        'min' => 1,
+                        'max' => 1000000,
+                    ],
+                    [
+                        'name' => 'storage_analysis_batch_runtime_threshold_seconds',
+                        'label' => __('Runtime threshold for shared storage analysis in seconds', 'rrze-multisite-manager'),
+                        'desc' => __('After a successful complete run, websites below this runtime are assigned to the shared batch; websites at or above it receive an individual task.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 5,
+                        'min' => 1,
+                        'max' => 3600,
                     ],
                     [
                         'name' => 'shortcode_block_analysis_frequency',
@@ -178,13 +202,18 @@ class Config {
                         'max' => 1440,
                     ],
                     [
-                        'name' => 'monitoring_interval_hours',
-                        'label' => __('Check interval in hours', 'rrze-multisite-manager'),
-                        'desc' => __('How often the availability check should run for all sites.', 'rrze-multisite-manager'),
-                        'type' => 'number',
-                        'default' => 6,
-                        'min' => 1,
-                        'max' => 168,
+                        'name' => 'monitoring_frequency',
+                        'label' => __('Availability check cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the centrally scheduled availability check starts. Internal batch continuations are not affected.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'fourtimesdaily',
+                        'choices' => [
+                            'weekly' => __('Once weekly', 'rrze-multisite-manager'),
+                            'twiceweekly' => __('Twice weekly', 'rrze-multisite-manager'),
+                            'daily' => __('Once daily', 'rrze-multisite-manager'),
+                            'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
+                            'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
+                        ],
                     ],
                     [
                         'name' => 'provisioning_grace_hours',
@@ -289,11 +318,29 @@ class Config {
         return (string)($this->config['constants']['storage_analysis_hook'] ?? 'rrze_msm_run_site_storage_analysis');
     }
 
+    public function getStorageAnalysisBatchHook(): string {
+        return (string)($this->config['constants']['storage_analysis_batch_hook'] ?? 'rrze_msm_run_site_storage_analysis_batch');
+    }
+
     public function getStorageAnalysisOrphanFilesLimit(): int {
         $options = get_site_option($this->getOptionName(), []);
         $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_orphan_files_limit'] ?? 250) : 250;
 
         return max(10, min(5000, $limit));
+    }
+
+    public function getStorageAnalysisBatchMediaThreshold(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_batch_media_threshold'] ?? 100) : 100;
+
+        return max(1, min(1000000, $threshold));
+    }
+
+    public function getStorageAnalysisBatchRuntimeThresholdSeconds(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_batch_runtime_threshold_seconds'] ?? 5) : 5;
+
+        return max(1, min(3600, $threshold));
     }
 
     public function getMonitoringBatchSize(): int {

@@ -13,6 +13,8 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const GLOBAL_INITIALIZATION_OPTION = 'rrze_msm_shortcode_block_analysis_global_initialization';
     protected const TASK_REMOVAL_OPTION = 'rrze_msm_shortcode_block_analysis_tasks_removed';
     protected const SCHEDULE_INITIALIZATION_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_schedule_initialization_offset';
+    protected const SCHEDULE_INITIALIZATION_STATE_OPTION = 'rrze_msm_shortcode_block_analysis_schedule_initialization_state';
+    protected const SCHEDULE_INITIALIZATION_LOCK_OPTION = 'rrze_msm_shortcode_block_analysis_schedule_initialization_lock';
     protected const BATCH_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_batch_site_ids';
     protected const ASSIGNMENTS_OPTION = 'rrze_msm_shortcode_block_analysis_assignments';
     protected const BATCH_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_batch_offset';
@@ -181,6 +183,8 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         delete_site_option(self::SCHEDULE_SIGNATURE_OPTION);
         delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
+        delete_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION);
+        delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         delete_site_option(self::BATCH_SITE_IDS_OPTION);
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_OFFSET_OPTION);
@@ -341,6 +345,28 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
     }
 
+    public function canStartBatchNow(): bool {
+        return (int)get_site_option(self::BATCH_LOCK_OPTION, 0) <= 0
+            && !empty($this->getActiveBatchSiteIds())
+            && (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getShortcodeBlockAnalysisBatchHook())) > 0;
+    }
+
+    public function startBatchNow(): bool {
+        if (!$this->canStartBatchNow()) {
+            return false;
+        }
+
+        return (bool)$this->inBatchCronContext(function (): bool {
+            $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
+            $this->unscheduleBatchEvents();
+            $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey(), $hook);
+            if ($scheduled) {
+                LoggingService::info($this->config, 'RRZE-MSM: Shared shortcode and block analysis batch started early.', ['cron_site_id' => $this->getBatchCronSiteId(), 'batch_site_count' => count($this->getActiveBatchSiteIds())]);
+            }
+            return $scheduled;
+        });
+    }
+
     public function getStatus(int $siteId): array {
         $status = get_blog_option($siteId, self::STATUS_OPTION, []);
 
@@ -370,6 +396,30 @@ class ShortcodeBlockAnalysisSchedulerService {
         $assignments = $this->getSiteAssignments();
 
         return $assignments[$siteId] ?? 'unassigned';
+    }
+
+    /**
+     * Writes a site-specific information log entry in one consistent form.
+     *
+     * @param 'batch'|'site'|'unassigned' $assignmentMode
+     * @param array<string, mixed>         $context
+     */
+    protected function logSiteInfo(string $label, int $siteId, string $assignmentMode = 'unassigned', array $context = []): void {
+        if ($assignmentMode === 'unassigned') {
+            $assignmentMode = $this->getSiteAssignmentMode($siteId);
+        }
+
+        $assignment = $assignmentMode === 'batch' ? 'Batch' : 'Single';
+        $context = array_merge($context, [
+            'site_id' => $siteId,
+            'assignment' => $assignment,
+        ]);
+
+        LoggingService::info(
+            $this->config,
+            sprintf('RRZE-MSM: %s (Site Id: %d, Assignment: %s)', $label, $siteId, $assignment),
+            $context
+        );
     }
 
     public function getSiteProcesses(): array {
@@ -417,7 +467,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             'fields' => 'ids',
             'number' => $perPage + 1,
             'offset' => ($page - 1) * $perPage,
-            'orderby' => 'id',
+            'orderby' => 'domain',
             'order' => 'ASC',
             'archived' => 0,
             'spam' => 0,
@@ -621,44 +671,138 @@ class ShortcodeBlockAnalysisSchedulerService {
      * @return array{initialized: int, processed: int, total: int, complete: bool}
      */
     public function initializeUnscheduledActiveSitesBatch(int $batchSize = 25): array {
-        $batchSize = max(1, $batchSize);
-        $offset = max(0, (int)get_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION, 0));
-        $total = (int)get_sites(['count' => true]);
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => $batchSize,
-            'offset' => $offset,
-            'orderby' => 'id',
-            'order' => 'ASC',
-        ]);
-        $initialized = 0;
+        $state = $this->startScheduleInitialization();
 
-        delete_site_option(self::TASK_REMOVAL_OPTION);
+        if (empty($state['run_id'])) {
+            return ['initialized' => 0, 'processed' => 0, 'total' => 0, 'complete' => false];
+        }
 
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
+        return $this->runScheduleInitializationBatch((string)$state['run_id'], $batchSize);
+    }
 
-            if ($this->isSiteUnscheduled($siteId) && $this->scheduleRecurringAnalysis($siteId)) {
-                $initialized++;
+    /**
+     * Starts, or returns, an explicit browser-driven initialization run.
+     * A stable site-ID snapshot makes this independent of table pagination,
+     * searches, and changes to the network during the run.
+     *
+     * @return array{run_id: string, initialized: int, processed: int, total: int, complete: bool}
+     */
+    public function startScheduleInitialization(): array {
+        $state = get_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION, []);
+        $state = is_array($state) ? $state : [];
+
+        if (empty($state['run_id']) || !isset($state['site_ids']) || !is_array($state['site_ids'])) {
+            $queryArgs = [
+                'fields' => 'ids',
+                'number' => 0,
+                'orderby' => 'id',
+                'order' => 'ASC',
+                'archived' => 0,
+                'spam' => 0,
+                'deleted' => 0,
+            ];
+            $scheduledSiteIds = $this->getScheduledSiteIds();
+
+            if (!empty($scheduledSiteIds)) {
+                $queryArgs['site__not_in'] = $scheduledSiteIds;
+            }
+
+            $siteIds = get_sites($queryArgs);
+            $state = [
+                'run_id' => wp_generate_uuid4(),
+                'site_ids' => array_values(array_map('absint', $siteIds)),
+                'processed' => 0,
+                'initialized' => 0,
+            ];
+            update_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION, $state);
+            delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
+        }
+
+        return $this->getScheduleInitializationProgress($state, false);
+    }
+
+    /**
+     * Processes one bounded browser-requested group. The next group is
+     * requested by the progress dialog, not by WP-Cron.
+     *
+     * @return array{run_id: string, initialized: int, processed: int, total: int, complete: bool, busy?: bool}
+     */
+    public function runScheduleInitializationBatch(string $runId, int $batchSize = 25): array {
+        $state = get_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION, []);
+        $state = is_array($state) ? $state : [];
+
+        if ($runId === '' || !hash_equals((string)($state['run_id'] ?? ''), $runId) || !isset($state['site_ids']) || !is_array($state['site_ids'])) {
+            return ['run_id' => '', 'initialized' => 0, 'processed' => 0, 'total' => 0, 'complete' => false];
+        }
+
+        if (!$this->acquireScheduleInitializationLock($runId)) {
+            $progress = $this->getScheduleInitializationProgress($state, false);
+            $progress['busy'] = true;
+            return $progress;
+        }
+
+        try {
+            $batchSize = max(1, min(100, $batchSize));
+            $processed = max(0, (int)($state['processed'] ?? 0));
+            $siteIds = array_slice($state['site_ids'], $processed, $batchSize);
+            $initialized = 0;
+
+            delete_site_option(self::TASK_REMOVAL_OPTION);
+
+            foreach ($siteIds as $siteId) {
+                $siteId = (int)$siteId;
+
+                if ($this->isSiteUnscheduled($siteId) && $this->scheduleRecurringAnalysis($siteId)) {
+                    $initialized++;
+                }
+            }
+
+            $state['processed'] = $processed + count($siteIds);
+            $state['initialized'] = (int)($state['initialized'] ?? 0) + $initialized;
+            $progress = $this->getScheduleInitializationProgress($state, false);
+
+            if ($progress['complete']) {
+                delete_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION);
+                delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
+                update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
+                update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
+            } else {
+                update_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION, $state);
+            }
+
+            return $progress;
+        } finally {
+            $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
+            if (is_array($lock) && (string)($lock['run_id'] ?? '') === $runId) {
+                delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
             }
         }
+    }
 
-        $processed = min($total, $offset + count($siteIds));
-        $complete = $processed >= $total;
+    protected function acquireScheduleInitializationLock(string $runId): bool {
+        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
 
-        if ($complete) {
-            delete_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION);
-            update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
-            update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
-        } else {
-            update_site_option(self::SCHEDULE_INITIALIZATION_OFFSET_OPTION, $processed);
+        if (is_array($lock) && (int)($lock['expires_at'] ?? 0) < time()) {
+            delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         }
 
+        return add_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
+            'run_id' => $runId,
+            'expires_at' => time() + (5 * MINUTE_IN_SECONDS),
+        ]);
+    }
+
+    /** @return array{run_id: string, initialized: int, processed: int, total: int, complete: bool} */
+    protected function getScheduleInitializationProgress(array $state, bool $complete): array {
+        $total = count((array)($state['site_ids'] ?? []));
+        $processed = min($total, max(0, (int)($state['processed'] ?? 0)));
+
         return [
-            'initialized' => $initialized,
+            'run_id' => (string)($state['run_id'] ?? ''),
+            'initialized' => max(0, (int)($state['initialized'] ?? 0)),
             'processed' => $processed,
             'total' => $total,
-            'complete' => $complete,
+            'complete' => $complete || $processed >= $total,
         ];
     }
 
@@ -1255,7 +1399,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             'phases' => $this->getScheduledPhaseStatuses(),
             'schedule_mode' => (string)($previousStatus['schedule_mode'] ?? 'site'),
         ]);
-        LoggingService::info($this->config, 'RRZE-MSM: Shortcode and block analysis started', ['site_id' => $siteId, 'site_url' => get_home_url($siteId, '/')]);
+        $this->logSiteInfo('Shortcode- und Blockanalyse gestartet', $siteId, 'unassigned', ['site_url' => get_home_url($siteId, '/')]);
     }
 
     protected function recordCompletedRunDuration(int $siteId, float $duration): void {
@@ -1343,7 +1487,11 @@ class ShortcodeBlockAnalysisSchedulerService {
             'total_posts' => (int)($state['total_posts'] ?? 0),
         ]);
         update_blog_option($siteId, self::STATUS_OPTION, $status);
-        LoggingService::info($this->config, 'RRZE-MSM: Shortcode and block analysis finished', ['site_id' => $siteId, 'site_url' => get_home_url($siteId, '/'), 'shortcodes' => count($result['shortcodes']), 'blocks' => count($result['blocks'])]);
+        $this->logSiteInfo('Shortcode- und Blockanalyse beendet', $siteId, 'unassigned', [
+            'site_url' => get_home_url($siteId, '/'),
+            'shortcodes' => count($result['shortcodes']),
+            'blocks' => count($result['blocks']),
+        ]);
     }
 
     protected function markFailed(int $siteId, string $message): void {
@@ -1813,8 +1961,11 @@ class ShortcodeBlockAnalysisSchedulerService {
             return false;
         }
 
-        return !$this->isRunning($siteId)
-            && $this->getNextRecurringScheduledTimestamp($siteId) <= 0;
+        // Setting up the next recurring task is safe while a previous run is
+        // still marked as running. The per-site lock prevents overlap when the
+        // new event becomes due. Excluding such a site here left it without a
+        // task after the setup run, most visibly for the main site.
+        return $this->getNextRecurringScheduledTimestamp($siteId) <= 0;
     }
 
     protected function isRunning(int $siteId): bool {

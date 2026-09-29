@@ -69,7 +69,7 @@ class PluginUsageWidget extends Widgets {
             if ($option === $defaultPerPage) {
                 echo esc_html(
                     sprintf(
-                        /* translators: %d: default row count for the plugin table. */
+                        /* translators: %d: number of rows shown by default. */
                         __('Default (%d)', 'rrze-multisite-manager'),
                         $option
                     )
@@ -233,7 +233,7 @@ class PluginUsageWidget extends Widgets {
             if ($option === $defaultPerPage) {
                 echo esc_html(
                     sprintf(
-                        /* translators: %d: default row count for the missing plugin table. */
+                        /* translators: %d: number of rows shown by default. */
                         __('Default (%d)', 'rrze-multisite-manager'),
                         $option
                     )

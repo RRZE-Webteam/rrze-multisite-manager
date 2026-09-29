@@ -71,3 +71,26 @@ body.rrze-msm-mode-dark {
     --rrze-msm-input-border: #2d6a4f;
     --rrze-msm-status-blocked-visual: #8a94a0;
 }
+
+.rrze-msm-settings-group {
+    background: var(--rrze-msm-surface);
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    margin: 1.5rem 0;
+    overflow: hidden;
+}
+
+.rrze-msm-settings-group-header {
+    background: var(--rrze-msm-surface-alt);
+    border-bottom: 1px solid var(--rrze-msm-border);
+    padding: .75rem 1.25rem;
+}
+
+.rrze-msm-settings-group-header h2 {
+    margin: 0;
+}
+
+.rrze-msm-settings-group .form-table {
+    margin: 0;
+    padding: .5rem 1.25rem 1rem;
+}

@@ -2373,6 +2373,174 @@ function initFullDataCleanupRunner() {
     }
 }
 
+function requestScheduleInitialization(dialog, action, data) {
+    var body = new URLSearchParams();
+    var key = '';
+
+    data = data || {};
+    body.append('action', action);
+    body.append('nonce', String(dialog.getAttribute('data-nonce') || ''));
+    body.append('analysis_type', String(dialog.getAttribute('data-analysis-type') || ''));
+
+    for (key in data) {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+            body.append(key, String(data[key]));
+        }
+    }
+
+    return fetch(String(dialog.getAttribute('data-ajax-url') || ''), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+        body: body.toString()
+    }).then(function (response) {
+        return response.json();
+    }).then(function (response) {
+        if (!response || response.success !== true || !response.data) {
+            throw new Error('schedule_initialization_request_failed');
+        }
+
+        return response.data;
+    });
+}
+
+function updateScheduleInitializationProgress(dialog, progress) {
+    var processed = dialog.querySelector('[data-schedule-initialization-processed]');
+    var total = dialog.querySelector('[data-schedule-initialization-total]');
+    var created = dialog.querySelector('[data-schedule-initialization-created]');
+    var status = dialog.querySelector('[data-schedule-initialization-status]');
+
+    if (processed) {
+        processed.textContent = String(progress.processed || 0);
+    }
+
+    if (total) {
+        total.textContent = String(progress.total || 0);
+    }
+
+    if (created) {
+        created.textContent = String(progress.initialized || 0);
+    }
+
+    if (status) {
+        status.textContent = progress.complete
+            ? String(dialog.getAttribute('data-completed-text') || '')
+            : String(dialog.getAttribute('data-running-text') || '');
+    }
+}
+
+function runScheduleInitializationBatch(dialog, runId) {
+    requestScheduleInitialization(dialog, 'rrze_msm_run_analysis_schedule_initialization_batch', {run_id: runId})
+        .then(function (progress) {
+            var reload = dialog.querySelector('[data-schedule-initialization-reload]');
+            var close = dialog.querySelector('[data-schedule-initialization-close]');
+
+            updateScheduleInitializationProgress(dialog, progress);
+
+            if (progress.complete) {
+                if (reload) {
+                    reload.removeAttribute('hidden');
+                }
+
+                if (close) {
+                    close.textContent = close.getAttribute('data-close-label') || close.textContent;
+                    close.disabled = false;
+                }
+                return;
+            }
+
+            window.setTimeout(function () {
+                runScheduleInitializationBatch(dialog, runId);
+            }, progress.busy ? 1000 : 150);
+        })
+        .catch(function () {
+            var status = dialog.querySelector('[data-schedule-initialization-status]');
+            var close = dialog.querySelector('[data-schedule-initialization-close]');
+
+            if (status) {
+                status.textContent = String(dialog.getAttribute('data-failed-text') || '');
+            }
+
+            if (close) {
+                close.disabled = false;
+            }
+        });
+}
+
+function initScheduleInitializationDialogs() {
+    var openButtons = document.querySelectorAll('.rrze-msm-open-schedule-initialization-dialog');
+    var dialogs = document.querySelectorAll('.rrze-msm-schedule-initialization-dialog');
+    var index = 0;
+
+    for (index = 0; index < openButtons.length; index++) {
+        openButtons[index].addEventListener('click', function (event) {
+            var dialog = document.getElementById(event.currentTarget.getAttribute('data-dialog-id') || '');
+
+            if (dialog && typeof dialog.showModal === 'function') {
+                dialog.showModal();
+            }
+        });
+    }
+
+    for (index = 0; index < dialogs.length; index++) {
+        (function (dialog) {
+            var confirmation = dialog.querySelector('[data-schedule-initialization-confirm]');
+            var start = dialog.querySelector('[data-schedule-initialization-start]');
+            var progress = dialog.querySelector('.rrze-msm-schedule-initialization-progress');
+            var confirmationContainer = dialog.querySelector('[data-schedule-initialization-confirmation]');
+            var reload = dialog.querySelector('[data-schedule-initialization-reload]');
+
+            if (confirmation && start) {
+                confirmation.addEventListener('change', function () {
+                    start.disabled = !confirmation.checked;
+                });
+
+                start.addEventListener('click', function () {
+                    var close = dialog.querySelector('[data-schedule-initialization-close]');
+
+                    start.disabled = true;
+
+                    if (close) {
+                        close.disabled = true;
+                    }
+
+                    if (progress) {
+                        progress.removeAttribute('hidden');
+                    }
+
+                    if (confirmationContainer) {
+                        confirmationContainer.setAttribute('hidden', 'hidden');
+                    }
+
+                    requestScheduleInitialization(dialog, 'rrze_msm_start_analysis_schedule_initialization')
+                        .then(function (initialProgress) {
+                            updateScheduleInitializationProgress(dialog, initialProgress);
+                            runScheduleInitializationBatch(dialog, String(initialProgress.run_id || ''));
+                        })
+                        .catch(function () {
+                            var status = dialog.querySelector('[data-schedule-initialization-status]');
+                            var close = dialog.querySelector('[data-schedule-initialization-close]');
+
+                            if (status) {
+                                status.textContent = String(dialog.getAttribute('data-failed-text') || '');
+                            }
+
+                            if (close) {
+                                close.disabled = false;
+                            }
+                        });
+                });
+            }
+
+            if (reload) {
+                reload.addEventListener('click', function () {
+                    window.location.reload();
+                });
+            }
+        }(dialogs[index]));
+    }
+}
+
 function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = '';
@@ -2406,6 +2574,7 @@ function initRrzeMultisiteManager() {
     initOptionEditForms();
     initStorageAnalysisRunner();
     initFullDataCleanupRunner();
+    initScheduleInitializationDialogs();
 }
 
 document.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);

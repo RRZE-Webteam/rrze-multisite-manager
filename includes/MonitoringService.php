@@ -60,11 +60,7 @@ class MonitoringService {
         if (empty($schedules[$slug])) {
             $schedules[$slug] = [
                 'interval' => $this->getMonitoringInterval(),
-                'display' => sprintf(
-                    /* translators: %d: interval in hours for the monitoring schedule. */
-                    __('Every %d hours', 'rrze-multisite-manager'),
-                    $this->getMonitoringIntervalHours()
-                ),
+                'display' => $this->getMonitoringScheduleLabel(),
             ];
         }
 
@@ -87,13 +83,9 @@ class MonitoringService {
 
         $hook = $this->config->getMonitoringHook();
         $nextRecurringTimestamp = $this->getNextScheduledHookTimestamp($hook, true);
-        $lastRunTimestamp = strtotime((string)get_site_option(self::OPTION_LAST_RUN, '') . ' GMT');
-        $minimumNextRunTimestamp = $lastRunTimestamp > 0 ? $lastRunTimestamp + $this->getMonitoringInterval() : 0;
 
         if ($nextRecurringTimestamp <= 0) {
-            $this->scheduleRecurringEvent($this->getMonitoringInterval());
-        } elseif ($minimumNextRunTimestamp > time() && $nextRecurringTimestamp < $minimumNextRunTimestamp) {
-            $this->rescheduleRecurringEvent($minimumNextRunTimestamp - time());
+            $this->scheduleRecurringEvent(MINUTE_IN_SECONDS);
         }
 
         if (
@@ -108,7 +100,7 @@ class MonitoringService {
     /**
      * Replaces only the recurring monitoring event without interrupting a running batch.
      */
-    public function rescheduleRecurringEvent(?int $delay = null): void {
+    public function rescheduleRecurringEvent(): void {
         $hook = $this->config->getMonitoringHook();
         $cron = _get_cron_array();
 
@@ -122,11 +114,11 @@ class MonitoringService {
             }
         }
 
-        $this->scheduleRecurringEvent($delay ?? $this->getMonitoringInterval());
+        $this->scheduleRecurringEvent(MINUTE_IN_SECONDS);
     }
 
     public function runScheduledChecks(...$args): void {
-        $process = [];
+        $result = [];
 
         if (!$this->isCentralNetworkCronSite() || MetricsService::isFullDataCleanupInProgress() || !$this->isMonitoringSchedulingEnabled()) {
             return;
@@ -135,31 +127,33 @@ class MonitoringService {
         // A one-time event marked as a batch continuation must only continue
         // an active network pass. A stale event must not silently begin a new
         // availability run before the regular interval has elapsed.
-        if ($this->isMonitoringBatchContinuation($args) && !$this->isMonitoringRunInProgress()) {
+        $isBatchContinuation = $this->isMonitoringBatchContinuation($args);
+
+        if ($isBatchContinuation && !$this->isMonitoringRunInProgress()) {
             return;
         }
 
-        LoggingService::info(
-            $this->config,
-            'RRZE-MSM: Monitoring-Scheduler gestartet',
-            []
-        );
+        if (!$isBatchContinuation) {
+            LoggingService::info($this->config, 'RRZE-MSM: Erreichbarkeit von Websites gestartet', []);
+        }
 
         try {
-            $this->runMonitoringBatch();
-            $processes = $this->getProcessesOverview();
-            $process = is_array($processes[0] ?? null) ? $processes[0] : [];
-            LoggingService::info(
-                $this->config,
-                'RRZE-MSM: Monitoring-Scheduler beendet',
-                [
-                    'success' => true,
-                    'checked_sites' => (int)($process['checked_sites'] ?? 0),
-                    'remaining_sites' => (int)($process['remaining_sites'] ?? 0),
-                    'progress_percent' => (int)($process['progress_percent'] ?? 0),
-                    'is_running' => !empty($process['is_running']),
-                ]
-            );
+            $result = $this->runMonitoringBatch();
+
+            if (!empty($result['complete'])) {
+                LoggingService::info(
+                    $this->config,
+                    'RRZE-MSM: Erreichbarkeit von Websites beendet',
+                    [
+                        'success' => true,
+                        'checked_sites' => (int)($result['checked_sites'] ?? 0),
+                        'duration_seconds' => (int)($result['duration_seconds'] ?? 0),
+                        'failed_sites' => (int)($result['failed_sites'] ?? 0),
+                        'dns_issues' => (int)($result['dns_issues'] ?? 0),
+                        'http_issues' => (int)($result['http_issues'] ?? 0),
+                    ]
+                );
+            }
         } catch (\Throwable $exception) {
             do_action(
                 'rrze.log.error',
@@ -170,7 +164,7 @@ class MonitoringService {
             );
             LoggingService::info(
                 $this->config,
-                'RRZE-MSM: Monitoring-Scheduler beendet',
+                'RRZE-MSM: Erreichbarkeit von Websites beendet',
                 [
                     'success' => false,
                     'message' => $exception->getMessage(),
@@ -297,6 +291,7 @@ class MonitoringService {
                 'next_run_timestamp' => $nextRecurringRunTimestamp ? (int)$nextRecurringRunTimestamp : 0,
                 'next_recurring_run_timestamp' => $nextRecurringRunTimestamp,
                 'next_batch_run_timestamp' => $nextBatchRunTimestamp,
+                'schedule_action_state' => $this->getMonitoringScheduleActionState(),
                 'batch_offset' => $batchOffset,
                 'batch_total' => $batchTotal,
                 'checked_sites' => $checkedSites,
@@ -358,7 +353,48 @@ class MonitoringService {
         $this->scheduleNextBatch(5);
     }
 
-    protected function runMonitoringBatch(bool $manual = false): void {
+    /** @return 'create'|'start'|'running' */
+    public function getMonitoringScheduleActionState(): string {
+        if ($this->isMonitoringRunInProgress()) {
+            return 'running';
+        }
+
+        return $this->getNextScheduledHookTimestamp($this->config->getMonitoringHook(), true) > 0 ? 'start' : 'create';
+    }
+
+    /** @return 'created'|'rescheduled'|'running'|'unavailable' */
+    public function scheduleMonitoringFromNow(): string {
+        if (MetricsService::isFullDataCleanupInProgress()) {
+            return 'unavailable';
+        }
+
+        return (string)$this->inCentralNetworkCronContext(function (): string {
+            if ($this->isMonitoringRunInProgress()) {
+                return 'running';
+            }
+
+            $hook = $this->config->getMonitoringHook();
+            $hasScheduledEvent = $this->getNextScheduledHookTimestamp($hook, true) > 0;
+            $this->enableMonitoringScheduling();
+            self::clearScheduledEventOnCurrentSite($this->config);
+            $this->resetMonitoringRunState();
+
+            $scheduled = wp_schedule_event(
+                time(),
+                $this->config->getMonitoringScheduleSlug(),
+                $hook
+            );
+
+            if (!$scheduled) {
+                return 'unavailable';
+            }
+
+            return $hasScheduledEvent ? 'rescheduled' : 'created';
+        });
+    }
+
+    /** @return array{complete: bool, checked_sites: int, duration_seconds: int, failed_sites: int, dns_issues: int, http_issues: int} */
+    protected function runMonitoringBatch(bool $manual = false): array {
         $siteIds = [];
         $offset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
         $totalSites = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
@@ -371,7 +407,7 @@ class MonitoringService {
         $result = [];
 
         if (!$this->acquireMonitoringLock()) {
-            return;
+            return ['complete' => false, 'checked_sites' => 0, 'duration_seconds' => 0, 'failed_sites' => 0, 'dns_issues' => 0, 'http_issues' => 0];
         }
 
         if (empty($runState)) {
@@ -413,18 +449,35 @@ class MonitoringService {
         if (empty($siteIds) || $nextOffset >= $totalSites) {
             update_site_option(self::OPTION_LAST_RUN, $timestamp);
             update_site_option(self::OPTION_LAST_SITE_COUNT, $totalSites);
+            $durationSeconds = $this->calculateRunDurationSeconds((string)($runState['started_at'] ?? ''), $timestamp);
+            $completedResult = [
+                'complete' => true,
+                'checked_sites' => (int)($runState['checked_sites'] ?? 0),
+                'duration_seconds' => $durationSeconds,
+                'failed_sites' => (int)($runState['failed_sites'] ?? 0),
+                'dns_issues' => (int)($runState['dns_issues'] ?? 0),
+                'http_issues' => (int)($runState['http_issues'] ?? 0),
+            ];
             $this->finalizeRunState($timestamp);
             $this->resetBatchState();
             $this->releaseMonitoringLock();
-            $this->rescheduleRecurringEvent($this->getMonitoringInterval());
             (new MetricsService(null, $this->config))->invalidateCaches();
-            return;
+            return $completedResult;
         }
 
         update_site_option(self::OPTION_BATCH_OFFSET, $nextOffset);
         update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
         $this->releaseMonitoringLock();
         $this->scheduleNextBatch($manual ? 5 : 30);
+
+        return [
+            'complete' => false,
+            'checked_sites' => (int)($runState['checked_sites'] ?? 0),
+            'duration_seconds' => 0,
+            'failed_sites' => (int)($runState['failed_sites'] ?? 0),
+            'dns_issues' => (int)($runState['dns_issues'] ?? 0),
+            'http_issues' => (int)($runState['http_issues'] ?? 0),
+        ];
     }
 
     protected function getBatchSize(): int {
@@ -510,6 +563,7 @@ class MonitoringService {
             'status_changes' => 0,
             'dns_issues' => 0,
             'http_issues' => 0,
+            'failed_sites' => 0,
             'healthy_sites' => 0,
             'provisioning_sites' => 0,
             'dns_missing_sites' => 0,
@@ -633,6 +687,12 @@ class MonitoringService {
     }
 
     protected function getNextScheduledHookTimestamp(string $hook, bool $recurring): int {
+        if (!$this->isCentralNetworkCronSite()) {
+            return (int)$this->inCentralNetworkCronContext(
+                fn(): int => $this->getNextScheduledHookTimestamp($hook, $recurring)
+            );
+        }
+
         $cron = _get_cron_array();
         $timestamp = 0;
         $events = [];
@@ -721,7 +781,46 @@ class MonitoringService {
     }
 
     protected function getMonitoringIntervalHours(): int {
-        return max(1, min(168, $this->getMonitoringOption('monitoring_monitoring_interval_hours', 6)));
+        $options = get_site_option($this->config->getOptionName(), []);
+        $frequency = is_array($options) ? (string)($options['monitoring_monitoring_frequency'] ?? '') : '';
+
+        if (!in_array($frequency, ['weekly', 'twiceweekly', 'daily', 'twicedaily', 'fourtimesdaily'], true)) {
+            $frequency = $this->getCycleFrequencyFromHours($this->getMonitoringOption('monitoring_monitoring_interval_hours', 6));
+        }
+
+        return match ($frequency) {
+            'weekly' => 168,
+            'twiceweekly' => 84,
+            'daily' => 24,
+            'twicedaily' => 12,
+            default => 6,
+        };
+    }
+
+    protected function getMonitoringScheduleLabel(): string {
+        return match ($this->getMonitoringIntervalHours()) {
+            168 => __('Once weekly', 'rrze-multisite-manager'),
+            84 => __('Twice weekly', 'rrze-multisite-manager'),
+            24 => __('Once daily', 'rrze-multisite-manager'),
+            12 => __('Twice daily', 'rrze-multisite-manager'),
+            default => __('Four times daily', 'rrze-multisite-manager'),
+        };
+    }
+
+    protected function getCycleFrequencyFromHours(int $hours): string {
+        if ($hours <= 6) {
+            return 'fourtimesdaily';
+        }
+
+        if ($hours <= 12) {
+            return 'twicedaily';
+        }
+
+        if ($hours <= 24) {
+            return 'daily';
+        }
+
+        return $hours <= 84 ? 'twiceweekly' : 'weekly';
     }
 
     protected function getRunLogEntryLimit(): int {
@@ -759,13 +858,33 @@ class MonitoringService {
     }
 
     protected function isCentralNetworkCronSite(): bool {
+        return get_current_blog_id() === $this->getCentralNetworkCronSiteId();
+    }
+
+    protected function getCentralNetworkCronSiteId(): int {
         $network = get_network();
         $networkId = $network instanceof \WP_Network ? (int)$network->id : get_current_network_id();
         $mainSiteId = function_exists('get_main_site_id')
             ? (int)get_main_site_id($networkId)
             : (int)($network->site_id ?? 1);
 
-        return get_current_blog_id() === max(1, $mainSiteId);
+        return max(1, $mainSiteId);
+    }
+
+    protected function inCentralNetworkCronContext(callable $callback): mixed {
+        $siteId = $this->getCentralNetworkCronSiteId();
+
+        if ($siteId === get_current_blog_id()) {
+            return $callback();
+        }
+
+        switch_to_blog($siteId);
+
+        try {
+            return $callback();
+        } finally {
+            restore_current_blog();
+        }
     }
 
     protected function removeSubsiteScheduledEventsOnce(): void {
@@ -1237,17 +1356,24 @@ class MonitoringService {
             );
         }
 
-        if ($dnsStatus !== 'ok' && $dnsStatus !== 'unknown') {
+        $hasDnsIssue = $dnsStatus !== 'ok' && $dnsStatus !== 'unknown';
+        $hasHttpIssue = !in_array($httpStatus, ['ok', 'unknown', 'pending'], true);
+
+        if ($hasDnsIssue) {
             $runState['dns_issues'] = (int)($runState['dns_issues'] ?? 0) + 1;
             $issueKind = 'dns_issue';
         }
 
-        if (!in_array($httpStatus, ['ok', 'unknown', 'pending'], true)) {
+        if ($hasHttpIssue) {
             $runState['http_issues'] = (int)($runState['http_issues'] ?? 0) + 1;
 
             if ($issueKind === '') {
                 $issueKind = 'http_issue';
             }
+        }
+
+        if ($hasDnsIssue || $hasHttpIssue) {
+            $runState['failed_sites'] = (int)($runState['failed_sites'] ?? 0) + 1;
         }
 
         if ($status === 'healthy') {

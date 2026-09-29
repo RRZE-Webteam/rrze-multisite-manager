@@ -84,7 +84,11 @@ defined('ABSPATH') || exit;
                                     <?php } ?>
                                     <?php if (isset($site_details['storage']['percent']) && is_int($site_details['storage']['percent'])) { ?>
                                         <br><?php echo esc_html(sprintf(__('%d%% used', 'rrze-multisite-manager'), (int)$site_details['storage']['percent'])); ?>
-                                        <br><?php echo esc_html(sprintf(__('%d%% free', 'rrze-multisite-manager'), $freePercent)); ?>
+                                        <br><?php echo esc_html(sprintf(
+                                            /* translators: %d: available storage percentage. */
+                                            __('%d%% free', 'rrze-multisite-manager'),
+                                            $freePercent
+                                        )); ?>
                                     <?php } ?>
                                     <?php if (!empty($site_storage_analysis_url)) { ?>
                                         <br><a class="button button-secondary" href="<?php echo esc_url((string)$site_storage_analysis_url); ?>"><?php echo esc_html__('Analyze storage', 'rrze-multisite-manager'); ?></a>
@@ -128,11 +132,21 @@ defined('ABSPATH') || exit;
                                     <?php if (!empty($status_sections)) { ?>
                                         <?php foreach ($status_sections as $status_section) { ?>
                                             <tr>
-                                                <td><?php echo esc_html(sprintf(__('%1$s: %2$s', 'rrze-multisite-manager'), (string)$status_section['title'], (string)$status_section['date_label'])); ?></td>
+                                                <td><?php echo esc_html(sprintf(
+                                                    /* translators: 1: status title, 2: status field label. */
+                                                    __('%1$s: %2$s', 'rrze-multisite-manager'),
+                                                    (string)$status_section['title'],
+                                                    (string)$status_section['date_label']
+                                                )); ?></td>
                                                 <td><?php echo esc_html((string)$status_section['date_value']); ?></td>
                                             </tr>
                                             <tr>
-                                                <td><?php echo esc_html(sprintf(__('%1$s: %2$s', 'rrze-multisite-manager'), (string)$status_section['title'], (string)$status_section['user_label'])); ?></td>
+                                                <td><?php echo esc_html(sprintf(
+                                                    /* translators: 1: status title, 2: status field label. */
+                                                    __('%1$s: %2$s', 'rrze-multisite-manager'),
+                                                    (string)$status_section['title'],
+                                                    (string)$status_section['user_label']
+                                                )); ?></td>
                                                 <td><?php echo esc_html((string)$status_section['user_value']); ?></td>
                                             </tr>
                                             <tr>
@@ -623,7 +637,11 @@ defined('ABSPATH') || exit;
                                     </form>
                                 <?php } ?>
                                 <?php if (!empty($site_options_group['is_truncated'])) { ?>
-                                    <p class="description"><?php echo esc_html(sprintf(__('For performance reasons, a maximum of %d options is shown here.', 'rrze-multisite-manager'), (int)($site_options_group['limit'] ?? $site_detail_section_limit ?? 250))); ?></p>
+                                    <p class="description"><?php echo esc_html(sprintf(
+                                        /* translators: %d: maximum number of options shown. */
+                                        __('For performance reasons, a maximum of %d options is shown here.', 'rrze-multisite-manager'),
+                                        (int)($site_options_group['limit'] ?? $site_detail_section_limit ?? 250)
+                                    )); ?></p>
                                 <?php } ?>
                                 <table class="widefat striped rrze-msm-table">
                                     <thead>
@@ -654,6 +672,14 @@ defined('ABSPATH') || exit;
                                                                 __('This option value is %s and is not loaded or displayed here.', 'rrze-multisite-manager'),
                                                                 size_format((int)($site_option['value_bytes'] ?? 0), 2)
                                                             )); ?></p>
+                                                            <?php if (!empty($can_manage_network_actions) && empty($site_option['is_core'])) { ?>
+                                                                <form method="post" action="<?php echo esc_url($site_option_download_action); ?>">
+                                                                    <?php wp_nonce_field('rrze_multisite_manager_download_site_option_' . (int)$site_id . '_' . (string)$site_option['name']); ?>
+                                                                    <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
+                                                                    <input type="hidden" name="option_name" value="<?php echo esc_attr((string)$site_option['name']); ?>">
+                                                                    <button type="submit" class="button button-secondary"><?php echo esc_html__('Download content', 'rrze-multisite-manager'); ?></button>
+                                                                </form>
+                                                            <?php } ?>
                                                         <?php } elseif (!empty($can_manage_network_actions) && empty($site_option['is_core']) && !empty($site_option['is_editable'])) { ?>
                                                             <form method="post" action="<?php echo esc_url($site_option_update_action); ?>" class="rrze-msm-option-edit-form" data-initial-value="<?php echo esc_attr((string)($site_option['editable_value'] ?? '')); ?>">
                                                                 <?php wp_nonce_field('rrze_multisite_manager_update_site_option_' . (int)$site_id . '_' . (string)$site_option['name']); ?>
@@ -722,7 +748,11 @@ defined('ABSPATH') || exit;
                         </ul>
                     <?php } elseif ($site_process_current_tab === 'transients') { ?>
                         <?php if (!empty($site_details['transients_truncated'])) { ?>
-                            <p class="description"><?php echo esc_html(sprintf(__('For performance reasons, a maximum of %d transients is shown here.', 'rrze-multisite-manager'), (int)($site_detail_section_limit ?? 250))); ?></p>
+                            <p class="description"><?php echo esc_html(sprintf(
+                                /* translators: %d: maximum number of transients shown. */
+                                __('For performance reasons, a maximum of %d transients is shown here.', 'rrze-multisite-manager'),
+                                (int)($site_detail_section_limit ?? 250)
+                            )); ?></p>
                         <?php } ?>
                         <?php if (!empty($site_details['transients']) && is_array($site_details['transients'])) { ?>
                             <table class="widefat striped rrze-msm-table">
@@ -746,7 +776,11 @@ defined('ABSPATH') || exit;
                         <?php } ?>
                     <?php } elseif ($site_process_current_tab === 'scheduler') { ?>
                         <?php if (!empty($site_details['cron_events_truncated'])) { ?>
-                            <p class="description"><?php echo esc_html(sprintf(__('For performance reasons, a maximum of %d scheduler entries are shown here.', 'rrze-multisite-manager'), (int)($site_detail_section_limit ?? 250))); ?></p>
+                            <p class="description"><?php echo esc_html(sprintf(
+                                /* translators: %d: maximum number of scheduler entries shown. */
+                                __('For performance reasons, a maximum of %d scheduler entries are shown here.', 'rrze-multisite-manager'),
+                                (int)($site_detail_section_limit ?? 250)
+                            )); ?></p>
                         <?php } ?>
                         <?php if (!empty($site_details['cron_events']) && is_array($site_details['cron_events'])) { ?>
                             <table class="widefat striped rrze-msm-table">

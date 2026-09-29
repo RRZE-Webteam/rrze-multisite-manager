@@ -1010,6 +1010,10 @@ a.rrze-msm-subtab.is-active:visited {
     background: rgba(0, 0, 0, 0.55);
 }
 
+.rrze-msm-schedule-initialization-dialog [hidden] {
+    display: none !important;
+}
+
 .rrze-msm-modal-backdrop {
     position: absolute;
     inset: 0;

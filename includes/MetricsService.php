@@ -13,6 +13,7 @@ class MetricsService {
     protected const CACHE_KEY = 'rrze_multisite_manager_dashboard_metrics_v7_';
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
+    protected const DASHBOARD_REFRESH_SCHEDULE = 'rrze_msm_dashboard_metrics_cycle';
     protected const DASHBOARD_SCHEDULING_ENABLED_OPTION = 'rrze_msm_dashboard_metrics_scheduling_enabled';
     protected const DASHBOARD_LOCK_KEY = 'rrze_msm_dashboard_metrics_refresh_lock';
     protected const DASHBOARD_LOCK_OPTION = 'rrze_msm_dashboard_metrics_refresh_lock_state';
@@ -25,7 +26,7 @@ class MetricsService {
     protected const SITE_STORAGE_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_storage_analysis_result';
     protected const SITE_STORAGE_ANALYSIS_RESULT_META_OPTION = 'rrze_msm_site_storage_analysis_result_meta';
     protected const SITE_MEDIA_METADATA_ANALYSIS_RESULT_OPTION = 'rrze_msm_site_media_metadata_analysis_result';
-    protected const CLASSIC_EDITOR_PLUGIN_FILE = 'classic-editor/classic-editor.php';
+    protected const RRZE_SETTINGS_OPTION = 'rrze_settings';
     protected const STORAGE_ANALYSIS_CLEANUP_HOOK = 'rrze_msm_cleanup_legacy_storage_analysis_data';
     protected const STORAGE_ANALYSIS_CLEANUP_VERSION_OPTION = 'rrze_msm_storage_analysis_cleanup_version';
     protected const STORAGE_ANALYSIS_CLEANUP_OFFSET_OPTION = 'rrze_msm_storage_analysis_cleanup_offset';
@@ -73,10 +74,20 @@ class MetricsService {
 
     public function onLoaded(): void {
         add_action(self::DASHBOARD_REFRESH_HOOK, [$this, 'handleScheduledDashboardRefresh']);
+        add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action(self::STORAGE_ANALYSIS_CLEANUP_HOOK, [$this, 'runLegacyStorageAnalysisCleanup']);
         add_action(self::FULL_DATA_CLEANUP_HOOK, [$this, 'runFullDataCleanup']);
         add_action('init', [$this, 'ensureDashboardRefreshContinuation'], 24);
         $this->registerInvalidationHooks();
+    }
+
+    public function registerSchedules(array $schedules): array {
+        $schedules[self::DASHBOARD_REFRESH_SCHEDULE] = [
+            'interval' => $this->getMetricsRefreshIntervalSeconds(),
+            'display' => $this->getMetricsRefreshScheduleLabel(),
+        ];
+
+        return $schedules;
     }
 
     /**
@@ -96,6 +107,8 @@ class MetricsService {
             return;
         }
 
+        $this->ensureDashboardRefreshSchedule();
+
         if (
             $this->isDashboardRefreshInProgress()
             && !$this->isDashboardRefreshLocked()
@@ -109,19 +122,6 @@ class MetricsService {
             return;
         }
 
-        $cached = $this->getStoredDashboardCache();
-        $generatedAt = (int)($cached['generated_at'] ?? 0);
-        $nextRunTimestamp = $this->getNextDashboardRefreshEventTimestamp(false);
-
-        if (
-            $this->hasCompleteDashboardCache($cached)
-            && (
-                $nextRunTimestamp <= 0
-                || $nextRunTimestamp < ($generatedAt + $this->getMetricsRefreshIntervalSeconds())
-            )
-        ) {
-            $this->scheduleDashboardRefresh(5);
-        }
     }
 
     /**
@@ -845,7 +845,7 @@ class MetricsService {
     }
 
     public function handleScheduledDashboardRefresh(...$args): void {
-        $status = [];
+        $result = [];
 
         if (!$this->isCentralNetworkCronSite() || self::isFullDataCleanupInProgress() || !$this->isDashboardSchedulingEnabled()) {
             return;
@@ -854,30 +854,31 @@ class MetricsService {
         // A single batch event is only a continuation of an existing run. It
         // can remain in the cron table after an interrupted or completed run;
         // in that case it must never start a new full metrics run by itself.
-        if ($this->isDashboardBatchContinuation($args) && !$this->isDashboardRefreshInProgress()) {
+        $isBatchContinuation = $this->isDashboardBatchContinuation($args);
+
+        if ($isBatchContinuation && !$this->isDashboardRefreshInProgress()) {
             return;
         }
 
-        LoggingService::info(
-            $this->config,
-            'RRZE-MSM: Metrics-Scheduler gestartet',
-            []
-        );
+        if (!$isBatchContinuation) {
+            LoggingService::info($this->config, 'RRZE-MSM: Metrics-Scheduler gestartet', []);
+        }
 
         try {
-            $this->runDashboardRefreshBatch();
-            $status = $this->getDashboardDataStatus();
-            LoggingService::info(
-                $this->config,
-                'RRZE-MSM: Metrics-Scheduler beendet',
-                [
-                    'success' => true,
-                    'checked_sites' => (int)($status['checked_sites'] ?? 0),
-                    'remaining_sites' => (int)($status['remaining_sites'] ?? 0),
-                    'progress_percent' => (int)($status['progress_percent'] ?? 0),
-                    'is_running' => !empty($status['is_running']),
-                ]
-            );
+            $result = $this->runDashboardRefreshBatch();
+
+            if (!empty($result['complete'])) {
+                LoggingService::info(
+                    $this->config,
+                    'RRZE-MSM: Metrics-Scheduler vollständig beendet',
+                    [
+                        'success' => true,
+                        'checked_sites' => (int)($result['checked_sites'] ?? 0),
+                        'total_sites' => (int)($result['total_sites'] ?? 0),
+                        'websites_checked' => (int)($result['checked_sites'] ?? 0),
+                    ]
+                );
+            }
         } catch (\Throwable $exception) {
             do_action(
                 'rrze.log.error',
@@ -985,6 +986,45 @@ class MetricsService {
         }
 
         $this->scheduleDashboardRefresh(5, true);
+    }
+
+    /** @return 'create'|'start'|'running' */
+    public function getDashboardScheduleActionState(): string {
+        if ($this->isDashboardRefreshInProgress()) {
+            return 'running';
+        }
+
+        return $this->getNextDashboardRefreshEventTimestamp(false) > 0 ? 'start' : 'create';
+    }
+
+    /** @return 'created'|'rescheduled'|'running'|'unavailable' */
+    public function scheduleDashboardRefreshFromNow(): string {
+        if (self::isFullDataCleanupInProgress()) {
+            return 'unavailable';
+        }
+
+        return (string)$this->inCentralNetworkCronContext(function (): string {
+            if ($this->isDashboardRefreshInProgress()) {
+                return 'running';
+            }
+
+            $hasScheduledEvent = $this->getNextDashboardRefreshEventTimestamp(false) > 0;
+            $this->enableDashboardScheduling();
+            $this->clearScheduledDashboardRefreshEvents();
+            $this->resetDashboardRefreshBatchState();
+
+            $scheduled = wp_schedule_event(
+                time(),
+                self::DASHBOARD_REFRESH_SCHEDULE,
+                self::DASHBOARD_REFRESH_HOOK
+            );
+
+            if (!$scheduled) {
+                return 'unavailable';
+            }
+
+            return $hasScheduledEvent ? 'rescheduled' : 'created';
+        });
     }
 
     public function resetDashboardRefreshState(): void {
@@ -1202,11 +1242,7 @@ class MetricsService {
                 'title' => __('Dashboard metrics', 'rrze-multisite-manager'),
                 'description' => __('Calculates the aggregated network metrics for the dashboard as well as website, plugin, and theme overviews.', 'rrze-multisite-manager'),
                 'interval_hours' => $this->getMetricsRefreshIntervalHours(),
-                'interval_label' => sprintf(
-                    /* translators: %d: interval in hours for the monitoring schedule. */
-                    __('Every %d hours', 'rrze-multisite-manager'),
-                    $this->getMetricsRefreshIntervalHours()
-                ),
+                'interval_label' => $this->getMetricsRefreshScheduleLabel(),
                 'last_run' => $status['last_run_timestamp'] > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_run_timestamp']) : '',
                 'started_at' => !empty($status['is_running'])
                     ? ((int)($status['started_at_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$status['started_at_timestamp']) : '')
@@ -1217,6 +1253,7 @@ class MetricsService {
                 'last_site_count' => (int)$status['last_site_count'],
                 'next_run_timestamp' => (int)($status['next_run_timestamp'] ?? 0),
                 'is_running' => !empty($status['is_running']),
+                'schedule_action_state' => $this->getDashboardScheduleActionState(),
                 'batch_offset' => (int)($status['batch_offset'] ?? 0),
                 'batch_total' => (int)($status['batch_total'] ?? 0),
                 'checked_sites' => (int)($status['checked_sites'] ?? 0),
@@ -1234,7 +1271,8 @@ class MetricsService {
         ];
     }
 
-    protected function runDashboardRefreshBatch(bool $manual = false): void {
+    /** @return array{complete: bool, checked_sites: int, total_sites: int} */
+    protected function runDashboardRefreshBatch(bool $manual = false): array {
         $offset = (int)get_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, 0);
         $totalSites = (int)get_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, 0);
         $state = $this->getDashboardRefreshBatchState();
@@ -1253,7 +1291,7 @@ class MetricsService {
         $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
 
         if (!$this->acquireDashboardRefreshLock()) {
-            return;
+            return ['complete' => false, 'checked_sites' => 0, 'total_sites' => 0];
         }
 
         if ($offset <= 0 || $totalSites <= 0 || empty($state)) {
@@ -1320,7 +1358,7 @@ class MetricsService {
             $this->accumulateDashboardBatchStorageUsage($state['network_storage_usage'], $siteId, $siteName, $storage);
             $this->accumulateDashboardBatchThemeUsage($state['theme_aggregate'], $siteId, $siteName, $siteUrl, $stylesheet);
             $this->accumulateDashboardBatchPluginUsage($state['plugin_usage'], $siteId, $siteName, $siteUrl, $sitePluginFiles, $networkActivePlugins);
-            $this->accumulateDashboardBatchEditorUsage($state['editor_usage'], $sitePluginFiles, $networkActivePlugins);
+            $this->accumulateDashboardBatchEditorUsage($state['editor_usage'], $siteId);
         }
 
         $this->saveDashboardRefreshBatchState($state);
@@ -1328,17 +1366,28 @@ class MetricsService {
 
         if (empty($siteIds) || $nextOffset >= $totalSites) {
             $this->finalizeDashboardRefreshBatchState($state);
+            $checkedSites = count((array)($state['site_overview'] ?? []));
             $this->resetDashboardRefreshBatchState();
             $this->releaseDashboardRefreshLock();
             // Keep the next complete refresh scheduled independently of batch continuations.
             $this->scheduleDashboardRefresh();
-            return;
+            return [
+                'complete' => true,
+                'checked_sites' => $checkedSites,
+                'total_sites' => $totalSites,
+            ];
         }
 
         update_site_option(self::DASHBOARD_BATCH_OFFSET_OPTION, $nextOffset);
         update_site_option(self::DASHBOARD_BATCH_TOTAL_OPTION, $totalSites);
         $this->releaseDashboardRefreshLock();
         $this->scheduleDashboardRefresh($manual ? 5 : 20, true);
+
+        return [
+            'complete' => false,
+            'checked_sites' => count((array)($state['site_overview'] ?? [])),
+            'total_sites' => $totalSites,
+        ];
     }
 
     protected function getMonthlyGrowth(): array {
@@ -3168,27 +3217,17 @@ class MetricsService {
             'fields' => 'ids',
             'number' => 0,
         ]);
-        $networkActivePlugins = get_site_option('active_sitewide_plugins', []);
-        $classicEverywhere = $this->hasClassicEditorMustUsePlugin()
-            || $this->hasClassicEditorPlugin(array_keys($networkActivePlugins));
         $classicSites = 0;
         $blockSites = 0;
         $siteId = 0;
-        $activePlugins = [];
         $totalSites = count($siteIds);
+        $blockEditorEnabledNetworkWide = $this->isBlockEditorEnabledNetworkWide();
 
         foreach ($siteIds as $siteId) {
-            if ($classicEverywhere) {
-                $classicSites++;
-                continue;
-            }
-
-            $activePlugins = get_blog_option((int)$siteId, 'active_plugins', []);
-
-            if (is_array($activePlugins) && $this->hasClassicEditorPlugin($activePlugins)) {
-                $classicSites++;
-            } else {
+            if ($this->isBlockEditorEnabledForSite((int)$siteId, $blockEditorEnabledNetworkWide)) {
                 $blockSites++;
+            } else {
+                $classicSites++;
             }
         }
 
@@ -3212,76 +3251,23 @@ class MetricsService {
         ];
     }
 
-    /**
-     * @param array<int, mixed> $pluginFiles
-     */
-    protected function hasClassicEditorPlugin(array $pluginFiles): bool {
-        $classicEditorPluginFiles = $this->getClassicEditorPluginFiles();
+    protected function isBlockEditorEnabledNetworkWide(): bool {
+        $networkSettings = (array)get_site_option(self::RRZE_SETTINGS_OPTION, []);
+        $writingSettings = is_array($networkSettings['writing'] ?? null) ? $networkSettings['writing'] : [];
 
-        foreach ($pluginFiles as $pluginFile) {
-            if (in_array(ltrim((string)$pluginFile, '/'), $classicEditorPluginFiles, true)) {
-                return true;
-            }
-        }
-
-        return false;
+        return !empty($writingSettings['enable_block_editor']);
     }
 
-    /**
-     * @return array<int, string>
-     */
-    protected function getClassicEditorPluginFiles(): array {
-        static $pluginFiles = null;
-        $plugins = [];
-        $pluginFile = '';
-        $pluginData = [];
-
-        if (is_array($pluginFiles)) {
-            return $pluginFiles;
+    protected function isBlockEditorEnabledForSite(int $siteId, bool $blockEditorEnabledNetworkWide = false): bool {
+        if ($blockEditorEnabledNetworkWide) {
+            return true;
         }
 
-        $pluginFiles = [self::CLASSIC_EDITOR_PLUGIN_FILE];
+        $siteSettings = (array)get_blog_option($siteId, self::RRZE_SETTINGS_OPTION, []);
+        $writingSettings = is_array($siteSettings['writing'] ?? null) ? $siteSettings['writing'] : [];
 
-        if (!function_exists('get_plugins')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-
-        $plugins = get_plugins();
-
-        foreach ($plugins as $pluginFile => $pluginData) {
-            if (is_array($pluginData) && strtolower(trim((string)($pluginData['Name'] ?? ''))) === 'classic editor') {
-                $pluginFiles[] = ltrim((string)$pluginFile, '/');
-            }
-        }
-
-        return array_values(array_unique($pluginFiles));
-    }
-
-    protected function hasClassicEditorMustUsePlugin(): bool {
-        static $hasClassicEditor = null;
-        $muPlugins = [];
-        $pluginData = [];
-
-        if (is_bool($hasClassicEditor)) {
-            return $hasClassicEditor;
-        }
-
-        if (!function_exists('get_mu_plugins')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-
-        $muPlugins = function_exists('get_mu_plugins') ? get_mu_plugins() : [];
-
-        foreach ($muPlugins as $pluginData) {
-            if (is_array($pluginData) && strtolower(trim((string)($pluginData['Name'] ?? ''))) === 'classic editor') {
-                $hasClassicEditor = true;
-                return true;
-            }
-        }
-
-        $hasClassicEditor = false;
-
-        return false;
+        return !empty($writingSettings['try_enable_block_editor'])
+            && empty($writingSettings['enable_classic_editor']);
     }
 
     protected function countSites(array $args = []): int {
@@ -8698,6 +8684,66 @@ class MetricsService {
         return (bool)$deleted;
     }
 
+    /**
+     * @return array{content: string, content_type: string, extension: string}|null
+     */
+    public function getSiteOptionDownload(int $siteId, string $optionName): ?array {
+        $rawValue = null;
+        $decodedValue = null;
+        $jsonValue = '';
+        global $wpdb;
+
+        if ($siteId <= 0 || trim($optionName) === '') {
+            return null;
+        }
+
+        switch_to_blog($siteId);
+
+        try {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- An explicit, user-initiated download retrieves one option value without loading it during page rendering.
+            $rawValue = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT option_value
+                    FROM {$wpdb->options}
+                    WHERE option_name = %s
+                    LIMIT 1",
+                    $optionName
+                )
+            );
+        } finally {
+            restore_current_blog();
+        }
+
+        if (!is_string($rawValue)) {
+            return null;
+        }
+
+        if (is_serialized($rawValue) && preg_match('/^(O|C):\\d+:/', trim($rawValue)) !== 1) {
+            $decodedValue = @unserialize($rawValue, ['allowed_classes' => false]);
+
+            if (is_array($decodedValue)) {
+                $jsonValue = wp_json_encode(
+                    $decodedValue,
+                    JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                );
+
+                if (is_string($jsonValue)) {
+                    return [
+                        'content' => $jsonValue . "\n",
+                        'content_type' => 'application/json; charset=utf-8',
+                        'extension' => 'json',
+                    ];
+                }
+            }
+        }
+
+        return [
+            'content' => $rawValue,
+            'content_type' => 'text/plain; charset=utf-8',
+            'extension' => 'txt',
+        ];
+    }
+
     public function updateSiteOption(int $siteId, string $optionName, string $rawValue): bool {
         $updated = false;
         $decodedValue = null;
@@ -9948,49 +9994,84 @@ class MetricsService {
             return;
         }
 
-        if (!$isBatchContinuation && $this->isDashboardRefreshInProgress()) {
+        if (!$isBatchContinuation) {
+            $this->ensureDashboardRefreshSchedule();
             return;
         }
 
-        $scheduledEvent = $isBatchContinuation
-            ? $this->getNextDashboardBatchRefreshEvent()
-            : $this->getNextDashboardRefreshEvent(false);
+        $scheduledEvent = $this->getNextDashboardBatchRefreshEvent();
         $scheduledAt = (int)($scheduledEvent['timestamp'] ?? 0);
-        $cached = $this->getStoredDashboardCache();
-        $generatedAt = (int)($cached['generated_at'] ?? 0);
-        $baseTimestamp = $generatedAt > 0 ? $generatedAt : time();
-        $minimumRunTimestamp = $baseTimestamp + $this->getMetricsRefreshIntervalSeconds();
         $requestedTimestamp = time() + max(5, $delay);
-        $scheduleTimestamp = $isBatchContinuation ? $requestedTimestamp : max($requestedTimestamp, $minimumRunTimestamp);
+        $scheduleTimestamp = $requestedTimestamp;
 
         if ($scheduledAt && (int)$scheduledAt > 0) {
-            if (
-                $isBatchContinuation
-                && (int)$scheduledAt <= $scheduleTimestamp
-            ) {
-                return;
-            }
-
-            if (
-                !$isBatchContinuation
-                && (int)$scheduledAt >= $minimumRunTimestamp
-                && (int)$scheduledAt <= $scheduleTimestamp
-            ) {
+            if ((int)$scheduledAt <= $scheduleTimestamp) {
                 return;
             }
 
             wp_unschedule_event(
                 $scheduledAt,
                 self::DASHBOARD_REFRESH_HOOK,
-                (array)($scheduledEvent['args'] ?? [])
+                self::DASHBOARD_BATCH_EVENT_ARGS
             );
         }
 
         wp_schedule_single_event(
             $scheduleTimestamp,
             self::DASHBOARD_REFRESH_HOOK,
-            $isBatchContinuation ? self::DASHBOARD_BATCH_EVENT_ARGS : []
+            self::DASHBOARD_BATCH_EVENT_ARGS
         );
+    }
+
+    public function rescheduleDashboardRefreshCycle(): void {
+        if (!$this->isCentralNetworkCronSite()) {
+            return;
+        }
+
+        $this->clearRegularDashboardRefreshEvents();
+        $this->ensureDashboardRefreshSchedule();
+    }
+
+    protected function ensureDashboardRefreshSchedule(): void {
+        if (!$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        if ($this->getNextRecurringDashboardRefreshTimestamp() > 0) {
+            return;
+        }
+
+        // Remove a legacy one-time full run before installing the fixed cycle.
+        $this->clearRegularDashboardRefreshEvents();
+        wp_schedule_event(
+            time() + MINUTE_IN_SECONDS,
+            self::DASHBOARD_REFRESH_SCHEDULE,
+            self::DASHBOARD_REFRESH_HOOK
+        );
+    }
+
+    protected function clearRegularDashboardRefreshEvents(): void {
+        foreach ((array)_get_cron_array() as $timestamp => $events) {
+            foreach ((array)($events[self::DASHBOARD_REFRESH_HOOK] ?? []) as $event) {
+                if ((array)($event['args'] ?? []) !== []) {
+                    continue;
+                }
+
+                wp_unschedule_event((int)$timestamp, self::DASHBOARD_REFRESH_HOOK, []);
+            }
+        }
+    }
+
+    protected function getNextRecurringDashboardRefreshTimestamp(): int {
+        foreach ((array)_get_cron_array() as $timestamp => $events) {
+            foreach ((array)($events[self::DASHBOARD_REFRESH_HOOK] ?? []) as $event) {
+                if (!empty($event['schedule']) && (array)($event['args'] ?? []) === []) {
+                    return (int)$timestamp;
+                }
+            }
+        }
+
+        return 0;
     }
 
     /**
@@ -10025,13 +10106,33 @@ class MetricsService {
     }
 
     protected function isCentralNetworkCronSite(): bool {
+        return get_current_blog_id() === $this->getCentralNetworkCronSiteId();
+    }
+
+    protected function getCentralNetworkCronSiteId(): int {
         $network = get_network();
         $networkId = $network instanceof \WP_Network ? (int)$network->id : get_current_network_id();
         $mainSiteId = function_exists('get_main_site_id')
             ? (int)get_main_site_id($networkId)
             : (int)($network->site_id ?? 1);
 
-        return get_current_blog_id() === max(1, $mainSiteId);
+        return max(1, $mainSiteId);
+    }
+
+    protected function inCentralNetworkCronContext(callable $callback): mixed {
+        $siteId = $this->getCentralNetworkCronSiteId();
+
+        if ($siteId === get_current_blog_id()) {
+            return $callback();
+        }
+
+        switch_to_blog($siteId);
+
+        try {
+            return $callback();
+        } finally {
+            restore_current_blog();
+        }
     }
 
     protected function removeSubsiteDashboardRefreshEventsOnce(): void {
@@ -10095,6 +10196,12 @@ class MetricsService {
      * Returns the earliest pending dashboard refresh event, including batch continuations.
      */
     protected function getNextDashboardRefreshEvent(bool $includeBatchContinuations = true): array {
+        if (!$this->isCentralNetworkCronSite()) {
+            return (array)$this->inCentralNetworkCronContext(
+                fn(): array => $this->getNextDashboardRefreshEvent($includeBatchContinuations)
+            );
+        }
+
         $nextEvent = [
             'timestamp' => 0,
             'args' => [],
@@ -10160,6 +10267,12 @@ class MetricsService {
     }
 
     protected function getNextDashboardBatchRefreshEvent(): array {
+        if (!$this->isCentralNetworkCronSite()) {
+            return (array)$this->inCentralNetworkCronContext(
+                fn(): array => $this->getNextDashboardBatchRefreshEvent()
+            );
+        }
+
         $cron = _get_cron_array();
 
         foreach ((array)$cron as $timestamp => $events) {
@@ -10191,19 +10304,52 @@ class MetricsService {
 
     protected function getMetricsRefreshIntervalHours(): int {
         $options = get_site_option($this->config->getOptionName(), []);
-        $interval = 2;
+        $frequency = is_array($options) ? (string)($options['monitoring_metrics_frequency'] ?? '') : '';
 
-        if (is_array($options) && isset($options['monitoring_metrics_interval_hours'])) {
-            $interval = (int)$options['monitoring_metrics_interval_hours'];
-        } elseif (is_array($options) && isset($options['monitoring_metrics_interval_minutes'])) {
-            $interval = (int)ceil((int)$options['monitoring_metrics_interval_minutes'] / 60);
+        if (!in_array($frequency, ['weekly', 'twiceweekly', 'daily', 'twicedaily', 'fourtimesdaily'], true)) {
+            $legacyHours = is_array($options) && isset($options['monitoring_metrics_interval_hours'])
+                ? (int)$options['monitoring_metrics_interval_hours']
+                : (int)ceil((int)(is_array($options) ? ($options['monitoring_metrics_interval_minutes'] ?? 120) : 120) / 60);
+            $frequency = $this->getCycleFrequencyFromHours($legacyHours);
         }
 
-        return max(1, min(168, $interval));
+        return match ($frequency) {
+            'weekly' => 168,
+            'twiceweekly' => 84,
+            'daily' => 24,
+            'twicedaily' => 12,
+            default => 6,
+        };
     }
 
     protected function getMetricsRefreshIntervalSeconds(): int {
         return $this->getMetricsRefreshIntervalHours() * HOUR_IN_SECONDS;
+    }
+
+    protected function getMetricsRefreshScheduleLabel(): string {
+        return match ($this->getMetricsRefreshIntervalHours()) {
+            168 => __('Once weekly', 'rrze-multisite-manager'),
+            84 => __('Twice weekly', 'rrze-multisite-manager'),
+            24 => __('Once daily', 'rrze-multisite-manager'),
+            12 => __('Twice daily', 'rrze-multisite-manager'),
+            default => __('Four times daily', 'rrze-multisite-manager'),
+        };
+    }
+
+    protected function getCycleFrequencyFromHours(int $hours): string {
+        if ($hours <= 6) {
+            return 'fourtimesdaily';
+        }
+
+        if ($hours <= 12) {
+            return 'twicedaily';
+        }
+
+        if ($hours <= 24) {
+            return 'daily';
+        }
+
+        return $hours <= 84 ? 'twiceweekly' : 'weekly';
     }
 
     protected function acquireDashboardRefreshLock(): bool {
@@ -10394,8 +10540,7 @@ class MetricsService {
                 'total_sites' => $siteCount,
                 'classic_sites' => 0,
                 'block_sites' => 0,
-                'classic_everywhere' => $this->hasClassicEditorMustUsePlugin()
-                    || $this->hasClassicEditorPlugin(array_keys((array)get_site_option('active_sitewide_plugins', []))),
+                'block_editor_enabled_network_wide' => $this->isBlockEditorEnabledNetworkWide(),
             ],
         ];
     }
@@ -10691,17 +10836,13 @@ class MetricsService {
         ];
     }
 
-    protected function accumulateDashboardBatchEditorUsage(array &$editorState, array $sitePluginFiles, array $networkActivePlugins = []): void {
-        $classicEverywhere = !empty($editorState['classic_everywhere'])
-            || $this->hasClassicEditorMustUsePlugin()
-            || $this->hasClassicEditorPlugin(array_keys($networkActivePlugins));
-
-        if ($classicEverywhere || $this->hasClassicEditorPlugin($sitePluginFiles)) {
-            $editorState['classic_sites'] = (int)($editorState['classic_sites'] ?? 0) + 1;
+    protected function accumulateDashboardBatchEditorUsage(array &$editorState, int $siteId): void {
+        if ($this->isBlockEditorEnabledForSite($siteId, !empty($editorState['block_editor_enabled_network_wide']))) {
+            $editorState['block_sites'] = (int)($editorState['block_sites'] ?? 0) + 1;
             return;
         }
 
-        $editorState['block_sites'] = (int)($editorState['block_sites'] ?? 0) + 1;
+        $editorState['classic_sites'] = (int)($editorState['classic_sites'] ?? 0) + 1;
     }
 
     protected function finalizeDashboardBatchEditorUsage(array $editorState): array {

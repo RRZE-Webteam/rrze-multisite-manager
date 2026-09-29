@@ -115,6 +115,7 @@ abstract class Widgets {
         }
 
         if ($showSites && $siteCount > 0) {
+            /* translators: %d: number of websites using the theme. */
             $html .= '<p><strong>' . esc_html(sprintf(_n('%d website uses this theme.', '%d websites use this theme.', $siteCount, 'rrze-multisite-manager'), $siteCount)) . '</strong></p>';
             $html .= $this->renderThemeSitesHtml($theme);
         }
@@ -1137,6 +1138,7 @@ abstract class Widgets {
         }
 
         if ($percent !== null) {
+            /* translators: %d: storage usage percentage. */
             $html .= '<br><span>' . esc_html(sprintf(__('%d%% used', 'rrze-multisite-manager'), $percent)) . '</span>';
         }
 

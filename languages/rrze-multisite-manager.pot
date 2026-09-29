@@ -2,25 +2,25 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.2.23-2\n"
+"Project-Id-Version: RRZE Multisite Manager 1.2.24\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-28T15:24:26+00:00\n"
-"PO-Revision-Date: 2026-09-28 15:24+0000\n"
+"POT-Creation-Date: 2026-09-29T14:10:19+00:00\n"
+"PO-Revision-Date: 2026-09-29 14:10+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
 #. Plugin Name of the plugin
 #: rrze-multisite-manager.php
 #: includes/Config.php:14
-#: includes/Config.php:29
-#: includes/Dashboard.php:107
-#: includes/Dashboard.php:289
-#: includes/Settings.php:223
+#: includes/Config.php:30
+#: includes/Dashboard.php:109
+#: includes/Dashboard.php:291
+#: includes/Settings.php:242
 #: templates/dashboard-page.php:9
 msgid "RRZE Multisite Manager"
 msgstr ""
@@ -40,514 +40,552 @@ msgstr ""
 msgid "https://www.wp.rrze.fau.de"
 msgstr ""
 
-#: includes/Config.php:30
-#: includes/Dashboard.php:108
-#: includes/Dashboard.php:290
-#: includes/Dashboard.php:311
+#: includes/Config.php:31
+#: includes/Dashboard.php:110
+#: includes/Dashboard.php:292
+#: includes/Dashboard.php:313
 msgid "Multisite Manager"
 msgstr ""
 
-#: includes/Config.php:64
-#: includes/Dashboard.php:164
-#: includes/Dashboard.php:165
-#: includes/Settings.php:1780
-#: includes/Widgets/Widgets.php:965
-#: includes/Widgets/Widgets.php:1051
+#: includes/Config.php:65
+#: includes/Dashboard.php:166
+#: includes/Dashboard.php:167
+#: includes/Settings.php:2038
+#: includes/Widgets/Widgets.php:966
+#: includes/Widgets/Widgets.php:1052
 msgid "Dashboard"
 msgstr ""
 
-#: includes/Config.php:65
+#: includes/Config.php:66
 msgid "Settings for dashboard widgets and activity metrics."
 msgstr ""
 
-#: includes/Config.php:69
-#: includes/Dashboard.php:266
-#: includes/Dashboard.php:267
-#: includes/Settings.php:1017
-#: includes/Settings.php:1044
-#: includes/Settings.php:1083
+#: includes/Config.php:70
+#: includes/Dashboard.php:268
+#: includes/Dashboard.php:269
+#: includes/Settings.php:1147
+#: includes/Settings.php:1188
+#: includes/Settings.php:1248
+#: includes/Settings.php:1287
 msgid "Monitoring"
 msgstr ""
 
-#: includes/Config.php:70
+#: includes/Config.php:71
 msgid "Settings for technical reachability and availability checks."
 msgstr ""
 
-#: includes/Config.php:74
+#: includes/Config.php:75
 msgid "Debugging"
 msgstr ""
 
-#: includes/Config.php:75
+#: includes/Config.php:76
 msgid "Optional logging for background processes."
 msgstr ""
 
-#: includes/Config.php:82
+#: includes/Config.php:83
 msgid "Default number of sites in table widgets"
 msgstr ""
 
-#: includes/Config.php:83
+#: includes/Config.php:84
 msgid "Default value N for site tables in the dashboard. This value also appears in the selector above the table."
 msgstr ""
 
-#: includes/Config.php:90
+#: includes/Config.php:91
 msgid "Months until inactivity highlight"
 msgstr ""
 
-#: includes/Config.php:91
+#: includes/Config.php:92
 msgid "After how many months without new posts, pages, or media a site is highlighted in the long inactivity widget."
 msgstr ""
 
-#: includes/Config.php:100
-msgid "Metrics interval in hours"
-msgstr ""
-
 #: includes/Config.php:101
-msgid "Minimum interval between automatically scheduled metrics runs. Manually started runs are not affected."
+msgid "Metrics cycle"
 msgstr ""
 
-#: includes/Config.php:109
-msgid "Batch size for network processes"
+#: includes/Config.php:102
+msgid "How often the centrally scheduled metrics collection starts. Internal batch continuations are not affected."
 msgstr ""
 
-#: includes/Config.php:110
-msgid "Number of websites processed in each batch for dashboard metrics and website availability checks. Larger values complete a network pass faster but increase load per Cron request."
-msgstr ""
-
-#: includes/Config.php:118
-msgid "Maximum storage size for browser analysis in MB"
-msgstr ""
-
-#: includes/Config.php:119
-msgid "Up to this WordPress-reported storage usage, the storage analysis can run in browser batches. Larger websites are processed exclusively by scheduled background tasks."
-msgstr ""
-
-#: includes/Config.php:127
-msgid "Storage analysis cycle per website"
-msgstr ""
-
-#: includes/Config.php:128
-msgid "How often the scheduled storage analysis is run for each website."
-msgstr ""
-
-#: includes/Config.php:132
-#: includes/Config.php:146
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:50
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1779
-#: includes/StorageAnalysisSchedulerService.php:44
-#: includes/StorageAnalysisSchedulerService.php:891
+#: includes/Config.php:106
+#: includes/Config.php:138
+#: includes/Config.php:170
+#: includes/Config.php:211
+#: includes/MetricsService.php:10331
+#: includes/MonitoringService.php:802
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:52
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1927
+#: includes/StorageAnalysisSchedulerService.php:54
+#: includes/StorageAnalysisSchedulerService.php:1622
 msgid "Once weekly"
 msgstr ""
 
-#: includes/Config.php:133
-#: includes/Config.php:147
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:54
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1780
-#: includes/StorageAnalysisSchedulerService.php:48
-#: includes/StorageAnalysisSchedulerService.php:892
+#: includes/Config.php:107
+#: includes/Config.php:139
+#: includes/Config.php:171
+#: includes/Config.php:212
+#: includes/MetricsService.php:10332
+#: includes/MonitoringService.php:803
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:56
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1928
+#: includes/StorageAnalysisSchedulerService.php:58
+#: includes/StorageAnalysisSchedulerService.php:1623
 msgid "Twice weekly"
 msgstr ""
 
-#: includes/Config.php:134
-#: includes/Config.php:148
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:58
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1781
-#: includes/StorageAnalysisSchedulerService.php:52
-#: includes/StorageAnalysisSchedulerService.php:893
+#: includes/Config.php:108
+#: includes/Config.php:140
+#: includes/Config.php:172
+#: includes/Config.php:213
+#: includes/MetricsService.php:10333
+#: includes/MonitoringService.php:804
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:60
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1929
+#: includes/StorageAnalysisSchedulerService.php:62
+#: includes/StorageAnalysisSchedulerService.php:1624
 msgid "Once daily"
 msgstr ""
 
-#: includes/Config.php:135
-#: includes/Config.php:149
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:62
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1782
-#: includes/StorageAnalysisSchedulerService.php:56
-#: includes/StorageAnalysisSchedulerService.php:894
+#: includes/Config.php:109
+#: includes/Config.php:141
+#: includes/Config.php:173
+#: includes/Config.php:214
+#: includes/MetricsService.php:10334
+#: includes/MonitoringService.php:805
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:64
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1930
+#: includes/StorageAnalysisSchedulerService.php:66
+#: includes/StorageAnalysisSchedulerService.php:1625
 msgid "Twice daily"
 msgstr ""
 
-#: includes/Config.php:136
-#: includes/Config.php:150
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:66
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1783
-#: includes/StorageAnalysisSchedulerService.php:60
-#: includes/StorageAnalysisSchedulerService.php:895
+#: includes/Config.php:110
+#: includes/Config.php:142
+#: includes/Config.php:174
+#: includes/Config.php:215
+#: includes/MetricsService.php:10335
+#: includes/MonitoringService.php:806
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:68
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1931
+#: includes/StorageAnalysisSchedulerService.php:70
+#: includes/StorageAnalysisSchedulerService.php:1626
 msgid "Four times daily"
 msgstr ""
 
-#: includes/Config.php:141
-msgid "Shortcode and block analysis cycle per website"
+#: includes/Config.php:115
+msgid "Batch size for network processes"
 msgstr ""
 
-#: includes/Config.php:142
-msgid "How often the scheduled shortcode and block analysis is run for each website."
+#: includes/Config.php:116
+msgid "Number of websites processed in each batch for dashboard metrics and website availability checks. Larger values complete a network pass faster but increase load per Cron request."
 msgstr ""
 
-#: includes/Config.php:155
-msgid "Maximum storage analysis runtime in minutes"
+#: includes/Config.php:124
+msgid "Maximum storage size for browser analysis in MB"
+msgstr ""
+
+#: includes/Config.php:125
+msgid "Up to this WordPress-reported storage usage, the storage analysis can run in browser batches. Larger websites are processed exclusively by scheduled background tasks."
+msgstr ""
+
+#: includes/Config.php:133
+msgid "Storage analysis cycle per website"
+msgstr ""
+
+#: includes/Config.php:134
+msgid "How often the scheduled storage analysis is run for each website."
+msgstr ""
+
+#: includes/Config.php:147
+msgid "Media threshold for shared storage analysis"
+msgstr ""
+
+#: includes/Config.php:148
+msgid "Websites with fewer media attachments than this value are initially assigned to the shared batch. Websites at or above it receive an individual task."
 msgstr ""
 
 #: includes/Config.php:156
-msgid "A storage analysis runs in one scheduled process and is aborted when this runtime limit is reached."
+msgid "Runtime threshold for shared storage analysis in seconds"
 msgstr ""
 
-#: includes/Config.php:164
-msgid "Maximum number of files for the orphan check"
+#: includes/Config.php:157
+msgid "After a successful complete run, websites below this runtime are assigned to the shared batch; websites at or above it receive an individual task."
 msgstr ""
 
 #: includes/Config.php:165
+msgid "Shortcode and block analysis cycle per website"
+msgstr ""
+
+#: includes/Config.php:166
+msgid "How often the scheduled shortcode and block analysis is run for each website."
+msgstr ""
+
+#: includes/Config.php:179
+msgid "Maximum storage analysis runtime in minutes"
+msgstr ""
+
+#: includes/Config.php:180
+msgid "A storage analysis runs in one scheduled process and is aborted when this runtime limit is reached."
+msgstr ""
+
+#: includes/Config.php:188
+msgid "Maximum number of files for the orphan check"
+msgstr ""
+
+#: includes/Config.php:189
 msgid "Only the largest potentially orphaned files up to this limit are checked for references in post and page content. The total number of detected files remains visible."
 msgstr ""
 
-#: includes/Config.php:173
+#: includes/Config.php:197
 msgid "Maximum shortcode and block analysis runtime in minutes"
 msgstr ""
 
-#: includes/Config.php:174
+#: includes/Config.php:198
 msgid "A shortcode and block analysis runs in one scheduled process and is aborted when this runtime limit is reached."
 msgstr ""
 
-#: includes/Config.php:182
-msgid "Check interval in hours"
+#: includes/Config.php:206
+msgid "Availability check cycle"
 msgstr ""
 
-#: includes/Config.php:183
-msgid "How often the availability check should run for all sites."
+#: includes/Config.php:207
+msgid "How often the centrally scheduled availability check starts. Internal batch continuations are not affected."
 msgstr ""
 
-#: includes/Config.php:191
+#: includes/Config.php:220
 msgid "Provisioning grace period in hours"
 msgstr ""
 
-#: includes/Config.php:192
+#: includes/Config.php:221
 msgid "As long as a new site is younger than this grace period, it remains in status \"Provisioning in progress\" during technical problems instead of immediately counting as an issue."
 msgstr ""
 
-#: includes/Config.php:200
+#: includes/Config.php:229
 msgid "Threshold for DNS failure runs"
 msgstr ""
 
-#: includes/Config.php:201
+#: includes/Config.php:230
 msgid "Only after this number of consecutive DNS failures is the operational status set to \"DNS missing\"."
 msgstr ""
 
-#: includes/Config.php:209
+#: includes/Config.php:238
 msgid "Threshold for HTTP failure runs"
 msgstr ""
 
-#: includes/Config.php:210
+#: includes/Config.php:239
 msgid "Only after this number of consecutive HTTP failures is the operational status set to \"Technically unreachable\"."
 msgstr ""
 
-#: includes/Config.php:218
+#: includes/Config.php:247
 msgid "Retained monitoring runs"
 msgstr ""
 
-#: includes/Config.php:219
+#: includes/Config.php:248
 msgid "How many completed monitoring runs remain stored in the log."
 msgstr ""
 
-#: includes/Config.php:227
+#: includes/Config.php:256
 msgid "Visible issues"
 msgstr ""
 
-#: includes/Config.php:228
+#: includes/Config.php:257
 msgid "How many entries are shown at most in the \"Recently detected anomalies\" table."
 msgstr ""
 
-#: includes/Config.php:238
+#: includes/Config.php:267
 msgid "Logging"
 msgstr ""
 
-#: includes/Config.php:239
+#: includes/Config.php:268
 msgid "Send informational messages to the info channel."
 msgstr ""
 
-#: includes/Dashboard.php:131
-#: includes/Dashboard.php:132
-#: includes/Dashboard.php:247
-#: includes/Dashboard.php:248
-#: includes/Settings.php:1438
+#: includes/Dashboard.php:133
+#: includes/Dashboard.php:134
+#: includes/Dashboard.php:249
+#: includes/Dashboard.php:250
+#: includes/Settings.php:1696
 #: templates/site-storage-analysis-page.php:9
 msgid "Storage Analysis"
 msgstr ""
 
-#: includes/Dashboard.php:140
-#: includes/Dashboard.php:141
-#: includes/Dashboard.php:257
-#: includes/Dashboard.php:258
-#: includes/Settings.php:1095
-#: includes/Settings.php:1646
+#: includes/Dashboard.php:142
+#: includes/Dashboard.php:143
+#: includes/Dashboard.php:259
+#: includes/Dashboard.php:260
+#: includes/Settings.php:1184
+#: includes/Settings.php:1299
+#: includes/Settings.php:1906
 #: templates/shortcode-block-analysis-page.php:212
 msgid "Shortcodes and Blocks"
 msgstr ""
 
-#: includes/Dashboard.php:174
-#: includes/Dashboard.php:175
+#: includes/Dashboard.php:176
+#: includes/Dashboard.php:177
 #: templates/environment-overview-page.php:9
 msgid "Environment"
 msgstr ""
 
-#: includes/Dashboard.php:184
-#: includes/Dashboard.php:185
+#: includes/Dashboard.php:186
+#: includes/Dashboard.php:187
 #: templates/site-overview-page.php:9
 msgid "Website Overview"
 msgstr ""
 
-#: includes/Dashboard.php:193
-#: includes/Dashboard.php:194
-#: templates/plugin-details-page.php:283
+#: includes/Dashboard.php:195
+#: includes/Dashboard.php:196
+#: templates/plugin-details-page.php:295
 #: templates/site-details-page.php:10
 msgid "Website Details"
 msgstr ""
 
-#: includes/Dashboard.php:202
-#: includes/Dashboard.php:203
+#: includes/Dashboard.php:204
+#: includes/Dashboard.php:205
 #: templates/plugin-overview-page.php:9
 msgid "Plugin Overview"
 msgstr ""
 
-#: includes/Dashboard.php:211
-#: includes/Dashboard.php:212
+#: includes/Dashboard.php:213
+#: includes/Dashboard.php:214
 #: templates/plugin-details-page.php:18
 msgid "Plugin Details"
 msgstr ""
 
-#: includes/Dashboard.php:220
-#: includes/Dashboard.php:221
-#: templates/site-details-page.php:289
+#: includes/Dashboard.php:222
+#: includes/Dashboard.php:223
+#: templates/site-details-page.php:303
 #: templates/theme-overview-page.php:9
 msgid "Theme Overview"
 msgstr ""
 
-#: includes/Dashboard.php:229
-#: includes/Dashboard.php:230
+#: includes/Dashboard.php:231
+#: includes/Dashboard.php:232
 #: templates/theme-details-page.php:9
 msgid "Theme Details"
 msgstr ""
 
-#: includes/Dashboard.php:238
-#: includes/Dashboard.php:239
+#: includes/Dashboard.php:240
+#: includes/Dashboard.php:241
 msgid "Change site status"
 msgstr ""
 
-#: includes/Dashboard.php:275
-#: includes/Dashboard.php:276
-#: includes/Dashboard.php:3040
+#: includes/Dashboard.php:277
+#: includes/Dashboard.php:278
+#: includes/Dashboard.php:3092
 #: includes/Widgets/PluginUsageWidget.php:178
-#: templates/site-details-page.php:345
-#: templates/site-details-page.php:346
+#: templates/site-details-page.php:359
+#: templates/site-details-page.php:360
 msgid "Settings"
 msgstr ""
 
-#: includes/Dashboard.php:363
-#: includes/Dashboard.php:2682
-#: includes/Settings.php:228
-#: includes/Settings.php:1087
+#: includes/Dashboard.php:370
+#: includes/Dashboard.php:2734
+#: includes/Settings.php:247
+#: includes/Settings.php:1291
 msgid "Light Mode"
 msgstr ""
 
-#: includes/Dashboard.php:364
-#: includes/Dashboard.php:2683
-#: includes/Settings.php:228
-#: includes/Settings.php:1087
+#: includes/Dashboard.php:371
+#: includes/Dashboard.php:2735
+#: includes/Settings.php:247
+#: includes/Settings.php:1291
 msgid "Dark Mode"
 msgstr ""
 
-#: includes/Dashboard.php:370
+#: includes/Dashboard.php:377
 msgid "No websites found."
 msgstr ""
 
-#: includes/Dashboard.php:372
+#: includes/Dashboard.php:379
 msgid "No plugins found."
 msgstr ""
 
-#: includes/Dashboard.php:375
+#: includes/Dashboard.php:382
 msgid "No themes found."
 msgstr ""
 
-#: includes/Dashboard.php:376
-#: includes/Settings.php:1342
-#: includes/Widgets/Widgets.php:696
+#: includes/Dashboard.php:383
+#: includes/Settings.php:1596
+#: includes/Widgets/Widgets.php:697
 msgid "First page"
 msgstr ""
 
-#: includes/Dashboard.php:377
-#: includes/Settings.php:1343
+#: includes/Dashboard.php:384
+#: includes/Settings.php:1597
 #: includes/Widgets/PluginUsageWidget.php:478
-#: includes/Widgets/Widgets.php:697
-#: includes/Widgets/Widgets.php:1439
+#: includes/Widgets/Widgets.php:698
+#: includes/Widgets/Widgets.php:1441
 msgid "Previous page"
 msgstr ""
 
-#: includes/Dashboard.php:378
-#: includes/Settings.php:1353
+#: includes/Dashboard.php:385
+#: includes/Settings.php:1607
 #: includes/Widgets/PluginUsageWidget.php:487
-#: includes/Widgets/Widgets.php:707
-#: includes/Widgets/Widgets.php:1441
+#: includes/Widgets/Widgets.php:708
+#: includes/Widgets/Widgets.php:1443
 msgid "Next page"
 msgstr ""
 
-#: includes/Dashboard.php:379
-#: includes/Settings.php:1354
-#: includes/Widgets/Widgets.php:708
+#: includes/Dashboard.php:386
+#: includes/Settings.php:1608
+#: includes/Widgets/Widgets.php:709
 msgid "Last page"
 msgstr ""
 
-#: includes/Dashboard.php:382
+#: includes/Dashboard.php:389
 msgid "No media files found."
 msgstr ""
 
-#: includes/Dashboard.php:383
+#: includes/Dashboard.php:390
 msgid "media files found."
 msgstr ""
 
-#: includes/Dashboard.php:384
+#: includes/Dashboard.php:391
 msgid "Searching media library ..."
 msgstr ""
 
-#: includes/Dashboard.php:385
+#: includes/Dashboard.php:392
 msgid "The media library could not be searched."
 msgstr ""
 
-#: includes/Dashboard.php:390
+#: includes/Dashboard.php:397
 msgid "The storage analysis is complete. The page is being reloaded."
 msgstr ""
 
-#: includes/Dashboard.php:391
-#: includes/StorageAnalysisSchedulerService.php:544
+#: includes/Dashboard.php:398
+#: includes/StorageAnalysisSchedulerService.php:1173
 msgid "The storage analysis could not be completed."
 msgstr ""
 
-#: includes/Dashboard.php:392
+#: includes/Dashboard.php:399
 msgid "Please select at least one file first."
 msgstr ""
 
-#: includes/Dashboard.php:393
+#: includes/Dashboard.php:400
 msgid "selected files"
 msgstr ""
 
-#: includes/Dashboard.php:394
+#: includes/Dashboard.php:401
 msgid "Analysis running ..."
 msgstr ""
 
-#: includes/Dashboard.php:395
+#: includes/Dashboard.php:402
 msgid "Refresh analysis"
 msgstr ""
 
-#: includes/Dashboard.php:396
+#: includes/Dashboard.php:403
 msgid "Start analysis"
 msgstr ""
 
-#: includes/Dashboard.php:397
+#: includes/Dashboard.php:404
 msgid "Orphan check running ..."
 msgstr ""
 
-#: includes/Dashboard.php:398
+#: includes/Dashboard.php:405
 msgid "Start orphan check"
 msgstr ""
 
 #. translators: 1: processed websites, 2: total websites.
-#: includes/Dashboard.php:399
-#: includes/Settings.php:2572
+#: includes/Dashboard.php:406
+#: includes/Settings.php:2894
 msgid "Websites processed: %1$s of %2$s"
 msgstr ""
 
 #. translators: 1: transient value rows, 2: timeout rows, 3: website options.
-#: includes/Dashboard.php:400
-#: includes/Settings.php:2584
+#: includes/Dashboard.php:407
+#: includes/Settings.php:2906
 msgid "Deleted so far: %1$s transient values, %2$s timeout rows, %3$s website options."
 msgstr ""
 
-#: includes/Dashboard.php:401
+#: includes/Dashboard.php:408
 msgid "The cleanup request failed. Retrying shortly."
 msgstr ""
 
-#: includes/Dashboard.php:402
+#: includes/Dashboard.php:409
 #: includes/MetricsService.php:397
-#: includes/Settings.php:2559
+#: includes/Settings.php:2881
 msgid "Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden."
 msgstr ""
 
-#: includes/Dashboard.php:466
-#: includes/Dashboard.php:512
-#: includes/Dashboard.php:529
-#: includes/Dashboard.php:558
-#: includes/Dashboard.php:795
-#: includes/Dashboard.php:854
-#: includes/Dashboard.php:1100
-#: includes/Dashboard.php:1156
-#: includes/Dashboard.php:1320
-#: includes/Dashboard.php:1498
-#: includes/Dashboard.php:1530
-#: includes/Dashboard.php:1558
-#: includes/Dashboard.php:1601
+#: includes/Dashboard.php:473
+#: includes/Dashboard.php:519
+#: includes/Dashboard.php:536
+#: includes/Dashboard.php:565
+#: includes/Dashboard.php:802
+#: includes/Dashboard.php:861
+#: includes/Dashboard.php:1113
+#: includes/Dashboard.php:1169
+#: includes/Dashboard.php:1333
+#: includes/Dashboard.php:1511
+#: includes/Dashboard.php:1543
+#: includes/Dashboard.php:1571
+#: includes/Dashboard.php:1614
 msgid "You are not allowed to view this page."
 msgstr ""
 
-#: includes/Dashboard.php:474
+#: includes/Dashboard.php:481
 msgid "No metrics run yet"
 msgstr ""
 
-#: includes/Dashboard.php:518
+#: includes/Dashboard.php:525
 msgid "Redirecting to the Multisite Manager"
 msgstr ""
 
-#: includes/Dashboard.php:519
+#: includes/Dashboard.php:526
 msgid "You are being redirected to the main instance of the Multisite Manager."
 msgstr ""
 
-#: includes/Dashboard.php:520
+#: includes/Dashboard.php:527
 msgid "Switch to the Multisite Manager now"
 msgstr ""
 
-#: includes/Dashboard.php:575
+#: includes/Dashboard.php:582
 msgid "All websites"
 msgstr ""
 
-#: includes/Dashboard.php:588
+#: includes/Dashboard.php:595
 #: includes/MetricsServiceEnvironmentTrait.php:152
 msgid "Active websites"
 msgstr ""
 
-#: includes/Dashboard.php:601
+#: includes/Dashboard.php:608
 #: includes/MetricsServiceEnvironmentTrait.php:153
 msgid "Archived websites"
 msgstr ""
 
-#: includes/Dashboard.php:614
+#: includes/Dashboard.php:621
 #: includes/MetricsServiceEnvironmentTrait.php:154
 #: includes/Widgets/BlockedSitesWidget.php:13
 msgid "Blocked websites"
 msgstr ""
 
-#: includes/Dashboard.php:627
+#: includes/Dashboard.php:634
 msgid "Sites to be deleted"
 msgstr ""
 
-#: includes/Dashboard.php:640
-#: includes/Dashboard.php:3243
-#: includes/MetricsService.php:9272
+#: includes/Dashboard.php:647
+#: includes/Dashboard.php:3296
+#: includes/MetricsService.php:9318
 #: includes/MetricsServiceSiteTrait.php:237
 msgid "Provisioning in progress"
 msgstr ""
 
-#: includes/Dashboard.php:653
-#: includes/Dashboard.php:3245
-#: includes/MetricsService.php:9274
+#: includes/Dashboard.php:660
+#: includes/Dashboard.php:3298
+#: includes/MetricsService.php:9320
 #: includes/MetricsServiceSiteTrait.php:242
-#: includes/Settings.php:2030
-#: includes/Settings.php:2824
+#: includes/Settings.php:2338
+#: includes/Settings.php:3149
 msgid "DNS missing"
 msgstr ""
 
-#: includes/Dashboard.php:666
-#: includes/Dashboard.php:3246
-#: includes/MetricsService.php:9275
+#: includes/Dashboard.php:673
+#: includes/Dashboard.php:3299
+#: includes/MetricsService.php:9321
 #: includes/MetricsServiceSiteTrait.php:247
 msgid "Technically unreachable"
 msgstr ""
 
-#: includes/Dashboard.php:785
+#: includes/Dashboard.php:792
 #: templates/site-details-page.php:15
 #: templates/site-details-page.php:29
 #: templates/site-storage-analysis-page.php:15
@@ -555,92 +593,97 @@ msgstr ""
 msgid "Search website"
 msgstr ""
 
-#: includes/Dashboard.php:787
-#: includes/Settings.php:1283
+#: includes/Dashboard.php:794
+#: includes/Settings.php:1537
 #: templates/site-storage-attachment-debug.php:16
 msgid "Search"
 msgstr ""
 
-#: includes/Dashboard.php:909
+#: includes/Dashboard.php:916
 #: includes/MetricsService.php:741
-#: includes/MetricsService.php:9220
+#: includes/MetricsService.php:9266
 #: includes/MetricsServiceSiteTrait.php:198
 #: includes/Widgets/StatusWidget.php:42
 msgid "Archived"
 msgstr ""
 
-#: includes/Dashboard.php:910
-#: includes/Widgets/Widgets.php:313
+#: includes/Dashboard.php:917
+#: includes/Widgets/Widgets.php:314
 msgid "Archived since"
 msgstr ""
 
-#: includes/Dashboard.php:912
+#: includes/Dashboard.php:919
 msgid "Archived by"
 msgstr ""
 
-#: includes/Dashboard.php:920
+#: includes/Dashboard.php:927
 #: includes/MetricsService.php:742
-#: includes/MetricsService.php:9234
+#: includes/MetricsService.php:9280
 #: includes/MetricsServiceSiteTrait.php:203
 msgid "Blocked"
 msgstr ""
 
-#: includes/Dashboard.php:921
-#: includes/Widgets/Widgets.php:312
+#: includes/Dashboard.php:928
+#: includes/Widgets/Widgets.php:313
 msgid "Blocked since"
 msgstr ""
 
-#: includes/Dashboard.php:923
+#: includes/Dashboard.php:930
 msgid "Blocked by"
 msgstr ""
 
-#: includes/Dashboard.php:931
+#. translators: %s: deleted option name.
+#: includes/Dashboard.php:939
 msgid "Option \"%s\" was deleted."
 msgstr ""
 
-#: includes/Dashboard.php:938
+#. translators: %s: updated option name.
+#: includes/Dashboard.php:947
 msgid "Option \"%s\" was updated."
 msgstr ""
 
-#: includes/Dashboard.php:945
+#. translators: %s: option name.
+#: includes/Dashboard.php:955
 msgid "Option \"%s\" could not be updated. In particular, check whether serialized raw values are still valid."
 msgstr ""
 
-#: includes/Dashboard.php:952
+#. translators: 1: number of deleted options, 2: option-group name.
+#: includes/Dashboard.php:963
 msgid "%1$d options from group \"%2$s\" were deleted."
 msgstr ""
 
-#: includes/Dashboard.php:960
+#. translators: 1: number of deleted entries, 2: custom post type name.
+#: includes/Dashboard.php:972
 msgid "%1$d entries of custom post type \"%2$s\" were permanently deleted."
 msgstr ""
 
-#: includes/Dashboard.php:978
-#: includes/Dashboard.php:1134
-#: includes/Dashboard.php:1179
+#: includes/Dashboard.php:990
+#: includes/Dashboard.php:1147
+#: includes/Dashboard.php:1192
 msgid "Search website by title or URL"
 msgstr ""
 
-#: includes/Dashboard.php:991
-#: includes/Widgets/Widgets.php:388
-#: templates/site-details-page.php:201
+#: includes/Dashboard.php:1003
+#: includes/Widgets/Widgets.php:389
+#: templates/site-details-page.php:215
 msgid "Operational status"
 msgstr ""
 
-#: includes/Dashboard.php:992
 #: includes/Dashboard.php:1004
-#: includes/Dashboard.php:1012
 #: includes/Dashboard.php:1016
-#: includes/Dashboard.php:3221
-#: includes/MetricsService.php:9304
+#: includes/Dashboard.php:1024
+#: includes/Dashboard.php:1028
+#: includes/Dashboard.php:3274
+#: includes/MetricsService.php:9350
 #: includes/MetricsServiceEnvironmentTrait.php:102
-#: includes/Widgets/Widgets.php:405
 #: includes/Widgets/Widgets.php:406
-#: includes/Widgets/Widgets.php:463
-#: includes/Widgets/Widgets.php:465
+#: includes/Widgets/Widgets.php:407
+#: includes/Widgets/Widgets.php:464
 #: includes/Widgets/Widgets.php:466
-#: includes/Widgets/Widgets.php:1186
-#: templates/site-details-page.php:177
-#: templates/site-details-page.php:178
+#: includes/Widgets/Widgets.php:467
+#: includes/Widgets/Widgets.php:1188
+#: templates/site-details-page.php:191
+#: templates/site-details-page.php:192
 #: templates/site-storage-attachment-debug.php:38
 #: templates/site-storage-attachment-debug.php:39
 #: templates/site-storage-attachment-debug.php:40
@@ -649,383 +692,397 @@ msgstr ""
 msgid "Not set"
 msgstr ""
 
-#: includes/Dashboard.php:995
+#: includes/Dashboard.php:1007
 msgid "Source of operational status"
 msgstr ""
 
-#: includes/Dashboard.php:997
+#: includes/Dashboard.php:1009
 msgid "Set manually"
 msgstr ""
 
-#: includes/Dashboard.php:998
+#: includes/Dashboard.php:1010
 msgid "Automatic / not set"
 msgstr ""
 
-#: includes/Dashboard.php:1001
+#: includes/Dashboard.php:1013
 msgid "Previous operational status"
 msgstr ""
 
-#: includes/Dashboard.php:1007
+#: includes/Dashboard.php:1019
 msgid "Operational status changed on"
 msgstr ""
 
-#: includes/Dashboard.php:1011
+#: includes/Dashboard.php:1023
 msgid "DNS status"
 msgstr ""
 
-#: includes/Dashboard.php:1015
+#: includes/Dashboard.php:1027
 msgid "HTTP status"
 msgstr ""
 
-#: includes/Dashboard.php:1019
+#: includes/Dashboard.php:1031
 msgid "Last availability check"
 msgstr ""
 
-#: includes/Dashboard.php:1023
+#: includes/Dashboard.php:1035
 msgid "Last DNS success"
 msgstr ""
 
-#: includes/Dashboard.php:1027
+#: includes/Dashboard.php:1039
 msgid "Last DNS failure"
 msgstr ""
 
-#: includes/Dashboard.php:1031
+#: includes/Dashboard.php:1043
 msgid "Consecutive DNS failures"
 msgstr ""
 
-#: includes/Dashboard.php:1035
+#: includes/Dashboard.php:1047
 msgid "Last HTTP success"
 msgstr ""
 
-#: includes/Dashboard.php:1039
+#: includes/Dashboard.php:1051
 msgid "Last HTTP failure"
 msgstr ""
 
-#: includes/Dashboard.php:1043
+#: includes/Dashboard.php:1055
 msgid "Consecutive HTTP failures"
 msgstr ""
 
-#: includes/Dashboard.php:1047
-#: templates/site-details-page.php:213
+#: includes/Dashboard.php:1059
+#: templates/site-details-page.php:227
 msgid "Monitoring note"
 msgstr ""
 
-#: includes/Dashboard.php:1050
-#: includes/Widgets/Widgets.php:1166
-#: templates/site-details-page.php:144
+#: includes/Dashboard.php:1062
+#: includes/Widgets/Widgets.php:1168
+#: templates/site-details-page.php:158
 msgid "No note"
 msgstr ""
 
-#: includes/Dashboard.php:1057
+#: includes/Dashboard.php:1069
 msgid "The operational status has been updated."
 msgstr ""
 
-#: includes/Dashboard.php:1195
-#: includes/Dashboard.php:1199
-#: includes/Dashboard.php:1942
-#: includes/Dashboard.php:1946
+#: includes/Dashboard.php:1208
+#: includes/Dashboard.php:1212
+#: includes/Dashboard.php:1955
+#: includes/Dashboard.php:1959
 msgid "You are not allowed to perform this action."
 msgstr ""
 
-#: includes/Dashboard.php:1257
-#: includes/Dashboard.php:1287
+#: includes/Dashboard.php:1270
+#: includes/Dashboard.php:1300
 msgid "No storage consumers could be determined."
 msgstr ""
 
-#: includes/Dashboard.php:1277
-#: includes/MetricsService.php:9008
-#: includes/Widgets/Widgets.php:610
+#: includes/Dashboard.php:1290
+#: includes/MetricsService.php:9054
+#: includes/Widgets/Widgets.php:611
 msgid "Other"
 msgstr ""
 
-#: includes/Dashboard.php:1289
+#: includes/Dashboard.php:1302
 msgid "Total"
 msgstr ""
 
-#: includes/Dashboard.php:1355
+#: includes/Dashboard.php:1368
 msgid "All plugins"
 msgstr ""
 
-#: includes/Dashboard.php:1368
+#: includes/Dashboard.php:1381
 msgid "Network plugins"
 msgstr ""
 
-#: includes/Dashboard.php:1381
-#: templates/site-details-page.php:305
+#: includes/Dashboard.php:1394
+#: templates/site-details-page.php:319
 msgid "Active plugins"
 msgstr ""
 
-#: includes/Dashboard.php:1394
+#: includes/Dashboard.php:1407
 #: includes/MetricsServiceEnvironmentTrait.php:139
 #: includes/Widgets/InactivePluginsWidget.php:13
 msgid "Inactive plugins"
 msgstr ""
 
-#: includes/Dashboard.php:1506
+#: includes/Dashboard.php:1519
 msgid "Search plugin by name"
 msgstr ""
 
-#: includes/Dashboard.php:1567
+#: includes/Dashboard.php:1580
 msgid "Search theme by name"
 msgstr ""
 
-#: includes/Dashboard.php:1605
-#: includes/Dashboard.php:2010
+#: includes/Dashboard.php:1618
+#: includes/Dashboard.php:2023
 msgid "Invalid status action."
 msgstr ""
 
-#: includes/Dashboard.php:1609
-#: includes/Dashboard.php:1985
+#: includes/Dashboard.php:1622
+#: includes/Dashboard.php:1998
 msgid "The main site cannot be changed in this way."
 msgstr ""
 
-#: includes/Dashboard.php:1623
-#: includes/Widgets/Widgets.php:986
+#: includes/Dashboard.php:1636
+#: includes/Widgets/Widgets.php:987
 msgid "Archive"
 msgstr ""
 
-#: includes/Dashboard.php:1624
-#: includes/Widgets/Widgets.php:993
-#: templates/plugin-details-page.php:450
+#: includes/Dashboard.php:1637
+#: includes/Widgets/Widgets.php:994
+#: templates/plugin-details-page.php:462
 #: templates/theme-details-page.php:275
 msgid "Block"
 msgstr ""
 
-#: includes/Dashboard.php:1626
+#: includes/Dashboard.php:1639
 msgid "Sets the site status to archived."
 msgstr ""
 
-#: includes/Dashboard.php:1627
+#: includes/Dashboard.php:1640
 msgid "Sets the site status to blocked."
 msgstr ""
 
-#: includes/Dashboard.php:1641
+#: includes/Dashboard.php:1654
 msgid "You are not allowed to manage these views."
 msgstr ""
 
-#: includes/Dashboard.php:1852
-#: includes/Dashboard.php:1892
+#: includes/Dashboard.php:1865
+#: includes/Dashboard.php:1905
 msgid "This storage analysis is processed by scheduled background tasks only."
 msgstr ""
 
-#: includes/Dashboard.php:1973
+#: includes/Dashboard.php:1986
 msgid "You are not allowed to manage site statuses."
 msgstr ""
 
-#: includes/Dashboard.php:1977
-#: includes/Dashboard.php:2044
-#: includes/Dashboard.php:2204
+#: includes/Dashboard.php:1990
+#: includes/Dashboard.php:2057
+#: includes/Dashboard.php:2256
 msgid "Invalid site."
 msgstr ""
 
-#: includes/Dashboard.php:1990
+#: includes/Dashboard.php:2003
 msgid "This site cannot be changed this way in its current status."
 msgstr ""
 
-#: includes/Dashboard.php:1997
+#: includes/Dashboard.php:2010
 msgid "Only archived, blocked, or deletion-marked sites can be restored."
 msgstr ""
 
-#: includes/Dashboard.php:2004
+#: includes/Dashboard.php:2017
 msgid "Only archived or blocked sites can be marked for deletion."
 msgstr ""
 
-#: includes/Dashboard.php:2040
+#: includes/Dashboard.php:2053
 msgid "You are not allowed to delete sites."
 msgstr ""
 
-#: includes/Dashboard.php:2048
+#: includes/Dashboard.php:2061
 msgid "The main site cannot be permanently deleted."
 msgstr ""
 
-#: includes/Dashboard.php:2078
-#: includes/Dashboard.php:2373
+#: includes/Dashboard.php:2091
+#: includes/Dashboard.php:2425
 msgid "You are not allowed to delete site options."
 msgstr ""
 
-#: includes/Dashboard.php:2084
-#: includes/Dashboard.php:2131
+#: includes/Dashboard.php:2097
+#: includes/Dashboard.php:2144
+#: includes/Dashboard.php:2215
 msgid "Invalid option."
 msgstr ""
 
-#: includes/Dashboard.php:2088
+#: includes/Dashboard.php:2101
 msgid "This option is not visible to you and cannot be deleted here."
 msgstr ""
 
-#: includes/Dashboard.php:2092
+#: includes/Dashboard.php:2105
 msgid "WordPress core options cannot be deleted here."
 msgstr ""
 
-#: includes/Dashboard.php:2125
+#: includes/Dashboard.php:2138
 msgid "You are not allowed to update site options."
 msgstr ""
 
-#: includes/Dashboard.php:2135
+#: includes/Dashboard.php:2148
 msgid "This option is not visible to you and cannot be edited here."
 msgstr ""
 
-#: includes/Dashboard.php:2139
+#: includes/Dashboard.php:2152
 msgid "WordPress core options cannot be edited here."
 msgstr ""
 
-#: includes/Dashboard.php:2198
+#: includes/Dashboard.php:2209
+msgid "You are not allowed to download site options."
+msgstr ""
+
+#: includes/Dashboard.php:2219
+msgid "This option is not visible to you and cannot be downloaded here."
+msgstr ""
+
+#: includes/Dashboard.php:2225
+msgid "The option could not be downloaded."
+msgstr ""
+
+#: includes/Dashboard.php:2250
 msgid "You are not allowed to update monitoring data."
 msgstr ""
 
-#: includes/Dashboard.php:2208
+#: includes/Dashboard.php:2260
 msgid "Invalid operational status."
 msgstr ""
 
-#: includes/Dashboard.php:2268
+#: includes/Dashboard.php:2320
 msgid "You are not allowed to delete upload files."
 msgstr ""
 
-#: includes/Dashboard.php:2278
-#: includes/MetricsService.php:7080
-#: includes/MetricsService.php:7789
+#: includes/Dashboard.php:2330
+#: includes/MetricsService.php:7066
+#: includes/MetricsService.php:7775
 msgid "Invalid file."
 msgstr ""
 
-#: includes/Dashboard.php:2298
-#: includes/Dashboard.php:2328
-#: includes/MetricsService.php:7837
+#: includes/Dashboard.php:2350
+#: includes/Dashboard.php:2380
+#: includes/MetricsService.php:7823
 msgid "The file could not be deleted."
 msgstr ""
 
-#: includes/Dashboard.php:2318
-#: includes/MetricsService.php:7900
+#: includes/Dashboard.php:2370
+#: includes/MetricsService.php:7886
 msgid "The media library entry could not be deleted."
 msgstr ""
 
-#: includes/Dashboard.php:2379
+#: includes/Dashboard.php:2431
 msgid "Invalid option group."
 msgstr ""
 
-#: includes/Dashboard.php:2383
+#: includes/Dashboard.php:2435
 msgid "The WordPress core group cannot be deleted here."
 msgstr ""
 
-#: includes/Dashboard.php:2412
+#: includes/Dashboard.php:2464
 msgid "You are not allowed to delete post type entries."
 msgstr ""
 
-#: includes/Dashboard.php:2418
+#: includes/Dashboard.php:2470
 msgid "Invalid custom post type."
 msgstr ""
 
-#: includes/Dashboard.php:2422
+#: includes/Dashboard.php:2474
 msgid "The security confirmation is missing."
 msgstr ""
 
-#: includes/Dashboard.php:3033
+#: includes/Dashboard.php:3085
 #: includes/Widgets/PluginUsageWidget.php:155
 msgid "Deactivate network-wide"
 msgstr ""
 
-#: includes/Dashboard.php:3035
+#: includes/Dashboard.php:3087
 #: includes/Widgets/PluginUsageWidget.php:167
 msgid "Deactivate"
 msgstr ""
 
-#: includes/Dashboard.php:3044
+#: includes/Dashboard.php:3096
 msgid "Check plugin"
 msgstr ""
 
-#: includes/Dashboard.php:3048
-#: includes/Dashboard.php:3084
+#: includes/Dashboard.php:3100
+#: includes/Dashboard.php:3136
 #: includes/Widgets/PluginUsageWidget.php:133
 msgid "Update"
 msgstr ""
 
-#: includes/Dashboard.php:3052
+#: includes/Dashboard.php:3104
 #: includes/Widgets/PluginUsageWidget.php:188
-#: templates/site-details-page.php:492
-#: templates/site-details-page.php:689
+#: templates/site-details-page.php:506
+#: templates/site-details-page.php:715
 msgid "Delete"
 msgstr ""
 
 #. translators: %s: available plugin version number.
-#: includes/Dashboard.php:3069
+#: includes/Dashboard.php:3121
 #: includes/Widgets/PluginUsageWidget.php:122
 msgid "New version %s available."
 msgstr ""
 
-#: includes/Dashboard.php:3076
-#: includes/Settings.php:1782
-#: includes/Settings.php:2032
+#: includes/Dashboard.php:3128
+#: includes/Settings.php:2040
+#: includes/Settings.php:2340
 #: includes/Widgets/PluginUsageWidget.php:129
 #: includes/Widgets/PluginUsageWidget.php:372
-#: includes/Widgets/Widgets.php:1044
-#: templates/site-details-page.php:350
-#: templates/site-details-page.php:351
+#: includes/Widgets/Widgets.php:1045
+#: templates/site-details-page.php:364
+#: templates/site-details-page.php:365
 msgid "Details"
 msgstr ""
 
-#: includes/Dashboard.php:3102
+#: includes/Dashboard.php:3154
 msgid "Open network theme management"
 msgstr ""
 
-#: includes/Dashboard.php:3110
+#: includes/Dashboard.php:3162
 msgid "Disable network-wide"
 msgstr ""
 
-#: includes/Dashboard.php:3112
+#: includes/Dashboard.php:3164
 msgid "Enable network-wide"
 msgstr ""
 
-#: includes/Dashboard.php:3116
+#: includes/Dashboard.php:3168
 msgid "Delete theme"
 msgstr ""
 
-#: includes/Dashboard.php:3213
-#: includes/Widgets/Widgets.php:1158
+#. translators: %d: user ID.
+#: includes/Dashboard.php:3266
+#: includes/Widgets/Widgets.php:1160
 msgid "User-ID %d"
 msgstr ""
 
-#: includes/Dashboard.php:3216
-#: includes/MetricsService.php:3394
-#: includes/MetricsService.php:3542
-#: includes/MetricsService.php:4394
-#: includes/MetricsService.php:9300
-#: includes/Settings.php:2784
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:924
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:949
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1021
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1121
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1137
+#: includes/Dashboard.php:3269
+#: includes/MetricsService.php:3380
+#: includes/MetricsService.php:3528
+#: includes/MetricsService.php:4380
+#: includes/MetricsService.php:9346
+#: includes/Settings.php:3109
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1068
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1093
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1165
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1265
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1281
 #: includes/Widgets/NetworkStorageUsageWidget.php:111
-#: includes/Widgets/Widgets.php:924
-#: includes/Widgets/Widgets.php:1130
-#: includes/Widgets/Widgets.php:1152
-#: includes/Widgets/Widgets.php:1253
-#: includes/Widgets/Widgets.php:1261
+#: includes/Widgets/Widgets.php:925
+#: includes/Widgets/Widgets.php:1131
+#: includes/Widgets/Widgets.php:1154
+#: includes/Widgets/Widgets.php:1255
+#: includes/Widgets/Widgets.php:1263
 #: templates/shortcode-block-analysis-page.php:144
 #: templates/shortcode-block-analysis-page.php:337
 msgid "Unknown"
 msgstr ""
 
-#: includes/Dashboard.php:3231
+#: includes/Dashboard.php:3284
 msgid "Stand:"
 msgstr ""
 
-#: includes/Dashboard.php:3236
+#: includes/Dashboard.php:3289
 msgid "Dashboard metrics are not available yet. Start the “Dashboard metrics” job under Monitoring first."
 msgstr ""
 
-#: includes/Dashboard.php:3242
+#: includes/Dashboard.php:3295
 #: includes/MetricsServiceSiteTrait.php:227
 msgid "Not set / automatic"
 msgstr ""
 
-#: includes/Dashboard.php:3244
-#: includes/MetricsService.php:9273
+#: includes/Dashboard.php:3297
+#: includes/MetricsService.php:9319
 #: includes/MetricsServiceSiteTrait.php:232
-#: includes/Settings.php:2816
+#: includes/Settings.php:3141
 msgid "Technically reachable"
 msgstr ""
 
-#: includes/Dashboard.php:3247
-#: includes/MetricsService.php:9276
+#: includes/Dashboard.php:3300
+#: includes/MetricsService.php:9322
 #: includes/MetricsServiceSiteTrait.php:252
 msgid "Out of service"
 msgstr ""
@@ -1057,37 +1114,31 @@ msgstr ""
 msgid "Marked for deletion"
 msgstr ""
 
-#: includes/MetricsService.php:1202
+#: includes/MetricsService.php:1242
 msgid "Dashboard metrics"
 msgstr ""
 
-#: includes/MetricsService.php:1203
+#: includes/MetricsService.php:1243
 msgid "Calculates the aggregated network metrics for the dashboard as well as website, plugin, and theme overviews."
 msgstr ""
 
-#. translators: %d: interval in hours for the monitoring schedule.
-#: includes/MetricsService.php:1207
-#: includes/MonitoringService.php:65
-msgid "Every %d hours"
-msgstr ""
-
-#: includes/MetricsService.php:1918
+#: includes/MetricsService.php:1967
 msgid "Dynamically registered post type"
 msgstr ""
 
-#: includes/MetricsService.php:1923
-#: includes/MetricsService.php:1992
-#: includes/MetricsService.php:1997
+#: includes/MetricsService.php:1972
+#: includes/MetricsService.php:2041
+#: includes/MetricsService.php:2046
 msgid "Cannot be resolved statically"
 msgstr ""
 
-#: includes/MetricsService.php:1987
+#: includes/MetricsService.php:2036
 msgid "Dynamically registered taxonomy"
 msgstr ""
 
-#: includes/MetricsService.php:2336
-#: includes/MetricsService.php:2354
-#: includes/MetricsService.php:2369
+#: includes/MetricsService.php:2385
+#: includes/MetricsService.php:2403
+#: includes/MetricsService.php:2418
 #: includes/MetricsServiceEnvironmentTrait.php:104
 #: includes/MetricsServiceEnvironmentTrait.php:113
 #: includes/MetricsServiceEnvironmentTrait.php:114
@@ -1099,9 +1150,9 @@ msgstr ""
 #: includes/MetricsServiceEnvironmentTrait.php:129
 #: includes/MetricsServiceEnvironmentTrait.php:130
 #: templates/shortcode-block-analysis-page.php:332
-#: templates/site-details-page.php:179
-#: templates/site-details-page.php:483
-#: templates/site-details-page.php:550
+#: templates/site-details-page.php:193
+#: templates/site-details-page.php:497
+#: templates/site-details-page.php:564
 #: templates/site-storage-analysis-page.php:247
 #: templates/site-storage-analysis-page.php:253
 #: templates/site-storage-analysis-page.php:254
@@ -1119,8 +1170,8 @@ msgstr ""
 msgid "No"
 msgstr ""
 
-#: includes/MetricsService.php:2350
-#: includes/MetricsService.php:2366
+#: includes/MetricsService.php:2399
+#: includes/MetricsService.php:2415
 #: includes/MetricsServiceEnvironmentTrait.php:56
 #: includes/MetricsServiceEnvironmentTrait.php:113
 #: includes/MetricsServiceEnvironmentTrait.php:114
@@ -1132,9 +1183,9 @@ msgstr ""
 #: includes/MetricsServiceEnvironmentTrait.php:129
 #: includes/MetricsServiceEnvironmentTrait.php:130
 #: templates/shortcode-block-analysis-page.php:330
-#: templates/site-details-page.php:179
-#: templates/site-details-page.php:483
-#: templates/site-details-page.php:550
+#: templates/site-details-page.php:193
+#: templates/site-details-page.php:497
+#: templates/site-details-page.php:564
 #: templates/site-storage-analysis-page.php:247
 #: templates/site-storage-analysis-page.php:253
 #: templates/site-storage-analysis-page.php:254
@@ -1152,41 +1203,41 @@ msgstr ""
 msgid "Yes"
 msgstr ""
 
-#: includes/MetricsService.php:2374
+#: includes/MetricsService.php:2423
 msgid "Thumbnail"
 msgstr ""
 
-#: includes/MetricsService.php:2375
+#: includes/MetricsService.php:2424
 msgid "Medium"
 msgstr ""
 
-#: includes/MetricsService.php:2376
+#: includes/MetricsService.php:2425
 msgid "Medium large"
 msgstr ""
 
-#: includes/MetricsService.php:2377
+#: includes/MetricsService.php:2426
 msgid "Large"
 msgstr ""
 
-#: includes/MetricsService.php:2378
+#: includes/MetricsService.php:2427
 msgid "Featured image"
 msgstr ""
 
-#: includes/MetricsService.php:2451
+#: includes/MetricsService.php:2500
 msgid "Theme/plugin"
 msgstr ""
 
-#: includes/MetricsService.php:2455
-#: includes/MetricsService.php:8988
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:948
+#: includes/MetricsService.php:2504
+#: includes/MetricsService.php:9034
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1092
 msgid "WordPress Core"
 msgstr ""
 
-#: includes/MetricsService.php:2458
+#: includes/MetricsService.php:2507
 msgid "Not directly assigned"
 msgstr ""
 
-#: includes/MetricsService.php:2607
+#: includes/MetricsService.php:2656
 #: includes/MetricsServicePluginTrait.php:157
 #: includes/MetricsServicePluginTrait.php:158
 #: includes/MetricsServiceThemeTrait.php:114
@@ -1194,564 +1245,564 @@ msgstr ""
 msgid "Not available."
 msgstr ""
 
-#: includes/MetricsService.php:3201
-#: includes/MetricsService.php:10718
+#: includes/MetricsService.php:3240
+#: includes/MetricsService.php:10859
 msgid "Classic Editor"
 msgstr ""
 
-#: includes/MetricsService.php:3207
-#: includes/MetricsService.php:10724
+#: includes/MetricsService.php:3246
+#: includes/MetricsService.php:10865
 msgid "Block Editor"
 msgstr ""
 
-#: includes/MetricsService.php:4275
+#: includes/MetricsService.php:4261
 msgid "Block templates"
 msgstr ""
 
-#: includes/MetricsService.php:4276
+#: includes/MetricsService.php:4262
 msgid "Template parts"
 msgstr ""
 
-#: includes/MetricsService.php:4359
-#: includes/MetricsService.php:5980
-#: includes/MetricsService.php:8040
+#: includes/MetricsService.php:4345
+#: includes/MetricsService.php:5966
+#: includes/MetricsService.php:8026
 msgid "Images"
 msgstr ""
 
-#: includes/MetricsService.php:4363
+#: includes/MetricsService.php:4349
 msgid "Audio"
 msgstr ""
 
-#: includes/MetricsService.php:4367
+#: includes/MetricsService.php:4353
 msgid "Video"
 msgstr ""
 
-#: includes/MetricsService.php:4370
-#: includes/MetricsService.php:5996
+#: includes/MetricsService.php:4356
+#: includes/MetricsService.php:5982
 msgid "Documents"
 msgstr ""
 
-#: includes/MetricsService.php:4657
+#: includes/MetricsService.php:4643
 msgid "A completed storage analysis already exists."
 msgstr ""
 
-#: includes/MetricsService.php:4665
+#: includes/MetricsService.php:4651
 msgid "The orphan check has been completed."
 msgstr ""
 
-#: includes/MetricsService.php:4671
+#: includes/MetricsService.php:4657
 msgid "The base analysis is available. The orphan check can be started separately if needed."
 msgstr ""
 
-#: includes/MetricsService.php:4719
-#: includes/MetricsService.php:4737
-#: includes/MetricsService.php:4774
+#: includes/MetricsService.php:4705
+#: includes/MetricsService.php:4723
+#: includes/MetricsService.php:4760
 msgid "Invalid website."
 msgstr ""
 
-#: includes/MetricsService.php:4803
+#: includes/MetricsService.php:4789
 msgid "Media metadata analysis is running."
 msgstr ""
 
-#: includes/MetricsService.php:4882
+#: includes/MetricsService.php:4868
 msgid "The media metadata analysis has been completed."
 msgstr ""
 
 #. translators: %s: processed media items.
-#: includes/MetricsService.php:4889
+#: includes/MetricsService.php:4875
 msgid "%s media items have already been checked."
 msgstr ""
 
-#: includes/MetricsService.php:4980
-#: includes/MetricsService.php:5188
+#: includes/MetricsService.php:4966
+#: includes/MetricsService.php:5174
 msgid "The uploads directory of this website could not be found."
 msgstr ""
 
-#: includes/MetricsService.php:4990
-#: includes/MetricsService.php:5195
+#: includes/MetricsService.php:4976
+#: includes/MetricsService.php:5181
 msgid "The uploads directory of this website is not readable."
 msgstr ""
 
-#: includes/MetricsService.php:5005
-#: includes/MetricsService.php:5956
+#: includes/MetricsService.php:4991
+#: includes/MetricsService.php:5942
 msgid "Reported by WordPress"
 msgstr ""
 
-#: includes/MetricsService.php:5009
-#: includes/MetricsService.php:5960
+#: includes/MetricsService.php:4995
+#: includes/MetricsService.php:5946
 msgid "Found in the uploads directory"
 msgstr ""
 
-#: includes/MetricsService.php:5013
-#: includes/MetricsService.php:5964
+#: includes/MetricsService.php:4999
+#: includes/MetricsService.php:5950
 msgid "Difference"
 msgstr ""
 
-#: includes/MetricsService.php:5017
-#: includes/MetricsService.php:5968
+#: includes/MetricsService.php:5003
+#: includes/MetricsService.php:5954
 #: templates/site-storage-analysis-page.php:335
-#: templates/site-storage-analysis-page.php:475
+#: templates/site-storage-analysis-page.php:479
 msgid "Files"
 msgstr ""
 
-#: includes/MetricsService.php:5021
-#: includes/MetricsService.php:5972
+#: includes/MetricsService.php:5007
+#: includes/MetricsService.php:5958
 msgid "Files referenced according to the database"
 msgstr ""
 
-#: includes/MetricsService.php:5025
-#: includes/MetricsService.php:5976
+#: includes/MetricsService.php:5011
+#: includes/MetricsService.php:5962
 msgid "Media library entries"
 msgstr ""
 
-#: includes/MetricsService.php:5029
-#: includes/MetricsService.php:5984
-#: includes/MetricsService.php:8045
+#: includes/MetricsService.php:5015
+#: includes/MetricsService.php:5970
+#: includes/MetricsService.php:8031
 msgid "Generated image variants"
 msgstr ""
 
-#: includes/MetricsService.php:5033
-#: includes/MetricsService.php:6004
+#: includes/MetricsService.php:5019
+#: includes/MetricsService.php:5990
 #: templates/site-storage-analysis-page.php:334
 msgid "Folders"
 msgstr ""
 
-#: includes/MetricsService.php:5037
-#: includes/MetricsService.php:6008
+#: includes/MetricsService.php:5023
+#: includes/MetricsService.php:5994
 msgid "Analysis time"
 msgstr ""
 
-#: includes/MetricsService.php:5137
+#: includes/MetricsService.php:5123
 msgid "The base analysis must be completed before the orphan check can run."
 msgstr ""
 
-#: includes/MetricsService.php:5202
+#: includes/MetricsService.php:5188
 msgid "Storage analysis is running."
 msgstr ""
 
 #. translators: 1: scanned files, 2: scanned directories.
-#: includes/MetricsService.php:5265
+#: includes/MetricsService.php:5251
 msgid "%1$s files and %2$s folders have already been processed."
 msgstr ""
 
-#: includes/MetricsService.php:5411
+#: includes/MetricsService.php:5397
 msgid "Orphan check is running."
 msgstr ""
 
 #. translators: %d: number of content usage matches.
-#: includes/MetricsService.php:5519
-#: includes/MetricsService.php:5552
-#: includes/MetricsService.php:6448
+#: includes/MetricsService.php:5505
+#: includes/MetricsService.php:5538
+#: includes/MetricsService.php:6434
 msgid "%d matches"
 msgid_plural "%d matches"
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: 1: processed candidates, 2: total candidates.
-#: includes/MetricsService.php:5572
+#: includes/MetricsService.php:5558
 msgid "%1$s of %2$s potentially orphaned files have been checked."
 msgstr ""
 
-#: includes/MetricsService.php:5612
-#: includes/MetricsService.php:5643
-#: includes/MetricsService.php:7148
+#: includes/MetricsService.php:5598
+#: includes/MetricsService.php:5629
+#: includes/MetricsService.php:7134
 msgid "(no title)"
 msgstr ""
 
-#: includes/MetricsService.php:5615
-#: includes/MetricsService.php:7151
-#: includes/MetricsService.php:7152
-#: includes/Widgets/Widgets.php:267
+#: includes/MetricsService.php:5601
+#: includes/MetricsService.php:7137
+#: includes/MetricsService.php:7138
+#: includes/Widgets/Widgets.php:268
 msgid "Content"
 msgstr ""
 
 #. translators: %s: post meta key name.
-#: includes/MetricsService.php:5647
+#: includes/MetricsService.php:5633
 msgid "Meta field: %s"
 msgstr ""
 
 #. translators: %s: option name.
-#: includes/MetricsService.php:5673
+#: includes/MetricsService.php:5659
 msgid "Option: %s"
 msgstr ""
 
 #. translators: %s: option name.
-#: includes/MetricsService.php:5677
+#: includes/MetricsService.php:5663
 msgid "Option value: %s"
 msgstr ""
 
-#: includes/MetricsService.php:5690
+#: includes/MetricsService.php:5676
 msgid "Attachment references have been indexed."
 msgstr ""
 
-#: includes/MetricsService.php:5691
+#: includes/MetricsService.php:5677
 msgid "Media library references are being indexed."
 msgstr ""
 
-#: includes/MetricsService.php:5980
-#: includes/MetricsService.php:8041
+#: includes/MetricsService.php:5966
+#: includes/MetricsService.php:8027
 msgid "Original images"
 msgstr ""
 
-#: includes/MetricsService.php:5984
-#: includes/MetricsService.php:8046
+#: includes/MetricsService.php:5970
+#: includes/MetricsService.php:8032
 msgid "without original images"
 msgstr ""
 
-#: includes/MetricsService.php:5988
+#: includes/MetricsService.php:5974
 msgid "Audio files"
 msgstr ""
 
-#: includes/MetricsService.php:5992
+#: includes/MetricsService.php:5978
 msgid "Video files"
 msgstr ""
 
-#: includes/MetricsService.php:6000
+#: includes/MetricsService.php:5986
 msgid "Spreadsheets"
 msgstr ""
 
-#: includes/MetricsService.php:6198
+#: includes/MetricsService.php:6184
 msgid "No base analysis is available yet."
 msgstr ""
 
-#: includes/MetricsService.php:6208
+#: includes/MetricsService.php:6194
 msgid "No orphan check is available yet."
 msgstr ""
 
-#: includes/MetricsService.php:6986
-#: templates/site-storage-analysis-page.php:389
-#: templates/site-storage-analysis-page.php:448
-#: templates/site-storage-analysis-page.php:503
-#: templates/site-storage-analysis-page.php:565
-#: templates/site-storage-analysis-page.php:648
-#: templates/site-storage-analysis-page.php:711
-#: templates/site-storage-analysis-page.php:785
-#: templates/site-storage-analysis-page.php:869
+#: includes/MetricsService.php:6972
+#: templates/site-storage-analysis-page.php:393
+#: templates/site-storage-analysis-page.php:452
+#: templates/site-storage-analysis-page.php:507
+#: templates/site-storage-analysis-page.php:569
+#: templates/site-storage-analysis-page.php:656
+#: templates/site-storage-analysis-page.php:719
+#: templates/site-storage-analysis-page.php:793
+#: templates/site-storage-analysis-page.php:877
 msgid "File"
 msgstr ""
 
 #. translators: %s: storage size difference.
-#: includes/MetricsService.php:7001
+#: includes/MetricsService.php:6987
 msgid "The upload directory is %s larger than the storage value reported by WordPress. This often indicates outdated core caches or additional files in the uploads folder."
 msgstr ""
 
 #. translators: %s: storage size difference.
-#: includes/MetricsService.php:7006
+#: includes/MetricsService.php:6992
 msgid "WordPress reports %s more storage than was found in the currently scanned uploads directory. This often indicates an outdated WordPress storage value."
 msgstr ""
 
 #. translators: 1: orphan file count, 2: total orphan storage size.
-#: includes/MetricsService.php:7017
+#: includes/MetricsService.php:7003
 msgid "%1$s potentially orphaned files with a total of %2$s were found. These are files in the uploads folder that are currently not referenced by attachment metadata."
 msgstr ""
 
-#: includes/MetricsService.php:7027
+#: includes/MetricsService.php:7013
 msgid "This website has no fixed upload limit. Therefore, the storage analysis only shows actual usage and no meaningful percentage utilization."
 msgstr ""
 
-#: includes/MetricsService.php:7059
+#: includes/MetricsService.php:7045
 msgid "The media ID does not belong to the selected website, so no information can be displayed."
 msgstr ""
 
-#: includes/MetricsService.php:7063
+#: includes/MetricsService.php:7049
 msgid "The entered ID does not belong to a media library item."
 msgstr ""
 
-#: includes/MetricsService.php:7097
+#: includes/MetricsService.php:7083
 msgid "Invalid media library entry."
 msgstr ""
 
-#: includes/MetricsService.php:7334
+#: includes/MetricsService.php:7320
 msgid "Camera"
 msgstr ""
 
-#: includes/MetricsService.php:7335
+#: includes/MetricsService.php:7321
 msgid "Aperture"
 msgstr ""
 
-#: includes/MetricsService.php:7336
+#: includes/MetricsService.php:7322
 msgid "Focal length"
 msgstr ""
 
-#: includes/MetricsService.php:7337
+#: includes/MetricsService.php:7323
 msgid "ISO sensitivity"
 msgstr ""
 
-#: includes/MetricsService.php:7338
+#: includes/MetricsService.php:7324
 msgid "Shutter speed"
 msgstr ""
 
-#: includes/MetricsService.php:7339
+#: includes/MetricsService.php:7325
 msgid "Orientation"
 msgstr ""
 
-#: includes/MetricsService.php:7340
+#: includes/MetricsService.php:7326
 msgid "Credit"
 msgstr ""
 
-#: includes/MetricsService.php:7341
+#: includes/MetricsService.php:7327
 msgid "Copyright"
 msgstr ""
 
-#: includes/MetricsService.php:7342
+#: includes/MetricsService.php:7328
 msgid "EXIF title"
 msgstr ""
 
-#: includes/MetricsService.php:7343
+#: includes/MetricsService.php:7329
 msgid "EXIF caption"
 msgstr ""
 
-#: includes/MetricsService.php:7344
-#: templates/plugin-details-page.php:452
+#: includes/MetricsService.php:7330
+#: templates/plugin-details-page.php:464
 #: templates/theme-details-page.php:277
 msgid "Keywords"
 msgstr ""
 
-#: includes/MetricsService.php:7352
+#: includes/MetricsService.php:7338
 msgid "Image dimensions"
 msgstr ""
 
-#: includes/MetricsService.php:7356
+#: includes/MetricsService.php:7342
 msgid "Date taken"
 msgstr ""
 
-#: includes/MetricsService.php:7383
+#: includes/MetricsService.php:7369
 msgid "File format"
 msgstr ""
 
-#: includes/MetricsService.php:7384
+#: includes/MetricsService.php:7370
 msgid "Data format"
 msgstr ""
 
-#: includes/MetricsService.php:7385
+#: includes/MetricsService.php:7371
 msgid "Codec"
 msgstr ""
 
-#: includes/MetricsService.php:7386
+#: includes/MetricsService.php:7372
 msgid "Bit rate"
 msgstr ""
 
-#: includes/MetricsService.php:7387
+#: includes/MetricsService.php:7373
 msgid "Bit rate mode"
 msgstr ""
 
-#: includes/MetricsService.php:7388
+#: includes/MetricsService.php:7374
 msgid "Audio channels"
 msgstr ""
 
-#: includes/MetricsService.php:7389
+#: includes/MetricsService.php:7375
 msgid "Audio channel mode"
 msgstr ""
 
-#: includes/MetricsService.php:7390
+#: includes/MetricsService.php:7376
 msgid "Sample rate"
 msgstr ""
 
-#: includes/MetricsService.php:7391
+#: includes/MetricsService.php:7377
 msgid "Encoding"
 msgstr ""
 
-#: includes/MetricsService.php:7392
+#: includes/MetricsService.php:7378
 msgid "Artist"
 msgstr ""
 
-#: includes/MetricsService.php:7393
+#: includes/MetricsService.php:7379
 msgid "Album"
 msgstr ""
 
-#: includes/MetricsService.php:7394
+#: includes/MetricsService.php:7380
 msgid "Genre"
 msgstr ""
 
-#: includes/MetricsService.php:7395
+#: includes/MetricsService.php:7381
 msgid "Year"
 msgstr ""
 
-#: includes/MetricsService.php:7396
+#: includes/MetricsService.php:7382
 msgid "Track number"
 msgstr ""
 
-#: includes/MetricsService.php:7416
+#: includes/MetricsService.php:7402
 msgid "File size in metadata"
 msgstr ""
 
-#: includes/MetricsService.php:7420
-#: includes/MetricsService.php:7422
-#: includes/Settings.php:1975
-#: includes/Settings.php:2024
+#: includes/MetricsService.php:7406
+#: includes/MetricsService.php:7408
+#: includes/Settings.php:2267
+#: includes/Settings.php:2332
 msgid "Duration"
 msgstr ""
 
-#: includes/MetricsService.php:7426
+#: includes/MetricsService.php:7412
 #: templates/site-storage-analysis-page.php:273
 #: templates/site-storage-attachment-debug.php:74
 msgid "Dimensions"
 msgstr ""
 
-#: includes/MetricsService.php:7498
-#: includes/MetricsService.php:7504
+#: includes/MetricsService.php:7484
+#: includes/MetricsService.php:7490
 msgid "Code reference"
 msgstr ""
 
 #. translators: %s: plugin name.
-#: includes/MetricsService.php:7556
+#: includes/MetricsService.php:7542
 msgid "Plugin: %s"
 msgstr ""
 
 #. translators: %s: theme name.
-#: includes/MetricsService.php:7570
+#: includes/MetricsService.php:7556
 msgid "Theme: %s"
 msgstr ""
 
 #. translators: %s: MU plugin name.
-#: includes/MetricsService.php:7586
+#: includes/MetricsService.php:7572
 msgid "MU plugin: %s"
 msgstr ""
 
 #. translators: %s: file name where the asset registration or enqueue was found.
-#: includes/MetricsService.php:7688
+#: includes/MetricsService.php:7674
 msgid "Code registration/enqueue in %s"
 msgstr ""
 
-#: includes/MetricsService.php:7782
+#: includes/MetricsService.php:7768
 msgid "The uploads directory was not found."
 msgstr ""
 
-#: includes/MetricsService.php:7796
+#: includes/MetricsService.php:7782
 msgid "The file path is invalid."
 msgstr ""
 
-#: includes/MetricsService.php:7803
+#: includes/MetricsService.php:7789
 msgid "The file no longer exists."
 msgstr ""
 
-#: includes/MetricsService.php:7812
+#: includes/MetricsService.php:7798
 msgid "This file is still registered as an attachment and must not be deleted here."
 msgstr ""
 
-#: includes/MetricsService.php:7821
+#: includes/MetricsService.php:7807
 msgid "This file is still referenced in post or page content and is therefore not deleted."
 msgstr ""
 
-#: includes/MetricsService.php:7828
+#: includes/MetricsService.php:7814
 msgid "The file is not writable."
 msgstr ""
 
-#: includes/MetricsService.php:7846
+#: includes/MetricsService.php:7832
 msgid "The file has been deleted."
 msgstr ""
 
-#: includes/MetricsService.php:7882
+#: includes/MetricsService.php:7868
 msgid "The media library entry no longer exists."
 msgstr ""
 
-#: includes/MetricsService.php:7893
+#: includes/MetricsService.php:7879
 msgid "The media library entry has no valid upload file."
 msgstr ""
 
-#: includes/MetricsService.php:7908
+#: includes/MetricsService.php:7894
 msgid "The media library entry has been deleted."
 msgstr ""
 
-#: includes/MetricsService.php:8193
+#: includes/MetricsService.php:8179
 msgid "Files in the root directory"
 msgstr ""
 
-#: includes/MetricsService.php:8300
+#: includes/MetricsService.php:8286
 msgid "All options"
 msgstr ""
 
-#: includes/MetricsService.php:8557
+#: includes/MetricsService.php:8543
 msgid "No expiration set"
 msgstr ""
 
-#: includes/MetricsService.php:8612
+#: includes/MetricsService.php:8598
 msgid "one-time"
 msgstr ""
 
-#: includes/MetricsService.php:9000
+#: includes/MetricsService.php:9046
 msgid "Theme mods"
 msgstr ""
 
-#: includes/MetricsService.php:9004
+#: includes/MetricsService.php:9050
 msgid "Widgets"
 msgstr ""
 
-#: includes/MetricsService.php:9208
+#: includes/MetricsService.php:9254
 msgid "(empty)"
 msgstr ""
 
-#: includes/MetricsService.php:9227
+#: includes/MetricsService.php:9273
 msgid "Deleted"
 msgstr ""
 
-#: includes/MetricsService.php:9241
+#: includes/MetricsService.php:9287
 msgid "Public"
 msgstr ""
 
-#: includes/MetricsService.php:9248
-#: includes/Settings.php:876
+#: includes/MetricsService.php:9294
+#: includes/Settings.php:990
 msgid "Active"
 msgstr ""
 
-#: includes/MetricsService.php:9255
+#: includes/MetricsService.php:9301
 msgid "Not public"
 msgstr ""
 
-#: includes/MetricsService.php:9296
-#: includes/Settings.php:2764
+#: includes/MetricsService.php:9342
+#: includes/Settings.php:3089
 msgid "OK"
 msgstr ""
 
-#: includes/MetricsService.php:9297
-#: includes/Settings.php:2768
+#: includes/MetricsService.php:9343
+#: includes/Settings.php:3093
 #: templates/site-storage-missing-metadata.php:76
 msgid "Missing"
 msgstr ""
 
-#: includes/MetricsService.php:9298
-#: includes/Settings.php:1625
-#: includes/Settings.php:2780
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:558
-#: includes/StorageAnalysisSchedulerService.php:930
+#: includes/MetricsService.php:9344
+#: includes/Settings.php:1885
+#: includes/Settings.php:3105
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:608
+#: includes/StorageAnalysisSchedulerService.php:1661
 msgid "Error"
 msgstr ""
 
-#: includes/MetricsService.php:9299
-#: includes/Settings.php:2772
+#: includes/MetricsService.php:9345
+#: includes/Settings.php:3097
 msgid "Timeout"
 msgstr ""
 
-#: includes/MetricsService.php:9301
-#: includes/Settings.php:2776
+#: includes/MetricsService.php:9347
+#: includes/Settings.php:3101
 msgid "Pending"
 msgstr ""
 
 #. translators: 1: monitoring status label, 2: monitoring detail text.
-#: includes/MetricsService.php:9325
-#: includes/Settings.php:2808
+#: includes/MetricsService.php:9371
+#: includes/Settings.php:3133
 msgid "%1$s (%2$s)"
 msgstr ""
 
-#: includes/MetricsService.php:9571
+#: includes/MetricsService.php:9617
 msgid "Network-enabled"
 msgstr ""
 
-#: includes/MetricsService.php:9578
+#: includes/MetricsService.php:9624
 #: includes/MetricsServicePluginTrait.php:243
-#: templates/site-details-page.php:332
+#: templates/site-details-page.php:346
 msgid "Active on websites"
 msgstr ""
 
-#: includes/MetricsService.php:9583
+#: includes/MetricsService.php:9629
 msgid "Not used"
 msgstr ""
 
-#: includes/MetricsService.php:9590
+#: includes/MetricsService.php:9636
 msgid "Block theme"
 msgstr ""
 
-#: includes/MetricsService.php:10662
+#: includes/MetricsService.php:10807
 #: includes/Widgets/NetworkStorageUsageWidget.php:49
 msgid "Free storage"
 msgstr ""
@@ -2027,13 +2078,13 @@ msgid "User accounts and websites"
 msgstr ""
 
 #: includes/MetricsServicePluginTrait.php:238
-#: templates/site-details-page.php:330
+#: templates/site-details-page.php:344
 #: templates/widgets/plugin-usage-widget.php:18
 msgid "Network-active"
 msgstr ""
 
 #: includes/MetricsServicePluginTrait.php:248
-#: templates/site-details-page.php:334
+#: templates/site-details-page.php:348
 msgid "Not activated"
 msgstr ""
 
@@ -2042,59 +2093,60 @@ msgstr ""
 msgid "Update %s available"
 msgstr ""
 
-#: includes/MonitoringService.php:286
+#: includes/MonitoringService.php:280
+#: includes/Settings.php:1171
 msgid "Website availability"
 msgstr ""
 
-#: includes/MonitoringService.php:287
+#: includes/MonitoringService.php:281
 msgid "Checks DNS and HTTP reachability of all active websites and updates the plugin's monitoring meta fields."
 msgstr ""
 
-#: includes/MonitoringService.php:868
+#: includes/MonitoringService.php:987
 msgid "No host could be determined from the site URL."
 msgstr ""
 
-#: includes/MonitoringService.php:869
+#: includes/MonitoringService.php:988
 msgid "HTTP check skipped because no host could be determined from the site URL."
 msgstr ""
 
-#: includes/MonitoringService.php:887
+#: includes/MonitoringService.php:1006
 msgid "HTTP check skipped because DNS resolution failed."
 msgstr ""
 
 #. translators: %d: site ID.
-#: includes/MonitoringService.php:947
-#: includes/Settings.php:2713
+#: includes/MonitoringService.php:1066
+#: includes/Settings.php:3037
 msgid "Site %d"
 msgstr ""
 
 #. translators: %s: IP address.
-#: includes/MonitoringService.php:1047
+#: includes/MonitoringService.php:1166
 msgid "Direct IP address: %s"
 msgstr ""
 
-#: includes/MonitoringService.php:1066
+#: includes/MonitoringService.php:1185
 msgid "DNS lookup failed."
 msgstr ""
 
-#: includes/MonitoringService.php:1075
-#: includes/MonitoringService.php:1335
+#: includes/MonitoringService.php:1194
+#: includes/MonitoringService.php:1461
 msgid "DNS record found."
 msgstr ""
 
-#: includes/MonitoringService.php:1081
+#: includes/MonitoringService.php:1200
 msgid "No A, AAAA, or CNAME record found."
 msgstr ""
 
-#: includes/MonitoringService.php:1087
+#: includes/MonitoringService.php:1206
 msgid "DNS checks are not available on this server."
 msgstr ""
 
-#: includes/MonitoringService.php:1370
+#: includes/MonitoringService.php:1496
 msgid "No HTTP status code received."
 msgstr ""
 
-#: includes/MonitoringService.php:1400
+#: includes/MonitoringService.php:1526
 msgid "HTTP request failed."
 msgstr ""
 
@@ -2103,635 +2155,742 @@ msgstr ""
 msgid "Call to undefined method %1$s::%2$s"
 msgstr ""
 
-#: includes/Settings.php:172
-#: includes/Settings.php:216
-#: includes/Settings.php:326
-#: includes/Settings.php:359
-#: includes/Settings.php:393
-#: includes/Settings.php:419
-#: includes/Settings.php:457
-#: includes/Settings.php:495
-#: includes/Settings.php:520
-#: includes/Settings.php:544
-#: includes/Settings.php:565
-#: includes/Settings.php:609
-#: includes/Settings.php:649
-#: includes/Settings.php:686
-#: includes/Settings.php:752
-#: includes/Settings.php:781
-#: includes/Settings.php:1076
+#: includes/Settings.php:186
+#: includes/Settings.php:235
+#: includes/Settings.php:347
+#: includes/Settings.php:379
+#: includes/Settings.php:413
+#: includes/Settings.php:439
+#: includes/Settings.php:477
+#: includes/Settings.php:502
+#: includes/Settings.php:540
+#: includes/Settings.php:555
+#: includes/Settings.php:592
+#: includes/Settings.php:617
+#: includes/Settings.php:641
+#: includes/Settings.php:662
+#: includes/Settings.php:706
+#: includes/Settings.php:746
+#: includes/Settings.php:783
+#: includes/Settings.php:847
+#: includes/Settings.php:866
+#: includes/Settings.php:895
+#: includes/Settings.php:1280
 msgid "You are not allowed to manage these settings."
 msgstr ""
 
-#: includes/Settings.php:224
+#: includes/Settings.php:243
 msgid "Central settings for dashboard, overviews, and cache behavior."
 msgstr ""
 
-#: includes/Settings.php:234
+#: includes/Settings.php:253
 msgid "The settings have been saved."
 msgstr ""
 
-#: includes/Settings.php:238
-#: includes/Settings.php:1122
+#: includes/Settings.php:257
+#: includes/Settings.php:1350
 msgid "The metrics refresh has been started and is now running in batches."
 msgstr ""
 
-#: includes/Settings.php:242
-#: includes/Settings.php:1126
+#: includes/Settings.php:261
+#: includes/Settings.php:1354
 msgid "The complete MSM data cleanup has been started. Other MSM tasks remain paused until it is complete."
 msgstr ""
 
-#: includes/Settings.php:246
-#: includes/Settings.php:1130
+#: includes/Settings.php:265
+#: includes/Settings.php:1358
 msgid "Please confirm the data cleanup before starting it."
 msgstr ""
 
 #. translators: %d: number of removed scheduled storage-analysis tasks.
-#: includes/Settings.php:252
-#: includes/Settings.php:1136
+#: includes/Settings.php:271
+#: includes/Settings.php:1364
 msgid "Removed %d scheduled storage-analysis tasks."
 msgstr ""
 
 #. translators: %d: number of removed scheduled shortcode and block analysis tasks.
-#: includes/Settings.php:260
-#: includes/Settings.php:1144
+#: includes/Settings.php:279
+#: includes/Settings.php:1372
 msgid "Removed %d scheduled shortcode and block analysis tasks."
 msgstr ""
 
 #. translators: %d: number of removed scheduled dashboard-metrics tasks.
-#: includes/Settings.php:268
-#: includes/Settings.php:1152
+#: includes/Settings.php:287
+#: includes/Settings.php:1380
 msgid "Removed %d scheduled dashboard-metrics tasks. Automatic scheduling remains disabled until the process is started manually."
 msgstr ""
 
 #. translators: %d: number of removed scheduled website-availability tasks.
-#: includes/Settings.php:276
-#: includes/Settings.php:1160
+#: includes/Settings.php:295
+#: includes/Settings.php:1388
 msgid "Removed %d scheduled website-availability tasks. Automatic scheduling remains disabled until the process is started manually."
 msgstr ""
 
-#: includes/Settings.php:282
-#: includes/Settings.php:1166
+#: includes/Settings.php:301
+#: includes/Settings.php:1394
 msgid "Please confirm the removal of the scheduled tasks before continuing."
 msgstr ""
 
-#: includes/Settings.php:286
-#: includes/Settings.php:1206
+#: includes/Settings.php:305
+#: includes/Settings.php:1456
 msgid "Please confirm the removal of the scheduled monitoring tasks before continuing."
 msgstr ""
 
-#: includes/Settings.php:290
+#: includes/Settings.php:309
 #: templates/views-page.php:15
 msgid "The views have been saved."
 msgstr ""
 
-#: includes/Settings.php:294
-#: includes/Settings.php:1114
+#: includes/Settings.php:313
+#: includes/Settings.php:1342
 msgid "Monitoring has been started and is now processing the websites in batches."
 msgstr ""
 
-#: includes/Settings.php:298
-#: includes/Settings.php:1118
+#: includes/Settings.php:317
+#: includes/Settings.php:1346
 msgid "The metrics process has been reset."
 msgstr ""
 
-#: includes/Settings.php:302
-#: includes/Settings.php:1210
+#: includes/Settings.php:321
+#: includes/Settings.php:1460
 msgid "The monitoring process has been reset."
 msgstr ""
 
-#: includes/Settings.php:306
+#: includes/Settings.php:325
 msgid "The website operational status has been updated."
 msgstr ""
 
-#: includes/Settings.php:1016
+#: includes/Settings.php:547
+msgid "The requested analysis type is invalid."
+msgstr ""
+
+#: includes/Settings.php:563
+#: includes/Settings.php:569
+msgid "The requested analysis setup is no longer available. Please start it again."
+msgstr ""
+
+#: includes/Settings.php:1146
 msgid "General"
 msgstr ""
 
-#: includes/Settings.php:1018
+#: includes/Settings.php:1148
 msgid "Views"
 msgstr ""
 
-#. translators: 1, 2: link to the Monitoring page.
-#: includes/Settings.php:1054
-msgid "Metrics and website data are managed through %1$s. Visit %2$s to start or manage any tasks."
-msgstr ""
-
-#: includes/Settings.php:1093
+#: includes/Settings.php:1166
+#: includes/Settings.php:1297
 msgid "Network-wide"
 msgstr ""
 
-#: includes/Settings.php:1094
+#: includes/Settings.php:1176
+#: includes/Settings.php:1298
 msgid "Storage analyses"
 msgstr ""
 
-#: includes/Settings.php:1096
+#. translators: 1, 2: link to the Monitoring page.
+#: includes/Settings.php:1258
+msgid "Metrics and website data are managed through %1$s. Visit %2$s to start or manage any tasks."
+msgstr ""
+
+#: includes/Settings.php:1300
 msgid "Tools"
 msgstr ""
 
-#: includes/Settings.php:1170
+#: includes/Settings.php:1324
+msgid "The metrics task was created."
+msgstr ""
+
+#: includes/Settings.php:1325
+msgid "The metrics task was rescheduled to start now."
+msgstr ""
+
+#: includes/Settings.php:1326
+msgid "The website availability task was created."
+msgstr ""
+
+#: includes/Settings.php:1327
+msgid "The website availability task was rescheduled to start now."
+msgstr ""
+
+#: includes/Settings.php:1398
 msgid "Please confirm the scheduling of the website analysis tasks before continuing."
 msgstr ""
 
+#: includes/Settings.php:1402
+msgid "Please confirm the schedule migration before continuing."
+msgstr ""
+
+#. translators: %d: number of websites scheduled during migration.
+#: includes/Settings.php:1413
+msgid "Storage-analysis schedule migration completed; %d websites were scheduled."
+msgstr ""
+
+#. translators: 1: migration phase, 2: processed websites, 3: total websites.
+#: includes/Settings.php:1415
+msgid "Storage-analysis schedule migration (%1$s): %2$d of %3$d websites processed."
+msgstr ""
+
+#: includes/Settings.php:1418
+msgid "Use the migration button again to continue. Storage analyses remain paused until it is complete."
+msgstr ""
+
 #. translators: %d: number of scheduled storage analyses.
-#: includes/Settings.php:1176
+#: includes/Settings.php:1426
 msgid "Storage-analysis tasks were scheduled for %d selected websites."
 msgstr ""
 
 #. translators: %d: number of scheduled shortcode and block analyses.
-#: includes/Settings.php:1184
+#: includes/Settings.php:1434
 msgid "Shortcode and block analysis tasks were scheduled for %d selected websites."
 msgstr ""
 
 #. translators: %d: number of removed storage-analysis tasks.
-#: includes/Settings.php:1192
+#: includes/Settings.php:1442
 msgid "Removed storage-analysis tasks for %d selected websites."
 msgstr ""
 
 #. translators: %d: number of removed shortcode and block analysis tasks.
-#: includes/Settings.php:1200
+#: includes/Settings.php:1450
 msgid "Removed shortcode and block analysis tasks for %d selected websites."
 msgstr ""
 
-#: includes/Settings.php:1214
+#: includes/Settings.php:1464
 #: templates/site-storage-analysis-page.php:139
 msgid "The storage analysis has been scheduled and will start shortly."
 msgstr ""
 
-#: includes/Settings.php:1218
+#: includes/Settings.php:1468
 msgid "The storage analysis is already running for this website."
 msgstr ""
 
-#: includes/Settings.php:1222
+#: includes/Settings.php:1472
 #: templates/site-storage-analysis-page.php:143
 #: templates/site-storage-analysis-page.php:146
 msgid "Storage analysis is inactive for this website because its current website or monitoring status does not permit scheduled tasks."
 msgstr ""
 
-#: includes/Settings.php:1231
+#. translators: 1: processed websites, 2: total websites, 3: created tasks.
+#: includes/Settings.php:1482
 msgid "Storage-analysis setup: %1$d of %2$d websites checked; %3$d tasks created."
 msgstr ""
 
-#: includes/Settings.php:1232
+#. translators: %d: number of active websites with initialized schedules.
+#: includes/Settings.php:1484
 msgid "Storage analysis schedules were initialized for %d active websites."
 msgstr ""
 
-#: includes/Settings.php:1235
-#: includes/Settings.php:1254
+#: includes/Settings.php:1487
+#: includes/Settings.php:1508
 msgid "Use the same button to continue with the next batch."
 msgstr ""
 
-#: includes/Settings.php:1241
+#: includes/Settings.php:1493
 msgid "The shortcode and block analysis has been scheduled and will start shortly."
 msgstr ""
 
-#: includes/Settings.php:1250
+#. translators: 1: processed websites, 2: total websites, 3: created tasks.
+#: includes/Settings.php:1503
 msgid "Shortcode/block-analysis setup: %1$d of %2$d websites checked; %3$d tasks created."
 msgstr ""
 
-#: includes/Settings.php:1251
+#. translators: %d: number of active websites with initialized schedules.
+#: includes/Settings.php:1505
 msgid "Shortcode and block analysis schedules were initialized for %d active websites."
 msgstr ""
 
-#: includes/Settings.php:1281
+#: includes/Settings.php:1535
 msgid "Search websites:"
 msgstr ""
 
-#: includes/Settings.php:1288
+#: includes/Settings.php:1542
 msgid "Set up analyses"
 msgstr ""
 
-#: includes/Settings.php:1291
+#: includes/Settings.php:1545
 msgid "Select bulk action"
 msgstr ""
 
-#: includes/Settings.php:1293
+#: includes/Settings.php:1547
 msgid "Bulk actions"
 msgstr ""
 
-#: includes/Settings.php:1296
-#: includes/Widgets/Widgets.php:649
+#: includes/Settings.php:1550
+#: includes/Widgets/Widgets.php:650
 msgid "Apply"
 msgstr ""
 
-#: includes/Settings.php:1336
+#: includes/Settings.php:1590
 #: includes/Widgets/PluginUsageWidget.php:201
 #: includes/Widgets/PluginUsageWidget.php:270
-#: includes/Widgets/Widgets.php:690
-#: templates/plugin-details-page.php:296
-#: templates/site-storage-analysis-page.php:351
-#: templates/site-storage-analysis-page.php:432
-#: templates/site-storage-analysis-page.php:462
-#: templates/site-storage-analysis-page.php:532
-#: templates/site-storage-analysis-page.php:592
-#: templates/site-storage-analysis-page.php:686
-#: templates/site-storage-analysis-page.php:746
-#: templates/site-storage-analysis-page.php:821
-#: templates/site-storage-analysis-page.php:905
+#: includes/Widgets/Widgets.php:691
+#: templates/plugin-details-page.php:308
+#: templates/site-storage-analysis-page.php:355
+#: templates/site-storage-analysis-page.php:436
+#: templates/site-storage-analysis-page.php:466
+#: templates/site-storage-analysis-page.php:536
+#: templates/site-storage-analysis-page.php:596
+#: templates/site-storage-analysis-page.php:694
+#: templates/site-storage-analysis-page.php:754
+#: templates/site-storage-analysis-page.php:829
+#: templates/site-storage-analysis-page.php:913
 #: templates/site-storage-missing-metadata.php:82
 msgid "Pagination"
 msgstr ""
 
 #. translators: %s: number of websites.
-#: includes/Settings.php:1338
-#: includes/Widgets/Widgets.php:692
+#: includes/Settings.php:1592
+#: includes/Widgets/Widgets.php:693
 msgid "%s website"
 msgid_plural "%s websites"
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: 1: current page number, 2: total page count.
-#: includes/Settings.php:1350
-#: includes/Widgets/Widgets.php:704
+#: includes/Settings.php:1604
+#: includes/Widgets/Widgets.php:705
 msgid "Page %1$s of %2$s"
 msgstr ""
 
-#: includes/Settings.php:1381
+#: includes/Settings.php:1635
 msgid "Website storage analyses"
 msgstr ""
 
-#: includes/Settings.php:1385
+#: includes/Settings.php:1639
 msgid "There are currently no scheduled storage analysis tasks."
 msgstr ""
 
-#: includes/Settings.php:1395
-#: includes/Settings.php:1480
-#: includes/Settings.php:1595
-#: includes/Settings.php:1694
-msgid "Remove tasks"
+#: includes/Settings.php:1649
+#: includes/Settings.php:1742
+#: includes/Settings.php:1855
+#: includes/Settings.php:1954
+msgid "Remove selected tasks"
 msgstr ""
 
-#: includes/Settings.php:1402
-#: includes/Settings.php:1476
-#: includes/Settings.php:1517
-#: includes/Settings.php:1535
-#: includes/Settings.php:1601
-#: includes/Settings.php:1690
-#: includes/Settings.php:1733
-#: includes/Settings.php:1752
+#: includes/Settings.php:1656
+#: includes/Settings.php:1738
+#: includes/Settings.php:1782
+#: includes/Settings.php:1800
+#: includes/Settings.php:1861
+#: includes/Settings.php:1950
+#: includes/Settings.php:1996
+#: includes/Settings.php:2015
 msgid "Select all visible websites"
 msgstr ""
 
-#: includes/Settings.php:1403
-#: includes/Settings.php:1477
-#: includes/Settings.php:1518
-#: includes/Settings.php:1536
-#: includes/Settings.php:1602
-#: includes/Settings.php:1691
-#: includes/Settings.php:1734
-#: includes/Settings.php:1753
-#: includes/Widgets/Widgets.php:153
-#: includes/Widgets/Widgets.php:262
-#: includes/Widgets/Widgets.php:330
-#: includes/Widgets/Widgets.php:387
-#: includes/Widgets/Widgets.php:445
+#: includes/Settings.php:1657
+#: includes/Settings.php:1739
+#: includes/Settings.php:1783
+#: includes/Settings.php:1801
+#: includes/Settings.php:1862
+#: includes/Settings.php:1951
+#: includes/Settings.php:1997
+#: includes/Settings.php:2016
+#: includes/Widgets/Widgets.php:154
+#: includes/Widgets/Widgets.php:263
+#: includes/Widgets/Widgets.php:331
+#: includes/Widgets/Widgets.php:388
+#: includes/Widgets/Widgets.php:446
 msgid "Site"
 msgstr ""
 
-#: includes/Settings.php:1404
-#: includes/Settings.php:1477
-#: includes/Settings.php:1519
-#: includes/Settings.php:1536
-#: includes/Settings.php:1603
-#: includes/Settings.php:1691
-#: includes/Settings.php:1965
-#: includes/Settings.php:2070
+#: includes/Settings.php:1658
+#: includes/Settings.php:1739
+#: includes/Settings.php:1784
+#: includes/Settings.php:1801
+#: includes/Settings.php:1863
+#: includes/Settings.php:1951
+#: includes/Settings.php:2257
+#: includes/Settings.php:2378
 #: templates/plugin-details-page.php:60
 #: templates/site-details-page.php:52
-#: templates/site-details-page.php:317
+#: templates/site-details-page.php:331
 msgid "Status"
 msgstr ""
 
-#: includes/Settings.php:1405
-#: includes/Settings.php:1467
-#: includes/Settings.php:1477
-#: includes/Settings.php:1605
-#: includes/Settings.php:1680
-#: includes/Settings.php:1691
-#: includes/Settings.php:1973
-#: includes/Settings.php:2022
+#: includes/Settings.php:1659
+#: includes/Settings.php:1739
+#: includes/Settings.php:1864
+#: includes/Settings.php:1951
+msgid "Execution"
+msgstr ""
+
+#: includes/Settings.php:1660
+#: includes/Settings.php:1729
+#: includes/Settings.php:1739
+#: includes/Settings.php:1865
+#: includes/Settings.php:1940
+#: includes/Settings.php:1951
+#: includes/Settings.php:2265
+#: includes/Settings.php:2330
 msgid "Start"
 msgstr ""
 
-#: includes/Settings.php:1406
-#: includes/Settings.php:1477
+#: includes/Settings.php:1661
+#: includes/Settings.php:1739
 msgid "File index"
 msgstr ""
 
-#: includes/Settings.php:1407
-#: includes/Settings.php:1477
+#: includes/Settings.php:1662
+#: includes/Settings.php:1739
 msgid "Orphans"
 msgstr ""
 
-#: includes/Settings.php:1408
-#: includes/Settings.php:1477
+#: includes/Settings.php:1663
+#: includes/Settings.php:1739
 #: templates/plugin-details-page.php:77
 #: templates/theme-details-page.php:54
 msgid "Metadata"
 msgstr ""
 
-#: includes/Settings.php:1409
-#: includes/Settings.php:1477
-#: includes/Settings.php:1608
-#: includes/Settings.php:1691
+#: includes/Settings.php:1664
+#: includes/Settings.php:1739
+#: includes/Settings.php:1868
+#: includes/Settings.php:1951
 msgid "Runtime"
 msgstr ""
 
-#: includes/Settings.php:1410
-#: includes/Settings.php:1477
-#: includes/Settings.php:1609
-#: includes/Settings.php:1691
+#: includes/Settings.php:1665
+#: includes/Settings.php:1739
+#: includes/Settings.php:1869
+#: includes/Settings.php:1951
 msgid "Finished"
 msgstr ""
 
-#: includes/Settings.php:1411
-#: includes/Settings.php:1477
-#: includes/Settings.php:1610
-#: includes/Settings.php:1691
-#: includes/Settings.php:1970
+#: includes/Settings.php:1666
+#: includes/Settings.php:1739
+#: includes/Settings.php:1870
+#: includes/Settings.php:1951
+#: includes/Settings.php:2262
 msgid "Next run"
 msgstr ""
 
-#: includes/Settings.php:1412
-#: includes/Settings.php:1477
-#: includes/Settings.php:1520
-#: includes/Settings.php:1536
-#: includes/Settings.php:1611
-#: includes/Settings.php:1691
-#: includes/Settings.php:1736
-#: includes/Settings.php:1753
-#: includes/Settings.php:1971
-#: templates/plugin-details-page.php:253
-#: templates/site-details-page.php:473
-#: templates/site-details-page.php:635
+#: includes/Settings.php:1667
+#: includes/Settings.php:1739
+#: includes/Settings.php:1785
+#: includes/Settings.php:1801
+#: includes/Settings.php:1871
+#: includes/Settings.php:1951
+#: includes/Settings.php:1999
+#: includes/Settings.php:2016
+#: includes/Settings.php:2263
+#: templates/plugin-details-page.php:265
+#: templates/site-details-page.php:487
+#: templates/site-details-page.php:653
 msgid "Action"
 msgstr ""
 
-#: includes/Settings.php:1448
-#: includes/StorageAnalysisSchedulerService.php:929
+#: includes/Settings.php:1700
+#: includes/Settings.php:1912
+msgid "Shared batch"
+msgstr ""
+
+#: includes/Settings.php:1700
+#: includes/Settings.php:1914
+msgid "Individual schedule"
+msgstr ""
+
+#: includes/Settings.php:1708
+#: includes/StorageAnalysisSchedulerService.php:1660
 msgid "Aborted"
 msgstr ""
 
-#: includes/Settings.php:1450
-#: includes/Settings.php:1663
+#: includes/Settings.php:1710
+#: includes/Settings.php:1923
 msgid "<1 sec."
 msgstr ""
 
-#: includes/Settings.php:1454
-#: includes/Settings.php:1626
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:559
-#: includes/StorageAnalysisSchedulerService.php:928
+#: includes/Settings.php:1714
+#: includes/Settings.php:1886
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:609
+#: includes/StorageAnalysisSchedulerService.php:1659
 msgid "Waiting for cron"
 msgstr ""
 
-#: includes/Settings.php:1460
-#: includes/Settings.php:1624
-#: includes/Settings.php:1672
-#: includes/Settings.php:2213
-#: includes/Settings.php:2341
-#: includes/Settings.php:2444
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:557
-#: includes/StorageAnalysisSchedulerService.php:926
+#: includes/Settings.php:1720
+#: includes/Settings.php:1884
+#: includes/Settings.php:1932
+#: includes/Settings.php:2521
+#: includes/Settings.php:2656
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:607
+#: includes/StorageAnalysisSchedulerService.php:1657
 msgid "Running"
 msgstr ""
 
-#: includes/Settings.php:1467
-#: includes/Settings.php:1680
-#: includes/Settings.php:2456
-#: includes/Settings.php:2482
+#: includes/Settings.php:1729
+#: includes/Settings.php:1940
 msgid "Start now"
 msgstr ""
 
-#: includes/Settings.php:1499
+#: includes/Settings.php:1764
 msgid "Websites without a scheduled storage analysis"
 msgstr ""
 
-#: includes/Settings.php:1505
+#: includes/Settings.php:1770
 msgid "No active websites without a scheduled storage analysis were found."
 msgstr ""
 
-#: includes/Settings.php:1526
-#: includes/Settings.php:1629
-#: includes/Settings.php:1742
-#: includes/Settings.php:2249
-#: includes/Settings.php:2348
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:562
-#: includes/StorageAnalysisSchedulerService.php:933
+#: includes/Settings.php:1791
+#: includes/Settings.php:1889
+#: includes/Settings.php:2005
+#: includes/Settings.php:2557
+#: includes/Settings.php:2663
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:612
+#: includes/StorageAnalysisSchedulerService.php:1664
 msgid "Not scheduled"
 msgstr ""
 
-#: includes/Settings.php:1530
-#: includes/Settings.php:1747
+#: includes/Settings.php:1795
+#: includes/Settings.php:2010
 msgid "Set up analysis"
 msgstr ""
 
-#: includes/Settings.php:1549
+#: includes/Settings.php:1812
 msgid "Reschedule storage analysis tasks for websites without a schedule"
 msgstr ""
 
-#: includes/Settings.php:1550
+#: includes/Settings.php:1813
 msgid "Storage-analysis tasks will be created for all active websites that do not yet have a scheduled task."
 msgstr ""
 
-#: includes/Settings.php:1552
-#: includes/Settings.php:1769
+#: includes/Settings.php:1814
+#: includes/Settings.php:2029
 msgid "I understand that analysis tasks will be scheduled for websites without a schedule."
 msgstr ""
 
-#: includes/Settings.php:1557
-#: includes/Settings.php:1774
+#: includes/Settings.php:1817
+#: includes/Settings.php:2032
 msgid "Only active websites can be selected for analysis tasks."
 msgstr ""
 
-#: includes/Settings.php:1584
+#: includes/Settings.php:1844
 msgid "Website shortcode and block analyses"
 msgstr ""
 
-#: includes/Settings.php:1587
+#: includes/Settings.php:1847
 msgid "There are currently no scheduled shortcode or block analysis tasks."
 msgstr ""
 
-#: includes/Settings.php:1604
-#: includes/Settings.php:1691
-#: includes/Settings.php:1735
-#: includes/Settings.php:1753
-msgid "Assignment"
-msgstr ""
-
-#: includes/Settings.php:1606
-#: includes/Settings.php:1691
-#: templates/plugin-details-page.php:285
-#: templates/plugin-details-page.php:306
+#: includes/Settings.php:1866
+#: includes/Settings.php:1951
+#: templates/plugin-details-page.php:297
+#: templates/plugin-details-page.php:318
 #: templates/shortcode-block-analysis-page.php:290
 #: templates/shortcode-block-analysis-page.php:296
 #: templates/theme-details-page.php:212
 msgid "Shortcodes"
 msgstr ""
 
-#: includes/Settings.php:1607
-#: includes/Settings.php:1691
-#: templates/plugin-details-page.php:288
-#: templates/plugin-details-page.php:442
+#: includes/Settings.php:1867
+#: includes/Settings.php:1951
+#: templates/plugin-details-page.php:300
+#: templates/plugin-details-page.php:454
 #: templates/shortcode-block-analysis-page.php:291
 #: templates/shortcode-block-analysis-page.php:296
 #: templates/theme-details-page.php:267
 msgid "Blocks"
 msgstr ""
 
-#: includes/Settings.php:1623
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:556
-#: includes/StorageAnalysisSchedulerService.php:927
+#: includes/Settings.php:1883
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:606
+#: includes/StorageAnalysisSchedulerService.php:1658
 msgid "Inactive"
 msgstr ""
 
-#: includes/Settings.php:1627
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:560
-#: includes/StorageAnalysisSchedulerService.php:931
+#: includes/Settings.php:1887
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:610
+#: includes/StorageAnalysisSchedulerService.php:1662
 msgid "Ok"
 msgstr ""
 
-#: includes/Settings.php:1628
-#: includes/Settings.php:2217
-#: includes/Settings.php:2352
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:561
-#: includes/StorageAnalysisSchedulerService.php:932
+#: includes/Settings.php:1888
+#: includes/Settings.php:2525
+#: includes/Settings.php:2667
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:611
+#: includes/StorageAnalysisSchedulerService.php:1663
 msgid "Scheduled"
 msgstr ""
 
-#: includes/Settings.php:1652
-msgid "Shared batch"
-msgstr ""
-
-#: includes/Settings.php:1654
-msgid "Individual task"
-msgstr ""
-
-#: includes/Settings.php:1655
+#: includes/Settings.php:1915
 msgid "Not assigned"
 msgstr ""
 
-#: includes/Settings.php:1662
-#: includes/Settings.php:2262
-#: includes/Settings.php:2326
-#: includes/Settings.php:2333
-#: includes/Settings.php:2743
-#: includes/Settings.php:2787
-#: includes/Settings.php:2835
+#: includes/Settings.php:1922
+#: includes/Settings.php:2570
+#: includes/Settings.php:2641
+#: includes/Settings.php:2648
+#: includes/Settings.php:3068
+#: includes/Settings.php:3112
+#: includes/Settings.php:3160
 msgid "-"
 msgstr ""
 
-#: includes/Settings.php:1714
+#: includes/Settings.php:1977
 msgid "Websites without a scheduled shortcode or block analysis"
 msgstr ""
 
-#: includes/Settings.php:1715
+#: includes/Settings.php:1978
 msgid "These active websites have no scheduled shortcode or block analysis. Setting up an analysis assigns small websites to the shared batch and starts a separate task for larger websites."
 msgstr ""
 
-#: includes/Settings.php:1721
+#: includes/Settings.php:1984
 msgid "No active websites without a scheduled shortcode or block analysis were found."
 msgstr ""
 
-#: includes/Settings.php:1766
+#: includes/Settings.php:1998
+#: includes/Settings.php:2016
+msgid "Assignment"
+msgstr ""
+
+#: includes/Settings.php:2027
 msgid "Reschedule shortcode and block analysis tasks for websites without a schedule"
 msgstr ""
 
-#: includes/Settings.php:1767
+#: includes/Settings.php:2028
 msgid "Shortcode and block analysis tasks will be created for all active websites that do not yet have a scheduled task."
 msgstr ""
 
-#: includes/Settings.php:1789
+#: includes/Settings.php:2047
 msgid "Cron Events"
 msgstr ""
 
-#: includes/Settings.php:1819
-#: includes/Settings.php:1909
+#: includes/Settings.php:2077
+#: includes/Settings.php:2201
 msgid "Remove all storage-analysis tasks"
 msgstr ""
 
-#: includes/Settings.php:1820
-#: includes/Settings.php:1917
+#: includes/Settings.php:2078
+#: includes/Settings.php:2209
 msgid "Remove all shortcode and block analysis tasks"
 msgstr ""
 
-#: includes/Settings.php:1822
+#: includes/Settings.php:2080
 msgid "All scheduled storage-analysis tasks for every website will be removed. Stored analysis results will not be deleted."
 msgstr ""
 
-#: includes/Settings.php:1823
+#: includes/Settings.php:2081
 msgid "All scheduled shortcode and block analysis tasks for every website will be removed. Stored analysis results will not be deleted."
 msgstr ""
 
-#: includes/Settings.php:1853
-msgid "I understand that the scheduled tasks will be removed."
+#: includes/Settings.php:2096
+msgid "Start shared batches early"
 msgstr ""
 
-#: includes/Settings.php:1856
+#: includes/Settings.php:2097
+msgid "Start the shared batch now for all websites assigned to it?"
+msgstr ""
+
+#: includes/Settings.php:2102
+msgid "I understand that all websites in the shared batch will be started now."
+msgstr ""
+
+#: includes/Settings.php:2103
+#: includes/Settings.php:2122
+#: includes/Settings.php:2148
 #: templates/dashboard-page.php:64
-#: templates/plugin-details-page.php:554
+#: templates/plugin-details-page.php:566
 #: templates/plugin-overview-page.php:66
-#: templates/site-details-page.php:524
-#: templates/site-details-page.php:793
+#: templates/site-details-page.php:538
+#: templates/site-details-page.php:827
 #: templates/site-overview-page.php:75
-#: templates/site-storage-analysis-page.php:956
+#: templates/site-storage-analysis-page.php:964
 #: templates/widgets/plugin-usage-widget.php:57
 msgid "Cancel"
 msgstr ""
 
-#: includes/Settings.php:1870
+#: includes/Settings.php:2112
+msgid "Setup in progress."
+msgstr ""
+
+#: includes/Settings.php:2112
+msgid "Setup completed."
+msgstr ""
+
+#: includes/Settings.php:2112
+msgid "The setup request failed. You can reopen this dialog to continue."
+msgstr ""
+
+#: includes/Settings.php:2115
+msgid "The complete network is processed in groups of 25 websites. The setup batches are not run via Cron."
+msgstr ""
+
+#: includes/Settings.php:2118
+msgid "Processed websites:"
+msgstr ""
+
+#: includes/Settings.php:2118
+msgid "Created tasks:"
+msgstr ""
+
+#: includes/Settings.php:2122
+msgid "Close"
+msgstr ""
+
+#: includes/Settings.php:2123
+msgid "Start setup"
+msgstr ""
+
+#: includes/Settings.php:2124
+msgid "Reload page"
+msgstr ""
+
+#: includes/Settings.php:2145
+msgid "I understand that the scheduled tasks will be removed."
+msgstr ""
+
+#: includes/Settings.php:2162
 msgid "Stop dashboard metrics"
 msgstr ""
 
-#: includes/Settings.php:1871
+#: includes/Settings.php:2163
 msgid "Stops the current dashboard-metrics process, removes all of its Cron entries, and disables automatic scheduling. Start it manually under Network-wide to enable it again."
 msgstr ""
 
-#: includes/Settings.php:1875
+#: includes/Settings.php:2167
 msgid "Stop dashboard metrics and remove tasks"
 msgstr ""
 
-#: includes/Settings.php:1878
+#: includes/Settings.php:2170
 msgid "Stop website availability checks"
 msgstr ""
 
-#: includes/Settings.php:1879
+#: includes/Settings.php:2171
 msgid "Stops the current website-availability process, removes all of its Cron entries, and disables automatic scheduling. Start it manually under Network-wide to enable it again."
 msgstr ""
 
-#: includes/Settings.php:1883
+#: includes/Settings.php:2175
 msgid "Stop availability checks and remove tasks"
 msgstr ""
 
-#: includes/Settings.php:1895
+#: includes/Settings.php:2187
 msgid "This stops the process, removes its scheduled tasks, and keeps automatic scheduling disabled until it is started manually again."
 msgstr ""
 
-#: includes/Settings.php:1904
+#: includes/Settings.php:2196
 msgid "Remove storage-analysis tasks"
 msgstr ""
 
-#: includes/Settings.php:1905
+#: includes/Settings.php:2197
 msgid "Removes every scheduled storage-analysis Cron entry for every website. Stored analysis results are not deleted."
 msgstr ""
 
-#: includes/Settings.php:1912
+#: includes/Settings.php:2204
 msgid "Remove shortcode and block analysis tasks"
 msgstr ""
 
-#: includes/Settings.php:1913
+#: includes/Settings.php:2205
 msgid "Removes every scheduled shortcode and block analysis Cron entry for every website. Stored analysis results are not deleted."
 msgstr ""
 
-#: includes/Settings.php:1956
+#: includes/Settings.php:2248
 msgid "Monitoring processes"
 msgstr ""
 
-#: includes/Settings.php:1962
+#: includes/Settings.php:2254
 msgid "Process"
 msgstr ""
 
-#: includes/Settings.php:1963
-#: templates/plugin-details-page.php:449
+#: includes/Settings.php:2255
+#: templates/plugin-details-page.php:461
 #: templates/shortcode-block-analysis-page.php:319
 #: templates/site-storage-attachment-debug.php:40
 #: templates/site-storage-attachment-debug.php:43
@@ -2743,154 +2902,158 @@ msgstr ""
 msgid "Description"
 msgstr ""
 
-#: includes/Settings.php:1964
+#: includes/Settings.php:2256
 #: includes/Widgets/SummaryWidget.php:34
 msgid "Sites"
 msgstr ""
 
-#: includes/Settings.php:1967
+#: includes/Settings.php:2259
 msgid "Progress"
 msgstr ""
 
-#: includes/Settings.php:1969
+#: includes/Settings.php:2261
 msgid "Last active"
 msgstr ""
 
-#: includes/Settings.php:1974
-#: includes/Settings.php:2023
+#: includes/Settings.php:2266
+#: includes/Settings.php:2331
 msgid "End"
 msgstr ""
 
-#: includes/Settings.php:1998
+#: includes/Settings.php:2290
 msgid "There are currently no monitoring processes registered."
 msgstr ""
 
-#: includes/Settings.php:2001
+#: includes/Settings.php:2296
 msgid "Total number of websites in the multisite:"
 msgstr ""
 
 #. translators: 1: total website count, 2: active website count.
-#: includes/Settings.php:2004
+#: includes/Settings.php:2299
 msgid "%1$s, of which %2$s are active"
 msgstr ""
 
-#: includes/Settings.php:2009
+#: includes/Settings.php:2304
 msgid "Website availability is checked only for active websites. Websites with the status \"Archived\", \"Blocked\", or \"Marked for deletion\" are excluded from the check."
 msgstr ""
 
-#: includes/Settings.php:2015
+#: includes/Settings.php:2314
+msgid "Check Cron events."
+msgstr ""
+
+#: includes/Settings.php:2323
 msgid "Last monitoring runs"
 msgstr ""
 
-#: includes/Settings.php:2016
+#: includes/Settings.php:2324
 msgid "This is the run log of the last complete monitoring passes, including notable status changes and technical issues."
 msgstr ""
 
-#: includes/Settings.php:2025
+#: includes/Settings.php:2333
 msgid "Trigger"
 msgstr ""
 
-#: includes/Settings.php:2026
+#: includes/Settings.php:2334
 msgid "Sites checked"
 msgstr ""
 
-#: includes/Settings.php:2027
-#: includes/Settings.php:2609
-#: includes/Settings.php:2748
+#: includes/Settings.php:2335
+#: includes/Settings.php:2931
+#: includes/Settings.php:3073
 msgid "Status change"
 msgstr ""
 
-#: includes/Settings.php:2028
+#: includes/Settings.php:2336
 msgid "DNS issues"
 msgstr ""
 
-#: includes/Settings.php:2029
+#: includes/Settings.php:2337
 msgid "HTTP problems"
 msgstr ""
 
-#: includes/Settings.php:2031
+#: includes/Settings.php:2339
 msgid "Not reachable"
 msgstr ""
 
-#: includes/Settings.php:2053
+#: includes/Settings.php:2361
 msgid "No complete monitoring run has been logged yet."
 msgstr ""
 
-#: includes/Settings.php:2060
+#: includes/Settings.php:2368
 msgid "Most recently detected issues"
 msgstr ""
 
-#: includes/Settings.php:2061
+#: includes/Settings.php:2369
 msgid "Compact history of the latest status changes and technical issues logged by monitoring."
 msgstr ""
 
-#: includes/Settings.php:2067
-#: templates/site-details-page.php:163
+#: includes/Settings.php:2375
+#: templates/site-details-page.php:177
 msgid "Timestamp"
 msgstr ""
 
-#: includes/Settings.php:2068
-#: templates/plugin-details-page.php:251
+#: includes/Settings.php:2376
+#: templates/plugin-details-page.php:263
 msgid "Website"
 msgstr ""
 
-#: includes/Settings.php:2069
+#: includes/Settings.php:2377
 msgid "Event"
 msgstr ""
 
-#: includes/Settings.php:2071
-#: includes/Widgets/Widgets.php:389
-#: includes/Widgets/Widgets.php:449
-#: templates/site-details-page.php:164
+#: includes/Settings.php:2379
+#: includes/Widgets/Widgets.php:390
+#: includes/Widgets/Widgets.php:450
+#: templates/site-details-page.php:178
 msgid "DNS"
 msgstr ""
 
-#: includes/Settings.php:2072
-#: includes/Widgets/Widgets.php:390
-#: includes/Widgets/Widgets.php:450
-#: templates/site-details-page.php:165
+#: includes/Settings.php:2380
+#: includes/Widgets/Widgets.php:391
+#: includes/Widgets/Widgets.php:451
+#: templates/site-details-page.php:179
 msgid "HTTP"
 msgstr ""
 
-#: includes/Settings.php:2073
+#: includes/Settings.php:2381
 msgid "Run"
 msgstr ""
 
-#: includes/Settings.php:2090
+#: includes/Settings.php:2398
 msgid "No notable monitoring events have been logged yet."
 msgstr ""
 
-#: includes/Settings.php:2110
+#: includes/Settings.php:2418
 #: templates/views-page.php:23
 msgid "Create new view"
 msgstr ""
 
-#: includes/Settings.php:2111
+#: includes/Settings.php:2419
 #: templates/views-page.php:24
 msgid "New views start with all widgets. You can then narrow the selection directly below."
 msgstr ""
 
-#: includes/Settings.php:2113
+#: includes/Settings.php:2421
 #: templates/views-page.php:26
 msgid "Name of the new view"
 msgstr ""
 
-#: includes/Settings.php:2127
+#: includes/Settings.php:2435
 #: templates/views-page.php:39
 msgid "System view: always contains all available widgets and cannot be edited."
 msgstr ""
 
-#: includes/Settings.php:2129
+#: includes/Settings.php:2437
 #: templates/views-page.php:41
 msgid "System view: name is fixed, widget assignment can be adjusted."
 msgstr ""
 
-#: includes/Settings.php:2134
-#: templates/plugin-details-page.php:412
-#: templates/site-details-page.php:242
-#: templates/site-details-page.php:377
-#: templates/site-details-page.php:631
-#: templates/site-details-page.php:731
+#: includes/Settings.php:2442
+#: templates/plugin-details-page.php:424
+#: templates/site-details-page.php:256
+#: templates/site-details-page.php:391
+#: templates/site-details-page.php:649
+#: templates/site-details-page.php:761
 #: templates/site-storage-missing-metadata.php:67
 #: templates/theme-details-page.php:237
 #: templates/views-page.php:46
@@ -2899,211 +3062,218 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: includes/Settings.php:2139
+#: includes/Settings.php:2447
 #: templates/views-page.php:51
 msgid "Delete view"
 msgstr ""
 
-#: includes/Settings.php:2157
+#: includes/Settings.php:2465
 #: templates/views-page.php:73
 msgid "Save views"
 msgstr ""
 
-#: includes/Settings.php:2204
+#: includes/Settings.php:2512
 msgid "Not started"
 msgstr ""
 
-#: includes/Settings.php:2209
+#: includes/Settings.php:2517
 msgid "Completed"
 msgstr ""
 
-#: includes/Settings.php:2241
-#: includes/Settings.php:2359
+#: includes/Settings.php:2549
+#: includes/Settings.php:2674
 msgid "Not run yet"
 msgstr ""
 
-#: includes/Settings.php:2262
+#: includes/Settings.php:2570
 msgid "0 sec."
 msgstr ""
 
-#: includes/Settings.php:2270
+#. translators: %d: number of hours.
+#: includes/Settings.php:2579
 msgid "%d hr."
 msgid_plural "%d hr."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Settings.php:2274
-#: includes/Settings.php:2299
+#. translators: %d: number of minutes.
+#: includes/Settings.php:2584
+#: includes/Settings.php:2612
 msgid "%d min."
 msgid_plural "%d min."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Settings.php:2278
-#: includes/Settings.php:2293
+#. translators: %d: number of seconds.
+#: includes/Settings.php:2589
+#: includes/Settings.php:2605
 msgid "%d sec."
 msgid_plural "%d sec."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Settings.php:2311
+#. translators: 1: checked websites, 2: total websites, 3: completion percentage.
+#: includes/Settings.php:2625
 msgid "%1$s / %2$s (%3$d%%)"
 msgstr ""
 
-#: includes/Settings.php:2320
+#. translators: 1: checked websites, 2: total websites.
+#: includes/Settings.php:2635
 msgid "%1$s / %2$s"
 msgstr ""
 
-#: includes/Settings.php:2356
+#: includes/Settings.php:2671
 msgid "Ready"
 msgstr ""
 
-#: includes/Settings.php:2368
+#. translators: %s: batch size.
+#: includes/Settings.php:2684
 msgid "Batch size: %s"
 msgstr ""
 
-#: includes/Settings.php:2375
+#. translators: %s: number of processed websites.
+#: includes/Settings.php:2692
 msgid "Last processed: %s sites"
 msgstr ""
 
-#: includes/Settings.php:2465
-#: includes/Settings.php:2491
+#: includes/Settings.php:2769
+msgid "Start early now"
+msgstr ""
+
+#: includes/Settings.php:2770
+msgid "Create task"
+msgstr ""
+
+#: includes/Settings.php:2787
+#: includes/Settings.php:2813
 msgid "Reset"
 msgstr ""
 
-#: includes/Settings.php:2473
-#: includes/Settings.php:2499
+#: includes/Settings.php:2795
+#: includes/Settings.php:2821
 msgid "Reset and restart"
 msgstr ""
 
-#: includes/Settings.php:2526
+#: includes/Settings.php:2848
 msgid "Run is taking unusually long"
 msgstr ""
 
-#: includes/Settings.php:2530
+#: includes/Settings.php:2852
 msgid "Next run is overdue"
 msgstr ""
 
-#: includes/Settings.php:2534
+#: includes/Settings.php:2856
 msgid "No completed process data is available yet"
 msgstr ""
 
-#: includes/Settings.php:2564
+#: includes/Settings.php:2886
 msgid "Clean up legacy MSM data"
 msgstr ""
 
-#: includes/Settings.php:2565
+#: includes/Settings.php:2887
 msgid "Deletes stored storage-analysis results, their metadata, and all MSM transients. Dashboard metrics are also removed. This cannot be undone."
 msgstr ""
 
-#: includes/Settings.php:2569
+#: includes/Settings.php:2891
 msgid "Status:"
 msgstr ""
 
 #. translators: 1: transient row count, 2: data size.
-#: includes/Settings.php:2578
+#: includes/Settings.php:2900
 msgid "Transient rows found at start: %1$s (%2$s)"
 msgstr ""
 
-#: includes/Settings.php:2595
+#: includes/Settings.php:2917
 msgid "I understand that saved storage analyses, metrics, and MSM transient caches will be permanently deleted."
 msgstr ""
 
-#: includes/Settings.php:2596
+#: includes/Settings.php:2918
 msgid "Start complete data cleanup"
 msgstr ""
 
-#: includes/Settings.php:2613
+#: includes/Settings.php:2935
 msgid "Technical issues"
 msgstr ""
 
-#: includes/Settings.php:2617
+#: includes/Settings.php:2939
 msgid "No notable issues have been logged."
 msgstr ""
 
-#: includes/Settings.php:2645
+#. translators: %s: DNS status.
+#: includes/Settings.php:2968
 msgid "DNS: %s"
 msgstr ""
 
-#: includes/Settings.php:2655
+#. translators: %s: HTTP status.
+#: includes/Settings.php:2979
 msgid "HTTP: %s"
 msgstr ""
 
-#: includes/Settings.php:2733
+#. translators: 1: previous status, 2: current status.
+#: includes/Settings.php:3058
 msgid "%1$s -> %2$s"
 msgstr ""
 
-#: includes/Settings.php:2752
+#: includes/Settings.php:3077
 msgid "DNS issue"
 msgstr ""
 
-#: includes/Settings.php:2756
+#: includes/Settings.php:3081
 msgid "HTTP issue"
 msgstr ""
 
-#: includes/Settings.php:2759
+#: includes/Settings.php:3084
 msgid "Monitoring event"
 msgstr ""
 
-#: includes/Settings.php:2820
+#: includes/Settings.php:3145
 msgid "Provisioning phase"
 msgstr ""
 
-#: includes/Settings.php:2828
+#: includes/Settings.php:3153
 msgid "HTTP unreachable"
 msgstr ""
 
-#: includes/Settings.php:2832
+#: includes/Settings.php:3157
 msgid "Decommissioned"
 msgstr ""
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:759
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1368
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:903
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1516
 msgid "The shortcode and block analysis was aborted because it exceeded the configured runtime limit."
 msgstr ""
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1040
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1184
 #: includes/Widgets/PluginUsageWidget.php:89
 msgid "Plugin"
 msgstr ""
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1044
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1118
-#: templates/site-details-page.php:104
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1188
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1262
+#: templates/site-details-page.php:108
 #: templates/theme-details-page.php:38
 msgid "Theme"
 msgstr ""
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1114
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1258
 msgid "MU-plugin"
 msgstr ""
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1845
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1996
 msgid "The shortcode and block analysis was interrupted before it could finish."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:474
-#: includes/StorageAnalysisSchedulerService.php:554
+#: includes/StorageAnalysisSchedulerService.php:1098
+#: includes/StorageAnalysisSchedulerService.php:1183
 msgid "The storage analysis was aborted because it exceeded the configured runtime limit."
 msgstr ""
 
-#. translators: %d: site ID.
-#: includes/StorageAnalysisSchedulerService.php:493
-msgid "RRZE-MSM: Storage analysis (site %d) started"
-msgstr ""
-
-#: includes/StorageAnalysisSchedulerService.php:1010
+#: includes/StorageAnalysisSchedulerService.php:1741
 msgid "The storage analysis was interrupted before it could finish."
 msgstr ""
 
-#. translators: 1: analysis phase, 2: site ID, 3: event name.
-#: includes/StorageAnalysisSchedulerService.php:1177
-msgid "RRZE-MSM: Storage analysis phase %1$s for site %2$d %3$s"
-msgstr ""
-
-#. translators: %d: site ID.
-#: includes/StorageAnalysisSchedulerService.php:1234
-msgid "RRZE-MSM: Storage analysis (site %d) finished"
+#: includes/StorageAnalysisSchedulerService.php:2017
+msgid "The storage analysis completed, but its next scheduled run could not be created."
 msgstr ""
 
 #: includes/ViewManager.php:115
@@ -3112,7 +3282,7 @@ msgstr ""
 
 #: includes/ViewManager.php:132
 #: includes/Widgets/SummaryWidget.php:54
-#: templates/site-details-page.php:105
+#: templates/site-details-page.php:109
 msgid "Plugins"
 msgstr ""
 
@@ -3160,7 +3330,7 @@ msgid "Editor usage"
 msgstr ""
 
 #: includes/Widgets/EditorUsageWidget.php:17
-msgid "Estimate based on whether the Classic Editor plugin is active per site, network-wide, or as an MU plugin."
+msgid "Based on the default editor configured for each website in RRZE Settings."
 msgstr ""
 
 #: includes/Widgets/EditorUsageWidget.php:31
@@ -3271,9 +3441,9 @@ msgid "Initial evaluation of locally available plugins and plugins used in the n
 msgstr ""
 
 #: includes/Widgets/PluginUsageWidget.php:49
-#: includes/Widgets/Widgets.php:143
-#: includes/Widgets/Widgets.php:250
-#: includes/Widgets/Widgets.php:320
+#: includes/Widgets/Widgets.php:144
+#: includes/Widgets/Widgets.php:251
+#: includes/Widgets/Widgets.php:321
 msgid "No entries available."
 msgstr ""
 
@@ -3296,27 +3466,26 @@ msgstr ""
 
 #: includes/Widgets/PluginUsageWidget.php:63
 #: includes/Widgets/PluginUsageWidget.php:227
-#: templates/plugin-details-page.php:238
-#: templates/site-storage-analysis-page.php:375
-#: templates/site-storage-analysis-page.php:552
-#: templates/site-storage-analysis-page.php:634
-#: templates/site-storage-analysis-page.php:698
-#: templates/site-storage-analysis-page.php:771
-#: templates/site-storage-analysis-page.php:855
+#: templates/plugin-details-page.php:250
+#: templates/site-storage-analysis-page.php:379
+#: templates/site-storage-analysis-page.php:556
+#: templates/site-storage-analysis-page.php:642
+#: templates/site-storage-analysis-page.php:706
+#: templates/site-storage-analysis-page.php:779
+#: templates/site-storage-analysis-page.php:863
 msgid "Show:"
 msgstr ""
 
-#. translators: %d: default row count for the plugin table.
-#. translators: %d: default row count for the missing plugin table.
+#. translators: %d: number of rows shown by default.
 #: includes/Widgets/PluginUsageWidget.php:73
 #: includes/Widgets/PluginUsageWidget.php:237
-#: includes/Widgets/Widgets.php:643
+#: includes/Widgets/Widgets.php:644
 msgid "Default (%d)"
 msgstr ""
 
 #: includes/Widgets/PluginUsageWidget.php:90
 #: templates/plugin-details-page.php:85
-#: templates/site-details-page.php:314
+#: templates/site-details-page.php:328
 #: templates/theme-details-page.php:62
 #: templates/widgets/inactive-plugins-widget.php:21
 #: templates/widgets/inactive-themes-widget.php:21
@@ -3333,20 +3502,20 @@ msgid "Active sites"
 msgstr ""
 
 #: includes/Widgets/PluginUsageWidget.php:97
-#: includes/Widgets/Widgets.php:157
-#: includes/Widgets/Widgets.php:269
-#: includes/Widgets/Widgets.php:334
-#: includes/Widgets/Widgets.php:393
-#: includes/Widgets/Widgets.php:451
+#: includes/Widgets/Widgets.php:158
+#: includes/Widgets/Widgets.php:270
+#: includes/Widgets/Widgets.php:335
+#: includes/Widgets/Widgets.php:394
+#: includes/Widgets/Widgets.php:452
 #: templates/plugin-details-page.php:68
 #: templates/site-details-page.php:56
-#: templates/site-details-page.php:318
-#: templates/site-storage-analysis-page.php:393
-#: templates/site-storage-analysis-page.php:569
-#: templates/site-storage-analysis-page.php:652
-#: templates/site-storage-analysis-page.php:715
-#: templates/site-storage-analysis-page.php:789
-#: templates/site-storage-analysis-page.php:873
+#: templates/site-details-page.php:332
+#: templates/site-storage-analysis-page.php:397
+#: templates/site-storage-analysis-page.php:573
+#: templates/site-storage-analysis-page.php:660
+#: templates/site-storage-analysis-page.php:723
+#: templates/site-storage-analysis-page.php:797
+#: templates/site-storage-analysis-page.php:881
 #: templates/theme-details-page.php:46
 msgid "Actions"
 msgstr ""
@@ -3379,37 +3548,37 @@ msgstr ""
 
 #. translators: %s: minimum supported WordPress version.
 #: includes/Widgets/PluginUsageWidget.php:391
-#: templates/plugin-details-page.php:169
+#: templates/plugin-details-page.php:173
 #: templates/theme-details-page.php:150
 msgid "WP from: %s"
 msgstr ""
 
 #. translators: %s: minimum supported PHP version.
 #: includes/Widgets/PluginUsageWidget.php:401
-#: templates/plugin-details-page.php:175
+#: templates/plugin-details-page.php:183
 #: templates/theme-details-page.php:156
 msgid "PHP from: %s"
 msgstr ""
 
 #: includes/Widgets/PluginUsageWidget.php:434
-#: includes/Widgets/Widgets.php:1398
+#: includes/Widgets/Widgets.php:1400
 msgid "Show websites"
 msgstr ""
 
 #: includes/Widgets/PluginUsageWidget.php:436
-#: includes/Widgets/Widgets.php:1400
+#: includes/Widgets/Widgets.php:1402
 msgid "Hide websites"
 msgstr ""
 
 #. translators: 1: number of previewed websites, 2: total number of websites.
 #: includes/Widgets/PluginUsageWidget.php:443
-#: includes/Widgets/Widgets.php:1406
+#: includes/Widgets/Widgets.php:1408
 msgid "A preview of the first %1$s of %2$s websites is shown."
 msgstr ""
 
 #. translators: 1: current page number, 2: total number of pages.
 #: includes/Widgets/PluginUsageWidget.php:482
-#: includes/Widgets/Widgets.php:1440
+#: includes/Widgets/Widgets.php:1442
 msgid "Page %1$d of %2$d"
 msgstr ""
 
@@ -3495,9 +3664,9 @@ msgid "of which %d active"
 msgstr ""
 
 #: includes/Widgets/SummaryWidget.php:44
-#: includes/Widgets/Widgets.php:266
-#: templates/site-details-page.php:103
-#: templates/site-details-page.php:234
+#: includes/Widgets/Widgets.php:267
+#: templates/site-details-page.php:107
+#: templates/site-details-page.php:248
 msgid "Users"
 msgstr ""
 
@@ -3527,7 +3696,7 @@ msgstr ""
 
 #. translators: %s: total maximum storage label.
 #: includes/Widgets/SummaryWidget.php:80
-#: includes/Widgets/Widgets.php:1136
+#: includes/Widgets/Widgets.php:1137
 #: templates/site-details-page.php:83
 msgid "of %s"
 msgstr ""
@@ -3553,12 +3722,12 @@ msgid "No theme usage data available."
 msgstr ""
 
 #: includes/Widgets/Widgets.php:77
-#: templates/site-details-page.php:277
+#: templates/site-details-page.php:291
 msgid "No screenshot available"
 msgstr ""
 
 #: includes/Widgets/Widgets.php:90
-#: templates/site-details-page.php:283
+#: templates/site-details-page.php:297
 msgid "Version:"
 msgstr ""
 
@@ -3570,137 +3739,139 @@ msgstr ""
 msgid "Theme URL:"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:118
+#. translators: %d: number of websites using the theme.
+#: includes/Widgets/Widgets.php:119
 msgid "%d website uses this theme."
 msgid_plural "%d websites use this theme."
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Widgets/Widgets.php:154
-#: includes/Widgets/Widgets.php:263
+#: includes/Widgets/Widgets.php:155
+#: includes/Widgets/Widgets.php:264
 #: templates/shortcode-block-analysis-page.php:311
 #: templates/site-details-page.php:64
 msgid "Registered"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:155
-#: includes/Widgets/Widgets.php:264
+#: includes/Widgets/Widgets.php:156
+#: includes/Widgets/Widgets.php:265
 #: templates/site-details-page.php:68
 msgid "Last updated"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:156
-#: includes/Widgets/Widgets.php:265
+#: includes/Widgets/Widgets.php:157
+#: includes/Widgets/Widgets.php:266
 #: templates/site-details-page.php:60
 msgid "Admin email"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:261
+#: includes/Widgets/Widgets.php:262
 msgid "Logo"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:268
+#: includes/Widgets/Widgets.php:269
 msgid "Storage"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:332
+#: includes/Widgets/Widgets.php:333
 msgid "By"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:333
-#: includes/Widgets/Widgets.php:392
-#: templates/site-details-page.php:139
+#: includes/Widgets/Widgets.php:334
+#: includes/Widgets/Widgets.php:393
+#: templates/site-details-page.php:153
 msgid "Note"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:376
+#: includes/Widgets/Widgets.php:377
 msgid "No problematic websites found."
 msgstr ""
 
-#: includes/Widgets/Widgets.php:391
+#: includes/Widgets/Widgets.php:392
 msgid "Last check"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:435
+#: includes/Widgets/Widgets.php:436
 msgid "There have been no new technical warnings since the last monitoring run."
 msgstr ""
 
-#: includes/Widgets/Widgets.php:446
+#: includes/Widgets/Widgets.php:447
 msgid "New operational status"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:447
-#: templates/site-details-page.php:166
+#: includes/Widgets/Widgets.php:448
+#: templates/site-details-page.php:180
 msgid "Previous status"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:448
+#: includes/Widgets/Widgets.php:449
 msgid "Changed at"
 msgstr ""
 
 #. translators: %d: number of websites.
-#: includes/Widgets/Widgets.php:558
+#: includes/Widgets/Widgets.php:559
 msgid "%d website"
 msgid_plural "%d websites"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/Widgets/Widgets.php:955
-#: includes/Widgets/Widgets.php:1047
+#: includes/Widgets/Widgets.php:956
+#: includes/Widgets/Widgets.php:1048
 msgid "Edit"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:972
-#: includes/Widgets/Widgets.php:1054
+#: includes/Widgets/Widgets.php:973
+#: includes/Widgets/Widgets.php:1055
 msgid "Open"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1003
-#: includes/Widgets/Widgets.php:1012
+#: includes/Widgets/Widgets.php:1004
+#: includes/Widgets/Widgets.php:1013
 msgid "Restore"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1019
+#: includes/Widgets/Widgets.php:1020
 msgid "Mark for deletion"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1081
+#: includes/Widgets/Widgets.php:1082
 #: templates/dashboard-page.php:53
-#: templates/site-details-page.php:782
+#: templates/site-details-page.php:816
 #: templates/site-overview-page.php:64
 msgid "Permanently delete site"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1101
+#: includes/Widgets/Widgets.php:1102
 msgid "Admins"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1102
+#: includes/Widgets/Widgets.php:1103
 msgid "Editors"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1103
+#: includes/Widgets/Widgets.php:1104
 msgid "Other roles"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1113
+#: includes/Widgets/Widgets.php:1114
 msgid "Pages"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1114
+#: includes/Widgets/Widgets.php:1115
 msgid "Posts"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1115
+#: includes/Widgets/Widgets.php:1116
 msgid "Media"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1140
+#. translators: %d: storage usage percentage.
+#: includes/Widgets/Widgets.php:1142
 #: templates/site-details-page.php:86
 msgid "%d%% used"
 msgstr ""
 
-#: includes/Widgets/Widgets.php:1231
+#: includes/Widgets/Widgets.php:1233
 #: templates/site-details-page.php:47
 #: templates/site-storage-analysis-page.php:98
 msgid "No logo"
@@ -3744,25 +3915,25 @@ msgid "Active view:"
 msgstr ""
 
 #: templates/dashboard-page.php:54
-#: templates/site-details-page.php:783
+#: templates/site-details-page.php:817
 #: templates/site-overview-page.php:65
 msgid "This action permanently deletes the site using the normal WordPress network function. You should not do this in the browser for large websites. Keep the browser open until the process is complete."
 msgstr ""
 
 #: templates/dashboard-page.php:56
-#: templates/site-details-page.php:785
+#: templates/site-details-page.php:819
 #: templates/site-overview-page.php:67
 msgid "Selected site:"
 msgstr ""
 
 #: templates/dashboard-page.php:61
-#: templates/site-details-page.php:790
+#: templates/site-details-page.php:824
 #: templates/site-overview-page.php:72
 msgid "Yes, I am sure. This site should be permanently deleted and I will keep the browser open for it."
 msgstr ""
 
 #: templates/dashboard-page.php:65
-#: templates/site-details-page.php:794
+#: templates/site-details-page.php:828
 #: templates/site-overview-page.php:76
 msgid "Proceed to permanent deletion"
 msgstr ""
@@ -3772,7 +3943,7 @@ msgid "Curated operational and environment data for the entire multisite network
 msgstr ""
 
 #: templates/environment-overview-page.php:22
-#: templates/plugin-details-page.php:158
+#: templates/plugin-details-page.php:162
 #: templates/theme-details-page.php:139
 msgid "Issues"
 msgstr ""
@@ -3792,7 +3963,7 @@ msgid "Core data"
 msgstr ""
 
 #: templates/plugin-details-page.php:89
-#: templates/site-details-page.php:315
+#: templates/site-details-page.php:329
 #: templates/theme-details-page.php:66
 msgid "Author"
 msgstr ""
@@ -3843,205 +4014,208 @@ msgstr ""
 msgid "Repository"
 msgstr ""
 
-#: templates/plugin-details-page.php:152
+#. translators: %s: repository type.
+#: templates/plugin-details-page.php:154
 #: templates/theme-details-page.php:133
 msgid "Type: %s"
 msgstr ""
 
-#: templates/plugin-details-page.php:166
+#: templates/plugin-details-page.php:170
 #: templates/theme-details-page.php:147
 msgid "Compatibility"
 msgstr ""
 
-#: templates/plugin-details-page.php:172
+#. translators: %s: latest WordPress version tested with the plugin.
+#: templates/plugin-details-page.php:178
 #: templates/theme-details-page.php:153
 msgid "Tested up to: %s"
 msgstr ""
 
-#: templates/plugin-details-page.php:180
+#: templates/plugin-details-page.php:188
 #: templates/theme-details-page.php:161
 msgid "Text domain"
 msgstr ""
 
-#: templates/plugin-details-page.php:184
+#: templates/plugin-details-page.php:192
 #: templates/theme-details-page.php:165
 msgid "Translations"
 msgstr ""
 
-#: templates/plugin-details-page.php:191
+#: templates/plugin-details-page.php:199
 #: templates/theme-details-page.php:172
 msgid "No translation files found"
 msgstr ""
 
-#: templates/plugin-details-page.php:197
+#: templates/plugin-details-page.php:205
 #: templates/theme-details-page.php:178
 msgid "Supports"
 msgstr ""
 
-#: templates/plugin-details-page.php:202
+#: templates/plugin-details-page.php:210
 #: templates/theme-details-page.php:183
 msgid "Metadata sources"
 msgstr ""
 
-#: templates/plugin-details-page.php:203
+#: templates/plugin-details-page.php:211
 msgid "Plugin header only"
 msgstr ""
 
-#: templates/plugin-details-page.php:214
+#: templates/plugin-details-page.php:222
 #: templates/theme-details-page.php:195
 msgid "README"
 msgstr ""
 
-#: templates/plugin-details-page.php:218
+#: templates/plugin-details-page.php:226
 #: templates/theme-details-page.php:199
 msgid "Show README markdown"
 msgstr ""
 
-#: templates/plugin-details-page.php:221
+#: templates/plugin-details-page.php:229
 #: templates/theme-details-page.php:202
 msgid "Hide README markdown"
 msgstr ""
 
-#: templates/plugin-details-page.php:231
+#: templates/plugin-details-page.php:239
 msgid "Websites using the plugin"
 msgstr ""
 
-#: templates/plugin-details-page.php:232
+#. translators: %d: number of websites using the plugin.
+#: templates/plugin-details-page.php:242
 msgid "This plugin is currently used on %d websites."
 msgstr ""
 
-#: templates/plugin-details-page.php:240
-#: templates/site-storage-analysis-page.php:377
-#: templates/site-storage-analysis-page.php:554
-#: templates/site-storage-analysis-page.php:636
-#: templates/site-storage-analysis-page.php:700
-#: templates/site-storage-analysis-page.php:773
-#: templates/site-storage-analysis-page.php:857
+#: templates/plugin-details-page.php:252
+#: templates/site-storage-analysis-page.php:381
+#: templates/site-storage-analysis-page.php:558
+#: templates/site-storage-analysis-page.php:644
+#: templates/site-storage-analysis-page.php:708
+#: templates/site-storage-analysis-page.php:781
+#: templates/site-storage-analysis-page.php:865
 msgid "Standard (20)"
 msgstr ""
 
-#: templates/plugin-details-page.php:252
+#: templates/plugin-details-page.php:264
 msgid "URL"
 msgstr ""
 
-#: templates/plugin-details-page.php:300
+#: templates/plugin-details-page.php:312
 msgid "This plugin is currently not used actively on any website."
 msgstr ""
 
-#: templates/plugin-details-page.php:312
+#: templates/plugin-details-page.php:324
 #: templates/shortcode-block-analysis-page.php:309
 #: templates/theme-details-page.php:216
 msgid "Shortcode"
 msgstr ""
 
-#: templates/plugin-details-page.php:324
+#: templates/plugin-details-page.php:336
 #: templates/theme-details-page.php:224
 msgid "No statically detectable shortcodes were found."
 msgstr ""
 
-#: templates/plugin-details-page.php:330
+#: templates/plugin-details-page.php:342
 msgid "Custom post types and taxonomies"
 msgstr ""
 
-#: templates/plugin-details-page.php:331
+#: templates/plugin-details-page.php:343
 msgid "The registrations visible in the plugin code via register_post_type() and register_taxonomy() are listed here. If slugs are built dynamically, this is indicated."
 msgstr ""
 
-#: templates/plugin-details-page.php:335
-#: templates/site-details-page.php:425
+#: templates/plugin-details-page.php:347
+#: templates/site-details-page.php:439
 msgid "Custom post types"
 msgstr ""
 
-#: templates/plugin-details-page.php:341
-#: templates/plugin-details-page.php:374
-#: templates/site-details-page.php:467
-#: templates/site-details-page.php:539
-#: templates/site-details-page.php:562
+#: templates/plugin-details-page.php:353
+#: templates/plugin-details-page.php:386
+#: templates/site-details-page.php:481
+#: templates/site-details-page.php:553
+#: templates/site-details-page.php:576
 msgid "Label"
 msgstr ""
 
-#: templates/plugin-details-page.php:342
-#: templates/plugin-details-page.php:375
-#: templates/plugin-details-page.php:413
-#: templates/site-details-page.php:378
-#: templates/site-details-page.php:440
-#: templates/site-details-page.php:468
-#: templates/site-details-page.php:540
-#: templates/site-details-page.php:563
+#: templates/plugin-details-page.php:354
+#: templates/plugin-details-page.php:387
+#: templates/plugin-details-page.php:425
+#: templates/site-details-page.php:392
+#: templates/site-details-page.php:454
+#: templates/site-details-page.php:482
+#: templates/site-details-page.php:554
+#: templates/site-details-page.php:577
 #: templates/theme-details-page.php:238
 msgid "Slug"
 msgstr ""
 
-#: templates/plugin-details-page.php:343
-#: templates/plugin-details-page.php:517
+#: templates/plugin-details-page.php:355
+#: templates/plugin-details-page.php:529
 #: templates/site-storage-analysis-page.php:302
-#: templates/site-storage-analysis-page.php:390
-#: templates/site-storage-analysis-page.php:448
-#: templates/site-storage-analysis-page.php:566
-#: templates/site-storage-analysis-page.php:649
-#: templates/site-storage-analysis-page.php:712
-#: templates/site-storage-analysis-page.php:786
-#: templates/site-storage-analysis-page.php:870
+#: templates/site-storage-analysis-page.php:394
+#: templates/site-storage-analysis-page.php:452
+#: templates/site-storage-analysis-page.php:570
+#: templates/site-storage-analysis-page.php:657
+#: templates/site-storage-analysis-page.php:720
+#: templates/site-storage-analysis-page.php:794
+#: templates/site-storage-analysis-page.php:878
 #: templates/site-storage-attachment-debug.php:101
 #: templates/theme-details-page.php:335
 msgid "Type"
 msgstr ""
 
-#: templates/plugin-details-page.php:364
+#: templates/plugin-details-page.php:376
 msgid "No statically detectable custom post types were found."
 msgstr ""
 
-#: templates/plugin-details-page.php:368
+#: templates/plugin-details-page.php:380
 msgid "Taxonomies"
 msgstr ""
 
-#: templates/plugin-details-page.php:376
+#: templates/plugin-details-page.php:388
 msgid "Object type"
 msgstr ""
 
-#: templates/plugin-details-page.php:397
+#: templates/plugin-details-page.php:409
 msgid "No statically detectable taxonomies were found."
 msgstr ""
 
-#: templates/plugin-details-page.php:405
-#: templates/site-details-page.php:370
+#: templates/plugin-details-page.php:417
+#: templates/site-details-page.php:384
 #: templates/theme-details-page.php:230
 msgid "Registered image sizes"
 msgstr ""
 
-#: templates/plugin-details-page.php:406
+#: templates/plugin-details-page.php:418
 msgid "The registrations directly visible in the plugin code via add_image_size() and set_post_thumbnail_size() are listed here."
 msgstr ""
 
-#: templates/plugin-details-page.php:414
-#: templates/site-details-page.php:379
+#: templates/plugin-details-page.php:426
+#: templates/site-details-page.php:393
 #: templates/theme-details-page.php:239
 msgid "Width"
 msgstr ""
 
-#: templates/plugin-details-page.php:415
-#: templates/site-details-page.php:380
+#: templates/plugin-details-page.php:427
+#: templates/site-details-page.php:394
 #: templates/theme-details-page.php:240
 msgid "Height"
 msgstr ""
 
-#: templates/plugin-details-page.php:416
-#: templates/site-details-page.php:381
+#: templates/plugin-details-page.php:428
+#: templates/site-details-page.php:395
 #: templates/theme-details-page.php:241
 msgid "Crop"
 msgstr ""
 
-#: templates/plugin-details-page.php:432
+#: templates/plugin-details-page.php:444
 #: templates/theme-details-page.php:257
 msgid "No directly statically detectable image sizes were found."
 msgstr ""
 
-#: templates/plugin-details-page.php:438
+#: templates/plugin-details-page.php:450
 #: templates/theme-details-page.php:263
 msgid "Blocks and block patterns"
 msgstr ""
 
-#: templates/plugin-details-page.php:448
+#: templates/plugin-details-page.php:460
 #: templates/site-storage-analysis-page.php:248
 #: templates/site-storage-analysis-page.php:303
 #: templates/site-storage-attachment-debug.php:36
@@ -4050,88 +4224,88 @@ msgstr ""
 msgid "Title"
 msgstr ""
 
-#: templates/plugin-details-page.php:451
+#: templates/plugin-details-page.php:463
 #: templates/shortcode-block-analysis-page.php:314
 #: templates/theme-details-page.php:276
 msgid "Category"
 msgstr ""
 
-#: templates/plugin-details-page.php:453
-#: templates/site-details-page.php:382
-#: templates/site-details-page.php:383
+#: templates/plugin-details-page.php:465
+#: templates/site-details-page.php:396
+#: templates/site-details-page.php:397
 #: templates/theme-details-page.php:278
 msgid "Source"
 msgstr ""
 
-#: templates/plugin-details-page.php:478
+#: templates/plugin-details-page.php:490
 #: templates/theme-details-page.php:303
 msgid "No statically detectable blocks were found."
 msgstr ""
 
-#: templates/plugin-details-page.php:482
-#: templates/site-details-page.php:430
+#: templates/plugin-details-page.php:494
+#: templates/site-details-page.php:444
 #: templates/theme-details-page.php:307
 msgid "Block patterns"
 msgstr ""
 
-#: templates/plugin-details-page.php:488
+#: templates/plugin-details-page.php:500
 #: templates/theme-details-page.php:311
 msgid "Pattern"
 msgstr ""
 
-#: templates/plugin-details-page.php:501
+#: templates/plugin-details-page.php:513
 #: templates/theme-details-page.php:320
 msgid "No statically detectable block patterns were found."
 msgstr ""
 
-#: templates/plugin-details-page.php:509
+#: templates/plugin-details-page.php:521
 #: templates/theme-details-page.php:328
 msgid "Provided actions and filters"
 msgstr ""
 
-#: templates/plugin-details-page.php:510
+#: templates/plugin-details-page.php:522
 msgid "The hook calls found in the plugin code that can be used by other themes or plugins are listed here."
 msgstr ""
 
-#: templates/plugin-details-page.php:516
-#: templates/site-details-page.php:755
+#: templates/plugin-details-page.php:528
+#: templates/site-details-page.php:789
 #: templates/theme-details-page.php:334
 msgid "Hook"
 msgstr ""
 
-#: templates/plugin-details-page.php:530
+#: templates/plugin-details-page.php:542
 msgid "No statically detectable provided hooks were found."
 msgstr ""
 
-#: templates/plugin-details-page.php:536
+#: templates/plugin-details-page.php:548
 msgid "No details could be loaded for this plugin."
 msgstr ""
 
-#: templates/plugin-details-page.php:543
+#: templates/plugin-details-page.php:555
 #: templates/plugin-overview-page.php:55
 #: templates/widgets/plugin-usage-widget.php:46
 msgid "Deactivate for all sites network-wide"
 msgstr ""
 
-#: templates/plugin-details-page.php:544
+#: templates/plugin-details-page.php:556
 #: templates/plugin-overview-page.php:56
 #: templates/widgets/plugin-usage-widget.php:47
 msgid "This plugin will be deactivated network-wide. This affects all websites in this network."
 msgstr ""
 
-#: templates/plugin-details-page.php:546
+#: templates/plugin-details-page.php:558
 #: templates/plugin-overview-page.php:58
 #: templates/widgets/plugin-usage-widget.php:49
 msgid "Selected plugin:"
 msgstr ""
 
-#: templates/plugin-details-page.php:551
+#: templates/plugin-details-page.php:563
 #: templates/plugin-overview-page.php:63
 #: templates/widgets/plugin-usage-widget.php:54
 msgid "Yes, I am sure and want to deactivate this plugin network-wide for all sites."
 msgstr ""
 
-#: templates/plugin-details-page.php:555
+#: templates/plugin-details-page.php:567
 #: templates/plugin-overview-page.php:67
 #: templates/widgets/plugin-usage-widget.php:58
 msgid "Deactivate plugin network-wide"
@@ -4245,151 +4419,153 @@ msgstr ""
 msgid "Show more…"
 msgstr ""
 
-#: templates/site-details-page.php:87
+#. translators: %d: available storage percentage.
+#: templates/site-details-page.php:89
 msgid "%d%% free"
 msgstr ""
 
-#: templates/site-details-page.php:90
+#: templates/site-details-page.php:94
 msgid "Analyze storage"
 msgstr ""
 
-#: templates/site-details-page.php:101
+#: templates/site-details-page.php:105
 msgid "Sections of website details"
 msgstr ""
 
-#: templates/site-details-page.php:102
-#: templates/site-details-page.php:424
+#: templates/site-details-page.php:106
+#: templates/site-details-page.php:438
 #: templates/site-storage-analysis-page.php:202
 msgid "Overview"
 msgstr ""
 
-#: templates/site-details-page.php:106
+#: templates/site-details-page.php:110
 msgid "Image sizes"
 msgstr ""
 
-#: templates/site-details-page.php:107
-#: templates/site-details-page.php:409
+#: templates/site-details-page.php:111
 #: templates/site-details-page.php:423
+#: templates/site-details-page.php:437
 msgid "Content types"
 msgstr ""
 
-#: templates/site-details-page.php:108
+#: templates/site-details-page.php:112
 msgid "Options"
 msgstr ""
 
-#: templates/site-details-page.php:109
-#: templates/site-details-page.php:711
-#: templates/site-details-page.php:713
+#: templates/site-details-page.php:113
+#: templates/site-details-page.php:737
+#: templates/site-details-page.php:739
 msgid "Process data"
 msgstr ""
 
-#: templates/site-details-page.php:116
+#: templates/site-details-page.php:120
 msgid "Status and monitoring"
 msgstr ""
 
-#: templates/site-details-page.php:123
+#: templates/site-details-page.php:127
 msgid "Field"
 msgstr ""
 
-#: templates/site-details-page.php:124
-#: templates/site-details-page.php:632
+#: templates/site-details-page.php:128
+#: templates/site-details-page.php:650
 msgid "Value"
 msgstr ""
 
-#: templates/site-details-page.php:131
-#: templates/site-details-page.php:135
-#: templates/site-details-page.php:139
+#. translators: 1: status title, 2: status field label.
+#: templates/site-details-page.php:137
+#: templates/site-details-page.php:146
+#: templates/site-details-page.php:153
 msgid "%1$s: %2$s"
 msgstr ""
 
-#: templates/site-details-page.php:159
+#: templates/site-details-page.php:173
 msgid "Latest monitoring checks"
 msgstr ""
 
-#: templates/site-details-page.php:167
+#: templates/site-details-page.php:181
 msgid "New status"
 msgstr ""
 
-#: templates/site-details-page.php:168
+#: templates/site-details-page.php:182
 msgid "Change"
 msgstr ""
 
-#: templates/site-details-page.php:192
+#: templates/site-details-page.php:206
 msgid "Set operational status manually"
 msgstr ""
 
-#: templates/site-details-page.php:193
+#: templates/site-details-page.php:207
 msgid "Here you only control the MSM operational status and the monitoring note. Core status flags such as archived or blocked remain unaffected."
 msgstr ""
 
-#: templates/site-details-page.php:217
+#: templates/site-details-page.php:231
 msgid "Intended for manual notes such as provisioning phase, known DNS problems, or planned shutdown."
 msgstr ""
 
-#: templates/site-details-page.php:223
+#: templates/site-details-page.php:237
 msgid "Save operational status"
 msgstr ""
 
-#: templates/site-details-page.php:236
-#: templates/site-details-page.php:263
+#: templates/site-details-page.php:250
+#: templates/site-details-page.php:277
 msgid "Go to site user management"
 msgstr ""
 
-#: templates/site-details-page.php:241
+#: templates/site-details-page.php:255
 msgid "Username"
 msgstr ""
 
-#: templates/site-details-page.php:243
+#: templates/site-details-page.php:257
 msgid "Email address"
 msgstr ""
 
-#: templates/site-details-page.php:244
+#: templates/site-details-page.php:258
 msgid "Role"
 msgstr ""
 
-#: templates/site-details-page.php:245
-#: templates/site-details-page.php:255
+#: templates/site-details-page.php:259
+#: templates/site-details-page.php:269
 msgid "User profile"
 msgstr ""
 
-#: templates/site-details-page.php:261
+#: templates/site-details-page.php:275
 msgid "No users were found for this website."
 msgstr ""
 
-#: templates/site-details-page.php:270
+#: templates/site-details-page.php:284
 msgid "Used theme"
 msgstr ""
 
-#: templates/site-details-page.php:290
+#: templates/site-details-page.php:304
 msgid "Site themes"
 msgstr ""
 
-#: templates/site-details-page.php:291
+#: templates/site-details-page.php:305
 msgid "Customizer"
 msgstr ""
 
-#: templates/site-details-page.php:293
+#: templates/site-details-page.php:307
 msgid "Site editor"
 msgstr ""
 
-#: templates/site-details-page.php:295
+#: templates/site-details-page.php:309
 msgid "Menus"
 msgstr ""
 
-#: templates/site-details-page.php:306
+#: templates/site-details-page.php:320
 msgid "Network-active plugins appear first, followed by locally active plugins."
 msgstr ""
 
-#: templates/site-details-page.php:308
-#: templates/site-details-page.php:363
+#: templates/site-details-page.php:322
+#: templates/site-details-page.php:377
 msgid "Go to site plugin management"
 msgstr ""
 
-#: templates/site-details-page.php:313
+#: templates/site-details-page.php:327
 msgid "Plugin name"
 msgstr ""
 
-#: templates/site-details-page.php:316
+#: templates/site-details-page.php:330
 #: templates/site-storage-attachment-debug.php:42
 #: templates/site-storage-missing-metadata.php:18
 #: templates/site-storage-missing-metadata.php:25
@@ -4399,182 +4575,189 @@ msgstr ""
 msgid "Short description"
 msgstr ""
 
-#: templates/site-details-page.php:340
-#: templates/site-details-page.php:341
+#: templates/site-details-page.php:354
+#: templates/site-details-page.php:355
 msgid "Deactivate on this site"
 msgstr ""
 
-#: templates/site-details-page.php:361
+#: templates/site-details-page.php:375
 msgid "No active plugins were detected for this website."
 msgstr ""
 
-#: templates/site-details-page.php:371
+#: templates/site-details-page.php:385
 msgid "The image sizes currently registered on this website are listed here from the actual runtime environment."
 msgstr ""
 
-#: templates/site-details-page.php:395
+#: templates/site-details-page.php:409
 msgid "No direct assignment"
 msgstr ""
 
-#: templates/site-details-page.php:401
+#: templates/site-details-page.php:415
 msgid "No registered image sizes could be determined for this website."
 msgstr ""
 
-#: templates/site-details-page.php:427
+#: templates/site-details-page.php:441
 msgid "Custom pages"
 msgstr ""
 
-#: templates/site-details-page.php:439
+#: templates/site-details-page.php:453
 msgid "Post type"
 msgstr ""
 
-#: templates/site-details-page.php:441
-#: templates/site-details-page.php:471
-#: templates/site-details-page.php:542
-#: templates/site-details-page.php:564
+#: templates/site-details-page.php:455
+#: templates/site-details-page.php:485
+#: templates/site-details-page.php:556
+#: templates/site-details-page.php:578
 msgid "Count"
 msgstr ""
 
-#: templates/site-details-page.php:460
+#: templates/site-details-page.php:474
 msgid "No content was detected for this website."
 msgstr ""
 
-#: templates/site-details-page.php:469
+#: templates/site-details-page.php:483
 msgid "Group"
 msgstr ""
 
-#: templates/site-details-page.php:470
-#: templates/site-details-page.php:541
+#: templates/site-details-page.php:484
+#: templates/site-details-page.php:555
 msgid "Registered in request"
 msgstr ""
 
-#: templates/site-details-page.php:504
+#: templates/site-details-page.php:518
 msgid "Delete custom post type"
 msgstr ""
 
-#: templates/site-details-page.php:506
+#: templates/site-details-page.php:520
 msgid "This permanently deletes all entries of this custom post type. The registration of the type in plugin or theme code remains unaffected."
 msgstr ""
 
-#: templates/site-details-page.php:509
+#: templates/site-details-page.php:523
 msgid "Selected type:"
 msgstr ""
 
-#: templates/site-details-page.php:521
+#: templates/site-details-page.php:535
 msgid "Yes, I am sure and want to permanently delete all entries of this custom post type."
 msgstr ""
 
-#: templates/site-details-page.php:525
+#: templates/site-details-page.php:539
 msgid "Permanently delete custom post type and all entries"
 msgstr ""
 
-#: templates/site-details-page.php:532
+#: templates/site-details-page.php:546
 msgid "No custom post types were detected for this website."
 msgstr ""
 
-#: templates/site-details-page.php:585
+#: templates/site-details-page.php:599
 msgid "Website options"
 msgstr ""
 
-#: templates/site-details-page.php:586
+#: templates/site-details-page.php:600
 msgid "The groups are based on the prefix of the option name. This is intentional because WordPress does not provide a clean plugin assignment for options."
 msgstr ""
 
-#: templates/site-details-page.php:603
+#: templates/site-details-page.php:617
 msgid "Option groups"
 msgstr ""
 
-#: templates/site-details-page.php:622
+#: templates/site-details-page.php:636
 msgid "Delete entire group"
 msgstr ""
 
-#: templates/site-details-page.php:626
+#. translators: %d: maximum number of options shown.
+#: templates/site-details-page.php:642
 msgid "For performance reasons, a maximum of %d options is shown here."
 msgstr ""
 
-#: templates/site-details-page.php:633
+#: templates/site-details-page.php:651
 msgid "Autoload"
 msgstr ""
 
-#: templates/site-details-page.php:645
+#: templates/site-details-page.php:663
 msgid "Super admin only"
 msgstr ""
 
-#: templates/site-details-page.php:650
+#: templates/site-details-page.php:668
 msgid "Show value"
 msgstr ""
 
 #. translators: %s: option value size.
-#: templates/site-details-page.php:654
+#: templates/site-details-page.php:672
 msgid "This option value is %s and is not loaded or displayed here."
 msgstr ""
 
-#: templates/site-details-page.php:665
+#: templates/site-details-page.php:680
+msgid "Download content"
+msgstr ""
+
+#: templates/site-details-page.php:691
 msgid "Raw option value"
 msgstr ""
 
-#: templates/site-details-page.php:668
+#: templates/site-details-page.php:694
 msgid "The raw value of the option is edited here directly from the database."
 msgstr ""
 
-#: templates/site-details-page.php:669
+#: templates/site-details-page.php:695
 msgid "Save change"
 msgstr ""
 
-#: templates/site-details-page.php:674
+#: templates/site-details-page.php:700
 msgid "This value cannot be edited directly."
 msgstr ""
 
-#: templates/site-details-page.php:700
+#: templates/site-details-page.php:726
 msgid "Select a group above to display its related options."
 msgstr ""
 
-#: templates/site-details-page.php:703
+#: templates/site-details-page.php:729
 msgid "No options were detected for this website."
 msgstr ""
 
-#: templates/site-details-page.php:714
+#: templates/site-details-page.php:740
 msgid "Stats"
 msgstr ""
 
-#: templates/site-details-page.php:715
-#: templates/site-details-page.php:720
+#: templates/site-details-page.php:741
+#: templates/site-details-page.php:746
 msgid "Transients"
 msgstr ""
 
-#: templates/site-details-page.php:716
+#: templates/site-details-page.php:742
 msgid "Scheduler"
 msgstr ""
 
-#: templates/site-details-page.php:721
+#: templates/site-details-page.php:747
 msgid "Scheduler entries"
 msgstr ""
 
-#: templates/site-details-page.php:725
+#. translators: %d: maximum number of transients shown.
+#: templates/site-details-page.php:753
 msgid "For performance reasons, a maximum of %d transients is shown here."
 msgstr ""
 
-#: templates/site-details-page.php:732
+#: templates/site-details-page.php:762
 msgid "Expiration time"
 msgstr ""
 
-#: templates/site-details-page.php:745
+#: templates/site-details-page.php:775
 msgid "No transients were found for this website."
 msgstr ""
 
-#: templates/site-details-page.php:749
+#. translators: %d: maximum number of scheduler entries shown.
+#: templates/site-details-page.php:781
 msgid "For performance reasons, a maximum of %d scheduler entries are shown here."
 msgstr ""
 
-#: templates/site-details-page.php:756
+#: templates/site-details-page.php:790
 msgid "Schedule"
 msgstr ""
 
-#: templates/site-details-page.php:757
+#: templates/site-details-page.php:791
 msgid "Next execution"
 msgstr ""
 
-#: templates/site-details-page.php:771
+#: templates/site-details-page.php:805
 msgid "No scheduler tasks were found for this website."
 msgstr ""
 
@@ -4681,7 +4864,7 @@ msgid "Compares the storage value reported by WordPress with the upload director
 msgstr ""
 
 #: templates/site-storage-analysis-page.php:209
-#: templates/site-storage-analysis-page.php:470
+#: templates/site-storage-analysis-page.php:474
 msgid "Potentially orphaned files"
 msgstr ""
 
@@ -4841,14 +5024,14 @@ msgid "Shows which top-level folders in the uploads area consume how much storag
 msgstr ""
 
 #: templates/site-storage-analysis-page.php:336
-#: templates/site-storage-analysis-page.php:391
-#: templates/site-storage-analysis-page.php:448
-#: templates/site-storage-analysis-page.php:505
-#: templates/site-storage-analysis-page.php:567
-#: templates/site-storage-analysis-page.php:650
-#: templates/site-storage-analysis-page.php:713
-#: templates/site-storage-analysis-page.php:787
-#: templates/site-storage-analysis-page.php:871
+#: templates/site-storage-analysis-page.php:395
+#: templates/site-storage-analysis-page.php:452
+#: templates/site-storage-analysis-page.php:509
+#: templates/site-storage-analysis-page.php:571
+#: templates/site-storage-analysis-page.php:658
+#: templates/site-storage-analysis-page.php:721
+#: templates/site-storage-analysis-page.php:795
+#: templates/site-storage-analysis-page.php:879
 msgid "Size"
 msgstr ""
 
@@ -4856,233 +5039,235 @@ msgstr ""
 msgid "Share"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:346
+#. translators: %d: directory storage percentage.
+#: templates/site-storage-analysis-page.php:348
 msgid "%d%%"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:354
+#: templates/site-storage-analysis-page.php:358
 msgid "No usable folder data was found in the uploads directory."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:360
+#: templates/site-storage-analysis-page.php:364
 msgid "Top 10 storage consumers"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:361
+#: templates/site-storage-analysis-page.php:365
 msgid "Shows the ten largest storage consumers in the upload directory and, if needed, an additional \"Other\" share."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:368
+#: templates/site-storage-analysis-page.php:372
 msgid "Largest files"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:369
+#: templates/site-storage-analysis-page.php:373
 msgid "Files in the uploads folder with the highest storage consumption."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:388
-#: templates/site-storage-analysis-page.php:448
+#: templates/site-storage-analysis-page.php:392
+#: templates/site-storage-analysis-page.php:452
 msgid "ID"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:392
-#: templates/site-storage-analysis-page.php:651
-#: templates/site-storage-analysis-page.php:788
-#: templates/site-storage-analysis-page.php:872
+#: templates/site-storage-analysis-page.php:396
+#: templates/site-storage-analysis-page.php:659
+#: templates/site-storage-analysis-page.php:796
+#: templates/site-storage-analysis-page.php:880
 #: templates/site-storage-missing-metadata.php:69
 msgid "Last modified"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:421
-#: templates/site-storage-analysis-page.php:672
-#: templates/site-storage-analysis-page.php:734
+#: templates/site-storage-analysis-page.php:425
+#: templates/site-storage-analysis-page.php:680
+#: templates/site-storage-analysis-page.php:742
 msgid "Media library"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:423
-#: templates/site-storage-analysis-page.php:582
-#: templates/site-storage-analysis-page.php:675
-#: templates/site-storage-analysis-page.php:737
-#: templates/site-storage-analysis-page.php:803
-#: templates/site-storage-analysis-page.php:887
+#: templates/site-storage-analysis-page.php:427
+#: templates/site-storage-analysis-page.php:586
+#: templates/site-storage-analysis-page.php:683
+#: templates/site-storage-analysis-page.php:745
+#: templates/site-storage-analysis-page.php:811
+#: templates/site-storage-analysis-page.php:895
 msgid "Open file"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:436
+#: templates/site-storage-analysis-page.php:440
 msgid "No files were found."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:443
-#: templates/site-storage-analysis-page.php:693
+#: templates/site-storage-analysis-page.php:447
+#: templates/site-storage-analysis-page.php:701
 msgid "Registered in the media library and found through references"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:444
+#: templates/site-storage-analysis-page.php:448
 msgid "These media library files were detected through references in content, blocks, templates, widgets, or inspected meta fields. These files were not inserted normally through the editor, but are referenced either through URLs, block attributes, widget options, or additional fields managed by themes or plugins. Even if the media library reports no connection, these files are still referenced by the website."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:448
-#: templates/site-storage-analysis-page.php:506
-#: templates/site-storage-analysis-page.php:568
-#: templates/site-storage-analysis-page.php:714
+#: templates/site-storage-analysis-page.php:452
+#: templates/site-storage-analysis-page.php:510
+#: templates/site-storage-analysis-page.php:572
+#: templates/site-storage-analysis-page.php:722
 msgid "References"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:471
+#: templates/site-storage-analysis-page.php:475
 msgid "These are files in the uploads folder that are currently not referenced by attachment metadata."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:480
+#: templates/site-storage-analysis-page.php:484
 msgid "Image variants from no longer registered sizes"
 msgstr ""
 
 #. translators: 1: file count, 2: storage size.
-#: templates/site-storage-analysis-page.php:484
+#: templates/site-storage-analysis-page.php:488
 msgid "%1$s image variants (%2$s) were found in attachment metadata whose image-size slug is no longer registered by WordPress, the active theme, or active plugins."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:491
+#: templates/site-storage-analysis-page.php:495
 msgid "For performance reasons, this list is limited to the largest detected image variants."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:496
+#: templates/site-storage-analysis-page.php:500
 msgid "Complete the orphan check to verify whether these image variant URLs are still referenced in content, blocks, templates, widgets, inspected meta fields, or active code."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:504
+#: templates/site-storage-analysis-page.php:508
 msgid "Former image size"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:527
+#: templates/site-storage-analysis-page.php:531
 msgid "Not checked yet"
 msgstr ""
 
 #. translators: 1: total number of potentially orphaned files, 2: configured limit for detailed checks.
-#: templates/site-storage-analysis-page.php:539
+#: templates/site-storage-analysis-page.php:543
 msgid "%1$s potentially orphaned files were found. For performance reasons, only the %2$s largest files are checked and shown in detail."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:547
+#: templates/site-storage-analysis-page.php:551
 msgid "Still found through references or code registration"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:548
+#: templates/site-storage-analysis-page.php:552
 msgid "These files are not attachments, but are still referenced in content, blocks, templates, widgets, inspected meta fields, or through register/enqueue calls in active plugins, MU plugins, or the active theme."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:583
-#: templates/site-storage-analysis-page.php:676
-#: templates/site-storage-analysis-page.php:804
-#: templates/site-storage-analysis-page.php:888
+#: templates/site-storage-analysis-page.php:587
+#: templates/site-storage-analysis-page.php:684
+#: templates/site-storage-analysis-page.php:812
+#: templates/site-storage-analysis-page.php:896
 msgid "Search on Google"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:596
+#: templates/site-storage-analysis-page.php:600
 msgid "No references or code registrations found for the analyzed non-attachment files"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:597
+#: templates/site-storage-analysis-page.php:601
 msgid "For the analyzed potentially orphaned files, no references were found in content, blocks, templates, widgets, inspected meta fields, or through register/enqueue calls in active code."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:600
+#: templates/site-storage-analysis-page.php:604
 msgid "The base analysis only collected candidates. Start the orphan check now so references in content, blocks, templates, widgets, inspected meta fields, and active code are actually verified."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:605
+#: templates/site-storage-analysis-page.php:609
 msgid "Registered in the media library, but not found in use anywhere"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:606
+#: templates/site-storage-analysis-page.php:610
 msgid "These files exist as media library attachments, but no direct references were found in content, blocks, templates, widgets, or inspected meta fields."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:611
+#: templates/site-storage-analysis-page.php:615
 msgid "Deleted files:"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:618
+#. translators: %d: number of additional deleted files.
+#: templates/site-storage-analysis-page.php:624
 msgid "and %d more files."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:628
-#: templates/site-storage-analysis-page.php:762
-#: templates/site-storage-analysis-page.php:764
-#: templates/site-storage-analysis-page.php:828
-#: templates/site-storage-analysis-page.php:830
-#: templates/site-storage-analysis-page.php:846
-#: templates/site-storage-analysis-page.php:848
-#: templates/site-storage-analysis-page.php:912
-#: templates/site-storage-analysis-page.php:914
+#: templates/site-storage-analysis-page.php:636
+#: templates/site-storage-analysis-page.php:770
+#: templates/site-storage-analysis-page.php:772
+#: templates/site-storage-analysis-page.php:836
+#: templates/site-storage-analysis-page.php:838
+#: templates/site-storage-analysis-page.php:854
+#: templates/site-storage-analysis-page.php:856
+#: templates/site-storage-analysis-page.php:920
+#: templates/site-storage-analysis-page.php:922
 msgid "Select all"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:628
-#: templates/site-storage-analysis-page.php:763
-#: templates/site-storage-analysis-page.php:829
-#: templates/site-storage-analysis-page.php:847
-#: templates/site-storage-analysis-page.php:913
+#: templates/site-storage-analysis-page.php:636
+#: templates/site-storage-analysis-page.php:771
+#: templates/site-storage-analysis-page.php:837
+#: templates/site-storage-analysis-page.php:855
+#: templates/site-storage-analysis-page.php:921
 msgid "Clear selection"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:629
-#: templates/site-storage-analysis-page.php:766
-#: templates/site-storage-analysis-page.php:832
-#: templates/site-storage-analysis-page.php:850
-#: templates/site-storage-analysis-page.php:916
+#: templates/site-storage-analysis-page.php:637
+#: templates/site-storage-analysis-page.php:774
+#: templates/site-storage-analysis-page.php:840
+#: templates/site-storage-analysis-page.php:858
+#: templates/site-storage-analysis-page.php:924
 msgid "Delete selected files"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:647
-#: templates/site-storage-analysis-page.php:784
-#: templates/site-storage-analysis-page.php:868
+#: templates/site-storage-analysis-page.php:655
+#: templates/site-storage-analysis-page.php:792
+#: templates/site-storage-analysis-page.php:876
 msgid "Selection"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:678
-#: templates/site-storage-analysis-page.php:811
-#: templates/site-storage-analysis-page.php:895
+#: templates/site-storage-analysis-page.php:686
+#: templates/site-storage-analysis-page.php:819
+#: templates/site-storage-analysis-page.php:903
 msgid "Delete file"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:694
+#: templates/site-storage-analysis-page.php:702
 msgid "These media library files were detected through references in content, blocks, templates, widgets, or inspected meta fields."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:752
+#: templates/site-storage-analysis-page.php:760
 msgid "Not found in references or active code registration anywhere"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:753
+#: templates/site-storage-analysis-page.php:761
 msgid "These files are not attachments, and no direct references were found in content, blocks, templates, widgets, inspected meta fields, or register/enqueue calls in active code."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:922
+#: templates/site-storage-analysis-page.php:930
 msgid "The base analysis has been completed. Start and complete the orphan check before a reliable statement about potentially orphaned files can be made."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:925
+#: templates/site-storage-analysis-page.php:933
 msgid "No potentially orphaned files were detected."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:931
+#: templates/site-storage-analysis-page.php:939
 msgid "There is no completed storage analysis for this website yet. Start the base analysis above. As soon as it finishes, the detail tables will appear here."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:939
-#: templates/site-storage-analysis-page.php:957
+#: templates/site-storage-analysis-page.php:947
+#: templates/site-storage-analysis-page.php:965
 msgid "Permanently delete file"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:940
+#: templates/site-storage-analysis-page.php:948
 msgid "This file will be removed directly from the uploads folder. This cannot be undone."
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:942
+#: templates/site-storage-analysis-page.php:950
 msgid "File:"
 msgstr ""
 
-#: templates/site-storage-analysis-page.php:953
+#: templates/site-storage-analysis-page.php:961
 msgid "I understand that the file will be permanently deleted."
 msgstr ""
 
