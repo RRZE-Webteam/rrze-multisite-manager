@@ -343,7 +343,11 @@ defined('ABSPATH') || exit;
                                             <td><code><?php echo esc_html((string)($directory_row['path'] ?? '')); ?></code></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html(number_format_i18n((int)($directory_row['file_count'] ?? 0))); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($directory_row['size_label'] ?? '')); ?></td>
-                                            <td class="rrze-msm-col-numeric"><?php echo esc_html(sprintf(__('%d%%', 'rrze-multisite-manager'), (int)($directory_row['percent'] ?? 0))); ?></td>
+                                            <td class="rrze-msm-col-numeric"><?php echo esc_html(sprintf(
+                                                /* translators: %d: directory storage percentage. */
+                                                __('%d%%', 'rrze-multisite-manager'),
+                                                (int)($directory_row['percent'] ?? 0)
+                                            )); ?></td>
                                         </tr>
                                     <?php } ?>
                                 </tbody>
@@ -615,7 +619,11 @@ defined('ABSPATH') || exit;
                                             <?php } ?>
                                         </ul>
                                         <?php if ((int)($orphan_file_delete_notice['count'] ?? 0) > count($orphan_file_delete_notice['files'])) { ?>
-                                            <p><?php echo esc_html(sprintf(__('and %d more files.', 'rrze-multisite-manager'), (int)($orphan_file_delete_notice['count'] ?? 0) - count($orphan_file_delete_notice['files']))); ?></p>
+                                            <p><?php echo esc_html(sprintf(
+                                                /* translators: %d: number of additional deleted files. */
+                                                __('and %d more files.', 'rrze-multisite-manager'),
+                                                (int)($orphan_file_delete_notice['count'] ?? 0) - count($orphan_file_delete_notice['files'])
+                                            )); ?></p>
                                         <?php } ?>
                                     <?php } ?>
                                 </div>

@@ -115,6 +115,7 @@ abstract class Widgets {
         }
 
         if ($showSites && $siteCount > 0) {
+            /* translators: %d: number of websites using the theme. */
             $html .= '<p><strong>' . esc_html(sprintf(_n('%d website uses this theme.', '%d websites use this theme.', $siteCount, 'rrze-multisite-manager'), $siteCount)) . '</strong></p>';
             $html .= $this->renderThemeSitesHtml($theme);
         }
@@ -166,8 +167,8 @@ abstract class Widgets {
             echo ' data-sort-admin-email="' . esc_attr((string)($site['admin_email_sort'] ?? strtolower((string)($site['admin_email'] ?? '')))) . '"';
             echo '>';
             echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
-            echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
-            echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unknown', 'rrze-multisite-manager'))) . '</td>';
+            echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['registered_timestamp'] ?? 0))) . '</td>';
+            echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['last_updated_timestamp'] ?? 0))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
             echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
@@ -280,8 +281,8 @@ abstract class Widgets {
             echo '>';
             echo '<td class="rrze-msm-site-branding-cell">' . $this->renderSiteBranding((array)($site['branding'] ?? []), (string)$site['name']) . '</td>';
             echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
-            echo '<td>' . esc_html((string)$site['registered_label']) . '</td>';
-            echo '<td>' . esc_html((string)($site['last_updated_label'] ?? __('Unknown', 'rrze-multisite-manager'))) . '</td>';
+            echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['registered_timestamp'] ?? 0))) . '</td>';
+            echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['last_updated_timestamp'] ?? 0))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
             echo '<td>' . $this->renderRoleCounts((int)($site['id'] ?? 0), (array)($site['role_counts'] ?? [])) . '</td>';
             echo '<td>' . $this->renderContentCounts((array)($site['content_counts'] ?? [])) . '</td>';
@@ -1137,6 +1138,7 @@ abstract class Widgets {
         }
 
         if ($percent !== null) {
+            /* translators: %d: storage usage percentage. */
             $html .= '<br><span>' . esc_html(sprintf(__('%d%% used', 'rrze-multisite-manager'), $percent)) . '</span>';
         }
 
@@ -1253,7 +1255,15 @@ abstract class Widgets {
             return __('Unknown', 'rrze-multisite-manager');
         }
 
-        return get_date_from_gmt($dateValue, get_option('date_format') . ' ' . get_option('time_format'));
+        return get_date_from_gmt($dateValue, 'd.m.Y H:i');
+    }
+
+    protected function formatSiteTimestamp(int $timestamp): string {
+        if ($timestamp <= 0) {
+            return __('Unknown', 'rrze-multisite-manager');
+        }
+
+        return wp_date('d.m.Y H:i', $timestamp);
     }
 
     protected function getStatusMetaTimestamp(string $dateValue): int {

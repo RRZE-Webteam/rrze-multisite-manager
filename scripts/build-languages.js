@@ -41,7 +41,9 @@ locales.forEach(function updateCatalog(locale) {
     var poFile = path.join(languagesDir, textdomain + '-' + locale + '.po');
     var moFile = path.join(languagesDir, textdomain + '-' + locale + '.mo');
 
-    run('msgmerge', ['--update', '--backup=none', poFile, potFile]);
+    // Never carry a translation over to a changed source string. A fuzzy
+    // match can be semantically wrong and is omitted from compiled catalogs.
+    run('msgmerge', ['--update', '--no-fuzzy-matching', '--backup=none', poFile, potFile]);
     run('msgfmt', ['--check', '--output-file=' + moFile, poFile]);
 });
 

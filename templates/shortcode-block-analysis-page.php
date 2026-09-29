@@ -276,7 +276,7 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                     );
                     ?></p></div>
                 <?php } ?>
-                <?php if (!empty($can_request_analysis)) { ?>
+                <?php if (!empty($can_request_analysis) && ($analysis_assignment_mode ?? 'unassigned') !== 'batch') { ?>
                     <form method="post" action="<?php echo esc_url($request_action); ?>">
                         <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
                         <input type="hidden" name="redirect_to" value="<?php echo esc_attr(add_query_arg(['site_id' => (int)$site_id, 'analysis_tab' => $analysisTab], $analysis_base_url)); ?>">

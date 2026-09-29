@@ -149,7 +149,11 @@ $pluginBlockFilter = implode(', ', array_values(array_filter(array_map(
                                     <th><?php echo esc_html__('Repository', 'rrze-multisite-manager'); ?></th>
                                     <td>
                                         <?php if (!empty($plugin_details['repository']['type'])) { ?>
-                                            <div><?php echo esc_html(sprintf(__('Type: %s', 'rrze-multisite-manager'), (string)$plugin_details['repository']['type'])); ?></div>
+                                            <div><?php echo esc_html(sprintf(
+                                                /* translators: %s: repository type. */
+                                                __('Type: %s', 'rrze-multisite-manager'),
+                                                (string)$plugin_details['repository']['type']
+                                            )); ?></div>
                                         <?php } ?>
                                         <?php if (!empty($plugin_details['repository']['url'])) { ?>
                                             <div><a href="<?php echo esc_url((string)$plugin_details['repository']['url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html((string)$plugin_details['repository']['url']); ?></a></div>
@@ -169,7 +173,11 @@ $pluginBlockFilter = implode(', ', array_values(array_filter(array_map(
                                             <div><?php echo esc_html(sprintf(__('WP from: %s', 'rrze-multisite-manager'), (string)$plugin_details['compatibility']['wp_requires'])); ?></div>
                                         <?php } ?>
                                         <?php if (!empty($plugin_details['compatibility']['wp_tested_up_to'])) { ?>
-                                            <div><?php echo esc_html(sprintf(__('Tested up to: %s', 'rrze-multisite-manager'), (string)$plugin_details['compatibility']['wp_tested_up_to'])); ?></div>
+                                            <div><?php echo esc_html(sprintf(
+                                                /* translators: %s: latest WordPress version tested with the plugin. */
+                                                __('Tested up to: %s', 'rrze-multisite-manager'),
+                                                (string)$plugin_details['compatibility']['wp_tested_up_to']
+                                            )); ?></div>
                                         <?php } ?>
                                         <?php if (!empty($plugin_details['compatibility']['php_requires'])) { ?>
                                             <div><?php echo esc_html(sprintf(__('PHP from: %s', 'rrze-multisite-manager'), (string)$plugin_details['compatibility']['php_requires'])); ?></div>
@@ -229,7 +237,11 @@ $pluginBlockFilter = implode(', ', array_values(array_filter(array_map(
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Websites using the plugin', 'rrze-multisite-manager'); ?></h2>
-                        <p><?php echo esc_html(sprintf(__('This plugin is currently used on %d websites.', 'rrze-multisite-manager'), (int)($plugin_details['site_count'] ?? 0))); ?></p>
+                        <p><?php echo esc_html(sprintf(
+                            /* translators: %d: number of websites using the plugin. */
+                            __('This plugin is currently used on %d websites.', 'rrze-multisite-manager'),
+                            (int)($plugin_details['site_count'] ?? 0)
+                        )); ?></p>
                     </header>
                     <?php if (!empty($plugin_details['active_sites']) && is_array($plugin_details['active_sites'])) { ?>
                         <div class="rrze-msm-site-table-wrap" data-table-id="plugin-details-sites" data-default-per-page="20" data-current-page="1" data-sort-key="name" data-sort-direction="asc">

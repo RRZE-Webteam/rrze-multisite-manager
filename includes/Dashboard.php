@@ -86,6 +86,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_update_site_monitoring_status', [$this, 'handleSiteMonitoringStatusUpdate']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
         add_action('admin_post_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
+        add_action('admin_post_rrze_multisite_manager_download_site_option', [$this, 'handleSiteOptionDownload']);
         add_action('admin_post_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('admin_post_rrze_multisite_manager_delete_orphan_file', [$this, 'handleOrphanFileDelete']);
         add_action('admin_post_rrze_multisite_manager_request_site_storage_analysis', [$this, 'requestSiteStorageAnalysis']);
@@ -97,6 +98,7 @@ class Dashboard {
         add_action('network_admin_edit_rrze_multisite_manager_update_site_monitoring_status', [$this, 'handleSiteMonitoringStatusUpdate']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option', [$this, 'handleSiteOptionDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_update_site_option', [$this, 'handleSiteOptionUpdate']);
+        add_action('network_admin_edit_rrze_multisite_manager_download_site_option', [$this, 'handleSiteOptionDownload']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
@@ -335,18 +337,23 @@ class Dashboard {
             return;
         }
 
+        $stylePath = $this->plugin->getPath('build/css/rrze-multisite-manager.css');
+        $scriptPath = $this->plugin->getPath('build/js/rrze-multisite-manager.js');
+        $styleVersion = $this->plugin->getVersion() . '.' . (string)(filemtime($stylePath) ?: 0);
+        $scriptVersion = $this->plugin->getVersion() . '.' . (string)(filemtime($scriptPath) ?: 0);
+
         wp_enqueue_style(
             'rrze-multisite-manager-admin',
             $this->plugin->getUrl('build/css/rrze-multisite-manager.css'),
             [],
-            $this->plugin->getVersion()
+            $styleVersion
         );
 
         wp_enqueue_script(
             'rrze-multisite-manager-admin',
             $this->plugin->getUrl('build/js/rrze-multisite-manager.js'),
             ['jquery', 'jquery-ui-sortable'],
-            $this->plugin->getVersion(),
+            $scriptVersion,
             true
         );
 
@@ -470,7 +477,7 @@ class Dashboard {
         $dashboardData['site_table_default_limit'] = max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10));
         $metricsStatus = $this->metrics->getDashboardDataStatus();
         $metricsLastRunLabel = !empty($metricsStatus['last_run_timestamp'])
-            ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int)$metricsStatus['last_run_timestamp'])
+            ? wp_date('d.m.Y H:i', (int)$metricsStatus['last_run_timestamp'])
             : __('No metrics run yet', 'rrze-multisite-manager');
         $widgets = $this->getWidgetInstances();
         $views = $this->viewManager->getViews(array_keys($widgets));
@@ -928,6 +935,7 @@ class Dashboard {
 
         if (!empty($_GET['option_deleted'])) {
             $optionNotices[] = sprintf(
+                /* translators: %s: deleted option name. */
                 __('Option "%s" was deleted.', 'rrze-multisite-manager'),
                 sanitize_text_field((string)$_GET['option_deleted'])
             );
@@ -935,6 +943,7 @@ class Dashboard {
 
         if (!empty($_GET['option_updated'])) {
             $optionNotices[] = sprintf(
+                /* translators: %s: updated option name. */
                 __('Option "%s" was updated.', 'rrze-multisite-manager'),
                 sanitize_text_field((string)$_GET['option_updated'])
             );
@@ -942,6 +951,7 @@ class Dashboard {
 
         if (!empty($_GET['option_update_failed'])) {
             $optionErrorNotices[] = sprintf(
+                /* translators: %s: option name. */
                 __('Option "%s" could not be updated. In particular, check whether serialized raw values are still valid.', 'rrze-multisite-manager'),
                 sanitize_text_field((string)$_GET['option_update_failed'])
             );
@@ -949,6 +959,7 @@ class Dashboard {
 
         if (!empty($_GET['option_group_deleted'])) {
             $optionNotices[] = sprintf(
+                /* translators: 1: number of deleted options, 2: option-group name. */
                 __('%1$d options from group "%2$s" were deleted.', 'rrze-multisite-manager'),
                 absint($_GET['option_group_deleted_count'] ?? 0),
                 sanitize_text_field((string)$_GET['option_group_deleted'])
@@ -957,6 +968,7 @@ class Dashboard {
 
         if (!empty($_GET['deleted_post_type'])) {
             $contentNotices[] = sprintf(
+                /* translators: 1: number of deleted entries, 2: custom post type name. */
                 __('%1$d entries of custom post type "%2$s" were permanently deleted.', 'rrze-multisite-manager'),
                 absint($_GET['deleted_post_type_count'] ?? 0),
                 sanitize_text_field((string)$_GET['deleted_post_type'])
@@ -1065,6 +1077,7 @@ class Dashboard {
                 'site_options_current_tab' => $currentOptionsTab,
                 'site_option_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_site_option'),
                 'site_option_update_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_update_site_option'),
+                'site_option_download_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_download_site_option'),
                 'site_option_group_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_site_option_group'),
                 'site_options_notice_messages' => $optionNotices,
                 'site_options_error_messages' => $optionErrorNotices,
@@ -1167,6 +1180,7 @@ class Dashboard {
                 'site_summary' => $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [],
                 'analysis_status' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getStatus($siteId) : [],
                 'analysis_result' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getResult($siteId) : [],
+                'analysis_assignment_mode' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getSiteAssignmentMode($siteId) : 'unassigned',
                 'analysis_next_run_timestamp' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getNextScheduledRunTimestamp($siteId) : 0,
                 'analysis_tab' => $tab,
                 'is_local_page' => $isLocalPage,
@@ -2181,6 +2195,45 @@ class Dashboard {
         ) . '#rrze-msm-site-options';
 
         wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function handleSiteOptionDownload(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        $optionName = isset($_POST['option_name']) ? sanitize_text_field((string)wp_unslash($_POST['option_name'])) : '';
+        $download = [];
+        $filename = '';
+        $contentType = '';
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to download site options.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_download_site_option_' . $siteId . '_' . $optionName);
+
+        if ($siteId <= 0 || $optionName === '') {
+            wp_die(esc_html__('Invalid option.', 'rrze-multisite-manager'));
+        }
+
+        if ($this->isSiteOptionHiddenForCurrentUser($optionName)) {
+            wp_die(esc_html__('This option is not visible to you and cannot be downloaded here.', 'rrze-multisite-manager'));
+        }
+
+        $download = $this->metrics->getSiteOptionDownload($siteId, $optionName);
+
+        if (!is_array($download) || !isset($download['content'], $download['extension'], $download['content_type'])) {
+            wp_die(esc_html__('The option could not be downloaded.', 'rrze-multisite-manager'));
+        }
+
+        $filename = sanitize_file_name($optionName) . '.' . sanitize_key((string)$download['extension']);
+        $contentType = sanitize_text_field((string)$download['content_type']);
+
+        nocache_headers();
+        header('Content-Type: ' . $contentType);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('X-Content-Type-Options: nosniff');
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- The downloaded option content must be sent unchanged.
+        echo (string)$download['content'];
         exit;
     }
 
@@ -3209,6 +3262,7 @@ class Dashboard {
         }
 
         if ($userId > 0) {
+            /* translators: %d: user ID. */
             return sprintf(__('User-ID %d', 'rrze-multisite-manager'), $userId);
         }
 
@@ -3220,7 +3274,7 @@ class Dashboard {
             return __('Not set', 'rrze-multisite-manager');
         }
 
-        return get_date_from_gmt($dateValue, get_option('date_format') . ' ' . get_option('time_format'));
+        return get_date_from_gmt($dateValue, 'd.m.Y H:i');
     }
 
     protected function renderMetricsStatusNoticeHtml(array $status): string {

@@ -406,6 +406,12 @@ td.rrze-msm-plugin-col-active-sites {
     margin-top: 10px;
 }
 
+// Website-list toggles belong to plugin and theme widgets. Monitoring never
+// renders such a widget, so suppress any markup injected into that view.
+.rrze-msm-monitoring-page .rrze-msm-plugin-sites-inline {
+    display: none !important;
+}
+
 .rrze-msm-plugin-sites-list {
     margin: 8px 0 0 18px;
 }
@@ -994,6 +1000,24 @@ a.rrze-msm-subtab.is-active:visited {
     position: fixed;
     inset: 0;
     z-index: 100000;
+}
+
+.rrze-msm-task-removal-dialog {
+    max-width: 680px;
+    padding: 24px;
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    background: var(--rrze-msm-surface);
+    color: var(--rrze-msm-text);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.rrze-msm-task-removal-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.rrze-msm-schedule-initialization-dialog [hidden] {
+    display: none !important;
 }
 
 .rrze-msm-modal-backdrop {
