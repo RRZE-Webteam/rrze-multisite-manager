@@ -94,7 +94,6 @@ msgstr ""
 "für lange Nichtnutzung hervorgehoben wird."
 
 #: includes/Config.php:100
-#, fuzzy
 msgid "Metrics interval in hours"
 msgstr "Metrics-Intervall in Minuten"
 
@@ -1593,7 +1592,6 @@ msgstr ""
 "werden."
 
 #: includes/MetricsService.php:7821
-#, fuzzy
 msgid ""
 "This file is still referenced in post or page content and is therefore not "
 "deleted."
@@ -1757,7 +1755,6 @@ msgid "Database size (data and indexes)"
 msgstr "Datenbankgröße (Daten und Indizes)"
 
 #: includes/MetricsServiceEnvironmentTrait.php:67
-#, fuzzy
 msgid "Not available"
 msgstr "Nicht verfügbar."
 
@@ -2212,7 +2209,6 @@ msgid "Tools"
 msgstr "Werkzeuge"
 
 #: includes/Settings.php:1170
-#, fuzzy
 msgid ""
 "Please confirm the scheduling of the website analysis tasks before "
 "continuing."
@@ -2221,13 +2217,11 @@ msgstr ""
 
 #. translators: %d: number of scheduled storage analyses.
 #: includes/Settings.php:1176
-#, fuzzy
 msgid "Storage-analysis tasks were scheduled for %d selected websites."
 msgstr "Speicheranalyse-Zeitpläne wurden für %d aktive Websites eingerichtet."
 
 #. translators: %d: number of scheduled shortcode and block analyses.
 #: includes/Settings.php:1184
-#, fuzzy
 msgid ""
 "Shortcode and block analysis tasks were scheduled for %d selected websites."
 msgstr ""
@@ -2236,13 +2230,11 @@ msgstr ""
 
 #. translators: %d: number of removed storage-analysis tasks.
 #: includes/Settings.php:1192
-#, fuzzy
 msgid "Removed storage-analysis tasks for %d selected websites."
 msgstr "Speicheranalyse-Zeitpläne wurden für %d aktive Websites eingerichtet."
 
 #. translators: %d: number of removed shortcode and block analysis tasks.
 #: includes/Settings.php:1200
-#, fuzzy
 msgid "Removed shortcode and block analysis tasks for %d selected websites."
 msgstr ""
 "Shortcode- und Blockanalyse-Zeitpläne wurden für %d aktive Websites "
@@ -2302,17 +2294,14 @@ msgstr ""
 "eingerichtet."
 
 #: includes/Settings.php:1281
-#, fuzzy
 msgid "Search websites:"
 msgstr "Website suchen:"
 
 #: includes/Settings.php:1288
-#, fuzzy
 msgid "Set up analyses"
 msgstr "Analyse starten"
 
 #: includes/Settings.php:1291
-#, fuzzy
 msgid "Select bulk action"
 msgstr "Auswahl"
 
@@ -2362,7 +2351,6 @@ msgstr "Derzeit liegen keine geplanten Speicheranalyse-Aufgaben vor."
 
 #: includes/Settings.php:1395 includes/Settings.php:1480
 #: includes/Settings.php:1595 includes/Settings.php:1694
-#, fuzzy
 msgid "Remove tasks"
 msgstr "%d geplante Speicheranalyse-Aufgaben wurden entfernt."
 
@@ -2370,7 +2358,6 @@ msgstr "%d geplante Speicheranalyse-Aufgaben wurden entfernt."
 #: includes/Settings.php:1517 includes/Settings.php:1535
 #: includes/Settings.php:1601 includes/Settings.php:1690
 #: includes/Settings.php:1733 includes/Settings.php:1752
-#, fuzzy
 msgid "Select all visible websites"
 msgstr "Aktive Websites"
 
@@ -2470,7 +2457,6 @@ msgid "Websites without a scheduled storage analysis"
 msgstr "Websites ohne geplante Speicheranalyse"
 
 #: includes/Settings.php:1505
-#, fuzzy
 msgid "No active websites without a scheduled storage analysis were found."
 msgstr ""
 "Fehlende Metadaten werden mit der nächsten geplanten Speicheranalyse geprüft."
@@ -2492,7 +2478,6 @@ msgid "Reschedule storage analysis tasks for websites without a schedule"
 msgstr "Speicheranalyse Aufträge für Websites ohne Planung neu einstellen"
 
 #: includes/Settings.php:1550
-#, fuzzy
 msgid ""
 "Storage-analysis tasks will be created for all active websites that do not "
 "yet have a scheduled task."
@@ -2523,7 +2508,6 @@ msgstr ""
 
 #: includes/Settings.php:1604 includes/Settings.php:1691
 #: includes/Settings.php:1735 includes/Settings.php:1753
-#, fuzzy
 msgid "Assignment"
 msgstr "Keine direkte Zuordnung"
 
@@ -2567,12 +2551,10 @@ msgid "Shared batch"
 msgstr "Sammelbatch"
 
 #: includes/Settings.php:1654
-#, fuzzy
 msgid "Individual task"
 msgstr "Aufgaben neu initialisieren"
 
 #: includes/Settings.php:1655
-#, fuzzy
 msgid "Not assigned"
 msgstr "Nicht direkt zugeordnet"
 
@@ -2598,7 +2580,6 @@ msgstr ""
 "größere Websites wird eine eigene Aufgabe angelegt."
 
 #: includes/Settings.php:1721
-#, fuzzy
 msgid ""
 "No active websites without a scheduled shortcode or block analysis were "
 "found."
@@ -2611,7 +2592,6 @@ msgstr ""
 "Shortcode- und Blockanalyse Aufträge für Websites ohne Planung neu einstellen"
 
 #: includes/Settings.php:1767
-#, fuzzy
 msgid ""
 "Shortcode and block analysis tasks will be created for all active websites "
 "that do not yet have a scheduled task."
@@ -2619,7 +2599,6 @@ msgstr ""
 "Shortcode- und Blockanalyse Aufträge für Websites ohne Planung neu einstellen"
 
 #: includes/Settings.php:1789
-#, fuzzy
 msgid "Cron Events"
 msgstr "Ereignis"
 
@@ -2632,7 +2611,6 @@ msgid "Remove all shortcode and block analysis tasks"
 msgstr "Alle Shortcode- und Blockanalyse-Aufgaben entfernen"
 
 #: includes/Settings.php:1822
-#, fuzzy
 msgid ""
 "All scheduled storage-analysis tasks for every website will be removed. "
 "Stored analysis results will not be deleted."
@@ -2641,7 +2619,6 @@ msgstr ""
 "Gespeicherte Analyseergebnisse werden nicht gelöscht."
 
 #: includes/Settings.php:1823
-#, fuzzy
 msgid ""
 "All scheduled shortcode and block analysis tasks for every website will be "
 "removed. Stored analysis results will not be deleted."
@@ -2650,9 +2627,8 @@ msgstr ""
 "Websites. Gespeicherte Analyseergebnisse werden nicht gelöscht."
 
 #: includes/Settings.php:1853
-#, fuzzy
 msgid "I understand that the scheduled tasks will be removed."
-msgstr "Ich verstehe, dass alle passenden geplanten Aufgaben entfernt werden."
+msgstr "Ich habe verstanden, dass die geplanten Aufgaben entfernt werden."
 
 #: includes/Settings.php:1856 templates/dashboard-page.php:64
 #: templates/plugin-details-page.php:554 templates/plugin-overview-page.php:66
@@ -2700,7 +2676,6 @@ msgid "Stop availability checks and remove tasks"
 msgstr "Erreichbarkeitsprüfungen stoppen und Aufgaben entfernen"
 
 #: includes/Settings.php:1895
-#, fuzzy
 msgid ""
 "This stops the process, removes its scheduled tasks, and keeps automatic "
 "scheduling disabled until it is started manually again."
@@ -3191,7 +3166,6 @@ msgid "Editor usage"
 msgstr "Editor-Nutzung"
 
 #: includes/Widgets/EditorUsageWidget.php:17
-#, fuzzy
 msgid ""
 "Estimate based on whether the Classic Editor plugin is active per site, "
 "network-wide, or as an MU plugin."
@@ -3723,7 +3697,6 @@ msgstr "Geändert am"
 
 #. translators: %d: number of websites.
 #: includes/Widgets/Widgets.php:558
-#, fuzzy
 msgid "%d website"
 msgid_plural "%d websites"
 msgstr[0] "Websites verbergen"
@@ -4597,7 +4570,6 @@ msgstr "Wert anzeigen"
 
 #. translators: %s: option value size.
 #: templates/site-details-page.php:654
-#, fuzzy
 msgid "This option value is %s and is not loaded or displayed here."
 msgstr ""
 "Diese Option ist für dich nicht sichtbar und kann hier nicht bearbeitet "
@@ -5508,12 +5480,10 @@ msgstr "Kurz erklärt"
 #~ "Hier siehst du, welche Monitoring-Prozesse geplant sind, wann sie zuletzt "
 #~ "liefen und kannst sie bei Bedarf sofort starten."
 
-#, fuzzy
 #~ msgid "No websites with a scheduled storage analysis were found."
 #~ msgstr ""
 #~ "Wie oft die geplante Speicheranalyse für jede Website ausgeführt wird."
 
-#, fuzzy
 #~ msgid "No website has been assigned to a shortcode or block analysis yet."
 #~ msgstr "Ja, die Shortcode- und Blockanalyse-Aufgaben neu initialisieren."
 
@@ -5523,7 +5493,6 @@ msgstr "Kurz erklärt"
 #~ msgid "Search URL:"
 #~ msgstr "Nach URL suchen"
 
-#, fuzzy
 #~ msgid "Set up analyses for selected websites"
 #~ msgstr "Speicheranalyse für neu eingerichtete Websites einrichten"
 
@@ -5537,7 +5506,6 @@ msgstr "Kurz erklärt"
 #~ msgid "There are currently no websites registered."
 #~ msgstr "Derzeit sind keine Websites registriert."
 
-#, fuzzy
 #~ msgid "Websites without an analysis assignment"
 #~ msgstr "Speicheranalysen der Websites"
 
@@ -5575,11 +5543,9 @@ msgstr "Kurz erklärt"
 #~ "Dies entfernt alle geplanten Shortcode- und Blockanalyse-Aufgaben und "
 #~ "fordert neue Analysen für alle aktiven Websites an."
 
-#, fuzzy
 #~ msgid "Page"
 #~ msgstr "Seiten"
 
-#, fuzzy
 #~ msgid "Page %d"
 #~ msgstr "Seiten"
 
@@ -5661,7 +5627,6 @@ msgstr "Kurz erklärt"
 #~ msgid "Remaining"
 #~ msgstr "Rest"
 
-#, fuzzy
 #~ msgid "Other websites"
 #~ msgstr "Aktive Websites"
 
