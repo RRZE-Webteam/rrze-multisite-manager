@@ -406,6 +406,12 @@ td.rrze-msm-plugin-col-active-sites {
     margin-top: 10px;
 }
 
+// Website-list toggles belong to plugin and theme widgets. Monitoring never
+// renders such a widget, so suppress any markup injected into that view.
+.rrze-msm-monitoring-page .rrze-msm-plugin-sites-inline {
+    display: none !important;
+}
+
 .rrze-msm-plugin-sites-list {
     margin: 8px 0 0 18px;
 }

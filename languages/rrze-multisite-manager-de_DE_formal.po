@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-09-29T14:02:54+00:00\n"
+"POT-Creation-Date: 2026-09-29T14:31:36+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -499,12 +499,12 @@ msgid "Start orphan check"
 msgstr "Verwaist-Prüfung starten"
 
 #. translators: 1: processed websites, 2: total websites.
-#: includes/Dashboard.php:406 includes/Settings.php:2894
+#: includes/Dashboard.php:406 includes/Settings.php:2881
 msgid "Websites processed: %1$s of %2$s"
 msgstr "Verarbeitete Websites: %1$s von %2$s"
 
 #. translators: 1: transient value rows, 2: timeout rows, 3: website options.
-#: includes/Dashboard.php:407 includes/Settings.php:2906
+#: includes/Dashboard.php:407 includes/Settings.php:2893
 msgid ""
 "Deleted so far: %1$s transient values, %2$s timeout rows, %3$s website "
 "options."
@@ -517,7 +517,7 @@ msgid "The cleanup request failed. Retrying shortly."
 msgstr "Die Bereinigungsanfrage ist fehlgeschlagen. Neuer Versuch in Kürze."
 
 #: includes/Dashboard.php:409 includes/MetricsService.php:397
-#: includes/Settings.php:2881
+#: includes/Settings.php:2868
 msgid ""
 "Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-"
 "Metriken können nun wieder manuell gestartet werden."
@@ -579,7 +579,7 @@ msgstr "Einrichtung läuft"
 
 #: includes/Dashboard.php:660 includes/Dashboard.php:3298
 #: includes/MetricsService.php:9320 includes/MetricsServiceSiteTrait.php:242
-#: includes/Settings.php:2338 includes/Settings.php:3149
+#: includes/Settings.php:2338 includes/Settings.php:3136
 msgid "DNS missing"
 msgstr "DNS fehlt"
 
@@ -1011,7 +1011,7 @@ msgstr "Benutzer-ID %d"
 
 #: includes/Dashboard.php:3269 includes/MetricsService.php:3380
 #: includes/MetricsService.php:3528 includes/MetricsService.php:4380
-#: includes/MetricsService.php:9346 includes/Settings.php:3109
+#: includes/MetricsService.php:9346 includes/Settings.php:3096
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1068
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1093
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1165
@@ -1043,7 +1043,7 @@ msgid "Not set / automatic"
 msgstr "Nicht gesetzt / automatisch"
 
 #: includes/Dashboard.php:3297 includes/MetricsService.php:9319
-#: includes/MetricsServiceSiteTrait.php:232 includes/Settings.php:3141
+#: includes/MetricsServiceSiteTrait.php:232 includes/Settings.php:3128
 msgid "Technically reachable"
 msgstr "Technisch erreichbar"
 
@@ -1718,32 +1718,32 @@ msgstr "Aktiv"
 msgid "Not public"
 msgstr "Nicht öffentlich"
 
-#: includes/MetricsService.php:9342 includes/Settings.php:3089
+#: includes/MetricsService.php:9342 includes/Settings.php:3076
 msgid "OK"
 msgstr "OK"
 
-#: includes/MetricsService.php:9343 includes/Settings.php:3093
+#: includes/MetricsService.php:9343 includes/Settings.php:3080
 #: templates/site-storage-missing-metadata.php:76
 msgid "Missing"
 msgstr "Fehlt"
 
 #: includes/MetricsService.php:9344 includes/Settings.php:1885
-#: includes/Settings.php:3105
+#: includes/Settings.php:3092
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:608
 #: includes/StorageAnalysisSchedulerService.php:1661
 msgid "Error"
 msgstr "Fehler"
 
-#: includes/MetricsService.php:9345 includes/Settings.php:3097
+#: includes/MetricsService.php:9345 includes/Settings.php:3084
 msgid "Timeout"
 msgstr "Timeout"
 
-#: includes/MetricsService.php:9347 includes/Settings.php:3101
+#: includes/MetricsService.php:9347 includes/Settings.php:3088
 msgid "Pending"
 msgstr "Ausstehend"
 
 #. translators: 1: monitoring status label, 2: monitoring detail text.
-#: includes/MetricsService.php:9371 includes/Settings.php:3133
+#: includes/MetricsService.php:9371 includes/Settings.php:3120
 msgid "%1$s (%2$s)"
 msgstr "%1$s (%2$s)"
 
@@ -2095,7 +2095,7 @@ msgid "HTTP check skipped because DNS resolution failed."
 msgstr "HTTP-Prüfung übersprungen, weil die DNS-Auflösung fehlgeschlagen ist."
 
 #. translators: %d: site ID.
-#: includes/MonitoringService.php:1066 includes/Settings.php:3037
+#: includes/MonitoringService.php:1066 includes/Settings.php:3024
 msgid "Site %d"
 msgstr "Site %d"
 
@@ -2599,7 +2599,7 @@ msgstr ""
 
 #: includes/Settings.php:1791 includes/Settings.php:1889
 #: includes/Settings.php:2005 includes/Settings.php:2557
-#: includes/Settings.php:2663
+#: includes/Settings.php:2660
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:612
 #: includes/StorageAnalysisSchedulerService.php:1664
 msgid "Not scheduled"
@@ -2611,9 +2611,7 @@ msgstr "Analyse einrichten"
 
 #: includes/Settings.php:1812
 msgid "Reschedule storage analysis tasks for websites without a schedule"
-msgstr ""
-"Die geplanten Speicheranalyse-Aufgaben für %d Websites wurden neu "
-"initialisiert."
+msgstr "Speicheranalyse-Aufträge für Websites ohne Planung neu einstellen"
 
 #: includes/Settings.php:1813
 msgid ""
@@ -2673,7 +2671,7 @@ msgid "Ok"
 msgstr "Ok"
 
 #: includes/Settings.php:1888 includes/Settings.php:2525
-#: includes/Settings.php:2667
+#: includes/Settings.php:2663
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:611
 #: includes/StorageAnalysisSchedulerService.php:1663
 msgid "Scheduled"
@@ -2685,8 +2683,8 @@ msgstr "Nicht direkt zugeordnet"
 
 #: includes/Settings.php:1922 includes/Settings.php:2570
 #: includes/Settings.php:2641 includes/Settings.php:2648
-#: includes/Settings.php:3068 includes/Settings.php:3112
-#: includes/Settings.php:3160
+#: includes/Settings.php:3055 includes/Settings.php:3099
+#: includes/Settings.php:3147
 msgid "-"
 msgstr "-"
 
@@ -2717,7 +2715,8 @@ msgstr "Keine direkte Zuordnung"
 #: includes/Settings.php:2027
 msgid ""
 "Reschedule shortcode and block analysis tasks for websites without a schedule"
-msgstr "Die Shortcode- und Blockanalyse wurde eingeplant."
+msgstr ""
+"Shortcode- und Blockanalyse-Aufträge für Websites ohne Planung neu einstellen"
 
 #: includes/Settings.php:2028
 msgid ""
@@ -2973,8 +2972,8 @@ msgstr "Auslöser"
 msgid "Sites checked"
 msgstr "Sites geprüft"
 
-#: includes/Settings.php:2335 includes/Settings.php:2931
-#: includes/Settings.php:3073
+#: includes/Settings.php:2335 includes/Settings.php:2918
+#: includes/Settings.php:3060
 msgid "Status change"
 msgstr "Statuswechsel"
 
@@ -3090,7 +3089,7 @@ msgstr "Nicht gestartet"
 msgid "Completed"
 msgstr "Abgeschlossen"
 
-#: includes/Settings.php:2549 includes/Settings.php:2674
+#: includes/Settings.php:2549
 msgid "Not run yet"
 msgstr "Noch nicht gelaufen"
 
@@ -3129,53 +3128,49 @@ msgstr "%1$s / %2$s (%3$d%%)"
 msgid "%1$s / %2$s"
 msgstr "%1$s / %2$s"
 
-#: includes/Settings.php:2671
-msgid "Ready"
-msgstr "Bereit"
-
 #. translators: %s: batch size.
-#: includes/Settings.php:2684
+#: includes/Settings.php:2673
 msgid "Batch size: %s"
 msgstr "Batch-Größe: %s"
 
 #. translators: %s: number of processed websites.
-#: includes/Settings.php:2692
+#: includes/Settings.php:2681
 msgid "Last processed: %s sites"
 msgstr "Zuletzt verarbeitet: %s Sites"
 
-#: includes/Settings.php:2769
+#: includes/Settings.php:2756
 msgid "Start early now"
 msgstr "Jetzt vorzeitig starten"
 
-#: includes/Settings.php:2770
+#: includes/Settings.php:2757
 msgid "Create task"
 msgstr "Auftrag anlegen"
 
-#: includes/Settings.php:2787 includes/Settings.php:2813
+#: includes/Settings.php:2774 includes/Settings.php:2800
 msgid "Reset"
 msgstr "Zurücksetzen"
 
-#: includes/Settings.php:2795 includes/Settings.php:2821
+#: includes/Settings.php:2782 includes/Settings.php:2808
 msgid "Reset and restart"
 msgstr "Zurücksetzen und neu starten"
 
-#: includes/Settings.php:2848
+#: includes/Settings.php:2835
 msgid "Run is taking unusually long"
 msgstr "Lauf dauert auffällig lange"
 
-#: includes/Settings.php:2852
+#: includes/Settings.php:2839
 msgid "Next run is overdue"
 msgstr "Nächster Lauf ist überfällig"
 
-#: includes/Settings.php:2856
+#: includes/Settings.php:2843
 msgid "No completed process data is available yet"
 msgstr "Es gibt noch keine fertigen Prozessdaten"
 
-#: includes/Settings.php:2886
+#: includes/Settings.php:2873
 msgid "Clean up legacy MSM data"
 msgstr "Alte MSM-Daten bereinigen"
 
-#: includes/Settings.php:2887
+#: includes/Settings.php:2874
 msgid ""
 "Deletes stored storage-analysis results, their metadata, and all MSM "
 "transients. Dashboard metrics are also removed. This cannot be undone."
@@ -3184,16 +3179,16 @@ msgstr ""
 "Transients. Dashboard-Metriken werden ebenfalls entfernt. Dies kann nicht "
 "rückgängig gemacht werden."
 
-#: includes/Settings.php:2891
+#: includes/Settings.php:2878
 msgid "Status:"
 msgstr "Status:"
 
 #. translators: 1: transient row count, 2: data size.
-#: includes/Settings.php:2900
+#: includes/Settings.php:2887
 msgid "Transient rows found at start: %1$s (%2$s)"
 msgstr "Beim Start gefundene Transient-Zeilen: %1$s (%2$s)"
 
-#: includes/Settings.php:2917
+#: includes/Settings.php:2904
 msgid ""
 "I understand that saved storage analyses, metrics, and MSM transient caches "
 "will be permanently deleted."
@@ -3201,54 +3196,54 @@ msgstr ""
 "Ich verstehe, dass gespeicherte Speicheranalysen, Metriken und MSM-Transient-"
 "Caches dauerhaft gelöscht werden."
 
-#: includes/Settings.php:2918
+#: includes/Settings.php:2905
 msgid "Start complete data cleanup"
 msgstr "Vollständige Datenbereinigung starten"
 
-#: includes/Settings.php:2935
+#: includes/Settings.php:2922
 msgid "Technical issues"
 msgstr "Technische Probleme"
 
-#: includes/Settings.php:2939
+#: includes/Settings.php:2926
 msgid "No notable issues have been logged."
 msgstr "Keine besonderen Auffälligkeiten protokolliert."
 
 #. translators: %s: DNS status.
-#: includes/Settings.php:2968
+#: includes/Settings.php:2955
 msgid "DNS: %s"
 msgstr "DNS: %s"
 
 #. translators: %s: HTTP status.
-#: includes/Settings.php:2979
+#: includes/Settings.php:2966
 msgid "HTTP: %s"
 msgstr "HTTP: %s"
 
 #. translators: 1: previous status, 2: current status.
-#: includes/Settings.php:3058
+#: includes/Settings.php:3045
 msgid "%1$s -> %2$s"
 msgstr "%1$s -> %2$s"
 
-#: includes/Settings.php:3077
+#: includes/Settings.php:3064
 msgid "DNS issue"
 msgstr "DNS-Problem"
 
-#: includes/Settings.php:3081
+#: includes/Settings.php:3068
 msgid "HTTP issue"
 msgstr "HTTP-Problem"
 
-#: includes/Settings.php:3084
+#: includes/Settings.php:3071
 msgid "Monitoring event"
 msgstr "Monitoring-Ereignis"
 
-#: includes/Settings.php:3145
+#: includes/Settings.php:3132
 msgid "Provisioning phase"
 msgstr "Einrichtungsphase"
 
-#: includes/Settings.php:3153
+#: includes/Settings.php:3140
 msgid "HTTP unreachable"
 msgstr "HTTP nicht erreichbar"
 
-#: includes/Settings.php:3157
+#: includes/Settings.php:3144
 msgid "Decommissioned"
 msgstr "Stillgelegt"
 
@@ -5676,6 +5671,9 @@ msgstr "Derzeit liegen keine aktiven Plugins im Netzwerk vor."
 #: templates/widgets/status-widget.php:14
 msgid "Quick explanation"
 msgstr "Kurz erklärt"
+
+#~ msgid "Ready"
+#~ msgstr "Bereit"
 
 #~ msgid ""
 #~ "Estimate based on whether the Classic Editor plugin is active per site, "

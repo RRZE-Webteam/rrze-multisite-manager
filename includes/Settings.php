@@ -1280,7 +1280,7 @@ class Settings {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
 
-        echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
+        echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-monitoring-page rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
         echo '<div class="rrze-msm-page-shell">';
         echo '<div class="rrze-msm-page-header">';
         echo '<div>';
@@ -2656,22 +2656,11 @@ class Settings {
             return __('Running', 'rrze-multisite-manager');
         }
 
-        // A stopped process may retain completed data or a dirty marker. Those
-        // must not make it appear scheduled when its recurring event was
-        // deliberately removed.
         if ((int)($process['next_run_timestamp'] ?? 0) <= 0) {
             return __('Not scheduled', 'rrze-multisite-manager');
         }
 
-        if (!empty($process['run_state']['needs_refresh']) || !empty($process['run_state']['is_dirty'])) {
-            return __('Scheduled', 'rrze-multisite-manager');
-        }
-
-        if (!empty($process['last_run'])) {
-            return __('Ready', 'rrze-multisite-manager');
-        }
-
-        return __('Not run yet', 'rrze-multisite-manager');
+        return __('Scheduled', 'rrze-multisite-manager');
     }
 
     protected function renderProcessDescriptionHtml(array $process): string {
@@ -2718,10 +2707,8 @@ class Settings {
             $className = 'rrze-msm-badge rrze-msm-badge-neutral';
         } elseif ($warning !== '') {
             $className = 'rrze-msm-badge rrze-msm-badge-danger';
-        } elseif (!empty($process['run_state']['needs_refresh']) || !empty($process['run_state']['is_dirty'])) {
+        } elseif ((int)($process['next_run_timestamp'] ?? 0) > 0) {
             $className = 'rrze-msm-badge rrze-msm-badge-warning';
-        } elseif (!empty($process['last_run'])) {
-            $className = 'rrze-msm-badge rrze-msm-badge-positive';
         }
 
         $html .= '<div class="rrze-msm-process-status">';

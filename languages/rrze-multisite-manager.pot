@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.2.24\n"
+"Project-Id-Version: RRZE Multisite Manager 1.2.25\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-29T14:10:19+00:00\n"
-"PO-Revision-Date: 2026-09-29 14:10+0000\n"
+"POT-Creation-Date: 2026-09-29T14:31:36+00:00\n"
+"PO-Revision-Date: 2026-09-29 14:31+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -486,13 +486,13 @@ msgstr ""
 
 #. translators: 1: processed websites, 2: total websites.
 #: includes/Dashboard.php:406
-#: includes/Settings.php:2894
+#: includes/Settings.php:2881
 msgid "Websites processed: %1$s of %2$s"
 msgstr ""
 
 #. translators: 1: transient value rows, 2: timeout rows, 3: website options.
 #: includes/Dashboard.php:407
-#: includes/Settings.php:2906
+#: includes/Settings.php:2893
 msgid "Deleted so far: %1$s transient values, %2$s timeout rows, %3$s website options."
 msgstr ""
 
@@ -502,7 +502,7 @@ msgstr ""
 
 #: includes/Dashboard.php:409
 #: includes/MetricsService.php:397
-#: includes/Settings.php:2881
+#: includes/Settings.php:2868
 msgid "Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden."
 msgstr ""
 
@@ -574,7 +574,7 @@ msgstr ""
 #: includes/MetricsService.php:9320
 #: includes/MetricsServiceSiteTrait.php:242
 #: includes/Settings.php:2338
-#: includes/Settings.php:3149
+#: includes/Settings.php:3136
 msgid "DNS missing"
 msgstr ""
 
@@ -1044,7 +1044,7 @@ msgstr ""
 #: includes/MetricsService.php:3528
 #: includes/MetricsService.php:4380
 #: includes/MetricsService.php:9346
-#: includes/Settings.php:3109
+#: includes/Settings.php:3096
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1068
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1093
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1165
@@ -1077,7 +1077,7 @@ msgstr ""
 #: includes/Dashboard.php:3297
 #: includes/MetricsService.php:9319
 #: includes/MetricsServiceSiteTrait.php:232
-#: includes/Settings.php:3141
+#: includes/Settings.php:3128
 msgid "Technically reachable"
 msgstr ""
 
@@ -1750,37 +1750,37 @@ msgid "Not public"
 msgstr ""
 
 #: includes/MetricsService.php:9342
-#: includes/Settings.php:3089
+#: includes/Settings.php:3076
 msgid "OK"
 msgstr ""
 
 #: includes/MetricsService.php:9343
-#: includes/Settings.php:3093
+#: includes/Settings.php:3080
 #: templates/site-storage-missing-metadata.php:76
 msgid "Missing"
 msgstr ""
 
 #: includes/MetricsService.php:9344
 #: includes/Settings.php:1885
-#: includes/Settings.php:3105
+#: includes/Settings.php:3092
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:608
 #: includes/StorageAnalysisSchedulerService.php:1661
 msgid "Error"
 msgstr ""
 
 #: includes/MetricsService.php:9345
-#: includes/Settings.php:3097
+#: includes/Settings.php:3084
 msgid "Timeout"
 msgstr ""
 
 #: includes/MetricsService.php:9347
-#: includes/Settings.php:3101
+#: includes/Settings.php:3088
 msgid "Pending"
 msgstr ""
 
 #. translators: 1: monitoring status label, 2: monitoring detail text.
 #: includes/MetricsService.php:9371
-#: includes/Settings.php:3133
+#: includes/Settings.php:3120
 msgid "%1$s (%2$s)"
 msgstr ""
 
@@ -2116,7 +2116,7 @@ msgstr ""
 
 #. translators: %d: site ID.
 #: includes/MonitoringService.php:1066
-#: includes/Settings.php:3037
+#: includes/Settings.php:3024
 msgid "Site %d"
 msgstr ""
 
@@ -2633,7 +2633,7 @@ msgstr ""
 #: includes/Settings.php:1889
 #: includes/Settings.php:2005
 #: includes/Settings.php:2557
-#: includes/Settings.php:2663
+#: includes/Settings.php:2660
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:612
 #: includes/StorageAnalysisSchedulerService.php:1664
 msgid "Not scheduled"
@@ -2704,7 +2704,7 @@ msgstr ""
 
 #: includes/Settings.php:1888
 #: includes/Settings.php:2525
-#: includes/Settings.php:2667
+#: includes/Settings.php:2663
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:611
 #: includes/StorageAnalysisSchedulerService.php:1663
 msgid "Scheduled"
@@ -2718,9 +2718,9 @@ msgstr ""
 #: includes/Settings.php:2570
 #: includes/Settings.php:2641
 #: includes/Settings.php:2648
-#: includes/Settings.php:3068
-#: includes/Settings.php:3112
-#: includes/Settings.php:3160
+#: includes/Settings.php:3055
+#: includes/Settings.php:3099
+#: includes/Settings.php:3147
 msgid "-"
 msgstr ""
 
@@ -2958,8 +2958,8 @@ msgid "Sites checked"
 msgstr ""
 
 #: includes/Settings.php:2335
-#: includes/Settings.php:2931
-#: includes/Settings.php:3073
+#: includes/Settings.php:2918
+#: includes/Settings.php:3060
 msgid "Status change"
 msgstr ""
 
@@ -3081,7 +3081,6 @@ msgid "Completed"
 msgstr ""
 
 #: includes/Settings.php:2549
-#: includes/Settings.php:2674
 msgid "Not run yet"
 msgstr ""
 
@@ -3122,119 +3121,115 @@ msgstr ""
 msgid "%1$s / %2$s"
 msgstr ""
 
-#: includes/Settings.php:2671
-msgid "Ready"
-msgstr ""
-
 #. translators: %s: batch size.
-#: includes/Settings.php:2684
+#: includes/Settings.php:2673
 msgid "Batch size: %s"
 msgstr ""
 
 #. translators: %s: number of processed websites.
-#: includes/Settings.php:2692
+#: includes/Settings.php:2681
 msgid "Last processed: %s sites"
 msgstr ""
 
-#: includes/Settings.php:2769
+#: includes/Settings.php:2756
 msgid "Start early now"
 msgstr ""
 
-#: includes/Settings.php:2770
+#: includes/Settings.php:2757
 msgid "Create task"
 msgstr ""
 
-#: includes/Settings.php:2787
-#: includes/Settings.php:2813
+#: includes/Settings.php:2774
+#: includes/Settings.php:2800
 msgid "Reset"
 msgstr ""
 
-#: includes/Settings.php:2795
-#: includes/Settings.php:2821
+#: includes/Settings.php:2782
+#: includes/Settings.php:2808
 msgid "Reset and restart"
 msgstr ""
 
-#: includes/Settings.php:2848
+#: includes/Settings.php:2835
 msgid "Run is taking unusually long"
 msgstr ""
 
-#: includes/Settings.php:2852
+#: includes/Settings.php:2839
 msgid "Next run is overdue"
 msgstr ""
 
-#: includes/Settings.php:2856
+#: includes/Settings.php:2843
 msgid "No completed process data is available yet"
 msgstr ""
 
-#: includes/Settings.php:2886
+#: includes/Settings.php:2873
 msgid "Clean up legacy MSM data"
 msgstr ""
 
-#: includes/Settings.php:2887
+#: includes/Settings.php:2874
 msgid "Deletes stored storage-analysis results, their metadata, and all MSM transients. Dashboard metrics are also removed. This cannot be undone."
 msgstr ""
 
-#: includes/Settings.php:2891
+#: includes/Settings.php:2878
 msgid "Status:"
 msgstr ""
 
 #. translators: 1: transient row count, 2: data size.
-#: includes/Settings.php:2900
+#: includes/Settings.php:2887
 msgid "Transient rows found at start: %1$s (%2$s)"
 msgstr ""
 
-#: includes/Settings.php:2917
+#: includes/Settings.php:2904
 msgid "I understand that saved storage analyses, metrics, and MSM transient caches will be permanently deleted."
 msgstr ""
 
-#: includes/Settings.php:2918
+#: includes/Settings.php:2905
 msgid "Start complete data cleanup"
 msgstr ""
 
-#: includes/Settings.php:2935
+#: includes/Settings.php:2922
 msgid "Technical issues"
 msgstr ""
 
-#: includes/Settings.php:2939
+#: includes/Settings.php:2926
 msgid "No notable issues have been logged."
 msgstr ""
 
 #. translators: %s: DNS status.
-#: includes/Settings.php:2968
+#: includes/Settings.php:2955
 msgid "DNS: %s"
 msgstr ""
 
 #. translators: %s: HTTP status.
-#: includes/Settings.php:2979
+#: includes/Settings.php:2966
 msgid "HTTP: %s"
 msgstr ""
 
 #. translators: 1: previous status, 2: current status.
-#: includes/Settings.php:3058
+#: includes/Settings.php:3045
 msgid "%1$s -> %2$s"
 msgstr ""
 
-#: includes/Settings.php:3077
+#: includes/Settings.php:3064
 msgid "DNS issue"
 msgstr ""
 
-#: includes/Settings.php:3081
+#: includes/Settings.php:3068
 msgid "HTTP issue"
 msgstr ""
 
-#: includes/Settings.php:3084
+#: includes/Settings.php:3071
 msgid "Monitoring event"
 msgstr ""
 
-#: includes/Settings.php:3145
+#: includes/Settings.php:3132
 msgid "Provisioning phase"
 msgstr ""
 
-#: includes/Settings.php:3153
+#: includes/Settings.php:3140
 msgid "HTTP unreachable"
 msgstr ""
 
-#: includes/Settings.php:3157
+#: includes/Settings.php:3144
 msgid "Decommissioned"
 msgstr ""
 
