@@ -12,6 +12,7 @@ use RRZE\MultisiteManager\Settings;
 use RRZE\MultisiteManager\SiteOptions\OptionValueCodec;
 use RRZE\MultisiteManager\SiteOptions\OptionClassifier;
 use RRZE\MultisiteManager\Support\ScheduleFrequency;
+use RRZE\MultisiteManager\Support\SafeSerializedValue;
 
 defined('ABSPATH') || exit;
 
@@ -55,15 +56,15 @@ class MetricsImplementationService {
     protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 3;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
+    protected const STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE = 250;
+    protected const STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE = 250;
     protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
     protected const STORAGE_MEDIA_METADATA_BATCH_SIZE = 50;
-    protected const STORAGE_CONTENT_USAGE_MATCHES_LIMIT = 50;
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
     protected const DASHBOARD_LOCK_TTL = 900;
     // Site lists are embedded in every matching plugin and theme row.
     protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 20;
     protected const DASHBOARD_BATCH_EVENT_ARGS = ['rrze_msm_dashboard_metrics_batch' => true];
-    protected const CENTRAL_CRON_MIGRATION_OPTION = 'rrze_msm_dashboard_metrics_central_cron_migration';
     protected ?Settings $settings;
     protected Config $config;
     protected AssetSearchService $assetSearch;
@@ -86,11 +87,12 @@ class MetricsImplementationService {
     protected Path $path;
     protected FileLocator $fileLocator;
     protected StatusFormatter $statusFormatter;
+    protected SafeSerializedValue $serializedValue;
     protected array $siteNameCache = [];
     protected array $siteAdminEmailCache = [];
-    protected array $currentSiteAssetUsageIndexCache = [];
     protected array $currentSiteAttachmentUsagePathIndexCache = [];
     protected array $currentSiteStorageAnalysisAttachmentIndexCache = [];
+    protected array $currentSiteStorageAnalysisAttachmentIndexBucketCache = [];
     protected ?array $themeSiteAggregate = null;
     protected ?int $dashboardSiteCount = null;
 
@@ -104,6 +106,7 @@ class MetricsImplementationService {
         $this->path = new Path();
         $this->fileLocator = new FileLocator();
         $this->statusFormatter = new StatusFormatter();
+        $this->serializedValue = new SafeSerializedValue();
         $this->assetSearch = new AssetSearchService();
         $this->environmentMetrics = new EnvironmentMetricsService($this);
         $this->storageAnalysisState = new StorageAnalysisStateService();
@@ -174,8 +177,6 @@ class MetricsImplementationService {
             $this->clearScheduledDashboardRefreshEvents();
             return;
         }
-
-        $this->removeSubsiteDashboardRefreshEventsOnce();
 
         if (!$this->isDashboardSchedulingEnabled()) {
             return;
@@ -1067,8 +1068,10 @@ class MetricsImplementationService {
      * Stops the metrics process and prevents automatic scheduling until it is
      * explicitly started again from the Monitoring page.
      */
-    public function disableDashboardScheduling(): int {
-        $removed = $this->clearDashboardRefreshEventsAcrossNetwork();
+    public function disableDashboardScheduling(bool $acrossNetwork = true): int {
+        $removed = $acrossNetwork
+            ? $this->clearDashboardRefreshEventsAcrossNetwork()
+            : $this->clearScheduledDashboardRefreshEvents();
 
         update_site_option(self::DASHBOARD_SCHEDULING_ENABLED_OPTION, 0);
         $this->resetDashboardRefreshBatchState();
@@ -1082,10 +1085,12 @@ class MetricsImplementationService {
      * Their state remains available so no analysis data is deleted merely by
      * disabling the plugin.
      */
-    public static function disableMaintenanceScheduling(): int {
+    public static function disableMaintenanceScheduling(bool $acrossNetwork = true): int {
         $removed = 0;
         $currentSiteId = get_current_blog_id();
-        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
+        $siteIds = $acrossNetwork
+            ? get_sites(['fields' => 'ids', 'number' => 0])
+            : [$currentSiteId];
 
         foreach ($siteIds as $siteId) {
             $siteId = (int)$siteId;
@@ -4422,6 +4427,11 @@ class MetricsImplementationService {
         }
 
         unset($this->currentSiteStorageAnalysisAttachmentIndexCache[$siteId]);
+        foreach (array_keys($this->currentSiteStorageAnalysisAttachmentIndexBucketCache) as $cacheKey) {
+            if (str_starts_with((string)$cacheKey, $siteId . ':')) {
+                unset($this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey]);
+            }
+        }
         unset($this->currentSiteAttachmentUsagePathIndexCache[$siteId]);
     }
 
@@ -4527,8 +4537,8 @@ class MetricsImplementationService {
                 'updated_at' => (string)($state['updated_at'] ?? ''),
                 'processed_files' => (int)($state['processed_files'] ?? 0),
                 'processed_directories' => (int)($state['processed_directories'] ?? 0),
-                'queued_files' => count((array)($state['queue_files'] ?? [])),
                 'queued_directories' => count((array)($state['queue_directories'] ?? [])),
+                'attachment_index_complete' => !empty($state['attachment_index_complete']),
             ];
         }
 
@@ -4762,6 +4772,8 @@ class MetricsImplementationService {
             ];
         }
 
+        $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
+
         return [
             'site_id' => $siteId,
             'status' => 'running',
@@ -4773,12 +4785,14 @@ class MetricsImplementationService {
             'upload_baseurl' => $baseUrl,
             'normalized_base_dir' => $normalizedBaseDir,
             'excluded_top_level_directories' => $excludedTopLevelDirectories,
-            'queue_directories' => ['.'],
-            'queue_files' => [],
+            'queue_directories' => [['path' => '.', 'offset' => 0]],
+            'attachment_index_last_id' => 0,
+            'attachment_index_complete' => false,
             'processed_steps' => 0,
             'processed_files' => 0,
             'processed_directories' => 0,
             'total_bytes' => 0,
+            'referenced_file_count' => 0,
             'orphan_file_count' => 0,
             'orphan_total_bytes' => 0,
             'unregistered_image_size_variant_count' => 0,
@@ -4790,38 +4804,139 @@ class MetricsImplementationService {
         ];
     }
 
-    protected function processCurrentSiteStorageAnalysisBaseState(array $state): array {
-        $attachmentIndex = [];
-        $referencedFiles = [];
-        $attachmentIndexLoaded = false;
-        $processedInBatch = 0;
-        $currentDirectory = '';
-        $currentFile = '';
+    /**
+     * Builds a temporary, hash-partitioned attachment index. Keeping each
+     * bucket separate prevents a large media library from becoming one giant
+     * transient and avoids rebuilding the entire index for every file batch.
+     */
+    protected function buildCurrentSiteStorageAnalysisAttachmentIndexBatch(array $state): array {
+        global $wpdb;
 
-        while (
-            $processedInBatch < self::STORAGE_ANALYSIS_BATCH_SIZE
-            && (
-                !empty($state['queue_files'])
-                || !empty($state['queue_directories'])
+        $lastAttachmentId = max(0, (int)($state['attachment_index_last_id'] ?? 0));
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file, pm_meta.meta_value AS attachment_metadata
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->postmeta} pm_file
+                    ON pm_file.post_id = p.ID AND pm_file.meta_key = '_wp_attached_file'
+                LEFT JOIN {$wpdb->postmeta} pm_meta
+                    ON pm_meta.post_id = p.ID AND pm_meta.meta_key = '_wp_attachment_metadata'
+                WHERE p.post_type = 'attachment' AND p.ID > %d
+                ORDER BY p.ID ASC
+                LIMIT %d",
+                $lastAttachmentId,
+                self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE
             )
-        ) {
-            if (!empty($state['queue_files'])) {
-                $currentFile = (string)array_shift($state['queue_files']);
+        );
+        $bucketEntries = [];
+        $registeredImageSizeSlugs = $this->getCurrentSiteRegisteredImageSizeSlugs();
 
-                // Avoid loading every media-library record when uploads are empty.
-                if (!$attachmentIndexLoaded) {
-                    $attachmentIndex = $this->getCurrentSiteStorageAnalysisAttachmentIndex();
-                    $referencedFiles = array_fill_keys(array_keys($attachmentIndex), true);
-                    $attachmentIndexLoaded = true;
-                }
-                $this->processCurrentSiteStorageAnalysisFile($state, $currentFile, $attachmentIndex, $referencedFiles);
-                $processedInBatch++;
+        foreach ($rows as $row) {
+            $attachmentId = (int)($row->ID ?? 0);
+            $attachedPath = is_string($row->attached_file ?? null) ? (string)$row->attached_file : '';
+            $lastAttachmentId = max($lastAttachmentId, $attachmentId);
+
+            if ($attachmentId <= 0 || trim($attachedPath) === '') {
                 continue;
             }
 
-            $currentDirectory = (string)array_shift($state['queue_directories']);
-            $this->processCurrentSiteStorageAnalysisDirectory($state, $currentDirectory);
-            $processedInBatch++;
+            $baseEntry = [
+                'attachment_id' => $attachmentId,
+                'media_edit_url' => get_edit_post_link($attachmentId, ''),
+                'mime_type' => is_string($row->post_mime_type ?? null) ? (string)$row->post_mime_type : '',
+                'type_label' => $this->getStorageFileTypeLabel($attachedPath, is_string($row->post_mime_type ?? null) ? (string)$row->post_mime_type : ''),
+            ];
+            $paths = [$this->normalizeRelativeUploadPath($attachedPath) => $baseEntry];
+            $metadata = $this->serializedValue->decode($row->attachment_metadata ?? '')['value'];
+
+            if (is_array($metadata)) {
+                $this->collectAttachmentIndexPathsFromMetadata($paths, $baseEntry, $metadata, $registeredImageSizeSlugs);
+            }
+
+            foreach ($paths as $path => $entry) {
+                if ($path === '') {
+                    continue;
+                }
+
+                $bucketEntries[$this->getStorageAttachmentIndexBucket($path)][$path] = $entry;
+            }
+        }
+
+        $siteId = get_current_blog_id();
+
+        foreach ($bucketEntries as $bucket => $entries) {
+            $key = $this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket);
+            $stored = get_site_transient($key);
+            $stored = is_array($stored) ? $stored : [];
+            set_site_transient(
+                $key,
+                array_replace($stored, $entries),
+                max($this->getDetailCacheTtl(), $this->config->getStorageAnalysisTimeoutSeconds())
+            );
+            $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$siteId . ':' . $bucket] = array_replace($stored, $entries);
+        }
+
+        $state['attachment_index_last_id'] = $lastAttachmentId;
+        $state['attachment_index_complete'] = count($rows) < self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE;
+
+        return $state;
+    }
+
+    protected function getCurrentSiteStorageAnalysisAttachmentEntry(array $state, string $relativePath): array {
+        $siteId = (int)($state['site_id'] ?? get_current_blog_id());
+        $path = $this->normalizeRelativeUploadPath($relativePath);
+
+        if ($siteId <= 0 || $path === '') {
+            return [];
+        }
+
+        $bucket = $this->getStorageAttachmentIndexBucket($path);
+        $cacheKey = $siteId . ':' . $bucket;
+
+        if (!isset($this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey])) {
+            $stored = get_site_transient(
+                $this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket)
+            );
+            $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey] = is_array($stored) ? $stored : [];
+        }
+
+        $entry = $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey][$path] ?? [];
+
+        return is_array($entry) ? $entry : [];
+    }
+
+    protected function getStorageAttachmentIndexBucket(string $path): string {
+        return substr(md5($this->normalizeRelativeUploadPath($path)), 0, 2);
+    }
+
+    protected function clearCurrentSiteStorageAnalysisAttachmentIndexBuckets(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        foreach (range(0, 255) as $bucket) {
+            $bucket = str_pad(dechex($bucket), 2, '0', STR_PAD_LEFT);
+            delete_site_transient($this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket));
+            unset($this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$siteId . ':' . $bucket]);
+        }
+    }
+
+    protected function processCurrentSiteStorageAnalysisBaseState(array $state): array {
+        $processedInBatch = 0;
+
+        if (empty($state['attachment_index_complete'])) {
+            $state = $this->buildCurrentSiteStorageAnalysisAttachmentIndexBatch($state);
+            $state['updated_at'] = current_time('mysql', true);
+            $state['message'] = __('Media-library file index is being built.', 'rrze-multisite-manager');
+
+            return $state;
+        }
+
+        while (
+            $processedInBatch < self::STORAGE_ANALYSIS_BATCH_SIZE
+            && !empty($state['queue_directories'])
+        ) {
+            $processedInBatch += $this->processCurrentSiteStorageAnalysisDirectory($state);
         }
 
         $state['processed_steps'] = (int)($state['processed_steps'] ?? 0) + $processedInBatch;
@@ -4836,33 +4951,50 @@ class MetricsImplementationService {
         return $state;
     }
 
-    protected function processCurrentSiteStorageAnalysisDirectory(array &$state, string $relativeDirectory): void {
-        $normalizedRelativeDirectory = $relativeDirectory === '' ? '.' : $relativeDirectory;
+    protected function processCurrentSiteStorageAnalysisDirectory(array &$state): int {
+        $directory = array_shift($state['queue_directories']);
+        $directory = is_array($directory) ? $directory : [];
+        $normalizedRelativeDirectory = (string)($directory['path'] ?? '.');
+        $offset = max(0, (int)($directory['offset'] ?? 0));
         $absoluteDirectory = $this->getCurrentSiteStorageAbsolutePathFromRelative($state, $normalizedRelativeDirectory);
-        $entries = [];
+        $iterator = null;
         $entryName = '';
         $entryRelativePath = '';
         $entryAbsolutePath = '';
+        $entryIndex = 0;
+        $processedEntries = 0;
+        $hasMoreEntries = false;
 
         if ($absoluteDirectory === '' || !is_dir($absoluteDirectory) || !is_readable($absoluteDirectory)) {
-            return;
+            return 1;
         }
 
-        if ($normalizedRelativeDirectory !== '.') {
+        if ($normalizedRelativeDirectory !== '.' && $offset === 0) {
             $state['processed_directories'] = (int)($state['processed_directories'] ?? 0) + 1;
         }
 
-        $entries = scandir($absoluteDirectory);
-
-        if (!is_array($entries)) {
-            return;
+        try {
+            $iterator = new \FilesystemIterator($absoluteDirectory, \FilesystemIterator::SKIP_DOTS);
+        } catch (\UnexpectedValueException $exception) {
+            return 1;
         }
 
-        foreach ($entries as $entryName) {
-            if ($entryName === '.' || $entryName === '..') {
+        foreach ($iterator as $fileInfo) {
+            if (!$fileInfo instanceof \SplFileInfo) {
                 continue;
             }
 
+            if ($entryIndex++ < $offset) {
+                continue;
+            }
+
+            if ($processedEntries >= self::STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE) {
+                $hasMoreEntries = true;
+                break;
+            }
+
+            $entryName = $fileInfo->getFilename();
+            $processedEntries++;
             $entryRelativePath = $normalizedRelativeDirectory === '.'
                 ? $entryName
                 : trim($normalizedRelativeDirectory, '/') . '/' . $entryName;
@@ -4878,17 +5010,28 @@ class MetricsImplementationService {
             }
 
             if (is_dir($entryAbsolutePath)) {
-                $state['queue_directories'][] = $entryRelativePath;
+                $state['queue_directories'][] = ['path' => $entryRelativePath, 'offset' => 0];
                 continue;
             }
 
             if (is_file($entryAbsolutePath)) {
-                $state['queue_files'][] = $entryRelativePath;
+                $this->processCurrentSiteStorageAnalysisFile($state, $entryRelativePath);
             }
         }
+
+        $nextOffset = $offset + $processedEntries;
+
+        if ($hasMoreEntries) {
+            // Continue the current directory after the child directories just
+            // discovered above. This keeps the persisted work queue bounded
+            // even when one directory contains very many subdirectories.
+            $state['queue_directories'][] = ['path' => $normalizedRelativeDirectory, 'offset' => $nextOffset];
+        }
+
+        return max(1, $processedEntries);
     }
 
-    protected function processCurrentSiteStorageAnalysisFile(array &$state, string $relativePath, array $attachmentIndex, array $referencedFiles): void {
+    protected function processCurrentSiteStorageAnalysisFile(array &$state, string $relativePath): void {
         $absolutePath = $this->getCurrentSiteStorageAbsolutePathFromRelative($state, $relativePath);
         $sizeBytes = 0;
         $modifiedTimestamp = 0;
@@ -4900,14 +5043,17 @@ class MetricsImplementationService {
 
         $sizeBytes = (int)@filesize($absolutePath);
         $modifiedTimestamp = (int)@filemtime($absolutePath);
+        $attachmentEntry = $this->getCurrentSiteStorageAnalysisAttachmentEntry($state, $relativePath);
+        $attachmentIndex = $attachmentEntry === [] ? [] : [$this->normalizeRelativeUploadPath($relativePath) => $attachmentEntry];
         $entry = $this->buildStorageFileEntry($relativePath, max(0, $sizeBytes), $modifiedTimestamp, (string)($state['upload_baseurl'] ?? ''), $attachmentIndex);
 
         $state['processed_files'] = (int)($state['processed_files'] ?? 0) + 1;
         $state['total_bytes'] = (int)($state['total_bytes'] ?? 0) + max(0, $sizeBytes);
+        $state['referenced_file_count'] = (int)($state['referenced_file_count'] ?? 0) + ($attachmentEntry === [] ? 0 : 1);
         $this->addToTopLevelDirectoryStats($state['top_level_directory_stats'], $this->getTopLevelDirectoryKey($relativePath), $sizeBytes);
         $this->pushLargestFileEntry($state['largest_files'], $entry);
 
-        if ($this->isPotentiallyOrphanUploadFile($relativePath, $referencedFiles)) {
+        if ($this->isPotentiallyOrphanUploadFile($relativePath, $attachmentIndex)) {
             $state['orphan_file_count'] = (int)($state['orphan_file_count'] ?? 0) + 1;
             $state['orphan_total_bytes'] = (int)($state['orphan_total_bytes'] ?? 0) + max(0, $sizeBytes);
             $this->pushLargestFileEntry($state['largest_orphan_files'], $entry, $this->config->getStorageAnalysisOrphanFilesLimit());
@@ -4928,6 +5074,7 @@ class MetricsImplementationService {
             'total_bytes' => $actualBytes,
             'total_files' => (int)($state['processed_files'] ?? 0),
             'total_directories' => (int)($state['processed_directories'] ?? 0),
+            'referenced_file_count' => (int)($state['referenced_file_count'] ?? 0),
             'orphan_file_count' => (int)($state['orphan_file_count'] ?? 0),
             'orphan_total_bytes' => (int)($state['orphan_total_bytes'] ?? 0),
             'unregistered_image_size_variant_count' => (int)($state['unregistered_image_size_variant_count'] ?? 0),
@@ -4962,6 +5109,8 @@ class MetricsImplementationService {
                 ''
             )
         );
+
+        $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
 
         // The persistent result already records completion. Keeping an additional completed
         // transient only produces an unnecessary value/timeout pair in the network table.
@@ -5510,7 +5659,9 @@ class MetricsImplementationService {
             : $this->getCurrentSiteUploadAttachmentStats();
         $referencedFileCount = $uploadsAreEmpty
             ? 0
-            : count($this->getCurrentSiteReferencedUploadFiles());
+            : (array_key_exists('referenced_file_count', $scan)
+                ? (int)$scan['referenced_file_count']
+                : count($this->getCurrentSiteReferencedUploadFiles()));
         $unusedAttachmentFileCount = (int)($scan['unused_attachment_file_count'] ?? 0);
         $unusedAttachmentTotalBytes = (int)($scan['unused_attachment_total_bytes'] ?? 0);
         $combinedFlaggedFileCount = (int)($scan['orphan_file_count'] ?? 0) + $unusedAttachmentFileCount;
@@ -5675,6 +5826,11 @@ class MetricsImplementationService {
 
         $this->storageAnalysisState->clearCurrentProcessStates($siteId, $this->getDetailCacheVersion());
         unset($this->currentSiteStorageAnalysisAttachmentIndexCache[$siteId]);
+        foreach (array_keys($this->currentSiteStorageAnalysisAttachmentIndexBucketCache) as $cacheKey) {
+            if (str_starts_with((string)$cacheKey, $siteId . ':')) {
+                unset($this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey]);
+            }
+        }
         unset($this->currentSiteAttachmentUsagePathIndexCache[$siteId]);
     }
 
@@ -5993,7 +6149,7 @@ class MetricsImplementationService {
 
             $index[$this->normalizeRelativeUploadPath($attachedPath)] = $baseEntry;
 
-            $metadata = maybe_unserialize($row->attachment_metadata ?? '');
+            $metadata = $this->serializedValue->decode($row->attachment_metadata ?? '')['value'];
 
             if (!is_array($metadata)) {
                 continue;
@@ -6059,7 +6215,7 @@ class MetricsImplementationService {
             if ($mediaCategory === 'images') {
                 $mediaTypes['images']['original_bytes'] += $fileSize;
             }
-            $metadata = maybe_unserialize($row->attachment_metadata ?? '');
+            $metadata = $this->serializedValue->decode($row->attachment_metadata ?? '')['value'];
 
             if (!is_array($metadata)) {
                 continue;
@@ -6605,7 +6761,7 @@ class MetricsImplementationService {
                 AND post_status NOT IN ('auto-draft', 'trash')
                 AND (" . implode(' OR ', $contentConditions) . ')
                 LIMIT %d',
-                ...array_merge($contentParams, [self::STORAGE_CONTENT_USAGE_MATCHES_LIMIT])
+                ...array_merge($contentParams, [$this->config->getStorageAnalysisContentUsageMatchesLimit()])
             )
         );
         $results = [];
@@ -6638,7 +6794,7 @@ class MetricsImplementationService {
         $isImage = str_starts_with($mimeType, 'image/');
         $metadataFields = [];
         $normalizedPath = $this->normalizeRelativeUploadPath($attachedFile);
-        $metadata = maybe_unserialize(get_post_meta($attachmentId, '_wp_attachment_metadata', true));
+        $metadata = $this->serializedValue->decode(get_post_meta($attachmentId, '_wp_attachment_metadata', true))['value'];
         $uploadDir = wp_get_upload_dir();
         $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
         $baseUrl = is_array($uploadDir) && !empty($uploadDir['baseurl']) ? (string)$uploadDir['baseurl'] : '';
@@ -6937,307 +7093,6 @@ class MetricsImplementationService {
         }
 
         return $total;
-    }
-
-    protected function searchCurrentSiteCodeFileUsageMatches(string $fileUrl, string $relativePath): array {
-        $index = $this->getCurrentSiteAssetUsageIndex();
-        $needles = $this->buildFileUsageCodeSearchNeedles($fileUrl, $relativePath);
-        $results = [];
-        $entry = [];
-        $haystack = '';
-        $needle = '';
-        $matchLabel = '';
-
-        if (empty($index) || empty($needles)) {
-            return [];
-        }
-
-        foreach ($index as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-
-            $haystack = mb_strtolower((string)($entry['haystack'] ?? ''));
-
-            if ($haystack === '') {
-                continue;
-            }
-
-            foreach ($needles as $needle) {
-                if ($needle === '' || mb_stripos($haystack, mb_strtolower($needle)) === false) {
-                    continue;
-                }
-
-                $matchLabel = !empty($entry['match_label'])
-                    ? (string)$entry['match_label']
-                    : __('Code reference', 'rrze-multisite-manager');
-
-                $results[] = [
-                    'key' => (string)($entry['key'] ?? md5($haystack)),
-                    'post_id' => 0,
-                    'post_type' => 'code',
-                    'title' => (string)($entry['title'] ?? __('Code reference', 'rrze-multisite-manager')),
-                    'edit_url' => '',
-                    'view_url' => '',
-                    'matches' => [$matchLabel],
-                ];
-                break;
-            }
-        }
-
-        return $results;
-    }
-
-    protected function getCurrentSiteAssetUsageIndex(): array {
-        $siteId = get_current_blog_id();
-
-        if ($siteId <= 0) {
-            return [];
-        }
-
-        if (isset($this->currentSiteAssetUsageIndexCache[$siteId]) && is_array($this->currentSiteAssetUsageIndexCache[$siteId])) {
-            return $this->currentSiteAssetUsageIndexCache[$siteId];
-        }
-
-        $this->currentSiteAssetUsageIndexCache[$siteId] = $this->buildCurrentSiteAssetUsageIndex();
-
-        return $this->currentSiteAssetUsageIndexCache[$siteId];
-    }
-
-    protected function buildCurrentSiteAssetUsageIndex(): array {
-        $results = [];
-        $pluginFiles = $this->getCurrentSiteActivePluginFiles();
-        $pluginCatalog = [];
-        $pluginFile = '';
-        $pluginName = '';
-        $themeStylesheet = (string)get_option('stylesheet', '');
-        $theme = null;
-        $muPlugins = [];
-        $muPath = '';
-        $muName = '';
-
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        $pluginCatalog = get_plugins();
-
-        foreach ($pluginFiles as $pluginFile) {
-            $pluginName = !empty($pluginCatalog[$pluginFile]['Name']) && is_string($pluginCatalog[$pluginFile]['Name'])
-                ? (string)$pluginCatalog[$pluginFile]['Name']
-                : $pluginFile;
-                $results = array_merge(
-                    $results,
-                    $this->buildAssetUsageIndexEntriesForFiles(
-                        $this->getPluginAnalysisFiles($pluginFile),
-                        /* translators: %s: plugin name. */
-                        sprintf(__('Plugin: %s', 'rrze-multisite-manager'), $pluginName)
-                    )
-                );
-        }
-
-        if ($themeStylesheet !== '') {
-            $theme = wp_get_theme($themeStylesheet);
-
-            if ($theme instanceof \WP_Theme && $theme->exists()) {
-                $results = array_merge(
-                    $results,
-                    $this->buildAssetUsageIndexEntriesForFiles(
-                        $this->getThemeAnalysisFiles($themeStylesheet),
-                        /* translators: %s: theme name. */
-                        sprintf(__('Theme: %s', 'rrze-multisite-manager'), (string)$theme->get('Name'))
-                    )
-                );
-            }
-        }
-
-        if (function_exists('get_mu_plugins')) {
-            $muPlugins = get_mu_plugins();
-
-            foreach ($muPlugins as $muPath => $muData) {
-                $muName = !empty($muData['Name']) && is_string($muData['Name']) ? (string)$muData['Name'] : basename((string)$muPath);
-                $results = array_merge(
-                    $results,
-                    $this->buildAssetUsageIndexEntriesForFiles(
-                        $this->getStandaloneAnalysisFiles((string)$muPath),
-                        /* translators: %s: MU plugin name. */
-                        sprintf(__('MU plugin: %s', 'rrze-multisite-manager'), $muName)
-                    )
-                );
-            }
-        }
-
-        return $results;
-    }
-
-    protected function getCurrentSiteActivePluginFiles(): array {
-        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
-        $activePlugins = get_option('active_plugins', []);
-        $pluginFiles = array_unique(
-            array_merge(
-                array_keys($networkActivePlugins),
-                is_array($activePlugins) ? array_values(array_filter($activePlugins, 'is_string')) : []
-            )
-        );
-
-        sort($pluginFiles, SORT_NATURAL | SORT_FLAG_CASE);
-
-        return array_values($pluginFiles);
-    }
-
-    protected function getStandaloneAnalysisFiles(string $mainFilePath): array {
-        $results = [];
-        $baseDir = '';
-        $iterator = null;
-        $current = null;
-        $pathname = '';
-
-        if ($mainFilePath === '' || !is_file($mainFilePath)) {
-            return [];
-        }
-
-        $results[] = $mainFilePath;
-        $baseDir = dirname($mainFilePath);
-
-        if ($baseDir === '' || !is_dir($baseDir)) {
-            return $results;
-        }
-
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator(
-                $baseDir,
-                \FilesystemIterator::SKIP_DOTS
-            )
-        );
-
-        foreach ($iterator as $current) {
-            if (!$current instanceof \SplFileInfo || !$current->isFile()) {
-                continue;
-            }
-
-            $pathname = (string)$current->getPathname();
-
-            if ($pathname === $mainFilePath || !$this->isPluginAnalysisFile($pathname)) {
-                continue;
-            }
-
-            $results[] = $pathname;
-        }
-
-        sort($results, SORT_NATURAL | SORT_FLAG_CASE);
-
-        return array_values(array_unique($results));
-    }
-
-    protected function buildAssetUsageIndexEntriesForFiles(array $files, string $providerLabel): array {
-        $results = [];
-        $filePath = '';
-        $source = '';
-        $relevantChunks = [];
-        $chunk = '';
-        $relativeFile = '';
-        $providerPrefix = sanitize_title($providerLabel);
-
-        foreach ($files as $filePath) {
-            if (!is_string($filePath) || $filePath === '' || !is_readable($filePath)) {
-                continue;
-            }
-
-            $source = (string)file_get_contents($filePath);
-
-            if ($source === '') {
-                continue;
-            }
-
-            $relevantChunks = $this->extractAssetUsageRelevantSourceChunks($source);
-
-            if (empty($relevantChunks)) {
-                continue;
-            }
-
-            $relativeFile = basename($filePath);
-
-            foreach ($relevantChunks as $chunk) {
-                $results[] = [
-                    'key' => $providerPrefix . ':' . md5($filePath . '|' . $chunk),
-                    'title' => $providerLabel,
-                    'match_label' => sprintf(
-                        /* translators: %s: file name where the asset registration or enqueue was found. */
-                        __('Code registration/enqueue in %s', 'rrze-multisite-manager'),
-                        $relativeFile
-                    ),
-                    'haystack' => $chunk,
-                ];
-            }
-        }
-
-        return $results;
-    }
-
-    protected function extractAssetUsageRelevantSourceChunks(string $source): array {
-        $chunks = [];
-        $needles = [
-            'wp_register_script',
-            'wp_register_style',
-            'wp_enqueue_script',
-            'wp_enqueue_style',
-            'wp_add_inline_script',
-            'wp_add_inline_style',
-            'register_block_type',
-        ];
-        $lowerSource = strtolower($source);
-        $needle = '';
-        $offset = 0;
-        $position = false;
-        $chunkEnd = 0;
-        $chunk = '';
-        $sourceLength = strlen($source);
-        $maxChunkLength = 4000;
-
-        foreach ($needles as $needle) {
-            $offset = 0;
-
-            while (($position = strpos($lowerSource, $needle, $offset)) !== false) {
-                $chunkEnd = strpos($source, ';', $position);
-
-                if ($chunkEnd === false || ($chunkEnd - $position) > $maxChunkLength) {
-                    $chunkEnd = min($position + $maxChunkLength, $sourceLength);
-                } else {
-                    $chunkEnd++;
-                }
-
-                $chunk = trim(substr($source, $position, $chunkEnd - $position));
-
-                if ($chunk !== '') {
-                    $chunks[] = $chunk;
-                }
-
-                $offset = $position + strlen($needle);
-            }
-        }
-
-        return array_values(array_unique($chunks));
-    }
-
-    protected function buildFileUsageCodeSearchNeedles(string $fileUrl, string $relativePath): array {
-        $needles = $this->buildFileUsageSearchNeedles($fileUrl, $relativePath);
-        $normalizedRelativePath = $this->normalizeRelativeUploadPath($relativePath);
-        $segments = $normalizedRelativePath !== '' ? explode('/', $normalizedRelativePath) : [];
-        $basename = $normalizedRelativePath !== '' ? basename($normalizedRelativePath) : '';
-        $lastTwoSegments = '';
-
-        if (count($segments) >= 2) {
-            $lastTwoSegments = implode('/', array_slice($segments, -2));
-        }
-
-        foreach ([$basename, $lastTwoSegments] as $extraNeedle) {
-            if (!is_string($extraNeedle) || trim($extraNeedle) === '' || mb_strlen($extraNeedle) < 6) {
-                continue;
-            }
-
-            if (!in_array($extraNeedle, $needles, true)) {
-                $needles[] = $extraNeedle;
-            }
-        }
-
-        return $needles;
     }
 
     protected function deleteCurrentSiteOrphanFile(string $relativePath): array {
@@ -8465,7 +8320,13 @@ class MetricsImplementationService {
     }
 
     protected function formatOptionValue(string $rawValue): string {
-        $value = maybe_unserialize($rawValue);
+        $decoded = $this->serializedValue->decode($rawValue);
+
+        if (!$decoded['valid']) {
+            return __('(unsafe serialized value)', 'rrze-multisite-manager');
+        }
+
+        $value = $decoded['value'];
         $formatted = '';
 
         if (is_array($value) || is_object($value)) {
@@ -9286,29 +9147,6 @@ class MetricsImplementationService {
         return $this->multisiteContext->inCentralSite($callback);
     }
 
-    protected function removeSubsiteDashboardRefreshEventsOnce(): void {
-        if ((int)get_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 0) >= 1) {
-            return;
-        }
-
-        $currentSiteId = get_current_blog_id();
-        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if ($siteId <= 0 || $siteId === $currentSiteId) {
-                continue;
-            }
-
-            switch_to_blog($siteId);
-            $this->clearScheduledDashboardRefreshEvents();
-            restore_current_blog();
-        }
-
-        update_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 1);
-    }
-
     protected function clearDashboardRefreshEventsAcrossNetwork(): int {
         $removed = 0;
         $currentSiteId = get_current_blog_id();
@@ -9539,12 +9377,12 @@ class MetricsImplementationService {
         $this->metricsCache->setCurrentSection($section, $value, $suffix);
     }
 
-    protected function getPluginDetailsCacheKey(string $pluginFile): string {
-        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5($pluginFile . '|' . $this->getPluginCacheFingerprint($pluginFile));
+    protected function getPluginDetailsCacheKey(string $pluginFile, bool $includeSourceAnalysis = false): string {
+        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5($pluginFile . '|' . (int)$includeSourceAnalysis . '|' . $this->getPluginCacheFingerprint($pluginFile));
     }
 
-    protected function getThemeDetailsCacheKey(string $stylesheet): string {
-        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5($stylesheet . '|' . $this->getThemeCacheFingerprint($stylesheet));
+    protected function getThemeDetailsCacheKey(string $stylesheet, bool $includeSourceAnalysis = false): string {
+        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5($stylesheet . '|' . (int)$includeSourceAnalysis . '|' . $this->getThemeCacheFingerprint($stylesheet));
     }
 
     protected function getPluginCacheFingerprint(string $pluginFile): string {

@@ -2,6 +2,8 @@
 
 namespace RRZE\MultisiteManager;
 
+use RRZE\MultisiteManager\Support\SafeSerializedValue;
+
 defined('ABSPATH') || exit;
 
 class ShortcodeBlockAnalysisSchedulerService {
@@ -20,6 +22,8 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const BATCH_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_batch_offset';
     protected const BATCH_LOCK_OPTION = 'rrze_msm_shortcode_block_analysis_batch_lock';
     protected const REMOVED_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_removed_site_ids';
+    protected const FREQUENCY_RESCHEDULE_HOOK = 'rrze_msm_reschedule_shortcode_block_analysis_frequency';
+    protected const FREQUENCY_RESCHEDULE_STATE_OPTION = 'rrze_msm_shortcode_block_analysis_frequency_reschedule_state';
     protected const BATCH_CONTINUATION_ARGS = ['rrze_msm_shortcode_block_batch' => true];
     protected const SMALL_SITE_MAX_POSTS = 100;
     protected const FAST_RUN_MAX_SECONDS = 3;
@@ -28,6 +32,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const BLOCK_PHASE = 'blocks';
 
     protected Config $config;
+    protected SafeSerializedValue $serializedValue;
     /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
     protected array $activeSiteShortcodeRegistrations = [];
     /** @var array<int, int>|null */
@@ -37,12 +42,14 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     public function __construct(?Config $config = null) {
         $this->config = $config ?? new Config();
+        $this->serializedValue = new SafeSerializedValue();
     }
 
     public function onLoaded(): void {
         add_action($this->getHook(), [$this, 'runScheduledAnalysis'], 10, 1);
         add_action($this->config->getLegacyShortcodeBlockAnalysisHook(), [$this, 'runScheduledAnalysis'], 10, 1);
         add_action($this->config->getShortcodeBlockAnalysisBatchHook(), [$this, 'runBatchScheduledAnalysis'], 10, 1);
+        add_action(self::FREQUENCY_RESCHEDULE_HOOK, [$this, 'runFrequencyRescheduleBatch']);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action('init', [$this, 'ensureRecurringSchedules'], 20);
     }
@@ -83,6 +90,59 @@ class ShortcodeBlockAnalysisSchedulerService {
         update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
     }
 
+    /** Queues a bounded reschedule of existing recurring analyses. */
+    public function queueFrequencyReschedule(): void {
+        $state = get_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION, []);
+
+        if (!is_array($state) || empty($state['pending'])) {
+            update_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION, [
+                'pending' => true,
+                'offset' => 0,
+                'total' => (int)get_sites(['count' => true, 'number' => 1]),
+            ]);
+        }
+
+        $this->inBatchCronContext(function (): void {
+            if (!wp_next_scheduled(self::FREQUENCY_RESCHEDULE_HOOK)) {
+                wp_schedule_single_event(time() + MINUTE_IN_SECONDS, self::FREQUENCY_RESCHEDULE_HOOK);
+            }
+        });
+    }
+
+    public function runFrequencyRescheduleBatch(): void {
+        $state = get_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION, []);
+
+        if (!is_array($state) || empty($state['pending'])) {
+            return;
+        }
+
+        $offset = max(0, (int)($state['offset'] ?? 0));
+        $total = max(0, (int)($state['total'] ?? 0));
+        $siteIds = get_sites(['fields' => 'ids', 'number' => 10, 'offset' => $offset, 'orderby' => 'id', 'order' => 'ASC']);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0 || $this->getNextRecurringScheduledTimestamp($siteId) <= 0) {
+                continue;
+            }
+
+            $this->unschedule($siteId);
+            $this->scheduleRecurringAnalysisAt($siteId, time() + MINUTE_IN_SECONDS + ($siteId % (5 * MINUTE_IN_SECONDS)));
+        }
+
+        $state['offset'] = $offset + count($siteIds);
+
+        if (empty($siteIds) || (int)$state['offset'] >= $total) {
+            delete_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION);
+            $this->markScheduleConfigurationCurrent();
+            return;
+        }
+
+        update_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION, $state);
+        $this->inBatchCronContext(fn(): bool => wp_schedule_single_event(time() + MINUTE_IN_SECONDS, self::FREQUENCY_RESCHEDULE_HOOK));
+    }
+
     public function syncRecurringSchedules(): void {
         $siteIds = get_sites(['fields' => 'ids', 'number' => 0, 'orderby' => 'id', 'order' => 'ASC']);
 
@@ -113,14 +173,16 @@ class ShortcodeBlockAnalysisSchedulerService {
         update_site_option(self::SCHEDULE_SIGNATURE_OPTION, $this->getScheduleSignature());
     }
 
-    public static function clearScheduledEvents(?Config $config = null): int {
+    public static function clearScheduledEvents(?Config $config = null, bool $acrossNetwork = true): int {
         $scheduler = new self($config);
         $removed = 0;
         $currentSiteId = get_current_blog_id();
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
+        $siteIds = $acrossNetwork
+            ? get_sites([
+                'fields' => 'ids',
+                'number' => 0,
+            ])
+            : [$currentSiteId];
 
         if (empty($siteIds)) {
             $siteIds = [$currentSiteId];
@@ -142,7 +204,7 @@ class ShortcodeBlockAnalysisSchedulerService {
                 }
 
                 foreach ($cron as $timestamp => $events) {
-                    foreach ([$scheduler->getHook(), $scheduler->config->getLegacyShortcodeBlockAnalysisHook(), $scheduler->config->getShortcodeBlockAnalysisBatchHook()] as $hook) {
+                    foreach ([$scheduler->getHook(), $scheduler->config->getLegacyShortcodeBlockAnalysisHook(), $scheduler->config->getShortcodeBlockAnalysisBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK] as $hook) {
                         if (empty($events[$hook])) {
                             continue;
                         }
@@ -176,6 +238,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_OFFSET_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION);
         // Removing tasks is an explicit administrator decision. Do not make the
         // automatic initialization action reappear and recreate these tasks.
         update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
@@ -497,11 +560,21 @@ class ShortcodeBlockAnalysisSchedulerService {
         $assignments = $this->getSiteAssignments();
         $scheduledSiteIds = [];
 
-        if ($this->getNextBatchScheduledTimestamp() > 0) {
-            foreach ($assignments as $siteId => $mode) {
-                if ($mode === 'batch') {
-                    $scheduledSiteIds[] = (int)$siteId;
-                }
+        foreach ($assignments as $siteId => $mode) {
+            $siteId = absint($siteId);
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            // Individual schedules are stored in each website's local Cron
+            // array. The monitoring screen runs in the network site's
+            // context, so it must use the persisted assignment instead of
+            // only inspecting the current Cron array.
+            if ($mode === 'site') {
+                $scheduledSiteIds[] = $siteId;
+            } elseif ($mode === 'batch' && $this->getNextBatchScheduledTimestamp() > 0) {
+                $scheduledSiteIds[] = $siteId;
             }
         }
 
@@ -1006,8 +1079,18 @@ class ShortcodeBlockAnalysisSchedulerService {
         $this->collectBlocks((string)$post->post_content, $location, $state['blocks']);
     }
 
-    protected function collectShortcodesFromValue($value, array $location, array &$shortcodes): void {
-        $value = maybe_unserialize($value);
+    protected function collectShortcodesFromValue($value, array $location, array &$shortcodes, int $depth = 0): void {
+        if ($depth >= 8 || (is_string($value) && strlen($value) > SafeSerializedValue::MAX_BYTES)) {
+            return;
+        }
+
+        $decoded = $this->serializedValue->decode($value);
+
+        if (!$decoded['valid']) {
+            return;
+        }
+
+        $value = $decoded['value'];
 
         if (is_string($value)) {
             $this->collectShortcodes($value, $location, $shortcodes);
@@ -1019,11 +1102,15 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         foreach ($value as $childValue) {
-            $this->collectShortcodesFromValue($childValue, $location, $shortcodes);
+            $this->collectShortcodesFromValue($childValue, $location, $shortcodes, $depth + 1);
         }
     }
 
     protected function collectShortcodes(string $content, array $location, array &$shortcodes, bool $allowUnregistered = false): void {
+        if (count($shortcodes) >= $this->config->getShortcodeBlockResultEntryLimit()) {
+            return;
+        }
+
         if ($content === '' || !preg_match_all('/(?<!\\[)\\[(?!\\[)([A-Za-z][A-Za-z0-9_-]*)(?=\\s|\\])(?:\\s[^\\]]*)?\\]/', $content, $matches)) {
             return;
         }
@@ -1045,6 +1132,10 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         foreach ($matchesByRawShortcode as $match) {
+            if (count($shortcodes) >= $this->config->getShortcodeBlockResultEntryLimit()) {
+                return;
+            }
+
             $tag = (string)$match['tag'];
             $registration = $this->getShortcodeRegistration($tag);
             $isRegistered = !empty($registration);
@@ -1068,6 +1159,10 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     protected function collectBlocks(string $content, array $location, array &$blocks): void {
         foreach ($this->flattenBlocks(parse_blocks($content)) as $block) {
+            if (count($blocks) >= $this->config->getShortcodeBlockResultEntryLimit()) {
+                return;
+            }
+
             $blockName = (string)($block['blockName'] ?? '');
 
             if ($blockName === '') {

@@ -30,12 +30,19 @@ class Config {
                 'metrics_cache_ttl' => HOUR_IN_SECONDS,
                 'monitoring_schedule_slug' => 'rrze_msm_every_six_hours',
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
+                'availability_monitoring_batch_size' => 5,
+                'availability_monitoring_request_budget_seconds' => 45,
+                'availability_monitoring_http_timeout_seconds' => 4,
+                'availability_monitoring_http_fallback_timeout_seconds' => 2,
+                'shortcode_block_result_entry_limit' => 1000,
+                'storage_analysis_content_usage_matches_limit' => 10,
                 'monitoring_hook' => 'rrze_msm_check_site_availability',
                 'storage_analysis_hook' => 'rrze_msm_run_site_storage_analysis',
                 'storage_analysis_batch_hook' => 'rrze_msm_run_site_storage_analysis_batch',
                 'shortcode_block_analysis_hook' => 'rrze_msm_run_shortcode_block_analysis_site',
                 'shortcode_block_analysis_batch_hook' => 'rrze_msm_run_shortcode_block_analysis_batch',
                 'shortcode_block_analysis_timeout_minutes' => 60,
+                'storage_analysis_timeout_minutes' => 60,
                 'monitoring_user_agent' => 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)',
                 'scheduler_frequencies' => $schedulerFrequencies,
                 'storage_analysis_schedule_keys' => [
@@ -351,6 +358,44 @@ class Config {
         $size = is_array($options) ? (int)($options['monitoring_batch_size'] ?? 25) : 25;
 
         return max(5, min(100, $size));
+    }
+
+    public function getAvailabilityMonitoringBatchSize(): int {
+        return max(1, min(25, (int)($this->config['constants']['availability_monitoring_batch_size'] ?? 5)));
+    }
+
+    public function getAvailabilityMonitoringRequestBudgetSeconds(): int {
+        return max(10, min(240, (int)($this->config['constants']['availability_monitoring_request_budget_seconds'] ?? 45)));
+    }
+
+    public function getAvailabilityMonitoringHttpTimeoutSeconds(): int {
+        return max(1, min(30, (int)($this->config['constants']['availability_monitoring_http_timeout_seconds'] ?? 4)));
+    }
+
+    public function getAvailabilityMonitoringHttpFallbackTimeoutSeconds(): int {
+        return max(1, min(30, (int)($this->config['constants']['availability_monitoring_http_fallback_timeout_seconds'] ?? 2)));
+    }
+
+    public function getShortcodeBlockResultEntryLimit(): int {
+        return max(100, min(5000, (int)($this->config['constants']['shortcode_block_result_entry_limit'] ?? 1000)));
+    }
+
+    public function getStorageAnalysisContentUsageMatchesLimit(): int {
+        return max(1, min(50, (int)($this->config['constants']['storage_analysis_content_usage_matches_limit'] ?? 10)));
+    }
+
+    public function getStorageAnalysisTimeoutSeconds(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $default = (int)($this->config['constants']['storage_analysis_timeout_minutes'] ?? 60);
+
+        if (!is_array($options)) {
+            return max(MINUTE_IN_SECONDS, $default * MINUTE_IN_SECONDS);
+        }
+
+        return max(
+            MINUTE_IN_SECONDS,
+            min(1440 * MINUTE_IN_SECONDS, (int)($options['monitoring_storage_analysis_timeout_minutes'] ?? $default) * MINUTE_IN_SECONDS)
+        );
     }
 
     public function getShortcodeBlockAnalysisHook(): string {

@@ -6,7 +6,7 @@ defined('ABSPATH') || exit;
 
 trait MetricsServiceThemeTrait {
 
-    public function getThemeDetails(string $stylesheet): array {
+    public function getThemeDetails(string $stylesheet, bool $includeSourceAnalysis = false): array {
         $themes = $this->getThemes();
         $cacheKey = '';
         $cached = null;
@@ -26,7 +26,7 @@ trait MetricsServiceThemeTrait {
             return [];
         }
 
-        $cacheKey = $this->getThemeDetailsCacheKey($stylesheet);
+        $cacheKey = $this->getThemeDetailsCacheKey($stylesheet, $includeSourceAnalysis);
         $cached = get_site_transient($cacheKey);
 
         if (is_array($cached) && !empty($cached)) {
@@ -34,7 +34,7 @@ trait MetricsServiceThemeTrait {
         }
 
         $supplementary = $this->getThemeSupplementaryData($stylesheet);
-        $analysis = $this->analyzeThemeCode($stylesheet);
+        $analysis = $includeSourceAnalysis ? $this->analyzeThemeCode($stylesheet) : [];
         $installTimestamp = $this->getThemeInstallTimestamp($stylesheet);
         $modifiedTimestamp = $this->getThemeModifiedTimestamp($stylesheet);
 
@@ -65,6 +65,7 @@ trait MetricsServiceThemeTrait {
                     (string)($themeItem['text_domain'] ?? ''),
                     'theme'
                 ),
+                'source_analysis_completed' => $includeSourceAnalysis,
                 'shortcodes' => (array)($analysis['shortcodes'] ?? []),
                 'blocks' => (array)($analysis['blocks'] ?? []),
                 'block_patterns' => (array)($analysis['block_patterns'] ?? []),

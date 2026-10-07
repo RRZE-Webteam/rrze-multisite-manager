@@ -6,7 +6,7 @@ defined('ABSPATH') || exit;
 
 trait MetricsServicePluginTrait {
 
-    public function getPluginDetails(string $pluginFile): array {
+    public function getPluginDetails(string $pluginFile, bool $includeSourceAnalysis = false): array {
         $availablePlugins = [];
         $cacheKey = '';
         $cached = null;
@@ -30,7 +30,7 @@ trait MetricsServicePluginTrait {
             return [];
         }
 
-        $cacheKey = $this->getPluginDetailsCacheKey($pluginFile);
+        $cacheKey = $this->getPluginDetailsCacheKey($pluginFile, $includeSourceAnalysis);
         $cached = get_site_transient($cacheKey);
 
         if (is_array($cached) && !empty($cached)) {
@@ -42,7 +42,7 @@ trait MetricsServicePluginTrait {
         $pluginUsage = is_array($dashboardData['plugin_usage']['plugins'] ?? null) ? $dashboardData['plugin_usage']['plugins'] : [];
         $pluginUsageItem = $this->findPluginUsageItem($pluginUsage, $pluginFile);
         $updateItem = $this->getPluginUpdateItem($pluginFile);
-        $analysis = $this->analyzePluginCode($pluginFile);
+        $analysis = $includeSourceAnalysis ? $this->analyzePluginCode($pluginFile) : [];
         $supplementary = $this->getPluginSupplementaryData($pluginFile);
         $installTimestamp = $this->getPluginInstallTimestamp($pluginFile);
         $modifiedTimestamp = $this->getPluginModifiedTimestamp($pluginFile);
@@ -106,13 +106,14 @@ trait MetricsServicePluginTrait {
                 'extended_description' => (string)($supplementary['description'] ?? ''),
                 'metadata_sources' => (array)($supplementary['sources'] ?? []),
                 'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
-                'shortcodes' => $analysis['shortcodes'],
-                'blocks' => $analysis['blocks'],
-                'block_patterns' => $analysis['block_patterns'],
-                'custom_post_types' => $analysis['custom_post_types'],
-                'taxonomies' => $analysis['taxonomies'],
-                'image_sizes' => $analysis['image_sizes'],
-                'provided_hooks' => $analysis['provided_hooks'],
+                'source_analysis_completed' => $includeSourceAnalysis,
+                'shortcodes' => (array)($analysis['shortcodes'] ?? []),
+                'blocks' => (array)($analysis['blocks'] ?? []),
+                'block_patterns' => (array)($analysis['block_patterns'] ?? []),
+                'custom_post_types' => (array)($analysis['custom_post_types'] ?? []),
+                'taxonomies' => (array)($analysis['taxonomies'] ?? []),
+                'image_sizes' => (array)($analysis['image_sizes'] ?? []),
+                'provided_hooks' => (array)($analysis['provided_hooks'] ?? []),
                 'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'main_file_path' => $this->getPluginAbsolutePath($pluginFile),

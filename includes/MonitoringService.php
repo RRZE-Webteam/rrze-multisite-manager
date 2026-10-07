@@ -9,7 +9,6 @@ use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
 defined('ABSPATH') || exit;
 
 class MonitoringService {
-    protected const CENTRAL_CRON_MIGRATION_OPTION = 'rrze_msm_site_availability_central_cron_migration';
     protected const META_OPERATIONAL_STATUS = 'rrze_msm_operational_status';
     protected const META_OPERATIONAL_STATUS_SOURCE = 'rrze_msm_operational_status_source';
     protected const META_PREVIOUS_OPERATIONAL_STATUS = 'rrze_msm_previous_operational_status';
@@ -48,6 +47,8 @@ class MonitoringService {
     protected Config $config;
     protected MultisiteContext $multisiteContext;
     protected ScheduleFrequency $scheduleFrequency;
+    protected ?StorageAnalysisSchedulerService $storageAnalysisScheduler = null;
+    protected ?ShortcodeBlockAnalysisSchedulerService $shortcodeBlockAnalysisScheduler = null;
 
     public function __construct(Plugin $plugin, ?Config $config = null) {
         $this->plugin = $plugin;
@@ -82,8 +83,6 @@ class MonitoringService {
             self::clearScheduledEventOnCurrentSite($this->config);
             return;
         }
-
-        $this->removeSubsiteScheduledEventsOnce();
 
         if (!$this->isMonitoringSchedulingEnabled()) {
             return;
@@ -220,10 +219,12 @@ class MonitoringService {
     /**
      * Disables automatic availability monitoring without requiring a service instance.
      */
-    public static function disableScheduledChecks(?Config $config = null): int {
+    public static function disableScheduledChecks(?Config $config = null, bool $acrossNetwork = true): int {
         update_site_option(self::SCHEDULING_ENABLED_OPTION, 0);
 
-        return self::clearScheduledEventsAcrossNetwork($config);
+        return $acrossNetwork
+            ? self::clearScheduledEventsAcrossNetwork($config)
+            : self::clearScheduledEvent($config);
     }
 
     public function resetMonitoringRunState(bool $clearSchedule = false): void {
@@ -411,6 +412,8 @@ class MonitoringService {
         $lastRun = '';
         $nextOffset = 0;
         $batchSize = $this->getBatchSize();
+        $deadline = microtime(true) + $this->config->getAvailabilityMonitoringRequestBudgetSeconds();
+        $processedSiteCount = 0;
         $runState = $this->getRunState();
         $result = [];
 
@@ -447,12 +450,17 @@ class MonitoringService {
         ]));
 
         foreach ($siteIds as $siteId) {
-            $result = $this->checkSiteAvailability((int)$siteId);
+            if ($processedSiteCount > 0 && microtime(true) >= $deadline) {
+                break;
+            }
+
+            $result = $this->checkSiteAvailability((int)$siteId, $deadline);
             $runState = $this->applyCheckResultToRunState($runState, $result);
+            $processedSiteCount++;
         }
 
         $this->saveRunState($runState);
-        $nextOffset = $offset + count($siteIds);
+        $nextOffset = $offset + $processedSiteCount;
 
         if (empty($siteIds) || $nextOffset >= $totalSites) {
             update_site_option(self::OPTION_LAST_RUN, $timestamp);
@@ -489,7 +497,7 @@ class MonitoringService {
     }
 
     protected function getBatchSize(): int {
-        return $this->config->getMonitoringBatchSize();
+        return $this->config->getAvailabilityMonitoringBatchSize();
     }
 
     /**
@@ -855,29 +863,6 @@ class MonitoringService {
         return $this->multisiteContext->inCentralSite($callback);
     }
 
-    protected function removeSubsiteScheduledEventsOnce(): void {
-        if ((int)get_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 0) >= 1) {
-            return;
-        }
-
-        $currentSiteId = get_current_blog_id();
-        $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if ($siteId <= 0 || $siteId === $currentSiteId) {
-                continue;
-            }
-
-            switch_to_blog($siteId);
-            self::clearScheduledEventOnCurrentSite($this->config);
-            restore_current_blog();
-        }
-
-        update_site_option(self::CENTRAL_CRON_MIGRATION_OPTION, 1);
-    }
-
     protected static function clearScheduledEventsAcrossNetwork(?Config $config = null): int {
         $removed = 0;
         $currentSiteId = get_current_blog_id();
@@ -910,7 +895,7 @@ class MonitoringService {
         return $removed;
     }
 
-    protected function checkSiteAvailability(int $siteId): array {
+    protected function checkSiteAvailability(int $siteId, ?float $deadline = null): array {
         $site = get_site($siteId);
         $siteUrl = '';
         $siteLabel = '';
@@ -961,7 +946,7 @@ class MonitoringService {
 
             if ($dnsStatus === 'ok') {
                 update_site_meta($siteId, self::META_LAST_DNS_OK_AT, $timestamp);
-                $httpData = $this->resolveHttpStatus($siteUrl);
+                $httpData = $this->resolveHttpStatus($siteUrl, $deadline);
                 $httpStatus = (string)($httpData['status'] ?? 'unknown');
                 $httpStatusDetail = (string)($httpData['detail'] ?? '');
                 $httpStatusCode = (int)($httpData['code'] ?? 0);
@@ -1015,11 +1000,13 @@ class MonitoringService {
     }
 
     protected function reconcileStorageAnalysisSchedule(int $siteId): void {
-        $storageScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService(null, $this->config)), $this->config);
-        $storageScheduler->reconcileSiteSchedule($siteId);
-
-        $shortcodeBlockScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
-        $shortcodeBlockScheduler->reconcileSiteSchedule($siteId);
+        $this->storageAnalysisScheduler ??= new StorageAnalysisSchedulerService(
+            new StorageAnalysisService(new MetricsService(null, $this->config)),
+            $this->config
+        );
+        $this->shortcodeBlockAnalysisScheduler ??= new ShortcodeBlockAnalysisSchedulerService($this->config);
+        $this->storageAnalysisScheduler->reconcileSiteSchedule($siteId);
+        $this->shortcodeBlockAnalysisScheduler->reconcileSiteSchedule($siteId);
     }
 
     protected function getSiteMonitoringLabel(\WP_Site $site): string {
@@ -1175,12 +1162,14 @@ class MonitoringService {
         ];
     }
 
-    protected function resolveHttpStatus(string $siteUrl): array {
+    protected function resolveHttpStatus(string $siteUrl, ?float $deadline = null): array {
+        $headTimeout = $this->getHttpTimeoutForDeadline($this->config->getAvailabilityMonitoringHttpTimeoutSeconds(), $deadline);
         $response = wp_remote_head(
             $siteUrl,
             [
-                'timeout' => 8,
-                'redirection' => 5,
+                'timeout' => $headTimeout,
+                'redirection' => 0,
+                'reject_unsafe_urls' => true,
                 'user-agent' => $this->config->getMonitoringUserAgent(),
             ]
         );
@@ -1195,11 +1184,20 @@ class MonitoringService {
                 ];
             }
 
+            if (!$this->canStartHttpFallbackRequest($deadline)) {
+                return [
+                    'status' => 'error',
+                    'code' => 0,
+                    'detail' => $this->formatWpErrorDetail($response, 'HEAD'),
+                ];
+            }
+
             $response = wp_remote_get(
                 $siteUrl,
                 [
-                    'timeout' => 8,
-                    'redirection' => 5,
+                    'timeout' => $this->getHttpTimeoutForDeadline($this->config->getAvailabilityMonitoringHttpFallbackTimeoutSeconds(), $deadline),
+                    'redirection' => 0,
+                    'reject_unsafe_urls' => true,
                     'limit_response_size' => 1024,
                     'user-agent' => $this->config->getMonitoringUserAgent(),
                 ]
@@ -1227,11 +1225,16 @@ class MonitoringService {
         $statusCode = (int)wp_remote_retrieve_response_code($response);
 
         if ($statusCode >= 400) {
+            if (!$this->canStartHttpFallbackRequest($deadline)) {
+                return $this->buildHttpResultFromResponse($response, 'HEAD');
+            }
+
             $response = wp_remote_get(
                 $siteUrl,
                 [
-                    'timeout' => 8,
-                    'redirection' => 5,
+                    'timeout' => $this->getHttpTimeoutForDeadline($this->config->getAvailabilityMonitoringHttpFallbackTimeoutSeconds(), $deadline),
+                    'redirection' => 0,
+                    'reject_unsafe_urls' => true,
                     'limit_response_size' => 1024,
                     'user-agent' => $this->config->getMonitoringUserAgent(),
                 ]
@@ -1257,6 +1260,24 @@ class MonitoringService {
         }
 
         return $this->buildHttpResultFromResponse($response, 'HEAD');
+    }
+
+    protected function getHttpTimeoutForDeadline(int $requestedTimeout, ?float $deadline): int {
+        if ($deadline === null) {
+            return $requestedTimeout;
+        }
+
+        $remainingSeconds = (int)floor($deadline - microtime(true));
+
+        return max(1, min($requestedTimeout, $remainingSeconds));
+    }
+
+    protected function canStartHttpFallbackRequest(?float $deadline): bool {
+        if ($deadline === null) {
+            return true;
+        }
+
+        return microtime(true) + $this->config->getAvailabilityMonitoringHttpFallbackTimeoutSeconds() < $deadline;
     }
 
     protected function isTimeoutError(\WP_Error $error): bool {

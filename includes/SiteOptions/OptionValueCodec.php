@@ -2,43 +2,43 @@
 
 namespace RRZE\MultisiteManager\SiteOptions;
 
+use RRZE\MultisiteManager\Support\SafeSerializedValue;
+
 defined('ABSPATH') || exit;
 
 /**
  * Safely validates values submitted for WordPress option editing.
  */
 class OptionValueCodec {
+    protected SafeSerializedValue $serializedValue;
+
+    public function __construct(?SafeSerializedValue $serializedValue = null) {
+        $this->serializedValue = $serializedValue ?? new SafeSerializedValue();
+    }
+
     /** @return array{valid: bool, value: mixed} */
     public function decode(string $rawValue): array {
-        $trimmedValue = trim($rawValue);
+        $decoded = $this->serializedValue->decode($rawValue);
 
-        if (!is_serialized($trimmedValue)) {
+        if (!$decoded['serialized']) {
             return ['valid' => true, 'value' => $rawValue];
         }
 
-        if (preg_match('/^(O|C):\d+:/', $trimmedValue) === 1) {
-            return ['valid' => false, 'value' => null];
-        }
-
-        $value = @unserialize($trimmedValue, ['allowed_classes' => false]);
-
-        if (($value === false && $trimmedValue !== 'b:0;') || is_object($value)) {
-            return ['valid' => false, 'value' => null];
-        }
-
-        return ['valid' => true, 'value' => $value];
+        return ['valid' => $decoded['valid'], 'value' => $decoded['value']];
     }
 
     public function isEditable(string $rawValue): bool {
-        $value = maybe_unserialize($rawValue);
+        $decoded = $this->serializedValue->decode($rawValue);
+        $value = $decoded['value'];
 
-        return !is_array($value) && !is_object($value);
+        return $decoded['valid'] && !is_array($value) && !is_object($value);
     }
 
     public function toEditableString(string $rawValue): string {
-        $value = maybe_unserialize($rawValue);
+        $decoded = $this->serializedValue->decode($rawValue);
+        $value = $decoded['value'];
 
-        if (is_array($value) || is_object($value)) {
+        if (!$decoded['valid'] || is_array($value) || is_object($value)) {
             return '';
         }
 

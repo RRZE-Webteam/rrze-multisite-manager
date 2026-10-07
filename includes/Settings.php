@@ -215,11 +215,11 @@ class Settings {
         }
 
         if ($storageAnalysisFrequencyChanged) {
-            (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->markScheduleConfigurationCurrent();
+            (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->queueFrequencyReschedule();
         }
 
         if ($shortcodeAnalysisFrequencyChanged) {
-            (new ShortcodeBlockAnalysisSchedulerService($this->config))->markScheduleConfigurationCurrent();
+            (new ShortcodeBlockAnalysisSchedulerService($this->config))->queueFrequencyReschedule();
         }
 
         $redirectUrl = add_query_arg(
@@ -938,15 +938,16 @@ class Settings {
                 continue;
             }
 
-            $sectionTitle = (string)$section['title'];
-            echo '<h2>' . esc_html($sectionTitle) . '</h2>';
-
-            if (!empty($section['description'])) {
-                echo '<p>' . esc_html((string)$section['description']) . '</p>';
-            }
-
             if (empty($this->settingsFields[$sectionId]) || !is_array($this->settingsFields[$sectionId])) {
                 continue;
+            }
+
+            $sectionTitle = (string)$section['title'];
+            echo '<section class="rrze-msm-settings-group">';
+            echo '<header class="rrze-msm-settings-group-header"><h2>' . esc_html($sectionTitle) . '</h2></header>';
+
+            if (!empty($section['description'])) {
+                echo '<p class="rrze-msm-settings-group-content">' . esc_html((string)$section['description']) . '</p>';
             }
 
             echo '<table class="form-table" role="presentation"><tbody>';
@@ -970,6 +971,7 @@ class Settings {
             }
 
             echo '</tbody></table>';
+            echo '</section>';
         }
     }
 
@@ -1664,22 +1666,9 @@ class Settings {
 
         foreach ($processes as $process) {
             $siteId = (int)($process['site_id'] ?? 0);
-            $statusKey = (string)($process['status_key'] ?? '');
+            $statusKey = (string)($process['status_key'] ?? 'not_scheduled');
             $lastRun = (string)($process['last_run'] ?? '');
             $lastRunTimestamp = $lastRun !== '' ? (int)strtotime($lastRun . ' UTC') : 0;
-            $statusClass = 'rrze-msm-badge-neutral';
-
-            if (!empty($process['is_running'])) {
-                $statusClass = 'rrze-msm-badge-info';
-            } elseif (in_array($statusKey, ['scheduled', 'waiting_for_cron'], true)) {
-                $statusClass = 'rrze-msm-badge-scheduled';
-            } elseif ($statusKey === 'ok') {
-                $statusClass = 'rrze-msm-badge-positive';
-            } elseif ($statusKey === 'inactive') {
-                $statusClass = 'rrze-msm-badge-inactive';
-            } elseif (in_array($statusKey, ['error', 'aborted'], true)) {
-                $statusClass = 'rrze-msm-badge-danger';
-            }
 
             echo '<tr data-sort-name="' . esc_attr(strtolower((string)($process['name'] ?? ''))) . '" data-sort-url="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-sort-status="' . esc_attr(strtolower((string)($process['status'] ?? ''))) . '" data-sort-last-run="' . esc_attr((string)$lastRunTimestamp) . '" data-site-status="' . esc_attr((string)($process['website_status_key'] ?? 'inactive')) . '">';
             echo '<th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th>';
@@ -1691,7 +1680,7 @@ class Settings {
             $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteStorageAnalysisPageUrl($siteId), __('Storage Analysis', 'rrze-multisite-manager'), $cronSiteId);
             echo '</div>';
             echo '</td>';
-            echo '<td><span class="rrze-msm-badge ' . esc_attr($statusClass) . '">' . esc_html((string)($process['status'] ?? '')) . '</span></td>';
+            echo '<td>' . $this->renderScheduledJobStatusHtml($process) . '</td>';
             $assignment = ($process['schedule_mode'] ?? '') === 'batch' ? __('Shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager');
             echo '<td>' . esc_html($assignment) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
@@ -1868,40 +1857,20 @@ class Settings {
 
             foreach ($processes as $process) {
                 $siteId = (int)($process['site_id'] ?? 0);
-                $statusKey = (string)($process['status_key'] ?? ($process['status'] ?? 'not_scheduled'));
-
-                if ($statusKey === 'complete') {
-                    $statusKey = 'ok';
-                }
-
-                $statusLabels = [
-                    'inactive' => __('Inactive', 'rrze-multisite-manager'),
-                    'running' => __('Running', 'rrze-multisite-manager'),
-                    'error' => __('Error', 'rrze-multisite-manager'),
-                    'waiting_for_cron' => __('Waiting for cron', 'rrze-multisite-manager'),
-                    'ok' => __('Ok', 'rrze-multisite-manager'),
-                    'scheduled' => __('Scheduled', 'rrze-multisite-manager'),
-                    'not_scheduled' => __('Not scheduled', 'rrze-multisite-manager'),
-                ];
+                $statusKey = (string)($process['status_key'] ?? 'not_scheduled');
                 $lastFinishedAt = (string)($process['last_finished_at'] ?? '');
                 $lastRunTimestamp = $lastFinishedAt !== '' ? (int)strtotime($lastFinishedAt . ' UTC') : 0;
-                $statusClass = in_array($statusKey, ['scheduled', 'waiting_for_cron'], true)
-                    ? 'rrze-msm-badge-scheduled'
-                    : ($statusKey === 'running'
-                        ? 'rrze-msm-badge-info'
-                        : ($statusKey === 'ok'
-                            ? 'rrze-msm-badge-positive'
-                            : ($statusKey === 'inactive'
-                                ? 'rrze-msm-badge-inactive'
-                                : ($statusKey === 'error' ? 'rrze-msm-badge-danger' : 'rrze-msm-badge-neutral'))));
                 echo '<tr data-sort-name="' . esc_attr(strtolower((string)($process['name'] ?? ''))) . '" data-sort-url="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-sort-status="' . esc_attr(strtolower((string)($process['status'] ?? ''))) . '" data-sort-last-run="' . esc_attr((string)$lastRunTimestamp) . '" data-site-status="' . esc_attr((string)($process['website_status_key'] ?? 'inactive')) . '">';
                 echo '<th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th>';
                 echo '<td class="rrze-msm-monitoring-site-url">';
                 echo '<div class="rrze-msm-monitoring-site-identity"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
-                $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteShortcodeBlockAnalysisPageUrl($siteId), __('Shortcodes and Blocks', 'rrze-multisite-manager'));
+                $cronSiteId = ($process['assignment_mode'] ?? '') === 'batch'
+                    ? (int)get_main_site_id(get_current_network_id())
+                    : $siteId;
+                $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteShortcodeBlockAnalysisPageUrl($siteId), __('Shortcodes and Blocks', 'rrze-multisite-manager'), $cronSiteId);
                 echo '</div>';
                 echo '</td>';
-                echo '<td><span class="rrze-msm-badge ' . esc_attr($statusClass) . '">' . esc_html($statusLabels[$statusKey] ?? $statusLabels['not_scheduled']) . '</span></td>';
+                echo '<td>' . $this->renderScheduledJobStatusHtml($process) . '</td>';
                 $assignmentMode = (string)($process['assignment_mode'] ?? 'unassigned');
                 $assignmentLabel = $assignmentMode === 'batch'
                     ? __('Shared batch', 'rrze-multisite-manager')
@@ -2039,7 +2008,7 @@ class Settings {
 
         if ($crontrolUrl !== '') {
             echo ' | ';
-            echo '<span class="rrze-msm-row-action-crontrol"><a href="' . esc_url($crontrolUrl) . '">' . esc_html__('Cron Events', 'rrze-multisite-manager') . '</a></span>';
+            echo '<span class="rrze-msm-row-action-crontrol"><a href="' . esc_url($crontrolUrl) . '">' . esc_html__('WP Crontrol Events', 'rrze-multisite-manager') . '</a></span>';
         }
 
         echo '</div>';
@@ -2408,20 +2377,23 @@ class Settings {
         wp_nonce_field('rrze_multisite_manager_save_views');
         echo '<input type="hidden" name="settings_tab" value="views">';
 
-        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
-        echo '<header class="rrze-msm-widget-header">';
+        echo '<section class="rrze-msm-settings-group">';
+        echo '<header class="rrze-msm-settings-group-header">';
         echo '<h2>' . esc_html__('Create new view', 'rrze-multisite-manager') . '</h2>';
         echo '<p>' . esc_html__('New views start with all widgets. You can then narrow the selection directly below.', 'rrze-multisite-manager') . '</p>';
         echo '</header>';
+        echo '<div class="rrze-msm-settings-group-content">';
         echo '<input type="text" class="regular-text" name="new_view_name" value="" placeholder="' . esc_attr__('Name of the new view', 'rrze-multisite-manager') . '">';
+        echo '</div>';
         echo '</section>';
 
         foreach ($views as $view) {
-            echo '<section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-view-editor">';
-            echo '<header class="rrze-msm-widget-header">';
+            echo '<section class="rrze-msm-settings-group rrze-msm-view-editor">';
+            echo '<header class="rrze-msm-settings-group-header">';
             echo '<h2>' . esc_html((string)$view['label']) . '</h2>';
             echo '<p><code>' . esc_html((string)$view['slug']) . '</code></p>';
             echo '</header>';
+            echo '<div class="rrze-msm-settings-group-content">';
 
             if (!empty($view['system'])) {
                 echo '<input type="hidden" name="views[' . esc_attr((string)$view['slug']) . '][label]" value="' . esc_attr((string)$view['label']) . '">';
@@ -2453,6 +2425,7 @@ class Settings {
                 echo '</label>';
             }
 
+            echo '</div>';
             echo '</div>';
             echo '</section>';
         }
@@ -2655,7 +2628,36 @@ class Settings {
             return __('Not scheduled', 'rrze-multisite-manager');
         }
 
-        return __('Scheduled', 'rrze-multisite-manager');
+        return $this->hasPreviousProcessResult($process)
+            ? __('Ok', 'rrze-multisite-manager')
+            : __('Scheduled', 'rrze-multisite-manager');
+    }
+
+    protected function renderScheduledJobStatusHtml(array $process): string {
+        $label = $this->getProcessStatusLabel($process);
+        $className = 'rrze-msm-badge rrze-msm-badge-neutral';
+
+        if (!empty($process['is_running'])) {
+            $className = 'rrze-msm-badge rrze-msm-badge-info';
+        } elseif ((int)($process['next_run_timestamp'] ?? 0) > 0) {
+            $className = $this->hasPreviousProcessResult($process)
+                ? 'rrze-msm-badge rrze-msm-badge-positive'
+                : 'rrze-msm-badge rrze-msm-badge-scheduled';
+        }
+
+        return '<span class="' . esc_attr($className) . '">' . esc_html($label) . '</span>';
+    }
+
+    protected function hasPreviousProcessResult(array $process): bool {
+        foreach (['last_run', 'last_finished_at', 'finished_at'] as $field) {
+            $timestamp = (string)($process[$field] ?? '');
+
+            if ($timestamp !== '' && $timestamp !== '0000-00-00 00:00:00') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function renderProcessDescriptionHtml(array $process): string {
@@ -2696,14 +2698,10 @@ class Settings {
         $className = 'rrze-msm-badge rrze-msm-badge-neutral';
         $html = '';
 
-        if (!empty($process['is_running'])) {
-            $className = 'rrze-msm-badge rrze-msm-badge-info';
-        } elseif ((int)($process['next_run_timestamp'] ?? 0) <= 0) {
-            $className = 'rrze-msm-badge rrze-msm-badge-neutral';
-        } elseif ($warning !== '') {
+        if ($warning !== '') {
             $className = 'rrze-msm-badge rrze-msm-badge-danger';
-        } elseif ((int)($process['next_run_timestamp'] ?? 0) > 0) {
-            $className = 'rrze-msm-badge rrze-msm-badge-warning';
+        } else {
+            return '<div class="rrze-msm-process-status">' . $this->renderScheduledJobStatusHtml($process) . '</div>';
         }
 
         $html .= '<div class="rrze-msm-process-status">';

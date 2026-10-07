@@ -1,7 +1,7 @@
 {
   "name": "rrze-multisite-manager",
   "title": "RRZE Multisite Manager",
-  "version": "1.2.25-34",
+  "version": "1.2.27",
   "description": "Multisite management for WordPress",
   "tags": "Plugin, WordPress, Multisite, RRZE, FAU",
   "main": "rrze-multisite-manager.php",
@@ -17,11 +17,12 @@
     "build": "node scripts/build-assets.js prod && npm run languages",
     "prod": "node scripts/build-assets.js prod && npm run languages && npm run version:prod && npm run readme",
     "release": "node scripts/build-assets.js prod && npm run languages && npm run version:release && npm run readme",
+    "test": "vendor/bin/phpunit",
     "watch": "node scripts/build-assets.js dev --watch"
   },
   "compatibility": {
     "wprequires": "6.9.4",
-    "wptestedup": "7.1",
+    "wptestedup": "7.1.3",
     "phprequires": "8.3"
   },
   "repository": {

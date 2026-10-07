@@ -38,7 +38,7 @@ class Main {
         $shortcodeBlockAnalysisScheduler->onLoaded();
         $this->shortcodeBlockAnalysisScheduler = $shortcodeBlockAnalysisScheduler;
 
-        $dashboard = new Dashboard($this->plugin, $settings);
+        $dashboard = new Dashboard($this->plugin, $settings, $metrics, $this->config);
         $dashboard->onLoaded();
         $this->dashboard = $dashboard;
 

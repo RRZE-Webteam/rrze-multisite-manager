@@ -51,11 +51,11 @@ class Dashboard {
     protected const META_LAST_HTTP_OK_AT = 'rrze_msm_last_http_ok_at';
     protected const META_MONITORING_NOTE = 'rrze_msm_monitoring_note';
 
-    public function __construct(Plugin $plugin, Settings $settings) {
+    public function __construct(Plugin $plugin, Settings $settings, ?MetricsService $metrics = null, ?Config $config = null) {
         $this->plugin = $plugin;
         $this->settings = $settings;
-        $this->config = new Config();
-        $this->metrics = new MetricsService($settings, $this->config);
+        $this->config = $config ?? new Config();
+        $this->metrics = $metrics ?? new MetricsService($settings, $this->config);
         $this->storageAnalysisScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService($this->metrics), $this->config);
         $this->shortcodeBlockAnalysisScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
         $this->template = new Template($this->config, $this->plugin->getPath('templates'));
@@ -1506,7 +1506,8 @@ class Dashboard {
 
     public function renderPluginDetailsPage(): void {
         $pluginFile = isset($_GET['plugin']) ? sanitize_text_field((string)wp_unslash($_GET['plugin'])) : '';
-        $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile) : [];
+        $sourceAnalysisRequested = $pluginFile !== '' && $this->isSourceAnalysisRequested('plugin', $pluginFile);
+        $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile, $sourceAnalysisRequested) : [];
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -1529,6 +1530,8 @@ class Dashboard {
                 'plugin_readme_html' => !empty($pluginDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$pluginDetails['readme_markdown'])
                     : '',
+                'source_analysis_requested' => $sourceAnalysisRequested,
+                'source_analysis_url' => $pluginFile !== '' ? $this->getSourceAnalysisUrl('plugin', $pluginFile) : '',
             ],
             $this
         );
@@ -1565,7 +1568,8 @@ class Dashboard {
 
     public function renderThemeDetailsPage(): void {
         $stylesheet = isset($_GET['theme']) ? sanitize_text_field((string)wp_unslash($_GET['theme'])) : '';
-        $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet) : [];
+        $sourceAnalysisRequested = $stylesheet !== '' && $this->isSourceAnalysisRequested('theme', $stylesheet);
+        $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet, $sourceAnalysisRequested) : [];
         $themeWidget = new ThemeOverviewWidget($this->plugin, $this->config);
 
         if (!$this->currentUserCanAccessManager()) {
@@ -1586,9 +1590,29 @@ class Dashboard {
                 'theme_readme_html' => !empty($themeDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$themeDetails['readme_markdown'])
                     : '',
+                'source_analysis_requested' => $sourceAnalysisRequested,
+                'source_analysis_url' => $stylesheet !== '' ? $this->getSourceAnalysisUrl('theme', $stylesheet) : '',
             ],
             $this
         );
+    }
+
+    protected function isSourceAnalysisRequested(string $type, string $identifier): bool {
+        $requested = isset($_GET['source_analysis']) && sanitize_key((string)wp_unslash($_GET['source_analysis'])) === '1';
+        $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field((string)wp_unslash($_GET['_wpnonce'])) : '';
+
+        return $requested && wp_verify_nonce($nonce, 'rrze_msm_source_analysis_' . $type . '_' . $identifier);
+    }
+
+    protected function getSourceAnalysisUrl(string $type, string $identifier): string {
+        $url = add_query_arg(
+            [
+                'source_analysis' => '1',
+            ],
+            $type === 'plugin' ? $this->getPluginDetailsUrl($identifier) : $this->getThemeDetailsUrl($identifier)
+        );
+
+        return wp_nonce_url($url, 'rrze_msm_source_analysis_' . $type . '_' . $identifier);
     }
 
     protected function isNetworkPlugin(array $plugin): bool {

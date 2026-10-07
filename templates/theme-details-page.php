@@ -207,6 +207,7 @@ defined('ABSPATH') || exit;
             <?php } ?>
 
             <div class="rrze-msm-grid">
+                <?php if (!empty($source_analysis_requested)) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Shortcodes', 'rrze-multisite-manager'); ?></h2>
@@ -348,6 +349,15 @@ defined('ABSPATH') || exit;
                         <p><?php echo esc_html__('No statically detectable actions or filters were found.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>
                 </section>
+                <?php } else { ?>
+                    <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                        <header class="rrze-msm-widget-header">
+                            <h2><?php echo esc_html__('Source code analysis', 'rrze-multisite-manager'); ?></h2>
+                            <p><?php echo esc_html__('The optional static analysis searches the theme source for shortcodes, blocks, image sizes, and provided hooks. It can take time for large themes.', 'rrze-multisite-manager'); ?></p>
+                        </header>
+                        <a class="button button-secondary" href="<?php echo esc_url($source_analysis_url); ?>"><?php echo esc_html__('Analyze source code', 'rrze-multisite-manager'); ?></a>
+                    </section>
+                <?php } ?>
             </div>
         <?php } ?>
     </div>

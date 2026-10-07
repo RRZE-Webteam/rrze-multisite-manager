@@ -11,6 +11,7 @@ class StorageAnalysisResultService {
     private const RESULT_OPTION = 'rrze_msm_site_storage_analysis_result';
     private const META_OPTION = 'rrze_msm_site_storage_analysis_result_meta';
     private const MEDIA_METADATA_RESULT_OPTION = 'rrze_msm_site_media_metadata_analysis_result';
+    private const MAX_STORAGE_RESULT_BYTES = 2097152;
 
     public function getResult(int $siteId): array {
         $result = $siteId > 0 ? get_blog_option($siteId, self::RESULT_OPTION, []) : [];
@@ -80,11 +81,52 @@ class StorageAnalysisResultService {
     }
 
     private function updateCurrentOption(string $option, array $value): void {
+        if ($option === self::RESULT_OPTION) {
+            $value = $this->compactStorageResult($value);
+        }
+
         if (get_option($option, null) === null) {
             add_option($option, $value, '', false);
             return;
         }
 
         update_option($option, $value, false);
+    }
+
+    /**
+     * Keeps a pathological analysis result from creating an unbounded option row.
+     * Summary counts remain intact; only verbose reference lists are compacted.
+     */
+    private function compactStorageResult(array $result): array {
+        if (strlen(serialize($result)) <= self::MAX_STORAGE_RESULT_BYTES) {
+            return $result;
+        }
+
+        foreach ([
+            'orphan_files_found_in_content',
+            'orphan_files_without_content_matches',
+            'unregistered_image_size_variants_found_in_content',
+            'unregistered_image_size_variants_without_content_matches',
+        ] as $key) {
+            $entries = is_array($result[$key] ?? null) ? $result[$key] : [];
+
+            foreach ($entries as $index => $entry) {
+                if (is_array($entry)) {
+                    unset($entries[$index]['content_usage_results']);
+                }
+            }
+
+            $result[$key] = array_slice(array_values($entries), 0, 100);
+        }
+
+        foreach (['largest_files', 'largest_orphan_files', 'largest_unregistered_image_size_variants'] as $key) {
+            if (is_array($result[$key] ?? null)) {
+                $result[$key] = array_slice(array_values($result[$key]), 0, 100);
+            }
+        }
+
+        $result['result_truncated'] = true;
+
+        return $result;
     }
 }

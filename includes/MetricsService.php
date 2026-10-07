@@ -35,7 +35,7 @@ class MetricsService {
         return MetricsImplementationService::isFullDataCleanupInProgress();
     }
 
-    public static function disableMaintenanceScheduling(): int {
-        return MetricsImplementationService::disableMaintenanceScheduling();
+    public static function disableMaintenanceScheduling(bool $acrossNetwork = true): int {
+        return MetricsImplementationService::disableMaintenanceScheduling($acrossNetwork);
     }
 }
