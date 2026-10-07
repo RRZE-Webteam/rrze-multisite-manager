@@ -3,8 +3,11 @@
 
 namespace RRZE\MultisiteManager;
 
+use RRZE\MultisiteManager\Support\ScheduleFrequency;
+use RRZE\MultisiteManager\Presentation\StatusFormatter;
 defined('ABSPATH') || exit;
 
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
 use RRZE\MultisiteManager\Widgets\ArchivedSitesWidget;
 use RRZE\MultisiteManager\Widgets\BlockedSitesWidget;
 use RRZE\MultisiteManager\Widgets\DeletedSitesWidget;
@@ -38,11 +41,15 @@ class Settings {
     protected string $currentTab = '';
     protected string $settingsPrefix = '';
     protected Config $config;
+    protected ScheduleFrequency $scheduleFrequency;
+    protected StatusFormatter $statusFormatter;
     protected array $sectionDescriptions = [];
 
     public function __construct(Plugin $plugin) {
         $this->plugin = $plugin;
         $this->config = new Config();
+        $this->scheduleFrequency = new ScheduleFrequency($this->config);
+        $this->statusFormatter = new StatusFormatter();
         $this->settingsPrefix = $this->plugin->getSlug() . '-';
     }
 
@@ -208,7 +215,7 @@ class Settings {
         }
 
         if ($storageAnalysisFrequencyChanged) {
-            (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->markScheduleConfigurationCurrent();
+            (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->markScheduleConfigurationCurrent();
         }
 
         if ($shortcodeAnalysisFrequencyChanged) {
@@ -415,7 +422,7 @@ class Settings {
 
         check_admin_referer('rrze_multisite_manager_start_site_storage_analysis_' . $siteId);
 
-        $scheduler = new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config);
+        $scheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config);
         $isEligible = $scheduler->isSiteEligible($siteId);
         $started = $isEligible && $scheduler->startAnalysisNow($siteId);
 
@@ -453,7 +460,7 @@ class Settings {
             exit;
         }
 
-        $scheduler = new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config);
+        $scheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config);
         $batch = $scheduler->initializeActiveSiteSchedulesBatch();
 
         wp_safe_redirect(
@@ -484,7 +491,7 @@ class Settings {
             exit;
         }
 
-        $migration = (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->migrateSchedulesBatch();
+        $migration = (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->migrateSchedulesBatch();
         wp_safe_redirect(add_query_arg([
             'page' => $this->getMonitoringSlug(),
             'monitoring_tab' => 'storage',
@@ -577,7 +584,7 @@ class Settings {
         $analysisType = sanitize_key(wp_unslash($_POST['analysis_type'] ?? ''));
 
         if ($analysisType === 'storage') {
-            return new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config);
+            return new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config);
         }
 
         if ($analysisType === 'shortcode-block') {
@@ -598,7 +605,7 @@ class Settings {
             exit;
         }
         $siteIds = $this->getSelectedAnalysisSiteIds();
-        $scheduled = (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))
+        $scheduled = (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))
             ->scheduleSelectedActiveSites($siteIds);
 
         wp_safe_redirect(add_query_arg(
@@ -647,7 +654,7 @@ class Settings {
             exit;
         }
 
-        $removed = (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))
+        $removed = (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))
             ->removeSelectedScheduledSites($this->getSelectedAnalysisSiteIds());
         wp_safe_redirect(add_query_arg([
             'page' => $this->getMonitoringSlug(),
@@ -852,7 +859,7 @@ class Settings {
             exit;
         }
         $started = $type === 'storage'
-            ? (new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config))->startBatchNow()
+            ? (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->startBatchNow()
             : ($type === 'shortcode-block' ? (new ShortcodeBlockAnalysisSchedulerService($this->config))->startBatchNow() : false);
         wp_safe_redirect(add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => $type, 'shared-batch-started' => $started ? 'true' : 'false'], admin_url('admin.php')));
         exit;
@@ -1076,19 +1083,7 @@ class Settings {
     }
 
     protected function getCycleFrequencyFromHours(int $hours): string {
-        if ($hours <= 6) {
-            return 'fourtimesdaily';
-        }
-
-        if ($hours <= 12) {
-            return 'twicedaily';
-        }
-
-        if ($hours <= 24) {
-            return 'daily';
-        }
-
-        return $hours <= 84 ? 'twiceweekly' : 'weekly';
+        return $this->scheduleFrequency->fromHours($hours);
     }
 
     public function getSettingsSlug(): string {
@@ -1407,7 +1402,7 @@ class Settings {
             $processed = absint(wp_unslash($_GET['storage-migration-processed'] ?? 0));
             $total = absint(wp_unslash($_GET['storage-migration-total'] ?? 0));
             $scheduled = absint(wp_unslash($_GET['storage-migration-scheduled'] ?? 0));
-            $complete = !empty($_GET['storage-migration-complete']);
+            $complete = 'true' === (string)wp_unslash($_GET['storage-migration-complete'] ?? '');
             $message = $complete
                 /* translators: %d: number of websites scheduled during migration. */
                 ? sprintf(__('Storage-analysis schedule migration completed; %d websites were scheduled.', 'rrze-multisite-manager'), $scheduled)
@@ -1615,7 +1610,7 @@ class Settings {
     }
 
     protected function renderWebsiteStorageMonitoringTab(): void {
-        $scheduler = new StorageAnalysisSchedulerService(new MetricsService($this, $this->config), $this->config);
+        $scheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config);
         $process = [];
         $perPage = min(100, max(10, (int)$this->getOption('dashboard', 'activity_site_limit', 10)));
         $currentPage = $this->getMonitoringTablePage('storage_monitoring_page');
@@ -3072,55 +3067,11 @@ class Settings {
     }
 
     protected function getMonitoringStatusLabel(string $status): string {
-        if ($status === 'ok') {
-            return __('OK', 'rrze-multisite-manager');
-        }
-
-        if ($status === 'missing') {
-            return __('Missing', 'rrze-multisite-manager');
-        }
-
-        if ($status === 'timeout') {
-            return __('Timeout', 'rrze-multisite-manager');
-        }
-
-        if ($status === 'pending') {
-            return __('Pending', 'rrze-multisite-manager');
-        }
-
-        if ($status === 'error') {
-            return __('Error', 'rrze-multisite-manager');
-        }
-
-        if ($status === 'unknown') {
-            return __('Unknown', 'rrze-multisite-manager');
-        }
-
-        return $status !== '' ? $status : __('-', 'rrze-multisite-manager');
+        return $this->statusFormatter->getMonitoringLabel($status, __('-', 'rrze-multisite-manager'));
     }
 
     protected function formatMonitoringStatusValue(string $status, string $detail = '', int $code = 0): string {
-        $label = $this->getMonitoringStatusLabel($status);
-        $parts = [];
-
-        if ($code > 0 && strpos($detail, (string)$code) === false) {
-            $parts[] = (string)$code;
-        }
-
-        if ($detail !== '') {
-            $parts[] = $detail;
-        }
-
-        if (empty($parts)) {
-            return $label;
-        }
-
-        return sprintf(
-            /* translators: 1: monitoring status label, 2: monitoring detail text. */
-            __('%1$s (%2$s)', 'rrze-multisite-manager'),
-            $label,
-            implode(' | ', $parts)
-        );
+        return $this->statusFormatter->formatMonitoringValue($status, $detail, $code, __('-', 'rrze-multisite-manager'));
     }
 
     protected function getOperationalStatusLabel(string $status): string {

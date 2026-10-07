@@ -1,51 +1,10 @@
 <?php
 
-namespace RRZE\MultisiteManager;
+namespace RRZE\MultisiteManager\Metrics;
 
 defined('ABSPATH') || exit;
 
 trait MetricsServicePluginTrait {
-    public function searchPlugins(string $searchTerm, int $limit = 20): array {
-        $availablePlugins = [];
-        $results = [];
-        $pluginFile = '';
-        $pluginData = [];
-        $searchNeedle = trim(mb_strtolower($searchTerm));
-        $haystack = '';
-
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 3) {
-            return [];
-        }
-
-        $availablePlugins = get_plugins();
-
-        foreach ($availablePlugins as $pluginFile => $pluginData) {
-            $haystack = mb_strtolower(
-                (string)($pluginData['Name'] ?? '') . ' ' .
-                (string)($pluginData['Description'] ?? '') . ' ' .
-                $pluginFile
-            );
-
-            if (mb_strpos($haystack, $searchNeedle) === false) {
-                continue;
-            }
-
-            $results[] = [
-                'id' => $pluginFile,
-                'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                'version' => (string)($pluginData['Version'] ?? ''),
-                'file' => $pluginFile,
-            ];
-
-            if (count($results) >= $limit) {
-                break;
-            }
-        }
-
-        return $results;
-    }
 
     public function getPluginDetails(string $pluginFile): array {
         $availablePlugins = [];

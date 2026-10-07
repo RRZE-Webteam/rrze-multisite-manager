@@ -5,6 +5,7 @@ namespace RRZE\MultisiteManager;
 
 defined('ABSPATH') || exit;
 
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
 use RRZE\MultisiteManager\Widgets\ArchivedSitesWidget;
 use RRZE\MultisiteManager\Widgets\BlockedSitesWidget;
 use RRZE\MultisiteManager\Widgets\DeletedSitesWidget;
@@ -55,7 +56,7 @@ class Dashboard {
         $this->settings = $settings;
         $this->config = new Config();
         $this->metrics = new MetricsService($settings, $this->config);
-        $this->storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
+        $this->storageAnalysisScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService($this->metrics), $this->config);
         $this->shortcodeBlockAnalysisScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
         $this->template = new Template($this->config, $this->plugin->getPath('templates'));
         $this->viewManager = new ViewManager();
@@ -2023,7 +2024,7 @@ class Dashboard {
             wp_die(esc_html__('Invalid status action.', 'rrze-multisite-manager'));
         }
 
-        $storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
+        $storageAnalysisScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService($this->metrics), $this->config);
 
         if (!$storageAnalysisScheduler->isSiteEligible($siteId)) {
             $storageAnalysisScheduler->deactivateIneligibleSite($siteId);
@@ -2063,7 +2064,7 @@ class Dashboard {
 
         check_admin_referer('deleteblog_' . $siteId);
         wpmu_delete_blog($siteId, true);
-        (new StorageAnalysisSchedulerService($this->metrics, $this->config))->deactivateIneligibleSite($siteId);
+        (new StorageAnalysisSchedulerService(new StorageAnalysisService($this->metrics), $this->config))->deactivateIneligibleSite($siteId);
         (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
 
         if (!$this->metrics->refreshDashboardSiteStatus($siteId)) {

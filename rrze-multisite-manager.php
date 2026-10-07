@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.2.25
+ * Version:         1.2.25-34
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -22,6 +22,7 @@ defined('ABSPATH') || exit;
 
 use RRZE\MultisiteManager\Main;
 use RRZE\MultisiteManager\Plugin;
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
 
 spl_autoload_register(__NAMESPACE__ . '\autoload');
 
@@ -156,7 +157,7 @@ function activate(bool $networkWide = false): void {
     ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents($config);
 
     // Activation must not synchronously iterate over every site in a large network.
-    (new StorageAnalysisSchedulerService($metrics, $config))->markScheduleConfigurationCurrent();
+    (new StorageAnalysisSchedulerService(new StorageAnalysisService($metrics), $config))->markScheduleConfigurationCurrent();
     (new ShortcodeBlockAnalysisSchedulerService($config))->markScheduleConfigurationCurrent();
 }
 

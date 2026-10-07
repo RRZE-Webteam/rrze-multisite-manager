@@ -2,6 +2,8 @@
 
 namespace RRZE\MultisiteManager;
 
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
+
 defined('ABSPATH') || exit;
 
 class StorageAnalysisSchedulerService {
@@ -21,6 +23,7 @@ class StorageAnalysisSchedulerService {
     protected const ASSIGNMENTS_OPTION = 'rrze_msm_storage_analysis_assignments';
     protected const BATCH_LAST_SITE_ID_OPTION = 'rrze_msm_storage_analysis_batch_last_site_id';
     protected const BATCH_LOCK_OPTION = 'rrze_msm_storage_analysis_batch_lock';
+    protected const REMOVED_SITE_IDS_OPTION = 'rrze_msm_storage_analysis_removed_site_ids';
     protected const MIGRATION_STATE_OPTION = 'rrze_msm_storage_analysis_migration_state';
     protected const MIGRATION_LOCK_OPTION = 'rrze_msm_storage_analysis_migration_lock';
     protected const BATCH_CONTINUATION_ARGS = ['rrze_msm_storage_analysis_batch' => true];
@@ -29,15 +32,17 @@ class StorageAnalysisSchedulerService {
     protected const META_DNS_STATUS = 'rrze_msm_dns_status';
     protected const META_HTTP_STATUS = 'rrze_msm_http_status';
 
-    protected MetricsService $metrics;
+    protected StorageAnalysisService $storageAnalysis;
     protected Config $config;
     /** @var array<int, int>|null */
     protected ?array $currentRecurringScheduleTimestamps = null;
     /** @var array<int, true>|null */
     protected ?array $recurringScheduledSiteIds = null;
 
-    public function __construct(MetricsService $metrics, ?Config $config = null) {
-        $this->metrics = $metrics;
+    public function __construct(MetricsService|StorageAnalysisService $storageAnalysis, ?Config $config = null) {
+        $this->storageAnalysis = $storageAnalysis instanceof StorageAnalysisService
+            ? $storageAnalysis
+            : new StorageAnalysisService($storageAnalysis);
         $this->config = $config ?? new Config();
     }
 
@@ -49,26 +54,13 @@ class StorageAnalysisSchedulerService {
     }
 
     public function registerSchedules(array $schedules): array {
-        $schedules['rrze_msm_storage_weekly'] = [
-            'interval' => WEEK_IN_SECONDS,
-            'display' => __('Once weekly', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_storage_twice_weekly'] = [
-            'interval' => (int)(WEEK_IN_SECONDS / 2),
-            'display' => __('Twice weekly', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_storage_daily'] = [
-            'interval' => DAY_IN_SECONDS,
-            'display' => __('Once daily', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_storage_twice_daily'] = [
-            'interval' => 12 * HOUR_IN_SECONDS,
-            'display' => __('Twice daily', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_storage_four_times_daily'] = [
-            'interval' => 6 * HOUR_IN_SECONDS,
-            'display' => __('Four times daily', 'rrze-multisite-manager'),
-        ];
+        foreach ($this->config->getStorageAnalysisScheduleKeys() as $frequency => $scheduleKey) {
+            $schedules[$scheduleKey] = [
+                'interval' => $this->config->getSchedulerFrequencyHours((string)$frequency) * HOUR_IN_SECONDS,
+                'display' => $this->config->getSchedulerFrequencyLabel((string)$frequency),
+            ];
+        }
+
         return $schedules;
     }
 
@@ -462,6 +454,8 @@ class StorageAnalysisSchedulerService {
         $initialized = 0;
 
         foreach (array_unique(array_map('absint', $siteIds)) as $siteId) {
+            $this->allowSiteScheduling($siteId);
+
             if ($siteId <= 0 || !$this->isSiteEligible($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
                 continue;
             }
@@ -493,6 +487,7 @@ class StorageAnalysisSchedulerService {
             }
 
             $this->unscheduleSite($siteId);
+            $this->markSiteSchedulingRemoved($siteId);
             $removed++;
         }
 
@@ -504,6 +499,44 @@ class StorageAnalysisSchedulerService {
         // does not determine this dynamically, because that opens options for
         // every website in a network.
         return 0;
+    }
+
+    protected function isSiteSchedulingRemoved(int $siteId): bool {
+        $siteIds = get_site_option(self::REMOVED_SITE_IDS_OPTION, []);
+
+        return $siteId > 0 && is_array($siteIds) && in_array($siteId, array_map('absint', $siteIds), true);
+    }
+
+    protected function markSiteSchedulingRemoved(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        $siteIds = get_site_option(self::REMOVED_SITE_IDS_OPTION, []);
+        $siteIds = is_array($siteIds) ? array_map('absint', $siteIds) : [];
+        $siteIds[] = $siteId;
+        update_site_option(self::REMOVED_SITE_IDS_OPTION, array_values(array_unique(array_filter($siteIds))));
+    }
+
+    protected function allowSiteScheduling(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        $siteIds = get_site_option(self::REMOVED_SITE_IDS_OPTION, []);
+
+        if (!is_array($siteIds) || !in_array($siteId, array_map('absint', $siteIds), true)) {
+            return;
+        }
+
+        $siteIds = array_values(array_filter(array_map('absint', $siteIds), static fn(int $id): bool => $id > 0 && $id !== $siteId));
+
+        if (empty($siteIds)) {
+            delete_site_option(self::REMOVED_SITE_IDS_OPTION);
+            return;
+        }
+
+        update_site_option(self::REMOVED_SITE_IDS_OPTION, $siteIds);
     }
 
     public function reconcileSiteSchedule(int $siteId): void {
@@ -525,7 +558,7 @@ class StorageAnalysisSchedulerService {
             $this->unscheduleSite($siteId);
 
             if (!$this->isSiteEligible($siteId)) {
-                $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+                $this->storageAnalysis->clearProcessStates($siteId);
             }
         }
 
@@ -579,7 +612,7 @@ class StorageAnalysisSchedulerService {
         }
 
         $this->unscheduleSite($siteId);
-        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+        $this->storageAnalysis->clearProcessStates($siteId);
 
         return true;
     }
@@ -651,6 +684,8 @@ class StorageAnalysisSchedulerService {
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::MIGRATION_STATE_OPTION);
+        delete_site_option(self::MIGRATION_LOCK_OPTION);
 
         return $removed;
     }
@@ -661,7 +696,7 @@ class StorageAnalysisSchedulerService {
         }
 
         $this->recoverInterruptedRun($siteId);
-        $status = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+        $status = $this->storageAnalysis->getProcessStatus($siteId);
 
         if (!$this->isSiteEligible($siteId) || $this->isSiteRunRunning($siteId, $status)) {
             $this->deactivateIneligibleSite($siteId);
@@ -683,7 +718,7 @@ class StorageAnalysisSchedulerService {
             return false;
         }
 
-        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+        $this->storageAnalysis->clearProcessStates($siteId);
 
         return true;
     }
@@ -1039,29 +1074,6 @@ class StorageAnalysisSchedulerService {
         });
     }
 
-    /**
-     * Runs a newly assigned batch site promptly without changing the regular
-     * network-wide batch's cadence or cursor.
-     */
-    protected function scheduleBatchSiteContinuation(int $siteId, int $timestamp): void {
-        if ($siteId <= 0) {
-            return;
-        }
-
-        $this->inBatchCronContext(function () use ($siteId, $timestamp): void {
-            $hook = $this->config->getStorageAnalysisBatchHook();
-            $args = [true, $siteId];
-
-            if ((int)wp_next_scheduled($hook, $args) <= 0) {
-                wp_schedule_single_event($timestamp, $hook, $args);
-                $this->logSiteInfo('Vorzeitigen Speicherplatzanalyse-Sammelbatch eingeplant', $siteId, 'batch', [
-                    'cron_site_id' => $this->getBatchCronSiteId(),
-                    'next_run_timestamp' => $timestamp,
-                ]);
-            }
-        });
-    }
-
     protected function acquireBatchLock(): string {
         $existing = get_site_option(self::BATCH_LOCK_OPTION, []);
         $startedAt = is_array($existing) ? (int)($existing['started_at'] ?? 0) : (int)$existing;
@@ -1109,7 +1121,7 @@ class StorageAnalysisSchedulerService {
         // an NTP adjustment cannot move a website across the threshold.
         $runStartedAt = hrtime(true);
 
-        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+        $this->storageAnalysis->clearProcessStates($siteId);
         $this->markRunStarted($siteId, true);
         $this->extendRuntimeLimit();
         $this->logSiteInfo('Speicherplatzanalyse gestartet', $siteId, 'unassigned', ['phase' => self::BASE_PHASE]);
@@ -1144,7 +1156,7 @@ class StorageAnalysisSchedulerService {
                 $siteId,
                 $phase,
                 $exception->getMessage(),
-                $this->metrics->getSiteStorageAnalysisProgressContext($siteId, $phase)
+                $this->storageAnalysis->getProgressContext($siteId, $phase)
             );
         }
     }
@@ -1156,13 +1168,13 @@ class StorageAnalysisSchedulerService {
 
         while (time() < $deadline) {
             if ($phase === self::BASE_PHASE) {
-                $result = $this->metrics->runSiteStorageAnalysisBatch($siteId);
+                $result = $this->storageAnalysis->runBaseBatch($siteId);
                 $isComplete = (($result['status']['base']['status'] ?? '') === 'complete');
             } elseif ($phase === self::ORPHAN_PHASE) {
-                $result = $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId);
+                $result = $this->storageAnalysis->runOrphanBatch($siteId);
                 $isComplete = (($result['status']['orphan']['status'] ?? '') === 'complete');
             } else {
-                $result = $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restartMetadataAnalysis);
+                $result = $this->storageAnalysis->runMediaMetadataBatch($siteId, $restartMetadataAnalysis);
                 $restartMetadataAnalysis = false;
                 $isComplete = (($result['analysis']['status'] ?? '') === 'complete');
                 $this->markMediaMetadataStarted($siteId);
@@ -1185,12 +1197,12 @@ class StorageAnalysisSchedulerService {
 
     protected function abortSingleProcessAnalysis(int $siteId, string $phase, string $message): void {
         $status = $this->getStatus($siteId);
-        $progressContext = $this->metrics->getSiteStorageAnalysisProgressContext($siteId, $phase);
+        $progressContext = $this->storageAnalysis->getProgressContext($siteId, $phase);
         $startedAt = (string)($status['last_started_at'] ?? '');
         $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
         $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
 
-        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+        $this->storageAnalysis->clearProcessStates($siteId);
         $this->markRunAborted($siteId, $startedAt, $duration, $message);
         $this->markPhaseAborted($siteId, $phase, $message);
         do_action(
@@ -1309,11 +1321,11 @@ class StorageAnalysisSchedulerService {
 
     protected function getSiteProcess(int $siteId): ?array {
         $site = get_site($siteId);
-        $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+        $analysisStatus = $this->storageAnalysis->getProcessStatus($siteId);
         $scheduleStatus = $this->getStatus($siteId);
 
         $this->recoverInterruptedRun($siteId, $analysisStatus, $scheduleStatus);
-        $analysisStatus = $this->metrics->getSiteStorageAnalysisProcessStatus($siteId);
+        $analysisStatus = $this->storageAnalysis->getProcessStatus($siteId);
         $scheduleStatus = $this->getStatus($siteId);
         $isEligible = $this->isSiteEligible($siteId);
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
@@ -1410,7 +1422,7 @@ class StorageAnalysisSchedulerService {
                 'media_threshold' => $this->config->getStorageAnalysisBatchMediaThreshold(),
             ]);
             if ($hadBatchSchedule) {
-                $this->scheduleBatchSiteContinuation($siteId, time() + MINUTE_IN_SECONDS);
+                $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS);
             }
             return true;
         }
@@ -1588,15 +1600,8 @@ class StorageAnalysisSchedulerService {
     protected function getScheduleKey(): string {
         $options = get_site_option($this->config->getOptionName(), []);
         $frequency = is_array($options) ? (string)($options['monitoring_storage_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
-        $keys = [
-            'weekly' => 'rrze_msm_storage_weekly',
-            'twiceweekly' => 'rrze_msm_storage_twice_weekly',
-            'daily' => 'rrze_msm_storage_daily',
-            'twicedaily' => 'rrze_msm_storage_twice_daily',
-            'fourtimesdaily' => 'rrze_msm_storage_four_times_daily',
-        ];
 
-        return $keys[$frequency] ?? $keys['twiceweekly'];
+        return $this->config->getStorageAnalysisScheduleKey($frequency);
     }
 
     protected function getEligibleSiteIds(array $siteIds): array {
@@ -1618,15 +1623,10 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function getScheduleLabel(): string {
-        $labels = [
-            'rrze_msm_storage_weekly' => __('Once weekly', 'rrze-multisite-manager'),
-            'rrze_msm_storage_twice_weekly' => __('Twice weekly', 'rrze-multisite-manager'),
-            'rrze_msm_storage_daily' => __('Once daily', 'rrze-multisite-manager'),
-            'rrze_msm_storage_twice_daily' => __('Twice daily', 'rrze-multisite-manager'),
-            'rrze_msm_storage_four_times_daily' => __('Four times daily', 'rrze-multisite-manager'),
-        ];
+        $options = get_site_option($this->config->getOptionName(), []);
+        $frequency = is_array($options) ? (string)($options['monitoring_storage_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
 
-        return $labels[$this->getScheduleKey()] ?? $labels['rrze_msm_storage_twice_daily'];
+        return $this->config->getSchedulerFrequencyLabel($frequency);
     }
 
     protected function getTimeoutSeconds(): int {
@@ -1740,7 +1740,7 @@ class StorageAnalysisSchedulerService {
         $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
         $message = __('The storage analysis was interrupted before it could finish.', 'rrze-multisite-manager');
 
-        $this->metrics->clearSiteStorageAnalysisProcessStates($siteId);
+        $this->storageAnalysis->clearProcessStates($siteId);
         $this->markRunAborted($siteId, $startedAt, $duration, $message);
         $this->markPhaseAborted($siteId, $this->getRunningPhase($scheduleStatus), $message);
         do_action(
@@ -1958,6 +1958,10 @@ class StorageAnalysisSchedulerService {
      * processes never reach this method, and therefore retain their assignment.
      */
     protected function updateCompletedRunAssignment(int $siteId, float $durationSeconds): void {
+        if ($this->isSiteSchedulingRemoved($siteId)) {
+            return;
+        }
+
         if (!$this->isSiteEligible($siteId)) {
             $this->deactivateIneligibleSite($siteId);
             return;
@@ -1974,21 +1978,19 @@ class StorageAnalysisSchedulerService {
             return;
         }
 
-        // Capture the next recurrence before removing the old placement. This
-        // preserves its cadence while ensuring the two modes never coexist.
+        // Schedule the replacement before removing the old placement. A failed
+        // scheduling call must leave the existing valid assignment intact.
         $nextRunTimestamp = $this->getNextRecurringScheduledTimestamp($siteId);
         $nextRunTimestamp = max(time(), $nextRunTimestamp);
 
-        $this->unscheduleSite($siteId);
-
         if ($targetMode === 'batch') {
-            $siteIds = $this->getBatchSiteIds();
-            $siteIds[] = $siteId;
-            $siteIds = array_values(array_unique(array_map('absint', $siteIds)));
-            sort($siteIds, SORT_NUMERIC);
-            update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
-
             if ($this->scheduleBatchRecurringAt($nextRunTimestamp)) {
+                $this->unscheduleSiteEvents($siteId);
+                $siteIds = $this->getBatchSiteIds();
+                $siteIds[] = $siteId;
+                $siteIds = array_values(array_unique(array_map('absint', $siteIds)));
+                sort($siteIds, SORT_NUMERIC);
+                update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
                 $this->setSiteAssignment($siteId, 'batch');
                 $this->clearRecurringScheduleCache();
                 $this->logSiteInfo('Speicherplatzanalyse-Zuordnung zu Sammelbatch geändert', $siteId, 'batch', [
@@ -1999,9 +2001,8 @@ class StorageAnalysisSchedulerService {
                 ]);
                 return;
             }
-
-            $this->removeBatchSite($siteId);
         } elseif ($this->scheduleIndividualAnalysisAt($siteId, $nextRunTimestamp)) {
+            $this->removeBatchSite($siteId);
             $this->logSiteInfo('Speicherplatzanalyse-Zuordnung zu Einzelauftrag geändert', $siteId, 'site', [
                 'previous_assignment' => $currentMode,
                 'duration_seconds' => $durationSeconds,

@@ -1,6 +1,6 @@
 <?php
 
-namespace RRZE\MultisiteManager;
+namespace RRZE\MultisiteManager\Metrics;
 
 defined('ABSPATH') || exit;
 

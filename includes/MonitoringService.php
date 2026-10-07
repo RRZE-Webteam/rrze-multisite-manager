@@ -2,6 +2,10 @@
 
 namespace RRZE\MultisiteManager;
 
+use RRZE\MultisiteManager\Infrastructure\MultisiteContext;
+use RRZE\MultisiteManager\Support\ScheduleFrequency;
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
+
 defined('ABSPATH') || exit;
 
 class MonitoringService {
@@ -42,10 +46,14 @@ class MonitoringService {
 
     protected Plugin $plugin;
     protected Config $config;
+    protected MultisiteContext $multisiteContext;
+    protected ScheduleFrequency $scheduleFrequency;
 
     public function __construct(Plugin $plugin, ?Config $config = null) {
         $this->plugin = $plugin;
         $this->config = $config ?? new Config();
+        $this->multisiteContext = new MultisiteContext();
+        $this->scheduleFrequency = new ScheduleFrequency($this->config);
     }
 
     public function onLoaded(): void {
@@ -784,43 +792,21 @@ class MonitoringService {
         $options = get_site_option($this->config->getOptionName(), []);
         $frequency = is_array($options) ? (string)($options['monitoring_monitoring_frequency'] ?? '') : '';
 
-        if (!in_array($frequency, ['weekly', 'twiceweekly', 'daily', 'twicedaily', 'fourtimesdaily'], true)) {
+        if (!$this->config->hasSchedulerFrequency($frequency)) {
             $frequency = $this->getCycleFrequencyFromHours($this->getMonitoringOption('monitoring_monitoring_interval_hours', 6));
         }
 
-        return match ($frequency) {
-            'weekly' => 168,
-            'twiceweekly' => 84,
-            'daily' => 24,
-            'twicedaily' => 12,
-            default => 6,
-        };
+        return $this->scheduleFrequency->toHours($frequency);
     }
 
     protected function getMonitoringScheduleLabel(): string {
-        return match ($this->getMonitoringIntervalHours()) {
-            168 => __('Once weekly', 'rrze-multisite-manager'),
-            84 => __('Twice weekly', 'rrze-multisite-manager'),
-            24 => __('Once daily', 'rrze-multisite-manager'),
-            12 => __('Twice daily', 'rrze-multisite-manager'),
-            default => __('Four times daily', 'rrze-multisite-manager'),
-        };
+        return $this->scheduleFrequency->label(
+            $this->scheduleFrequency->fromHours($this->getMonitoringIntervalHours())
+        );
     }
 
     protected function getCycleFrequencyFromHours(int $hours): string {
-        if ($hours <= 6) {
-            return 'fourtimesdaily';
-        }
-
-        if ($hours <= 12) {
-            return 'twicedaily';
-        }
-
-        if ($hours <= 24) {
-            return 'daily';
-        }
-
-        return $hours <= 84 ? 'twiceweekly' : 'weekly';
+        return $this->scheduleFrequency->fromHours($hours);
     }
 
     protected function getRunLogEntryLimit(): int {
@@ -858,33 +844,15 @@ class MonitoringService {
     }
 
     protected function isCentralNetworkCronSite(): bool {
-        return get_current_blog_id() === $this->getCentralNetworkCronSiteId();
+        return $this->multisiteContext->isCentralSite();
     }
 
     protected function getCentralNetworkCronSiteId(): int {
-        $network = get_network();
-        $networkId = $network instanceof \WP_Network ? (int)$network->id : get_current_network_id();
-        $mainSiteId = function_exists('get_main_site_id')
-            ? (int)get_main_site_id($networkId)
-            : (int)($network->site_id ?? 1);
-
-        return max(1, $mainSiteId);
+        return $this->multisiteContext->getCentralSiteId();
     }
 
     protected function inCentralNetworkCronContext(callable $callback): mixed {
-        $siteId = $this->getCentralNetworkCronSiteId();
-
-        if ($siteId === get_current_blog_id()) {
-            return $callback();
-        }
-
-        switch_to_blog($siteId);
-
-        try {
-            return $callback();
-        } finally {
-            restore_current_blog();
-        }
+        return $this->multisiteContext->inCentralSite($callback);
     }
 
     protected function removeSubsiteScheduledEventsOnce(): void {
@@ -969,7 +937,7 @@ class MonitoringService {
         }
 
         if (!$this->isActiveSite($site)) {
-            (new StorageAnalysisSchedulerService(new MetricsService(null, $this->config), $this->config))
+            (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService(null, $this->config)), $this->config))
                 ->deactivateIneligibleSite($siteId);
             (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
             return [];
@@ -1047,7 +1015,7 @@ class MonitoringService {
     }
 
     protected function reconcileStorageAnalysisSchedule(int $siteId): void {
-        $storageScheduler = new StorageAnalysisSchedulerService(new MetricsService(null, $this->config), $this->config);
+        $storageScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService(null, $this->config)), $this->config);
         $storageScheduler->reconcileSiteSchedule($siteId);
 
         $shortcodeBlockScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);

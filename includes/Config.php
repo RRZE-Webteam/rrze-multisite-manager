@@ -8,6 +8,18 @@ class Config {
     private array $config = [];
 
     public function __construct() {
+        $schedulerFrequencies = [
+            'weekly' => ['hours' => 168, 'label' => __('Once weekly', 'rrze-multisite-manager')],
+            'twiceweekly' => ['hours' => 84, 'label' => __('Twice weekly', 'rrze-multisite-manager')],
+            'daily' => ['hours' => 24, 'label' => __('Once daily', 'rrze-multisite-manager')],
+            'twicedaily' => ['hours' => 12, 'label' => __('Twice daily', 'rrze-multisite-manager')],
+            'fourtimesdaily' => ['hours' => 6, 'label' => __('Four times daily', 'rrze-multisite-manager')],
+        ];
+        $schedulerFrequencyChoices = array_map(
+            static fn(array $frequency): string => (string)$frequency['label'],
+            $schedulerFrequencies
+        );
+
         $this->config = [
             'option_name' => 'rrze-multisite-manager',
             'constants' => [
@@ -25,6 +37,21 @@ class Config {
                 'shortcode_block_analysis_batch_hook' => 'rrze_msm_run_shortcode_block_analysis_batch',
                 'shortcode_block_analysis_timeout_minutes' => 60,
                 'monitoring_user_agent' => 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)',
+                'scheduler_frequencies' => $schedulerFrequencies,
+                'storage_analysis_schedule_keys' => [
+                    'weekly' => 'rrze_msm_storage_weekly',
+                    'twiceweekly' => 'rrze_msm_storage_twice_weekly',
+                    'daily' => 'rrze_msm_storage_daily',
+                    'twicedaily' => 'rrze_msm_storage_twice_daily',
+                    'fourtimesdaily' => 'rrze_msm_storage_four_times_daily',
+                ],
+                'shortcode_block_analysis_schedule_keys' => [
+                    'weekly' => 'rrze_msm_shortcode_block_weekly',
+                    'twiceweekly' => 'rrze_msm_shortcode_block_twice_weekly',
+                    'daily' => 'rrze_msm_shortcode_block_daily',
+                    'twicedaily' => 'rrze_msm_shortcode_block_twice_daily',
+                    'fourtimesdaily' => 'rrze_msm_shortcode_block_four_times_daily',
+                ],
             ],
             'menu_settings' => [
                 'page_title' => __('RRZE Multisite Manager', 'rrze-multisite-manager'),
@@ -102,13 +129,7 @@ class Config {
                         'desc' => __('How often the centrally scheduled metrics collection starts. Internal batch continuations are not affected.', 'rrze-multisite-manager'),
                         'type' => 'select',
                         'default' => 'fourtimesdaily',
-                        'choices' => [
-                            'weekly' => __('Once weekly', 'rrze-multisite-manager'),
-                            'twiceweekly' => __('Twice weekly', 'rrze-multisite-manager'),
-                            'daily' => __('Once daily', 'rrze-multisite-manager'),
-                            'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
-                            'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
-                        ],
+                        'choices' => $schedulerFrequencyChoices,
                     ],
                     [
                         'name' => 'batch_size',
@@ -134,13 +155,7 @@ class Config {
                         'desc' => __('How often the scheduled storage analysis is run for each website.', 'rrze-multisite-manager'),
                         'type' => 'select',
                         'default' => 'twiceweekly',
-                        'choices' => [
-                            'weekly' => __('Once weekly', 'rrze-multisite-manager'),
-                            'twiceweekly' => __('Twice weekly', 'rrze-multisite-manager'),
-                            'daily' => __('Once daily', 'rrze-multisite-manager'),
-                            'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
-                            'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
-                        ],
+                        'choices' => $schedulerFrequencyChoices,
                     ],
                     [
                         'name' => 'storage_analysis_batch_media_threshold',
@@ -166,13 +181,7 @@ class Config {
                         'desc' => __('How often the scheduled shortcode and block analysis is run for each website.', 'rrze-multisite-manager'),
                         'type' => 'select',
                         'default' => 'twiceweekly',
-                        'choices' => [
-                            'weekly' => __('Once weekly', 'rrze-multisite-manager'),
-                            'twiceweekly' => __('Twice weekly', 'rrze-multisite-manager'),
-                            'daily' => __('Once daily', 'rrze-multisite-manager'),
-                            'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
-                            'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
-                        ],
+                        'choices' => $schedulerFrequencyChoices,
                     ],
                     [
                         'name' => 'storage_analysis_timeout_minutes',
@@ -207,13 +216,7 @@ class Config {
                         'desc' => __('How often the centrally scheduled availability check starts. Internal batch continuations are not affected.', 'rrze-multisite-manager'),
                         'type' => 'select',
                         'default' => 'fourtimesdaily',
-                        'choices' => [
-                            'weekly' => __('Once weekly', 'rrze-multisite-manager'),
-                            'twiceweekly' => __('Twice weekly', 'rrze-multisite-manager'),
-                            'daily' => __('Once daily', 'rrze-multisite-manager'),
-                            'twicedaily' => __('Twice daily', 'rrze-multisite-manager'),
-                            'fourtimesdaily' => __('Four times daily', 'rrze-multisite-manager'),
-                        ],
+                        'choices' => $schedulerFrequencyChoices,
                     ],
                     [
                         'name' => 'provisioning_grace_hours',
@@ -378,6 +381,67 @@ class Config {
 
     public function getMonitoringUserAgent(): string {
         return (string)($this->config['constants']['monitoring_user_agent'] ?? 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)');
+    }
+
+    /** @return array<string, array{hours: int, label: string}> */
+    public function getSchedulerFrequencies(): array {
+        return (array)($this->config['constants']['scheduler_frequencies'] ?? []);
+    }
+
+    /** @return array<string, string> */
+    public function getSchedulerFrequencyChoices(): array {
+        return array_map(
+            static fn(array $frequency): string => (string)($frequency['label'] ?? ''),
+            $this->getSchedulerFrequencies()
+        );
+    }
+
+    public function getSchedulerFrequencyHours(string $frequency): int {
+        $frequencies = $this->getSchedulerFrequencies();
+
+        return max(1, (int)($frequencies[$frequency]['hours'] ?? $frequencies['fourtimesdaily']['hours'] ?? 6));
+    }
+
+    public function hasSchedulerFrequency(string $frequency): bool {
+        return array_key_exists($frequency, $this->getSchedulerFrequencies());
+    }
+
+    public function getSchedulerFrequencyLabel(string $frequency): string {
+        $frequencies = $this->getSchedulerFrequencies();
+
+        return (string)($frequencies[$frequency]['label'] ?? $frequencies['fourtimesdaily']['label'] ?? '');
+    }
+
+    public function getSchedulerFrequencyFromHours(int $hours): string {
+        foreach (array_reverse($this->getSchedulerFrequencies(), true) as $key => $frequency) {
+            if ($hours <= (int)($frequency['hours'] ?? 0)) {
+                return (string)$key;
+            }
+        }
+
+        return 'weekly';
+    }
+
+    public function getStorageAnalysisScheduleKey(string $frequency): string {
+        $keys = (array)($this->config['constants']['storage_analysis_schedule_keys'] ?? []);
+
+        return (string)($keys[$frequency] ?? $keys['twiceweekly'] ?? '');
+    }
+
+    /** @return array<string, string> */
+    public function getStorageAnalysisScheduleKeys(): array {
+        return (array)($this->config['constants']['storage_analysis_schedule_keys'] ?? []);
+    }
+
+    public function getShortcodeBlockAnalysisScheduleKey(string $frequency): string {
+        $keys = (array)($this->config['constants']['shortcode_block_analysis_schedule_keys'] ?? []);
+
+        return (string)($keys[$frequency] ?? $keys['twiceweekly'] ?? '');
+    }
+
+    /** @return array<string, string> */
+    public function getShortcodeBlockAnalysisScheduleKeys(): array {
+        return (array)($this->config['constants']['shortcode_block_analysis_schedule_keys'] ?? []);
     }
 
     public function getSections(): array {

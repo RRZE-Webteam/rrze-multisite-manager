@@ -19,6 +19,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const ASSIGNMENTS_OPTION = 'rrze_msm_shortcode_block_analysis_assignments';
     protected const BATCH_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_batch_offset';
     protected const BATCH_LOCK_OPTION = 'rrze_msm_shortcode_block_analysis_batch_lock';
+    protected const REMOVED_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_removed_site_ids';
     protected const BATCH_CONTINUATION_ARGS = ['rrze_msm_shortcode_block_batch' => true];
     protected const SMALL_SITE_MAX_POSTS = 100;
     protected const FAST_RUN_MAX_SECONDS = 3;
@@ -47,26 +48,12 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function registerSchedules(array $schedules): array {
-        $schedules['rrze_msm_shortcode_block_weekly'] = [
-            'interval' => WEEK_IN_SECONDS,
-            'display' => __('Once weekly', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_shortcode_block_twice_weekly'] = [
-            'interval' => (int)(WEEK_IN_SECONDS / 2),
-            'display' => __('Twice weekly', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_shortcode_block_daily'] = [
-            'interval' => DAY_IN_SECONDS,
-            'display' => __('Once daily', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_shortcode_block_twice_daily'] = [
-            'interval' => 12 * HOUR_IN_SECONDS,
-            'display' => __('Twice daily', 'rrze-multisite-manager'),
-        ];
-        $schedules['rrze_msm_shortcode_block_four_times_daily'] = [
-            'interval' => 6 * HOUR_IN_SECONDS,
-            'display' => __('Four times daily', 'rrze-multisite-manager'),
-        ];
+        foreach ($this->config->getShortcodeBlockAnalysisScheduleKeys() as $frequency => $scheduleKey) {
+            $schedules[$scheduleKey] = [
+                'interval' => $this->config->getSchedulerFrequencyHours((string)$frequency) * HOUR_IN_SECONDS,
+                'display' => $this->config->getSchedulerFrequencyLabel((string)$frequency),
+            ];
+        }
 
         return $schedules;
     }
@@ -313,6 +300,9 @@ class ShortcodeBlockAnalysisSchedulerService {
 
             // A recurring trigger starts a fresh pass only when no continuation is active.
             if (!in_array(true, $args, true) && $offset > 0) {
+                if ((int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getShortcodeBlockAnalysisBatchHook(), self::BATCH_CONTINUATION_ARGS)) <= 0) {
+                    $this->scheduleBatchContinuation(time() + 5);
+                }
                 return;
             }
 
@@ -811,6 +801,8 @@ class ShortcodeBlockAnalysisSchedulerService {
         $initialized = 0;
 
         foreach (array_unique(array_map('absint', $siteIds)) as $siteId) {
+            $this->allowSiteScheduling($siteId);
+
             if ($siteId <= 0 || !$this->isSiteActive($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
                 continue;
             }
@@ -833,6 +825,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
 
             $this->unschedule($siteId);
+            $this->markSiteSchedulingRemoved($siteId);
             $removed++;
         }
 
@@ -1571,14 +1564,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function unschedule(int $siteId): void {
-        foreach ([$this->getHook(), $this->config->getLegacyShortcodeBlockAnalysisHook()] as $hook) {
-            $timestamp = (int)wp_next_scheduled($hook, [$siteId]);
-
-            while ($timestamp > 0) {
-                wp_unschedule_event($timestamp, $hook, [$siteId]);
-                $timestamp = (int)wp_next_scheduled($hook, [$siteId]);
-            }
-        }
+        $this->unscheduleIndividualEvents($siteId);
 
         $siteIds = array_values(array_filter(
             array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
@@ -1593,6 +1579,19 @@ class ShortcodeBlockAnalysisSchedulerService {
         $this->removeSiteAssignment($siteId);
 
         $this->clearRecurringScheduleCache();
+    }
+
+    protected function unscheduleIndividualEvents(int $siteId): void {
+        foreach ([$this->getHook(), $this->config->getLegacyShortcodeBlockAnalysisHook()] as $hook) {
+            $this->inSiteCronContext($siteId, function () use ($hook, $siteId): void {
+                $timestamp = (int)wp_next_scheduled($hook, [$siteId]);
+
+                while ($timestamp > 0) {
+                    wp_unschedule_event($timestamp, $hook, [$siteId]);
+                    $timestamp = (int)wp_next_scheduled($hook, [$siteId]);
+                }
+            });
+        }
     }
 
     public function reconcileSiteSchedule(int $siteId): void {
@@ -1640,12 +1639,20 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function scheduleIndividualAnalysisAt(int $siteId, int $timestamp): bool {
+        $scheduled = (bool)$this->inSiteCronContext($siteId, function () use ($siteId, $timestamp): bool {
+            return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->getHook(), [$siteId]);
+        });
+
+        if (!$scheduled) {
+            return false;
+        }
+
         $this->setSiteAssignment($siteId, 'site');
         $status = $this->getStatus($siteId);
         $status['schedule_mode'] = 'site';
         update_blog_option($siteId, self::STATUS_OPTION, $status);
 
-        return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->getHook(), [$siteId]);
+        return true;
     }
 
     protected function scheduleBatchAnalysisAt(int $timestamp): bool {
@@ -1708,7 +1715,8 @@ class ShortcodeBlockAnalysisSchedulerService {
                         continue;
                     }
 
-                    $siteId = absint((array)($event['args'] ?? [])[0] ?? 0);
+                    $args = (array)($event['args'] ?? []);
+                    $siteId = absint($args[0] ?? 0);
 
                     if ($siteId > 0) {
                         $normalized[$siteId] = 'site';
@@ -1788,6 +1796,10 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function reconcileSiteAssignmentAfterRun(int $siteId): void {
+        if ($this->isSiteSchedulingRemoved($siteId)) {
+            return;
+        }
+
         if ($siteId <= 0 || !$this->isSiteActive($siteId)) {
             $this->deactivateSite($siteId);
             return;
@@ -1804,10 +1816,13 @@ class ShortcodeBlockAnalysisSchedulerService {
             return;
         }
 
-        $this->unschedule($siteId);
-        $this->markScheduled($siteId);
-
         if ($expectedMode === 'batch') {
+            if (!$this->scheduleBatchAnalysisAt(time() + MINUTE_IN_SECONDS)) {
+                return;
+            }
+
+            $this->unscheduleIndividualEvents($siteId);
+            $this->markScheduled($siteId);
             $siteIds = array_values(array_unique(array_merge(
                 array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
                 [$siteId]
@@ -1817,9 +1832,18 @@ class ShortcodeBlockAnalysisSchedulerService {
             $status = $this->getStatus($siteId);
             $status['schedule_mode'] = 'batch';
             update_blog_option($siteId, self::STATUS_OPTION, $status);
-            $this->scheduleBatchAnalysisAt(time() + MINUTE_IN_SECONDS);
-        } else {
-            $this->scheduleIndividualAnalysisAt($siteId, time() + MINUTE_IN_SECONDS);
+        } elseif ($this->scheduleIndividualAnalysisAt($siteId, time() + MINUTE_IN_SECONDS)) {
+            $siteIds = array_values(array_filter(
+                array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
+                static fn(int $id): bool => $id > 0 && $id !== $siteId
+            ));
+            update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
+
+            if (empty($siteIds)) {
+                $this->unscheduleBatchEvents();
+            }
+
+            $this->markScheduled($siteId);
         }
 
         $this->clearRecurringScheduleCache();
@@ -1830,15 +1854,19 @@ class ShortcodeBlockAnalysisSchedulerService {
             return $this->getNextBatchScheduledTimestamp();
         }
 
-        $this->loadRecurringScheduleCache();
+        return (int)$this->inSiteCronContext($siteId, function () use ($siteId): int {
+            $timestamp = (int)wp_next_scheduled($this->getHook(), [$siteId]);
 
-        return (int)($this->currentRecurringScheduleTimestamps[$siteId] ?? 0);
+            if ($timestamp > 0) {
+                return $timestamp;
+            }
+
+            return (int)wp_next_scheduled($this->config->getLegacyShortcodeBlockAnalysisHook(), [$siteId]);
+        });
     }
 
     protected function hasRecurringScheduledAnalysis(int $siteId): bool {
-        $this->loadRecurringScheduleCache();
-
-        return isset($this->recurringScheduledSiteIds[$siteId]);
+        return $this->getNextRecurringScheduledTimestamp($siteId) > 0;
     }
 
     /**
@@ -1907,15 +1935,8 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function getScheduleKey(): string {
         $options = get_site_option($this->config->getOptionName(), []);
         $frequency = is_array($options) ? (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
-        $keys = [
-            'weekly' => 'rrze_msm_shortcode_block_weekly',
-            'twiceweekly' => 'rrze_msm_shortcode_block_twice_weekly',
-            'daily' => 'rrze_msm_shortcode_block_daily',
-            'twicedaily' => 'rrze_msm_shortcode_block_twice_daily',
-            'fourtimesdaily' => 'rrze_msm_shortcode_block_four_times_daily',
-        ];
 
-        return $keys[$frequency] ?? $keys['twiceweekly'];
+        return $this->config->getShortcodeBlockAnalysisScheduleKey($frequency);
     }
 
     protected function getScheduleSignature(): string {
@@ -1923,15 +1944,10 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function getScheduleLabel(): string {
-        $labels = [
-            'rrze_msm_shortcode_block_weekly' => __('Once weekly', 'rrze-multisite-manager'),
-            'rrze_msm_shortcode_block_twice_weekly' => __('Twice weekly', 'rrze-multisite-manager'),
-            'rrze_msm_shortcode_block_daily' => __('Once daily', 'rrze-multisite-manager'),
-            'rrze_msm_shortcode_block_twice_daily' => __('Twice daily', 'rrze-multisite-manager'),
-            'rrze_msm_shortcode_block_four_times_daily' => __('Four times daily', 'rrze-multisite-manager'),
-        ];
+        $options = get_site_option($this->config->getOptionName(), []);
+        $frequency = is_array($options) ? (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
 
-        return $labels[$this->getScheduleKey()] ?? $labels['rrze_msm_shortcode_block_twice_weekly'];
+        return $this->config->getSchedulerFrequencyLabel($frequency);
     }
 
     protected function markScheduled(int $siteId): void {
@@ -2095,6 +2111,58 @@ class ShortcodeBlockAnalysisSchedulerService {
         } finally {
             restore_current_blog();
         }
+    }
+
+    protected function inSiteCronContext(int $siteId, callable $callback): mixed {
+        if ($siteId <= 0 || $siteId === get_current_blog_id()) {
+            return $callback();
+        }
+
+        switch_to_blog($siteId);
+
+        try {
+            return $callback();
+        } finally {
+            restore_current_blog();
+        }
+    }
+
+    protected function isSiteSchedulingRemoved(int $siteId): bool {
+        $siteIds = get_site_option(self::REMOVED_SITE_IDS_OPTION, []);
+
+        return $siteId > 0 && is_array($siteIds) && in_array($siteId, array_map('absint', $siteIds), true);
+    }
+
+    protected function markSiteSchedulingRemoved(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        $siteIds = get_site_option(self::REMOVED_SITE_IDS_OPTION, []);
+        $siteIds = is_array($siteIds) ? array_map('absint', $siteIds) : [];
+        $siteIds[] = $siteId;
+        update_site_option(self::REMOVED_SITE_IDS_OPTION, array_values(array_unique(array_filter($siteIds))));
+    }
+
+    protected function allowSiteScheduling(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        $siteIds = get_site_option(self::REMOVED_SITE_IDS_OPTION, []);
+
+        if (!is_array($siteIds) || !in_array($siteId, array_map('absint', $siteIds), true)) {
+            return;
+        }
+
+        $siteIds = array_values(array_filter(array_map('absint', $siteIds), static fn(int $id): bool => $id > 0 && $id !== $siteId));
+
+        if (empty($siteIds)) {
+            delete_site_option(self::REMOVED_SITE_IDS_OPTION);
+            return;
+        }
+
+        update_site_option(self::REMOVED_SITE_IDS_OPTION, $siteIds);
     }
 
     protected function getHook(): string {

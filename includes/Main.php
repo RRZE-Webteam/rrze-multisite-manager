@@ -2,6 +2,8 @@
 
 namespace RRZE\MultisiteManager;
 
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
+
 defined('ABSPATH') || exit;
 
 class Main {
@@ -28,7 +30,7 @@ class Main {
         $metrics->onLoaded();
         $this->metrics = $metrics;
 
-        $storageAnalysisScheduler = new StorageAnalysisSchedulerService($metrics, $this->config);
+        $storageAnalysisScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService($metrics), $this->config);
         $storageAnalysisScheduler->onLoaded();
         $this->storageAnalysisScheduler = $storageAnalysisScheduler;
 
