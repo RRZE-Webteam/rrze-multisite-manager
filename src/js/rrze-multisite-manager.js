@@ -806,7 +806,7 @@ function getSiteTableSortDirection(wrapper) {
 }
 
 function getSiteTableSortType(key) {
-    if (key === 'registered' || key === 'last-updated' || key === 'last-run' || key === 'modified' || key === 'files' || key === 'size' || key === 'share' || key === 'storage' || key === 'active-sites' || key === 'missing') {
+    if (key === 'registered' || key === 'last-updated' || key === 'last-run' || key === 'modified' || key === 'files' || key === 'size' || key === 'share' || key === 'storage' || key === 'active-sites' || key === 'network-wide' || key === 'auto-updates' || key === 'missing') {
         return 'number';
     }
 

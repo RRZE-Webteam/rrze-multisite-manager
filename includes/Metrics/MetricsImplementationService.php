@@ -8701,11 +8701,7 @@ class MetricsImplementationService {
     }
 
     protected static function comparePluginUsage(array $left, array $right): int {
-        if ((int)$left['site_count'] === (int)$right['site_count']) {
-            return strcmp((string)$left['name'], (string)$right['name']);
-        }
-
-        return (int)$right['site_count'] <=> (int)$left['site_count'];
+        return strnatcasecmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
     }
 
     protected static function compareThemeUsage(array $left, array $right): int {

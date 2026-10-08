@@ -1413,8 +1413,8 @@ class Dashboard {
                 [
                     'table_id' => 'plugin-overview-all',
                     'default_per_page' => 30,
-                    'sort_key' => 'active-sites',
-                    'sort_direction' => 'desc',
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
                     'show_active_sites' => true,
                     'show_active_site_list' => true,
                     'show_network_button' => true,
@@ -1427,8 +1427,8 @@ class Dashboard {
                 [
                     'table_id' => 'plugin-overview-network',
                     'default_per_page' => 30,
-                    'sort_key' => 'active-sites',
-                    'sort_direction' => 'desc',
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
                     'show_active_sites' => true,
                     'show_active_site_list' => false,
                     'show_network_button' => true,
@@ -1441,8 +1441,8 @@ class Dashboard {
                 [
                     'table_id' => 'plugin-overview-active',
                     'default_per_page' => 30,
-                    'sort_key' => 'active-sites',
-                    'sort_direction' => 'desc',
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
                     'show_active_sites' => true,
                     'show_active_site_list' => true,
                     'show_network_button' => true,

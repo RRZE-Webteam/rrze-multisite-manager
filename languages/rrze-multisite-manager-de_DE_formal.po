@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-10-08T09:08:52+00:00\n"
+"POT-Creation-Date: 2026-10-08T10:10:45+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -368,7 +368,7 @@ msgid "Change site status"
 msgstr "Site-Status ändern"
 
 #: includes/Dashboard.php:278 includes/Dashboard.php:279
-#: includes/Dashboard.php:3106 includes/Widgets/PluginUsageWidget.php:178
+#: includes/Dashboard.php:3106 includes/Widgets/PluginUsageWidget.php:170
 #: templates/site-details-page.php:359 templates/site-details-page.php:360
 msgid "Settings"
 msgstr "Einstellungen"
@@ -401,13 +401,13 @@ msgid "First page"
 msgstr "Erste Seite"
 
 #: includes/Dashboard.php:385 includes/Settings.php:1594
-#: includes/Widgets/PluginUsageWidget.php:478 includes/Widgets/Widgets.php:698
+#: includes/Widgets/PluginUsageWidget.php:530 includes/Widgets/Widgets.php:698
 #: includes/Widgets/Widgets.php:1441
 msgid "Previous page"
 msgstr "Vorherige Seite"
 
 #: includes/Dashboard.php:386 includes/Settings.php:1604
-#: includes/Widgets/PluginUsageWidget.php:487 includes/Widgets/Widgets.php:708
+#: includes/Widgets/PluginUsageWidget.php:539 includes/Widgets/Widgets.php:708
 #: includes/Widgets/Widgets.php:1443
 msgid "Next page"
 msgstr "Nächste Seite"
@@ -941,11 +941,12 @@ msgstr "Ungültiger Custom Post Type."
 msgid "The security confirmation is missing."
 msgstr "Die Sicherheitsbestätigung fehlt."
 
-#: includes/Dashboard.php:3099 includes/Widgets/PluginUsageWidget.php:155
+#: includes/Dashboard.php:3099 includes/Widgets/PluginUsageWidget.php:64
+#: includes/Widgets/PluginUsageWidget.php:174
 msgid "Deactivate network-wide"
 msgstr "Netzwerkweit deaktivieren"
 
-#: includes/Dashboard.php:3101 includes/Widgets/PluginUsageWidget.php:167
+#: includes/Dashboard.php:3101
 msgid "Deactivate"
 msgstr "Deaktivieren"
 
@@ -954,23 +955,25 @@ msgid "Check plugin"
 msgstr "Plugin prüfen"
 
 #: includes/Dashboard.php:3114 includes/Dashboard.php:3150
-#: includes/Widgets/PluginUsageWidget.php:133
+#: includes/Widgets/PluginUsageWidget.php:65
+#: includes/Widgets/PluginUsageWidget.php:156
 msgid "Update"
 msgstr "Aktualisieren"
 
-#: includes/Dashboard.php:3118 includes/Widgets/PluginUsageWidget.php:188
+#: includes/Dashboard.php:3118 includes/Widgets/PluginUsageWidget.php:66
 #: templates/site-details-page.php:506 templates/site-details-page.php:715
 msgid "Delete"
 msgstr "Löschen"
 
 #. translators: %s: available plugin version number.
-#: includes/Dashboard.php:3135 includes/Widgets/PluginUsageWidget.php:122
+#: includes/Dashboard.php:3135 includes/Widgets/PluginUsageWidget.php:145
 msgid "New version %s available."
 msgstr "Neue Version %s verfügbar."
 
 #: includes/Dashboard.php:3142 includes/Settings.php:2004
-#: includes/Settings.php:2304 includes/Widgets/PluginUsageWidget.php:129
-#: includes/Widgets/PluginUsageWidget.php:372 includes/Widgets/Widgets.php:1045
+#: includes/Settings.php:2304 includes/Widgets/PluginUsageWidget.php:152
+#: includes/Widgets/PluginUsageWidget.php:167
+#: includes/Widgets/PluginUsageWidget.php:424 includes/Widgets/Widgets.php:1045
 #: templates/site-details-page.php:364 templates/site-details-page.php:365
 msgid "Details"
 msgstr "Details"
@@ -1159,6 +1162,7 @@ msgstr "Nein"
 #: includes/Metrics/MetricsServiceEnvironmentTrait.php:128
 #: includes/Metrics/MetricsServiceEnvironmentTrait.php:129
 #: includes/Metrics/MetricsServiceEnvironmentTrait.php:130
+#: includes/Widgets/PluginUsageWidget.php:194
 #: templates/shortcode-block-analysis-page.php:330
 #: templates/site-details-page.php:193 templates/site-details-page.php:497
 #: templates/site-details-page.php:564
@@ -1222,12 +1226,12 @@ msgid "Not available."
 msgstr "Nicht verfügbar."
 
 #: includes/Metrics/MetricsImplementationService.php:3203
-#: includes/Metrics/MetricsImplementationService.php:9758
+#: includes/Metrics/MetricsImplementationService.php:9754
 msgid "Classic Editor"
 msgstr "Classic Editor"
 
 #: includes/Metrics/MetricsImplementationService.php:3209
-#: includes/Metrics/MetricsImplementationService.php:9764
+#: includes/Metrics/MetricsImplementationService.php:9760
 msgid "Block Editor"
 msgstr "Block Editor"
 
@@ -1730,7 +1734,7 @@ msgstr "Nicht genutzt"
 msgid "Block theme"
 msgstr "Block Theme"
 
-#: includes/Metrics/MetricsImplementationService.php:9706
+#: includes/Metrics/MetricsImplementationService.php:9702
 #: includes/Widgets/NetworkStorageUsageWidget.php:49
 msgid "Free storage"
 msgstr "Freier Speicher"
@@ -2264,6 +2268,7 @@ msgid "Views"
 msgstr "Ansichten"
 
 #: includes/Settings.php:1163 includes/Settings.php:1294
+#: includes/Widgets/PluginUsageWidget.php:119
 msgid "Network-wide"
 msgstr "Netzwerkweit"
 
@@ -2432,20 +2437,21 @@ msgstr "Website suchen:"
 msgid "Set up analyses"
 msgstr "Analyse starten"
 
-#: includes/Settings.php:1542
+#: includes/Settings.php:1542 includes/Widgets/PluginUsageWidget.php:60
 msgid "Select bulk action"
 msgstr "Auswahl"
 
-#: includes/Settings.php:1544
+#: includes/Settings.php:1544 includes/Widgets/PluginUsageWidget.php:62
 msgid "Bulk actions"
 msgstr "Aktionen"
 
-#: includes/Settings.php:1547 includes/Widgets/Widgets.php:650
+#: includes/Settings.php:1547 includes/Widgets/PluginUsageWidget.php:69
+#: includes/Widgets/Widgets.php:650
 msgid "Apply"
 msgstr "Übernehmen"
 
 #: includes/Settings.php:1587 includes/Widgets/PluginUsageWidget.php:201
-#: includes/Widgets/PluginUsageWidget.php:270 includes/Widgets/Widgets.php:691
+#: includes/Widgets/PluginUsageWidget.php:322 includes/Widgets/Widgets.php:691
 #: templates/plugin-details-page.php:308
 #: templates/site-storage-analysis-page.php:355
 #: templates/site-storage-analysis-page.php:436
@@ -2506,6 +2512,7 @@ msgstr "Site"
 #: includes/Settings.php:1768 includes/Settings.php:1785
 #: includes/Settings.php:1847 includes/Settings.php:1915
 #: includes/Settings.php:2221 includes/Settings.php:2342
+#: includes/Widgets/PluginUsageWidget.php:118
 #: templates/plugin-details-page.php:60 templates/site-details-page.php:52
 #: templates/site-details-page.php:331
 msgid "Status"
@@ -3260,7 +3267,7 @@ msgstr ""
 "konfigurierte Laufzeitgrenze überschritten hat."
 
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1272
-#: includes/Widgets/PluginUsageWidget.php:89
+#: includes/Widgets/PluginUsageWidget.php:115
 msgid "Plugin"
 msgstr "Plugin"
 
@@ -3317,7 +3324,7 @@ msgstr "Plugins"
 msgid "Themes"
 msgstr "Themes"
 
-#: includes/ViewManager.php:151 includes/Widgets/PluginUsageWidget.php:255
+#: includes/ViewManager.php:151 includes/Widgets/PluginUsageWidget.php:307
 msgid "Websites"
 msgstr "Websites"
 
@@ -3500,30 +3507,45 @@ msgid ""
 msgstr ""
 "Erste Auswertung der lokal verfügbaren und im Netzwerk verwendeten Plugins."
 
-#: includes/Widgets/PluginUsageWidget.php:49 includes/Widgets/Widgets.php:144
+#: includes/Widgets/PluginUsageWidget.php:50 includes/Widgets/Widgets.php:144
 #: includes/Widgets/Widgets.php:251 includes/Widgets/Widgets.php:321
 msgid "No entries available."
 msgstr "Keine Einträge vorhanden."
 
-#: includes/Widgets/PluginUsageWidget.php:58
+#: includes/Widgets/PluginUsageWidget.php:63
+#: includes/Widgets/PluginUsageWidget.php:176
+msgid "Activate network-wide"
+msgstr ""
+
+#: includes/Widgets/PluginUsageWidget.php:67
+#: includes/Widgets/PluginUsageWidget.php:181
+msgid "Enable auto-updates"
+msgstr ""
+
+#: includes/Widgets/PluginUsageWidget.php:68
+#: includes/Widgets/PluginUsageWidget.php:181
+msgid "Disable auto-updates"
+msgstr ""
+
+#: includes/Widgets/PluginUsageWidget.php:74
 msgid "Open network plugin management"
 msgstr "Plugin-Verwaltung im Netzwerk öffnen"
 
-#: includes/Widgets/PluginUsageWidget.php:61
-#: includes/Widgets/PluginUsageWidget.php:225
+#: includes/Widgets/PluginUsageWidget.php:77
+#: includes/Widgets/PluginUsageWidget.php:277
 msgid "Filter plugins:"
 msgstr "Plugin filtern:"
 
-#: includes/Widgets/PluginUsageWidget.php:62
+#: includes/Widgets/PluginUsageWidget.php:78
 msgid "Search by plugin name"
 msgstr "Nach Pluginname suchen"
 
-#: includes/Widgets/PluginUsageWidget.php:62
+#: includes/Widgets/PluginUsageWidget.php:78
 msgid "Filter plugins by name"
 msgstr "Plugins nach Namen filtern"
 
-#: includes/Widgets/PluginUsageWidget.php:63
-#: includes/Widgets/PluginUsageWidget.php:227
+#: includes/Widgets/PluginUsageWidget.php:79
+#: includes/Widgets/PluginUsageWidget.php:279
 #: templates/plugin-details-page.php:250
 #: templates/site-storage-analysis-page.php:379
 #: templates/site-storage-analysis-page.php:556
@@ -3535,12 +3557,16 @@ msgid "Show:"
 msgstr "Anzeigen:"
 
 #. translators: %d: number of rows shown by default.
-#: includes/Widgets/PluginUsageWidget.php:73
-#: includes/Widgets/PluginUsageWidget.php:237 includes/Widgets/Widgets.php:644
+#: includes/Widgets/PluginUsageWidget.php:89
+#: includes/Widgets/PluginUsageWidget.php:289 includes/Widgets/Widgets.php:644
 msgid "Default (%d)"
 msgstr "Standard (%d)"
 
-#: includes/Widgets/PluginUsageWidget.php:90
+#: includes/Widgets/PluginUsageWidget.php:114
+msgid "Select all plugins"
+msgstr ""
+
+#: includes/Widgets/PluginUsageWidget.php:116
 #: templates/plugin-details-page.php:85 templates/site-details-page.php:328
 #: templates/theme-details-page.php:62
 #: templates/widgets/inactive-plugins-widget.php:21
@@ -3548,83 +3574,80 @@ msgstr "Standard (%d)"
 msgid "Version"
 msgstr "Version"
 
-#: includes/Widgets/PluginUsageWidget.php:91
+#: includes/Widgets/PluginUsageWidget.php:117
 msgid "Info"
 msgstr "Info"
 
-#: includes/Widgets/PluginUsageWidget.php:94
-#: includes/Widgets/PluginUsageWidget.php:254
+#: includes/Widgets/PluginUsageWidget.php:119
+#: includes/Widgets/PluginUsageWidget.php:306
 msgid "Active sites"
 msgstr "Aktive Sites"
 
-#: includes/Widgets/PluginUsageWidget.php:97 includes/Widgets/Widgets.php:158
-#: includes/Widgets/Widgets.php:270 includes/Widgets/Widgets.php:335
-#: includes/Widgets/Widgets.php:394 includes/Widgets/Widgets.php:452
-#: templates/plugin-details-page.php:68 templates/site-details-page.php:56
-#: templates/site-details-page.php:332
-#: templates/site-storage-analysis-page.php:397
-#: templates/site-storage-analysis-page.php:573
-#: templates/site-storage-analysis-page.php:660
-#: templates/site-storage-analysis-page.php:723
-#: templates/site-storage-analysis-page.php:797
-#: templates/site-storage-analysis-page.php:881
-#: templates/theme-details-page.php:46
-msgid "Actions"
-msgstr "Aktionen"
+#: includes/Widgets/PluginUsageWidget.php:119
+msgid "Auto-updates"
+msgstr ""
 
-#: includes/Widgets/PluginUsageWidget.php:216
+#: includes/Widgets/PluginUsageWidget.php:186
+msgid "Start PCP test"
+msgstr ""
+
+#: includes/Widgets/PluginUsageWidget.php:195
+msgid "Enabled"
+msgstr ""
+
+#: includes/Widgets/PluginUsageWidget.php:268
 msgid "No orphaned plugin entries available."
 msgstr "Keine verwaisten Plugin-Einträge vorhanden."
 
-#: includes/Widgets/PluginUsageWidget.php:226
+#: includes/Widgets/PluginUsageWidget.php:278
 msgid "Search by plugin path"
 msgstr "Nach Pluginpfad suchen"
 
-#: includes/Widgets/PluginUsageWidget.php:226
+#: includes/Widgets/PluginUsageWidget.php:278
 msgid "Filter orphaned plugins by path"
 msgstr "Verwaiste Plugins nach Pfad filtern"
 
-#: includes/Widgets/PluginUsageWidget.php:253
+#: includes/Widgets/PluginUsageWidget.php:305
 #: templates/plugin-details-page.php:145
 msgid "Plugin file"
 msgstr "Plugindatei"
 
-#: includes/Widgets/PluginUsageWidget.php:374
+#: includes/Widgets/PluginUsageWidget.php:426
 msgid "Plugin page"
 msgstr "Plugin-Seite"
 
 #. translators: %s: plugin text domain.
-#: includes/Widgets/PluginUsageWidget.php:381
+#: includes/Widgets/PluginUsageWidget.php:433
 msgid "Text domain: %s"
 msgstr "Textdomain: %s"
 
 #. translators: %s: minimum supported WordPress version.
-#: includes/Widgets/PluginUsageWidget.php:391
+#: includes/Widgets/PluginUsageWidget.php:443
 #: templates/plugin-details-page.php:173 templates/theme-details-page.php:150
 msgid "WP from: %s"
 msgstr "WP ab: %s"
 
 #. translators: %s: minimum supported PHP version.
-#: includes/Widgets/PluginUsageWidget.php:401
+#: includes/Widgets/PluginUsageWidget.php:453
 #: templates/plugin-details-page.php:183 templates/theme-details-page.php:156
 msgid "PHP from: %s"
 msgstr "PHP ab: %s"
 
-#: includes/Widgets/PluginUsageWidget.php:434 includes/Widgets/Widgets.php:1400
+#: includes/Widgets/PluginUsageWidget.php:486 includes/Widgets/Widgets.php:1400
 msgid "Show websites"
 msgstr "Websites anzeigen"
 
-#: includes/Widgets/PluginUsageWidget.php:436 includes/Widgets/Widgets.php:1402
+#: includes/Widgets/PluginUsageWidget.php:488 includes/Widgets/Widgets.php:1402
 msgid "Hide websites"
 msgstr "Websites verbergen"
 
 #. translators: 1: number of previewed websites, 2: total number of websites.
-#: includes/Widgets/PluginUsageWidget.php:443 includes/Widgets/Widgets.php:1408
+#: includes/Widgets/PluginUsageWidget.php:495 includes/Widgets/Widgets.php:1408
 msgid "A preview of the first %1$s of %2$s websites is shown."
 msgstr "Es wird eine Vorschau der ersten %1$s von %2$s Websites angezeigt."
 
 #. translators: 1: current page number, 2: total number of pages.
-#: includes/Widgets/PluginUsageWidget.php:482 includes/Widgets/Widgets.php:1442
+#: includes/Widgets/PluginUsageWidget.php:534 includes/Widgets/Widgets.php:1442
 msgid "Page %1$d of %2$d"
 msgstr "Seite %1$d von %2$d"
 
@@ -3845,6 +3868,20 @@ msgstr "Zuletzt aktualisiert"
 #: templates/site-details-page.php:60
 msgid "Admin email"
 msgstr "Admin-E-Mail"
+
+#: includes/Widgets/Widgets.php:158 includes/Widgets/Widgets.php:270
+#: includes/Widgets/Widgets.php:335 includes/Widgets/Widgets.php:394
+#: includes/Widgets/Widgets.php:452 templates/plugin-details-page.php:68
+#: templates/site-details-page.php:56 templates/site-details-page.php:332
+#: templates/site-storage-analysis-page.php:397
+#: templates/site-storage-analysis-page.php:573
+#: templates/site-storage-analysis-page.php:660
+#: templates/site-storage-analysis-page.php:723
+#: templates/site-storage-analysis-page.php:797
+#: templates/site-storage-analysis-page.php:881
+#: templates/theme-details-page.php:46
+msgid "Actions"
+msgstr "Aktionen"
 
 #: includes/Widgets/Widgets.php:262
 msgid "Logo"
