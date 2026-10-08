@@ -533,22 +533,42 @@
     applySavedWidgetOrder(grid);
     updateWidgetMoveButtons(grid);
   }
+  function getOwnedSiteTableElement(wrapper) {
+    var tables = wrapper.querySelectorAll("table.rrze-msm-table");
+    var i = 0;
+    for (i = 0; i < tables.length; i++) {
+      if (tables[i].closest(".rrze-msm-site-table-wrap") === wrapper) {
+        return tables[i];
+      }
+    }
+    return null;
+  }
+  function getOwnedSiteTableElementBySelector(wrapper, selector) {
+    var elements = wrapper.querySelectorAll(selector);
+    var i = 0;
+    for (i = 0; i < elements.length; i++) {
+      if (elements[i].closest(".rrze-msm-site-table-wrap") === wrapper) {
+        return elements[i];
+      }
+    }
+    return null;
+  }
   function getSiteTableRows(wrapper) {
-    var table = wrapper.querySelector("table.rrze-msm-table");
+    var table = getOwnedSiteTableElement(wrapper);
     if (!table || !table.tBodies.length) {
       return [];
     }
     return Array.prototype.slice.call(table.tBodies[0].rows);
   }
   function getSiteTableSearchQuery(wrapper) {
-    var input = wrapper.querySelector(".rrze-msm-site-table-search");
+    var input = getOwnedSiteTableElementBySelector(wrapper, ".rrze-msm-site-table-search");
     if (!input) {
       return "";
     }
     return String(input.value || "").trim().toLowerCase();
   }
   function getSiteTableStatusFilter(wrapper) {
-    var select = wrapper.querySelector(".rrze-msm-site-table-status-filter");
+    var select = getOwnedSiteTableElementBySelector(wrapper, ".rrze-msm-site-table-status-filter");
     var value = "";
     if (!select) {
       return "all";
@@ -575,7 +595,7 @@
     return filteredRows;
   }
   function getSiteTablePerPage(wrapper) {
-    var select = wrapper.querySelector(".rrze-msm-site-table-per-page");
+    var select = getOwnedSiteTableElementBySelector(wrapper, ".rrze-msm-site-table-per-page");
     var perPage = 0;
     if (!select) {
       perPage = parseInt(wrapper.getAttribute("data-default-per-page") || "10", 10);
@@ -613,14 +633,60 @@
     }
     return "string";
   }
+  function getSiteTableSortColumnIndex(row, key) {
+    var table = row.closest("table.rrze-msm-table");
+    var buttons = null;
+    var button = null;
+    var headerCell = null;
+    var i = 0;
+    if (!table) {
+      return -1;
+    }
+    buttons = table.querySelectorAll(".rrze-msm-site-table-sort");
+    for (i = 0; i < buttons.length; i++) {
+      button = buttons[i];
+      if ((button.getAttribute("data-sort-key") || "") !== key) {
+        continue;
+      }
+      headerCell = button.closest("th, td");
+      if (!headerCell || !headerCell.parentNode) {
+        return -1;
+      }
+      return Array.prototype.indexOf.call(headerCell.parentNode.children, headerCell);
+    }
+    return -1;
+  }
+  function getSiteTableFallbackSortValue(row, key) {
+    var columnIndex = getSiteTableSortColumnIndex(row, key);
+    if (columnIndex < 0 || !row.cells || !row.cells[columnIndex]) {
+      return "";
+    }
+    return String(row.cells[columnIndex].textContent || "").trim();
+  }
   function getSiteTableSortValue(row, key) {
-    return row.getAttribute("data-sort-" + key) || "";
+    var attributeValue = row.getAttribute("data-sort-" + key);
+    if (attributeValue !== null && attributeValue !== "") {
+      return attributeValue;
+    }
+    return getSiteTableFallbackSortValue(row, key);
   }
   function getSiteTableNumericSortValue(row, key) {
     var rawValue = String(getSiteTableSortValue(row, key)).trim();
     var numericValue = 0;
     rawValue = rawValue.replace(/\s+/g, "").replace(",", ".");
     numericValue = Number(rawValue);
+    if (!Number.isFinite(numericValue)) {
+      var germanDate = rawValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[T ](\d{1,2}):(\d{2}))?$/);
+      if (germanDate) {
+        numericValue = new Date(
+          Number(germanDate[3]),
+          Number(germanDate[2]) - 1,
+          Number(germanDate[1]),
+          Number(germanDate[4] || 0),
+          Number(germanDate[5] || 0)
+        ).getTime();
+      }
+    }
     if (!Number.isFinite(numericValue)) {
       return 0;
     }
@@ -662,6 +728,9 @@
     var indicator = null;
     for (i = 0; i < buttons.length; i++) {
       button = buttons[i];
+      if (button.closest(".rrze-msm-site-table-wrap") !== wrapper) {
+        continue;
+      }
       buttonKey = button.getAttribute("data-sort-key") || "";
       indicator = button.querySelector(".rrze-msm-site-table-sort-indicator");
       button.classList.remove("is-active", "is-asc", "is-desc");
@@ -678,7 +747,7 @@
     }
   }
   function renderSiteTablePagination(wrapper, totalRows, perPage, currentPage) {
-    var pagination = wrapper.querySelector(".rrze-msm-site-table-pagination");
+    var pagination = getOwnedSiteTableElementBySelector(wrapper, ".rrze-msm-site-table-pagination");
     var totalPages = Math.max(1, Math.ceil(totalRows / perPage));
     var startItem = 0;
     var endItem = 0;
@@ -718,6 +787,9 @@
   }
   function renderSiteTable(wrapper) {
     var rows = [];
+    var table = null;
+    var tableBody = null;
+    var fragment = null;
     var filteredRows = [];
     var perPage = 0;
     var currentPage = 0;
@@ -729,15 +801,22 @@
       return;
     }
     rows = getSiteTableRows(wrapper);
+    table = getOwnedSiteTableElement(wrapper);
+    if (!table || !table.tBodies.length) {
+      return;
+    }
+    tableBody = table.tBodies[0];
     perPage = getSiteTablePerPage(wrapper);
     currentPage = getSiteTableCurrentPage(wrapper);
     sortSiteTableRows(wrapper, rows);
     filteredRows = filterSiteTableRows(wrapper, rows);
     if (wrapper.classList.contains("rrze-msm-server-paginated")) {
+      fragment = document.createDocumentFragment();
       for (i = 0; i < rows.length; i++) {
-        rows[i].parentNode.appendChild(rows[i]);
+        fragment.appendChild(rows[i]);
         rows[i].style.display = filteredRows.indexOf(rows[i]) === -1 ? "none" : "";
       }
+      tableBody.appendChild(fragment);
       updateSiteTableSortButtons(wrapper);
       return;
     }
@@ -746,9 +825,11 @@
       currentPage = totalPages;
       wrapper.setAttribute("data-current-page", String(currentPage));
     }
+    fragment = document.createDocumentFragment();
     for (i = 0; i < rows.length; i++) {
-      rows[i].parentNode.appendChild(rows[i]);
+      fragment.appendChild(rows[i]);
     }
+    tableBody.appendChild(fragment);
     startIndex = (currentPage - 1) * perPage;
     endIndex = startIndex + perPage;
     for (i = 0; i < rows.length; i++) {
@@ -768,6 +849,9 @@
     var nextDirection = "asc";
     var requestedDirection = "asc";
     if (sortButton) {
+      if (sortButton.closest(".rrze-msm-site-table-wrap") !== wrapper) {
+        return;
+      }
       currentSortKey = getSiteTableSortKey(wrapper);
       requestedDirection = sortButton.getAttribute("data-sort-direction") === "desc" ? "desc" : "asc";
       if ((sortButton.getAttribute("data-sort-key") || "") === currentSortKey) {
@@ -782,6 +866,9 @@
       return;
     }
     if (pageButton && !pageButton.disabled) {
+      if (pageButton.closest(".rrze-msm-site-table-wrap") !== wrapper) {
+        return;
+      }
       wrapper.setAttribute("data-current-page", pageButton.getAttribute("data-page") || "1");
       renderSiteTable(wrapper);
     }
@@ -829,16 +916,18 @@
     var i = 0;
     var searchInput = null;
     var statusFilter = null;
+    var perPageSelect = null;
     for (i = 0; i < wrappers.length; i++) {
       wrappers[i].addEventListener("click", onSiteTableClick);
-      if (wrappers[i].querySelector(".rrze-msm-site-table-per-page")) {
-        wrappers[i].querySelector(".rrze-msm-site-table-per-page").addEventListener("change", onSiteTablePerPageChange);
+      perPageSelect = getOwnedSiteTableElementBySelector(wrappers[i], ".rrze-msm-site-table-per-page");
+      if (perPageSelect) {
+        perPageSelect.addEventListener("change", onSiteTablePerPageChange);
       }
-      searchInput = wrappers[i].querySelector(".rrze-msm-site-table-search");
+      searchInput = getOwnedSiteTableElementBySelector(wrappers[i], ".rrze-msm-site-table-search");
       if (searchInput) {
         searchInput.addEventListener("input", onSiteTableSearchInput);
       }
-      statusFilter = wrappers[i].querySelector(".rrze-msm-site-table-status-filter");
+      statusFilter = getOwnedSiteTableElementBySelector(wrappers[i], ".rrze-msm-site-table-status-filter");
       if (statusFilter) {
         statusFilter.addEventListener("change", onSiteTableStatusFilterChange);
       }

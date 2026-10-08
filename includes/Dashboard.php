@@ -70,8 +70,8 @@ class Dashboard {
         add_action('admin_menu', [$this, 'registerMenu'], 999);
         add_action('network_admin_menu', [$this, 'registerNetworkMenu'], 999);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueueAdminBarStyles']);
         add_action('admin_bar_menu', [$this, 'addAdminBarMenu'], 35);
-        add_action('admin_head', [$this, 'printAdminBarStyles']);
         add_filter('user_has_cap', [$this, 'filterUserHasCap'], 20, 4);
         add_filter('admin_body_class', [$this, 'filterAdminBodyClass']);
         add_action('wp_ajax_rrze_msm_save_widget_order', [$this, 'ajaxSaveWidgetOrder']);
@@ -416,39 +416,19 @@ class Dashboard {
         return trim($classes . ' rrze-msm-admin rrze-msm-mode-' . $this->getColorMode());
     }
 
-    public function printAdminBarStyles(): void {
+    public function enqueueAdminBarStyles(): void {
         if (!$this->currentUserCanAccessManager()) {
             return;
         }
 
-        echo '<style id="rrze-msm-admin-bar-link">';
-        echo '#wpadminbar #wp-admin-bar-rrze-multisite-manager > .ab-item { display: inline-flex; align-items: center; }';
-        echo '#wpadminbar #wp-admin-bar-rrze-multisite-manager > .ab-item .ab-icon.dashicons { font: normal 20px/1 dashicons; width: 20px; height: 20px; margin-top: 0; display: inline-flex; align-items: center; justify-content: center; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top { background: #b32d2e; color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top { background: #b32d2e; color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top .wp-menu-image:before { color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top { background: #8a2424; color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top .wp-menu-image:before { color: #fff; }';
-        echo '</style>';
+        $stylePath = $this->plugin->getPath('build/css/rrze-multisite-manager-admin-bar.css');
+
+        wp_enqueue_style(
+            'rrze-multisite-manager-admin-bar',
+            $this->plugin->getUrl('build/css/rrze-multisite-manager-admin-bar.css'),
+            [],
+            $this->plugin->getVersion() . '.' . (string)(filemtime($stylePath) ?: 0)
+        );
     }
 
     public function filterUserHasCap(array $allcaps, array $caps, array $args, \WP_User $user): array {

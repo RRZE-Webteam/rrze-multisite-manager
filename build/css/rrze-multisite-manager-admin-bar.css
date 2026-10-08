@@ -1,0 +1,52 @@
+#wpadminbar #wp-admin-bar-rrze-multisite-manager > .ab-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+#wpadminbar #wp-admin-bar-rrze-multisite-manager > .ab-item .ab-icon.dashicons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 0;
+  font: normal 20px/1 dashicons;
+}
+
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top {
+  color: #fff;
+  background: #b32d2e;
+}
+
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top .wp-menu-image:before,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top .wp-menu-image:before {
+  color: #fff;
+}
+
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top {
+  color: #fff;
+  background: #8a2424;
+}
+
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top .wp-menu-image:before,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top .wp-menu-image:before,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top .wp-menu-image:before,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top .wp-menu-image:before,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top .wp-menu-image:before,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top .wp-menu-name,
+#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top .wp-menu-image:before {
+  color: #fff;
+}
