@@ -13,13 +13,16 @@ class MediaMetadataAnalysisService {
 
     protected StorageAnalysisStateService $state;
     protected StorageAnalysisResultService $results;
+    protected int $cacheVersion;
 
     public function __construct(
         StorageAnalysisStateService $state,
-        StorageAnalysisResultService $results
+        StorageAnalysisResultService $results,
+        int $cacheVersion
     ) {
         $this->state = $state;
         $this->results = $results;
+        $this->cacheVersion = max(1, $cacheVersion);
     }
 
     public function getAnalysis(int $siteId): array {
@@ -33,7 +36,7 @@ class MediaMetadataAnalysisService {
             return $stored;
         }
 
-        $legacyState = get_site_transient($this->state->getMediaMetadataCacheKey($siteId));
+        $legacyState = get_site_transient($this->state->getMediaMetadataCacheKey($siteId, $this->cacheVersion));
 
         return is_array($legacyState) ? $legacyState : [];
     }

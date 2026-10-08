@@ -112,9 +112,16 @@ class MetricsImplementationService {
         $this->storageAnalysisState = new StorageAnalysisStateService();
         $this->storageAnalysisResults = new StorageAnalysisResultService();
         $this->storageUsage = new StorageUsageService();
+        $this->metricsCache = new MetricsCacheService(
+            self::DETAIL_CACHE_VERSION_OPTION,
+            self::SITE_DETAIL_CACHE_VERSION_META,
+            self::DETAIL_SECTION_CACHE_FORMAT_VERSION,
+            self::DETAIL_CACHE_TTL
+        );
         $this->mediaMetadataAnalysis = new MediaMetadataAnalysisService(
             $this->storageAnalysisState,
-            $this->storageAnalysisResults
+            $this->storageAnalysisResults,
+            $this->getDetailCacheVersion()
         );
         $this->dashboardRefresh = new DashboardMetricsRefreshService(
             self::DASHBOARD_CACHE_VERSION,
@@ -123,12 +130,6 @@ class MetricsImplementationService {
         $this->dashboardBatch = new DashboardMetricsBatchService($this->dashboardRefresh);
         $this->storageUploadScanner = new StorageUploadScannerService();
         $this->storageAnalysisBatch = new StorageAnalysisBatchService();
-        $this->metricsCache = new MetricsCacheService(
-            self::DETAIL_CACHE_VERSION_OPTION,
-            self::SITE_DETAIL_CACHE_VERSION_META,
-            self::DETAIL_SECTION_CACHE_FORMAT_VERSION,
-            self::DETAIL_CACHE_TTL
-        );
         $this->siteDetailMetrics = new SiteDetailMetricsService();
         $this->siteProcessMetrics = new SiteProcessMetricsService(
             $this->config,

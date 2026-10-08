@@ -1099,20 +1099,29 @@ class Dashboard {
             : (isset($_GET['site_id']) ? absint($_GET['site_id']) : 0);
         $debugAttachmentId = isset($_GET['debug_attachment_id']) ? absint($_GET['debug_attachment_id']) : 0;
         $storageTab = isset($_GET['storage_tab']) ? sanitize_key((string)wp_unslash($_GET['storage_tab'])) : 'analysis';
+
+        if (!in_array($storageTab, ['analysis', 'debug', 'missing-metadata'], true)) {
+            $storageTab = 'analysis';
+        }
+
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
         $storageAnalysis = $siteId > 0 ? $this->metrics->getCachedSiteStorageAnalysis($siteId) : [];
         $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId, true) : [];
-        $attachmentDebug = ($siteId > 0 && $debugAttachmentId > 0) ? $this->metrics->getSiteStorageAttachmentDebug($siteId, $debugAttachmentId) : [];
-        $mediaMetadataAnalysis = $siteId > 0 ? $this->metrics->getSiteMediaMetadataAnalysis($siteId) : [];
+        $attachmentDebug = ($storageTab === 'debug' && $siteId > 0 && $debugAttachmentId > 0)
+            ? $this->metrics->getSiteStorageAttachmentDebug($siteId, $debugAttachmentId)
+            : [];
+        $mediaMetadataAnalysis = ($storageTab === 'missing-metadata' && $siteId > 0)
+            ? $this->metrics->getSiteMediaMetadataAnalysis($siteId)
+            : [];
         $orphanFileDeleteNotice = [];
         $storageAnalysisScheduledOnly = false;
         $storageAnalysisSchedulerStatus = [];
         $storageAnalysisTasksAllowed = false;
         $storageAnalysisBrowserLimitMegabytes = $this->getStorageAnalysisBrowserLimitMegabytes();
-
-        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
-            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
-        }
 
         if ($siteId > 0 && !empty($_GET['orphan_file_delete_notice'])) {
             $orphanFileDeleteNotice = get_site_transient('rrze_msm_orphan_file_delete_notice_' . get_current_user_id() . '_' . $siteId);
