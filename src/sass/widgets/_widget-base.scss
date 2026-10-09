@@ -235,6 +235,16 @@
     visibility: visible;
 }
 
+.rrze-msm-media-metadata-name .row-actions {
+    visibility: hidden;
+    margin-top: 4px;
+}
+
+.rrze-msm-media-metadata-table tbody tr:hover .rrze-msm-media-metadata-name .row-actions,
+.rrze-msm-media-metadata-table tbody tr:focus-within .rrze-msm-media-metadata-name .row-actions {
+    visibility: visible;
+}
+
 .rrze-msm-site-row-inactive th,
 .rrze-msm-site-row-inactive td,
 .rrze-msm-table.striped > tbody > .rrze-msm-site-row-inactive:nth-child(odd) th,
@@ -261,17 +271,12 @@
     background: color-mix(in srgb, var(--rrze-msm-status-active-bg) 18%, var(--rrze-msm-surface) 82%);
 }
 
-.rrze-msm-detail-row-network-plugin th,
-.rrze-msm-detail-row-network-plugin td,
-.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-network-plugin:nth-child(odd) th,
-.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-network-plugin:nth-child(odd) td,
-.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-network-plugin:nth-child(even) th,
-.rrze-msm-table.striped > tbody > .rrze-msm-detail-row-network-plugin:nth-child(even) td,
-.rrze-msm-table .rrze-msm-detail-row-network-plugin:nth-child(odd) th,
-.rrze-msm-table .rrze-msm-detail-row-network-plugin:nth-child(odd) td,
-.rrze-msm-table .rrze-msm-detail-row-network-plugin:nth-child(even) th,
-.rrze-msm-table .rrze-msm-detail-row-network-plugin:nth-child(even) td {
-    background: color-mix(in srgb, var(--rrze-msm-status-info-bg) 18%, var(--rrze-msm-surface) 82%);
+.rrze-msm-plugin-overview-table tbody > tr > :first-child {
+	box-shadow: inset 5px 0 0 transparent;
+}
+
+.rrze-msm-plugin-overview-table .rrze-msm-detail-row-network-plugin > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-info-bg);
 }
 
 .rrze-msm-detail-row-superadmin-option th,
@@ -358,19 +363,45 @@ td.rrze-msm-plugin-col-active-sites {
     white-space: nowrap;
 }
 
-.rrze-msm-plugin-table {
-    table-layout: auto;
+.rrze-msm-plugin-overview-table {
+	table-layout: fixed;
 }
 
-.rrze-msm-plugin-table th:first-child,
-.rrze-msm-plugin-table td:first-child {
-    width: 40%;
-    max-width: 40%;
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-select {
+	width: 46px;
 }
 
-.rrze-msm-plugin-table th:nth-child(3),
-.rrze-msm-plugin-table td:nth-child(3) {
-    width: auto;
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-name {
+	width: 34%;
+}
+
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-version {
+	width: 8%;
+}
+
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-active-sites {
+	width: 100px;
+	text-align: right;
+	vertical-align: middle;
+}
+
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-network-active,
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-auto-updates {
+	width: 110px;
+	text-align: center;
+	vertical-align: middle;
+}
+
+.rrze-msm-plugin-overview-table td.rrze-msm-plugin-col-network-active .dashicons,
+.rrze-msm-plugin-overview-table td.rrze-msm-plugin-col-auto-updates .dashicons {
+	display: inline-block;
+	vertical-align: middle;
+}
+
+.rrze-msm-plugin-overview-table .check-column {
+	width: 46px;
+	min-width: 46px;
+	padding: 8px 0 0 8px;
 }
 
 .rrze-msm-plugin-table-text-actions .rrze-msm-plugin-table th.rrze-msm-col-actions,

@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.2.25
+ * Version:         1.3.0
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -22,6 +22,7 @@ defined('ABSPATH') || exit;
 
 use RRZE\MultisiteManager\Main;
 use RRZE\MultisiteManager\Plugin;
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
 
 spl_autoload_register(__NAMESPACE__ . '\autoload');
 
@@ -149,21 +150,21 @@ function activate(bool $networkWide = false): void {
 
     // Activation must never restore or create background work. Every process
     // must be explicitly started again from Monitoring.
-    MonitoringService::disableScheduledChecks($config);
-    $metrics->disableDashboardScheduling();
-    MetricsService::disableMaintenanceScheduling();
-    StorageAnalysisSchedulerService::clearScheduledEvents($config);
-    ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents($config);
+    MonitoringService::disableScheduledChecks($config, false);
+    $metrics->disableDashboardScheduling(false);
+    MetricsService::disableMaintenanceScheduling(false);
+    StorageAnalysisSchedulerService::clearScheduledEvents($config, false);
+    ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents($config, false);
 
     // Activation must not synchronously iterate over every site in a large network.
-    (new StorageAnalysisSchedulerService($metrics, $config))->markScheduleConfigurationCurrent();
+    (new StorageAnalysisSchedulerService(new StorageAnalysisService($metrics), $config))->markScheduleConfigurationCurrent();
     (new ShortcodeBlockAnalysisSchedulerService($config))->markScheduleConfigurationCurrent();
 }
 
 function deactivate(): void {
-    MonitoringService::disableScheduledChecks();
-    (new MetricsService())->disableDashboardScheduling();
-    MetricsService::disableMaintenanceScheduling();
-    StorageAnalysisSchedulerService::clearScheduledEvents();
-    ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents();
+    MonitoringService::disableScheduledChecks(null, false);
+    (new MetricsService())->disableDashboardScheduling(false);
+    MetricsService::disableMaintenanceScheduling(false);
+    StorageAnalysisSchedulerService::clearScheduledEvents(null, false);
+    ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents(null, false);
 }

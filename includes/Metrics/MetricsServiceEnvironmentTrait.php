@@ -1,6 +1,6 @@
 <?php
 
-namespace RRZE\MultisiteManager;
+namespace RRZE\MultisiteManager\Metrics;
 
 defined('ABSPATH') || exit;
 
@@ -26,6 +26,9 @@ trait MetricsServiceEnvironmentTrait {
         $dropins = [];
         $registrationMode = (string)get_site_option('registration', 'none');
         $defaultSiteQuota = (int)get_site_option('blog_upload_space', 100);
+        $maximumUploadSizeKb = max(0, (int)get_site_option('fileupload_maxk', 0));
+        $networkMenuItems = get_site_option('menu_items', ['plugins' => true]);
+        $pluginActivationAllowed = is_array($networkMenuItems) && !empty($networkMenuItems['plugins']);
         $databaseSizeBytes = $this->getDatabaseSizeBytes();
         $siteUserCount = function_exists('get_user_count') ? (int)get_user_count() : 0;
         $enabledThemeCount = count(array_filter($themes, [self::class, 'isNetworkEnabledTheme']));
@@ -110,6 +113,23 @@ trait MetricsServiceEnvironmentTrait {
             'rows' => [
                 ['label' => __('Installation type', 'rrze-multisite-manager'), 'value' => is_subdomain_install() ? __('Subdomain', 'rrze-multisite-manager') : __('Subdirectory', 'rrze-multisite-manager')],
                 ['label' => __('Registration', 'rrze-multisite-manager'), 'value' => $this->getRegistrationModeLabel($registrationMode)],
+                [
+                    'label' => __('Storage quota per website', 'rrze-multisite-manager'),
+                    'value' => $defaultSiteQuota > 0
+                        ? sprintf(
+                            /* translators: %d: default site quota in megabytes. */
+                            __('%d MB', 'rrze-multisite-manager'),
+                            $defaultSiteQuota
+                        )
+                        : __('Not set', 'rrze-multisite-manager'),
+                ],
+                [
+                    'label' => __('Maximum upload file size', 'rrze-multisite-manager'),
+                    'value' => $maximumUploadSizeKb > 0
+                        ? size_format($maximumUploadSizeKb * KB_IN_BYTES, 2)
+                        : __('Not set', 'rrze-multisite-manager'),
+                ],
+                ['label' => __('Plugin activation allowed', 'rrze-multisite-manager'), 'value' => $pluginActivationAllowed ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
                 ['label' => __('Adding new users allowed', 'rrze-multisite-manager'), 'value' => !empty(get_site_option('add_new_users')) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
                 ['label' => __('Forced admin SSL', 'rrze-multisite-manager'), 'value' => force_ssl_admin() ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
                 ['label' => __('File editing disabled in backend', 'rrze-multisite-manager'), 'value' => defined('DISALLOW_FILE_EDIT') && DISALLOW_FILE_EDIT ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],

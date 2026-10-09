@@ -29,8 +29,8 @@ if (!defined('ABSPATH')) {
             [
                 'table_id' => 'plugin-usage',
                 'default_per_page' => (int)$default_per_page,
-                'sort_key' => 'active-sites',
-                'sort_direction' => 'desc',
+                'sort_key' => 'name',
+                'sort_direction' => 'asc',
                 'show_active_sites' => true,
                 'show_active_site_list' => true,
                 'show_network_button' => true,

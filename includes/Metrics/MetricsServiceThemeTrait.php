@@ -1,53 +1,12 @@
 <?php
 
-namespace RRZE\MultisiteManager;
+namespace RRZE\MultisiteManager\Metrics;
 
 defined('ABSPATH') || exit;
 
 trait MetricsServiceThemeTrait {
-    public function searchThemes(string $searchTerm, int $limit = 20): array {
-        $themes = wp_get_themes();
-        $results = [];
-        $stylesheet = '';
-        $theme = null;
-        $searchNeedle = trim(mb_strtolower($searchTerm));
-        $haystack = '';
 
-        if ($searchNeedle === '' || mb_strlen($searchNeedle) < 3) {
-            return [];
-        }
-
-        foreach ($themes as $stylesheet => $theme) {
-            if (!$theme instanceof \WP_Theme) {
-                continue;
-            }
-
-            $haystack = mb_strtolower(
-                (string)$theme->get('Name') . ' ' .
-                (string)$theme->get('Description') . ' ' .
-                $stylesheet
-            );
-
-            if (mb_strpos($haystack, $searchNeedle) === false) {
-                continue;
-            }
-
-            $results[] = [
-                'id' => $stylesheet,
-                'name' => (string)$theme->get('Name'),
-                'version' => (string)$theme->get('Version'),
-                'stylesheet' => $stylesheet,
-            ];
-
-            if (count($results) >= $limit) {
-                break;
-            }
-        }
-
-        return $results;
-    }
-
-    public function getThemeDetails(string $stylesheet): array {
+    public function getThemeDetails(string $stylesheet, bool $includeSourceAnalysis = false): array {
         $themes = $this->getThemes();
         $cacheKey = '';
         $cached = null;
@@ -67,7 +26,7 @@ trait MetricsServiceThemeTrait {
             return [];
         }
 
-        $cacheKey = $this->getThemeDetailsCacheKey($stylesheet);
+        $cacheKey = $this->getThemeDetailsCacheKey($stylesheet, $includeSourceAnalysis);
         $cached = get_site_transient($cacheKey);
 
         if (is_array($cached) && !empty($cached)) {
@@ -75,7 +34,7 @@ trait MetricsServiceThemeTrait {
         }
 
         $supplementary = $this->getThemeSupplementaryData($stylesheet);
-        $analysis = $this->analyzeThemeCode($stylesheet);
+        $analysis = $includeSourceAnalysis ? $this->analyzeThemeCode($stylesheet) : [];
         $installTimestamp = $this->getThemeInstallTimestamp($stylesheet);
         $modifiedTimestamp = $this->getThemeModifiedTimestamp($stylesheet);
 
@@ -106,6 +65,7 @@ trait MetricsServiceThemeTrait {
                     (string)($themeItem['text_domain'] ?? ''),
                     'theme'
                 ),
+                'source_analysis_completed' => $includeSourceAnalysis,
                 'shortcodes' => (array)($analysis['shortcodes'] ?? []),
                 'blocks' => (array)($analysis['blocks'] ?? []),
                 'block_patterns' => (array)($analysis['block_patterns'] ?? []),

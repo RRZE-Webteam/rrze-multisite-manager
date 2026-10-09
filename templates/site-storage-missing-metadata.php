@@ -61,18 +61,34 @@ $metadataTables = [
                 <p><?php echo esc_html__('No incomplete metadata was found.', 'rrze-multisite-manager'); ?></p>
             <?php } else { ?>
                 <div class="rrze-msm-site-table-wrap" data-table-id="media-metadata-<?php echo esc_attr($category); ?>" data-default-per-page="20" data-current-page="1" data-sort-key="missing" data-sort-direction="desc">
-                    <table class="widefat striped rrze-msm-table">
+                    <table class="widefat striped rrze-msm-table rrze-msm-media-metadata-table">
                         <thead><tr>
                             <?php if ($category === 'images') { ?><th><?php echo esc_html__('Preview', 'rrze-multisite-manager'); ?></th><?php } ?>
+                            <?php if ($category === 'documents') { ?><th class="rrze-msm-media-metadata-document-type"><span class="screen-reader-text"><?php echo esc_html__('Document type', 'rrze-multisite-manager'); ?></span></th><?php } ?>
                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Name', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                             <?php foreach ((array)$table['fields'] as $fieldLabel) { ?><th class="rrze-msm-media-metadata-status"><?php echo esc_html((string)$fieldLabel); ?></th><?php } ?>
                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Last modified', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                         </tr></thead>
                         <tbody>
                             <?php foreach ((array)$metadataResults[$category] as $entry) { ?>
+                                <?php
+                                $attachmentId = absint($entry['attachment_id'] ?? 0);
+                                $mediaDetailsUrl = $attachmentId > 0 ? add_query_arg('debug_attachment_id', $attachmentId, $debugTabUrl) : '';
+                                $mediaEditUrl = $attachmentId > 0 && $site_id > 0
+                                    ? add_query_arg(
+                                        [
+                                            'post' => $attachmentId,
+                                            'action' => 'edit',
+                                        ],
+                                        get_admin_url((int)$site_id, 'post.php')
+                                    )
+                                    : (string)($entry['media_edit_url'] ?? '');
+                                $mediaTitle = (string)($entry['title'] ?? '');
+                                ?>
                                 <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($entry['title'] ?? ''))); ?>" data-sort-missing="<?php echo esc_attr((string)($entry['missing_count'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($entry['modified_timestamp'] ?? 0)); ?>">
-                                    <?php if ($category === 'images') { ?><td><?php if (!empty($entry['preview_url'])) { ?><a href="<?php echo esc_url((string)$entry['media_edit_url']); ?>"><img class="rrze-msm-media-metadata-preview" src="<?php echo esc_url((string)$entry['preview_url']); ?>" alt=""></a><?php } ?></td><?php } ?>
-                                    <td><?php if (!empty($entry['media_edit_url'])) { ?><a href="<?php echo esc_url((string)$entry['media_edit_url']); ?>"><?php echo esc_html((string)($entry['title'] ?? '')); ?></a><?php } else { echo esc_html((string)($entry['title'] ?? '')); } ?></td>
+                                    <?php if ($category === 'images') { ?><td><?php if (!empty($entry['preview_url'])) { ?><img class="rrze-msm-media-metadata-preview" src="<?php echo esc_url((string)$entry['preview_url']); ?>" alt=""><?php } ?></td><?php } ?>
+                                    <?php if ($category === 'documents') { ?><td class="rrze-msm-media-metadata-document-type"><span class="dashicons dashicons-media-document" aria-hidden="true"></span><span class="screen-reader-text"><?php echo esc_html((string)($entry['mime_type'] ?? __('Document', 'rrze-multisite-manager'))); ?></span></td><?php } ?>
+                                    <td class="rrze-msm-media-metadata-name"><strong><?php echo esc_html($mediaTitle); ?></strong><div class="row-actions"><?php if ($mediaDetailsUrl !== '') { ?><span class="media-details"><a href="<?php echo esc_url($mediaDetailsUrl); ?>"><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></a></span><?php } ?><?php if ($mediaDetailsUrl !== '' && $mediaEditUrl !== '') { ?> | <?php } ?><?php if ($mediaEditUrl !== '') { ?><span class="edit"><a href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html__('Edit', 'rrze-multisite-manager'); ?></a></span><?php } ?></div></td>
                                     <?php foreach (array_keys((array)$table['fields']) as $fieldName) { ?><td class="rrze-msm-media-metadata-status"><?php if (!empty($entry['fields'][$fieldName])) { ?><span class="dashicons dashicons-yes-alt rrze-msm-media-metadata-present"><span class="screen-reader-text"><?php echo esc_html__('Available', 'rrze-multisite-manager'); ?></span></span><?php } else { ?><span class="dashicons dashicons-dismiss rrze-msm-media-metadata-missing"><span class="screen-reader-text"><?php echo esc_html__('Missing', 'rrze-multisite-manager'); ?></span></span><?php } ?></td><?php } ?>
                                     <td><?php echo esc_html((string)($entry['modified_label'] ?? '')); ?></td>
                                 </tr>

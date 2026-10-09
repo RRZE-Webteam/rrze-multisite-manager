@@ -5,6 +5,7 @@ namespace RRZE\MultisiteManager;
 
 defined('ABSPATH') || exit;
 
+use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
 use RRZE\MultisiteManager\Widgets\ArchivedSitesWidget;
 use RRZE\MultisiteManager\Widgets\BlockedSitesWidget;
 use RRZE\MultisiteManager\Widgets\DeletedSitesWidget;
@@ -50,12 +51,12 @@ class Dashboard {
     protected const META_LAST_HTTP_OK_AT = 'rrze_msm_last_http_ok_at';
     protected const META_MONITORING_NOTE = 'rrze_msm_monitoring_note';
 
-    public function __construct(Plugin $plugin, Settings $settings) {
+    public function __construct(Plugin $plugin, Settings $settings, ?MetricsService $metrics = null, ?Config $config = null) {
         $this->plugin = $plugin;
         $this->settings = $settings;
-        $this->config = new Config();
-        $this->metrics = new MetricsService($settings, $this->config);
-        $this->storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
+        $this->config = $config ?? new Config();
+        $this->metrics = $metrics ?? new MetricsService($settings, $this->config);
+        $this->storageAnalysisScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService($this->metrics), $this->config);
         $this->shortcodeBlockAnalysisScheduler = new ShortcodeBlockAnalysisSchedulerService($this->config);
         $this->template = new Template($this->config, $this->plugin->getPath('templates'));
         $this->viewManager = new ViewManager();
@@ -69,8 +70,8 @@ class Dashboard {
         add_action('admin_menu', [$this, 'registerMenu'], 999);
         add_action('network_admin_menu', [$this, 'registerNetworkMenu'], 999);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueueAdminBarStyles']);
         add_action('admin_bar_menu', [$this, 'addAdminBarMenu'], 35);
-        add_action('admin_head', [$this, 'printAdminBarStyles']);
         add_filter('user_has_cap', [$this, 'filterUserHasCap'], 20, 4);
         add_filter('admin_body_class', [$this, 'filterAdminBodyClass']);
         add_action('wp_ajax_rrze_msm_save_widget_order', [$this, 'ajaxSaveWidgetOrder']);
@@ -415,39 +416,19 @@ class Dashboard {
         return trim($classes . ' rrze-msm-admin rrze-msm-mode-' . $this->getColorMode());
     }
 
-    public function printAdminBarStyles(): void {
+    public function enqueueAdminBarStyles(): void {
         if (!$this->currentUserCanAccessManager()) {
             return;
         }
 
-        echo '<style id="rrze-msm-admin-bar-link">';
-        echo '#wpadminbar #wp-admin-bar-rrze-multisite-manager > .ab-item { display: inline-flex; align-items: center; }';
-        echo '#wpadminbar #wp-admin-bar-rrze-multisite-manager > .ab-item .ab-icon.dashicons { font: normal 20px/1 dashicons; width: 20px; height: 20px; margin-top: 0; display: inline-flex; align-items: center; justify-content: center; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top { background: #b32d2e; color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top { background: #b32d2e; color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect > a.menu-top .wp-menu-image:before { color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top { background: #8a2424; color: #fff; }';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard:hover > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.wp-has-current-submenu > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-dashboard.current > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect:hover > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.wp-has-current-submenu > a.menu-top .wp-menu-image:before,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top .wp-menu-name,';
-        echo '#adminmenu #toplevel_page_rrze-multisite-manager-network-redirect.current > a.menu-top .wp-menu-image:before { color: #fff; }';
-        echo '</style>';
+        $stylePath = $this->plugin->getPath('build/css/rrze-multisite-manager-admin-bar.css');
+
+        wp_enqueue_style(
+            'rrze-multisite-manager-admin-bar',
+            $this->plugin->getUrl('build/css/rrze-multisite-manager-admin-bar.css'),
+            [],
+            $this->plugin->getVersion() . '.' . (string)(filemtime($stylePath) ?: 0)
+        );
     }
 
     public function filterUserHasCap(array $allcaps, array $caps, array $args, \WP_User $user): array {
@@ -1098,20 +1079,29 @@ class Dashboard {
             : (isset($_GET['site_id']) ? absint($_GET['site_id']) : 0);
         $debugAttachmentId = isset($_GET['debug_attachment_id']) ? absint($_GET['debug_attachment_id']) : 0;
         $storageTab = isset($_GET['storage_tab']) ? sanitize_key((string)wp_unslash($_GET['storage_tab'])) : 'analysis';
+
+        if (!in_array($storageTab, ['analysis', 'debug', 'missing-metadata'], true)) {
+            $storageTab = 'analysis';
+        }
+
+        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
         $storageAnalysis = $siteId > 0 ? $this->metrics->getCachedSiteStorageAnalysis($siteId) : [];
         $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId, true) : [];
-        $attachmentDebug = ($siteId > 0 && $debugAttachmentId > 0) ? $this->metrics->getSiteStorageAttachmentDebug($siteId, $debugAttachmentId) : [];
-        $mediaMetadataAnalysis = $siteId > 0 ? $this->metrics->getSiteMediaMetadataAnalysis($siteId) : [];
+        $attachmentDebug = ($storageTab === 'debug' && $siteId > 0 && $debugAttachmentId > 0)
+            ? $this->metrics->getSiteStorageAttachmentDebug($siteId, $debugAttachmentId)
+            : [];
+        $mediaMetadataAnalysis = ($storageTab === 'missing-metadata' && $siteId > 0)
+            ? $this->metrics->getSiteMediaMetadataAnalysis($siteId)
+            : [];
         $orphanFileDeleteNotice = [];
         $storageAnalysisScheduledOnly = false;
         $storageAnalysisSchedulerStatus = [];
         $storageAnalysisTasksAllowed = false;
         $storageAnalysisBrowserLimitMegabytes = $this->getStorageAnalysisBrowserLimitMegabytes();
-
-        if (!$this->currentUserCanAccessSiteStorageAnalysis($siteId)) {
-            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
-        }
 
         if ($siteId > 0 && !empty($_GET['orphan_file_delete_notice'])) {
             $orphanFileDeleteNotice = get_site_transient('rrze_msm_orphan_file_delete_notice_' . get_current_user_id() . '_' . $siteId);
@@ -1423,8 +1413,8 @@ class Dashboard {
                 [
                     'table_id' => 'plugin-overview-all',
                     'default_per_page' => 30,
-                    'sort_key' => 'active-sites',
-                    'sort_direction' => 'desc',
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
                     'show_active_sites' => true,
                     'show_active_site_list' => true,
                     'show_network_button' => true,
@@ -1437,8 +1427,8 @@ class Dashboard {
                 [
                     'table_id' => 'plugin-overview-network',
                     'default_per_page' => 30,
-                    'sort_key' => 'active-sites',
-                    'sort_direction' => 'desc',
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
                     'show_active_sites' => true,
                     'show_active_site_list' => false,
                     'show_network_button' => true,
@@ -1451,8 +1441,8 @@ class Dashboard {
                 [
                     'table_id' => 'plugin-overview-active',
                     'default_per_page' => 30,
-                    'sort_key' => 'active-sites',
-                    'sort_direction' => 'desc',
+                    'sort_key' => 'name',
+                    'sort_direction' => 'asc',
                     'show_active_sites' => true,
                     'show_active_site_list' => true,
                     'show_network_button' => true,
@@ -1505,7 +1495,8 @@ class Dashboard {
 
     public function renderPluginDetailsPage(): void {
         $pluginFile = isset($_GET['plugin']) ? sanitize_text_field((string)wp_unslash($_GET['plugin'])) : '';
-        $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile) : [];
+        $sourceAnalysisRequested = $pluginFile !== '' && $this->isSourceAnalysisRequested('plugin', $pluginFile);
+        $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile, $sourceAnalysisRequested) : [];
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -1528,6 +1519,8 @@ class Dashboard {
                 'plugin_readme_html' => !empty($pluginDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$pluginDetails['readme_markdown'])
                     : '',
+                'source_analysis_requested' => $sourceAnalysisRequested,
+                'source_analysis_url' => $pluginFile !== '' ? $this->getSourceAnalysisUrl('plugin', $pluginFile) : '',
             ],
             $this
         );
@@ -1564,7 +1557,8 @@ class Dashboard {
 
     public function renderThemeDetailsPage(): void {
         $stylesheet = isset($_GET['theme']) ? sanitize_text_field((string)wp_unslash($_GET['theme'])) : '';
-        $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet) : [];
+        $sourceAnalysisRequested = $stylesheet !== '' && $this->isSourceAnalysisRequested('theme', $stylesheet);
+        $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet, $sourceAnalysisRequested) : [];
         $themeWidget = new ThemeOverviewWidget($this->plugin, $this->config);
 
         if (!$this->currentUserCanAccessManager()) {
@@ -1585,9 +1579,29 @@ class Dashboard {
                 'theme_readme_html' => !empty($themeDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$themeDetails['readme_markdown'])
                     : '',
+                'source_analysis_requested' => $sourceAnalysisRequested,
+                'source_analysis_url' => $stylesheet !== '' ? $this->getSourceAnalysisUrl('theme', $stylesheet) : '',
             ],
             $this
         );
+    }
+
+    protected function isSourceAnalysisRequested(string $type, string $identifier): bool {
+        $requested = isset($_GET['source_analysis']) && sanitize_key((string)wp_unslash($_GET['source_analysis'])) === '1';
+        $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field((string)wp_unslash($_GET['_wpnonce'])) : '';
+
+        return $requested && wp_verify_nonce($nonce, 'rrze_msm_source_analysis_' . $type . '_' . $identifier);
+    }
+
+    protected function getSourceAnalysisUrl(string $type, string $identifier): string {
+        $url = add_query_arg(
+            [
+                'source_analysis' => '1',
+            ],
+            $type === 'plugin' ? $this->getPluginDetailsUrl($identifier) : $this->getThemeDetailsUrl($identifier)
+        );
+
+        return wp_nonce_url($url, 'rrze_msm_source_analysis_' . $type . '_' . $identifier);
     }
 
     protected function isNetworkPlugin(array $plugin): bool {
@@ -2023,7 +2037,7 @@ class Dashboard {
             wp_die(esc_html__('Invalid status action.', 'rrze-multisite-manager'));
         }
 
-        $storageAnalysisScheduler = new StorageAnalysisSchedulerService($this->metrics, $this->config);
+        $storageAnalysisScheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService($this->metrics), $this->config);
 
         if (!$storageAnalysisScheduler->isSiteEligible($siteId)) {
             $storageAnalysisScheduler->deactivateIneligibleSite($siteId);
@@ -2063,7 +2077,7 @@ class Dashboard {
 
         check_admin_referer('deleteblog_' . $siteId);
         wpmu_delete_blog($siteId, true);
-        (new StorageAnalysisSchedulerService($this->metrics, $this->config))->deactivateIneligibleSite($siteId);
+        (new StorageAnalysisSchedulerService(new StorageAnalysisService($this->metrics), $this->config))->deactivateIneligibleSite($siteId);
         (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
 
         if (!$this->metrics->refreshDashboardSiteStatus($siteId)) {
@@ -3096,8 +3110,8 @@ class Dashboard {
             $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($pluginCheckUrl) . '" title="' . esc_attr__('Check plugin', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Check plugin', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Check plugin', 'rrze-multisite-manager') . '</span></a>';
         }
 
-        if (!empty($pluginDetails['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['update_url']))) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['update_url']) . '" title="' . esc_attr__('Update', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Update', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Update', 'rrze-multisite-manager') . '</span></a>';
+        if ($canUseNetworkAdminFeatures && !empty($pluginDetails['update_available']) && !empty($pluginDetails['file'])) {
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($this->getNetworkPluginUpdateUrl((string)$pluginDetails['file'])) . '" title="' . esc_attr__('Update', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Update', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Update', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if ($canUseNetworkAdminFeatures && !empty($pluginDetails['delete_url'])) {
@@ -3112,6 +3126,8 @@ class Dashboard {
     protected function renderPluginStatusUpdateHtml(array $pluginDetails): string {
         $html = '';
         $canUseNetworkAdminFeatures = $this->currentUserCanUseNetworkAdminFeatures();
+        $pluginFile = (string)($pluginDetails['file'] ?? '');
+        $hasUpdateAction = $canUseNetworkAdminFeatures && $pluginFile !== '';
 
         if (empty($pluginDetails['update_available']) || empty($pluginDetails['update_version'])) {
             return '';
@@ -3120,7 +3136,7 @@ class Dashboard {
         $html .= '<p class="rrze-msm-plugin-status-update">';
         $html .= '<strong>' . esc_html(sprintf(__('New version %s available.', 'rrze-multisite-manager'), (string)$pluginDetails['update_version'])) . '</strong>';
 
-        if (!empty($pluginDetails['update_details_url']) || !empty($pluginDetails['update_url'])) {
+        if (!empty($pluginDetails['update_details_url']) || $hasUpdateAction) {
             $html .= ' ';
         }
 
@@ -3128,12 +3144,12 @@ class Dashboard {
             $html .= '<a href="' . esc_url((string)$pluginDetails['update_details_url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Details', 'rrze-multisite-manager') . '</a>';
         }
 
-        if (!empty($pluginDetails['update_details_url']) && !empty($pluginDetails['update_url'])) {
+        if (!empty($pluginDetails['update_details_url']) && $hasUpdateAction) {
             $html .= ' | ';
         }
 
-        if (!empty($pluginDetails['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['update_url']))) {
-            $html .= '<a href="' . esc_url((string)$pluginDetails['update_url']) . '">' . esc_html__('Update', 'rrze-multisite-manager') . '</a>';
+        if ($hasUpdateAction) {
+            $html .= '<a href="' . esc_url($this->getNetworkPluginUpdateUrl($pluginFile)) . '">' . esc_html__('Update', 'rrze-multisite-manager') . '</a>';
         }
 
         $html .= '</p>';
@@ -3236,6 +3252,19 @@ class Dashboard {
                 'plugin' => $pluginFile,
             ],
             get_admin_url($siteId, 'tools.php')
+        );
+    }
+
+    protected function getNetworkPluginUpdateUrl(string $pluginFile): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'upgrade-plugin',
+                    'plugin' => $pluginFile,
+                ],
+                network_admin_url('update.php')
+            ),
+            'upgrade-plugin_' . $pluginFile
         );
     }
 

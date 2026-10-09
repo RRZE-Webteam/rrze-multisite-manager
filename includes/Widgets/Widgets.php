@@ -556,7 +556,7 @@ abstract class Widgets {
             $value = max(0, (int)($item['value'] ?? 0));
             $items[$index]['value_label'] = sprintf(
                 /* translators: %d: number of websites. */
-                _n('%d website', '%d websites', $value, 'rrze-multisite-manager'),
+                _nx('%d website', '%d websites', $value, 'website count in usage chart', 'rrze-multisite-manager'),
                 number_format_i18n($value)
             );
         }
