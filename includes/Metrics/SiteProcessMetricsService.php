@@ -58,16 +58,41 @@ class SiteProcessMetricsService {
 
         global $wpdb;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Transient listing is cached per site detail section.
-        $rows = $wpdb->get_results("SELECT option_name, CASE WHEN option_name LIKE '\\_transient\\_timeout\\_%' THEN option_value ELSE NULL END AS option_value FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_%' OR option_name LIKE '\\_transient\\_timeout\\_%' ORDER BY option_name ASC");
+        $limit = max(1, $this->maxRows);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The UI has a strict row limit, so only that many transient names are loaded.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s AND option_name NOT LIKE %s ORDER BY option_name ASC LIMIT %d",
+                $wpdb->esc_like('_transient_') . '%',
+                $wpdb->esc_like('_transient_timeout_') . '%',
+                $limit
+            )
+        );
         $timeouts = [];
         $transients = [];
+        $timeoutNames = [];
 
         foreach ($rows as $row) {
             $name = (string)($row->option_name ?? '');
 
-            if (str_starts_with($name, '_transient_timeout_')) {
-                $timeouts[substr($name, strlen('_transient_timeout_'))] = (int)($row->option_value ?? 0);
+            if (str_starts_with($name, '_transient_')) {
+                $timeoutNames[] = '_transient_timeout_' . substr($name, strlen('_transient_'));
+            }
+        }
+
+        if (!empty($timeoutNames)) {
+            $placeholders = implode(', ', array_fill(0, count($timeoutNames), '%s'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Timeout names originate only from the bounded transient-name query above.
+            $timeoutRows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name IN ({$placeholders})",
+                    ...$timeoutNames
+                )
+            );
+
+            foreach ($timeoutRows as $timeoutRow) {
+                $timeoutName = (string)($timeoutRow->option_name ?? '');
+                $timeouts[substr($timeoutName, strlen('_transient_timeout_'))] = (int)($timeoutRow->option_value ?? 0);
             }
         }
 

@@ -105,10 +105,13 @@ class MediaMetadataAnalysisService {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded, site-local batch query is required for the scheduled analysis; its result is persisted with the analysis state.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT ID, post_title, post_excerpt, post_content, post_mime_type, post_modified_gmt
-                FROM {$wpdb->posts}
-                WHERE post_type = 'attachment' AND ID > %d
-                ORDER BY ID ASC
+                "SELECT p.ID, p.post_title, p.post_excerpt, p.post_content, p.post_mime_type, p.post_modified_gmt,
+                    pm_alt.meta_value AS image_alt
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->postmeta} pm_alt
+                    ON pm_alt.post_id = p.ID AND pm_alt.meta_key = '_wp_attachment_image_alt'
+                WHERE p.post_type = 'attachment' AND p.ID > %d
+                ORDER BY p.ID ASC
                 LIMIT %d",
                 $lastAttachmentId,
                 self::BATCH_SIZE
@@ -172,7 +175,7 @@ class MediaMetadataAnalysisService {
         $attachmentId = (int)($row->ID ?? 0);
 
         return $this->buildEntry($row, [
-            'alt' => trim((string)get_post_meta($attachmentId, '_wp_attachment_image_alt', true)) !== '',
+            'alt' => trim((string)($row->image_alt ?? '')) !== '',
             'caption' => trim((string)($row->post_excerpt ?? '')) !== '',
             'description' => trim((string)($row->post_content ?? '')) !== '',
         ]);

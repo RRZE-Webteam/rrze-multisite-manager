@@ -39,6 +39,17 @@ defined('ABSPATH') || exit;
                 get_admin_url((int)$site_id, 'post.php')
             )
             : '';
+        $imageUrl = !empty($attachment_debug['is_image']) ? esc_url_raw((string)($attachment_debug['file_url'] ?? '')) : '';
+        $reverseImageSearchUrl = $imageUrl !== ''
+            ? add_query_arg('url', $imageUrl, 'https://tineye.com/search')
+            : '';
+        $reverseImageSearchUrl = apply_filters(
+            'rrze_msm_reverse_image_search_url',
+            $reverseImageSearchUrl,
+            $imageUrl,
+            $attachmentId,
+            (int)$site_id
+        );
         ?>
         <table class="striped rrze-msm-datatable">
             <tbody>
@@ -76,8 +87,15 @@ defined('ABSPATH') || exit;
                 <tr><th><?php echo esc_html__('Matches with code', 'rrze-multisite-manager'); ?></th><td class="rrze-msm-col-numeric"><?php echo esc_html((string)count((array)($attachment_debug['matches_with_code'] ?? []))); ?></td></tr>
             </tbody>
         </table>
-        <?php if ($mediaEditUrl !== '') { ?>
-            <p><a class="button button-secondary" href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html__('Edit', 'rrze-multisite-manager'); ?></a></p>
+        <?php if ($mediaEditUrl !== '' || $reverseImageSearchUrl !== '') { ?>
+            <p class="rrze-msm-site-actions">
+                <?php if ($mediaEditUrl !== '') { ?>
+                    <a class="button button-secondary" href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html__('Edit', 'rrze-multisite-manager'); ?></a>
+                <?php } ?>
+                <?php if ($reverseImageSearchUrl !== '') { ?>
+                    <a class="button button-secondary" href="<?php echo esc_url($reverseImageSearchUrl); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Reverse image search', 'rrze-multisite-manager'); ?></a>
+                <?php } ?>
+            </p>
         <?php } ?>
         <?php if (!empty($attachment_debug['is_image'])) { ?>
             <h3><?php echo esc_html__('Available image size variants', 'rrze-multisite-manager'); ?></h3>

@@ -17,6 +17,7 @@ class DashboardMetricsRefreshService {
     protected const BATCH_OFFSET_OPTION = 'rrze_msm_dashboard_metrics_batch_offset';
     protected const BATCH_TOTAL_OPTION = 'rrze_msm_dashboard_metrics_batch_total';
     protected const BATCH_STATE_OPTION = 'rrze_msm_dashboard_metrics_batch_state';
+    protected const DIRTY_OPTION = 'rrze_msm_dashboard_metrics_dirty';
 
     protected int $cacheVersion;
     protected int $lockTtl;
@@ -29,17 +30,23 @@ class DashboardMetricsRefreshService {
     public function getCache(): array {
         $cached = get_site_option($this->getCacheKey(), []);
 
+        if (is_array($cached) && (bool)get_site_option(self::DIRTY_OPTION, false)) {
+            $cached['dirty'] = true;
+        }
+
         return is_array($cached) ? $cached : [];
     }
 
     public function markCacheDirty(): void {
-        $cached = $this->getCache();
-        $cached['dirty'] = true;
-        update_site_option($this->getCacheKey(), $cached);
+        if (!(bool)get_site_option(self::DIRTY_OPTION, false)) {
+            update_site_option(self::DIRTY_OPTION, time());
+        }
     }
 
     public function saveCompletedCache(array $data, int $startedAt): void {
         $generatedAt = time();
+
+        delete_site_option(self::DIRTY_OPTION);
 
         update_site_option($this->getCacheKey(), [
             'version' => $this->cacheVersion,
@@ -53,6 +60,7 @@ class DashboardMetricsRefreshService {
 
     public function deleteCache(): void {
         delete_site_option($this->getCacheKey());
+        delete_site_option(self::DIRTY_OPTION);
     }
 
     public function acquireLock(): bool {

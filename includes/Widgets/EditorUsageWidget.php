@@ -26,9 +26,20 @@ class EditorUsageWidget extends Widgets {
     }
 
     protected function getTemplateData(array $dashboardData): array {
+        $networkSettings = get_site_option('rrze_settings', []);
+        $networkSettings = is_array($networkSettings) || is_object($networkSettings)
+            ? (array)$networkSettings
+            : [];
+        $writingSettings = $networkSettings['writing'] ?? [];
+        $writingSettings = is_array($writingSettings) || is_object($writingSettings)
+            ? (array)$writingSettings
+            : [];
+
         return [
             'items' => $this->formatWebsiteUsageItems((array)($dashboardData['editor_usage'] ?? [])),
             'empty_message' => __('No editor data available.', 'rrze-multisite-manager'),
+            'network_block_editor_enabled' => !empty($writingSettings['enable_block_editor']),
+            'rrze_settings_writing_url' => network_admin_url('admin.php?page=rrze-settings-writing'),
         ];
     }
 }

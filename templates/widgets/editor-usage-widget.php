@@ -11,5 +11,14 @@ defined('ABSPATH') || exit;
         <h2><?php echo esc_html($widget_title); ?></h2>
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
-    <?php echo $this->renderPieChart($items, $empty_message, ['aggregate_small_items' => false]); ?>
+    <?php if (!empty($network_block_editor_enabled)) { ?>
+        <div class="notice notice-info inline">
+            <p>
+                <?php esc_html_e('The Block Editor is active on all websites because it is configured as the network default editor in RRZE Settings.', 'rrze-multisite-manager'); ?>
+                <a href="<?php echo esc_url($rrze_settings_writing_url); ?>"><?php esc_html_e('Open RRZE Settings: Writing', 'rrze-multisite-manager'); ?></a>
+            </p>
+        </div>
+    <?php } else { ?>
+        <?php echo $this->renderPieChart($items, $empty_message, ['aggregate_small_items' => false]); ?>
+    <?php } ?>
 </section>

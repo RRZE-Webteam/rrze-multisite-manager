@@ -12,6 +12,7 @@ class StorageAnalysisResultService {
     private const META_OPTION = 'rrze_msm_site_storage_analysis_result_meta';
     private const MEDIA_METADATA_RESULT_OPTION = 'rrze_msm_site_media_metadata_analysis_result';
     private const MAX_STORAGE_RESULT_BYTES = 2097152;
+    private const MAX_MEDIA_METADATA_RESULT_BYTES = 2097152;
 
     public function getResult(int $siteId): array {
         $result = $siteId > 0 ? get_blog_option($siteId, self::RESULT_OPTION, []) : [];
@@ -83,6 +84,8 @@ class StorageAnalysisResultService {
     private function updateCurrentOption(string $option, array $value): void {
         if ($option === self::RESULT_OPTION) {
             $value = $this->compactStorageResult($value);
+        } elseif ($option === self::MEDIA_METADATA_RESULT_OPTION) {
+            $value = $this->compactMediaMetadataResult($value);
         }
 
         if (get_option($option, null) === null) {
@@ -122,6 +125,27 @@ class StorageAnalysisResultService {
         foreach (['largest_files', 'largest_orphan_files', 'largest_unregistered_image_size_variants'] as $key) {
             if (is_array($result[$key] ?? null)) {
                 $result[$key] = array_slice(array_values($result[$key]), 0, 100);
+            }
+        }
+
+        $result['result_truncated'] = true;
+
+        return $result;
+    }
+
+    /** Keeps metadata result options bounded on sites with many incomplete media entries. */
+    private function compactMediaMetadataResult(array $result): array {
+        if (strlen(serialize($result)) <= self::MAX_MEDIA_METADATA_RESULT_BYTES) {
+            return $result;
+        }
+
+        foreach (['images', 'documents', 'spreadsheets', 'audio_video'] as $category) {
+            if (is_array($result['results'][$category] ?? null)) {
+                $result['results'][$category] = array_slice(
+                    array_values($result['results'][$category]),
+                    0,
+                    100
+                );
             }
         }
 

@@ -42,6 +42,7 @@ class MonitoringService {
     protected const MAX_SITE_HISTORY_ENTRIES = 10;
     protected const MAX_RUN_EVENT_ENTRIES = 12;
     protected const BATCH_EVENT_ARGS = ['rrze_msm_monitoring_batch' => true];
+    protected const DNS_LOOKUP_MINIMUM_REMAINING_SECONDS = 5;
 
     protected Plugin $plugin;
     protected Config $config;
@@ -78,9 +79,9 @@ class MonitoringService {
 
     public function ensureScheduledEvent(): void {
         if (!$this->isCentralNetworkCronSite()) {
-            // Availability monitoring is a network-wide process. A subsite
-            // must never retain a stale copy of its central cron event.
-            self::clearScheduledEventOnCurrentSite($this->config);
+            // Availability monitoring is a network-wide process. Local legacy
+            // events are ignored here and can be removed explicitly from the
+            // network maintenance screen without taxing every subsite request.
             return;
         }
 
@@ -940,9 +941,14 @@ class MonitoringService {
             $dnsStatusDetail = __('No host could be determined from the site URL.', 'rrze-multisite-manager');
             $httpStatusDetail = __('HTTP check skipped because no host could be determined from the site URL.', 'rrze-multisite-manager');
         } else {
-            $dnsData = $this->resolveDnsStatus($host);
-            $dnsStatus = (string)($dnsData['status'] ?? 'unknown');
-            $dnsStatusDetail = (string)($dnsData['detail'] ?? '');
+            if (!$this->canStartDnsLookup($deadline)) {
+                $dnsStatus = 'unknown';
+                $dnsStatusDetail = __('DNS check skipped because the monitoring batch has insufficient remaining time.', 'rrze-multisite-manager');
+            } else {
+                $dnsData = $this->resolveDnsStatus($host);
+                $dnsStatus = (string)($dnsData['status'] ?? 'unknown');
+                $dnsStatusDetail = (string)($dnsData['detail'] ?? '');
+            }
 
             if ($dnsStatus === 'ok') {
                 update_site_meta($siteId, self::META_LAST_DNS_OK_AT, $timestamp);
@@ -1160,6 +1166,18 @@ class MonitoringService {
             'status' => 'unknown',
             'detail' => __('DNS checks are not available on this server.', 'rrze-multisite-manager'),
         ];
+    }
+
+    /**
+     * Native PHP DNS lookups have no per-call timeout. Do not start another
+     * one once a monitoring batch is close to its request deadline.
+     */
+    protected function canStartDnsLookup(?float $deadline): bool {
+        if ($deadline === null) {
+            return true;
+        }
+
+        return microtime(true) + self::DNS_LOOKUP_MINIMUM_REMAINING_SECONDS < $deadline;
     }
 
     protected function resolveHttpStatus(string $siteUrl, ?float $deadline = null): array {

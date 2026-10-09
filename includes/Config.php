@@ -34,6 +34,7 @@ class Config {
                 'availability_monitoring_request_budget_seconds' => 45,
                 'availability_monitoring_http_timeout_seconds' => 4,
                 'availability_monitoring_http_fallback_timeout_seconds' => 2,
+                'network_cron_cleanup_batch_size' => 100,
                 'shortcode_block_result_entry_limit' => 1000,
                 'storage_analysis_content_usage_matches_limit' => 10,
                 'monitoring_hook' => 'rrze_msm_check_site_availability',
@@ -181,6 +182,15 @@ class Config {
                         'default' => 5,
                         'min' => 1,
                         'max' => 3600,
+                    ],
+                    [
+                        'name' => 'storage_analysis_max_concurrent_runs',
+                        'label' => __('Maximum concurrent storage analyses', 'rrze-multisite-manager'),
+                        'desc' => __('Limits simultaneously running storage analyses across the network. Additional scheduled analyses are retried shortly.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 10,
+                        'min' => 1,
+                        'max' => 100,
                     ],
                     [
                         'name' => 'shortcode_block_analysis_frequency',
@@ -353,6 +363,13 @@ class Config {
         return max(1, min(3600, $threshold));
     }
 
+    public function getStorageAnalysisMaxConcurrentRuns(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_max_concurrent_runs'] ?? 10) : 10;
+
+        return max(1, min(100, $limit));
+    }
+
     public function getMonitoringBatchSize(): int {
         $options = get_site_option($this->getOptionName(), []);
         $size = is_array($options) ? (int)($options['monitoring_batch_size'] ?? 25) : 25;
@@ -374,6 +391,10 @@ class Config {
 
     public function getAvailabilityMonitoringHttpFallbackTimeoutSeconds(): int {
         return max(1, min(30, (int)($this->config['constants']['availability_monitoring_http_fallback_timeout_seconds'] ?? 2)));
+    }
+
+    public function getNetworkCronCleanupBatchSize(): int {
+        return max(25, min(250, (int)($this->config['constants']['network_cron_cleanup_batch_size'] ?? 100)));
     }
 
     public function getShortcodeBlockResultEntryLimit(): int {

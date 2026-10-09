@@ -206,12 +206,40 @@ defined('ABSPATH') || exit;
                         <tbody>
                             <?php foreach ((array)($storage_analysis['summary_rows'] ?? []) as $summary_row) { ?>
                                 <?php $summary_label = (string)($summary_row['label'] ?? ''); ?>
-                                <?php if ($summary_label === 'Potentially orphaned files' || $summary_label === __('Potentially orphaned files', 'rrze-multisite-manager')) { ?>
+                                <?php if (in_array($summary_label, ['Potentially orphaned files', __('Potentially orphaned files', 'rrze-multisite-manager'), 'Difference', __('Difference', 'rrze-multisite-manager')], true)) { ?>
                                     <?php continue; ?>
                                 <?php } ?>
+                                <?php
+                                $summary_value = (string)($summary_row['value'] ?? '');
+                                $is_empty_media_type = !empty($summary_row['is_empty']);
+                                $media_type_keys = [
+                                    'Audio files' => 'audio',
+                                    'Video files' => 'video',
+                                    'Documents' => 'documents',
+                                    'Spreadsheets' => 'spreadsheets',
+                                    __('Audio files', 'rrze-multisite-manager') => 'audio',
+                                    __('Video files', 'rrze-multisite-manager') => 'video',
+                                    __('Documents', 'rrze-multisite-manager') => 'documents',
+                                    __('Spreadsheets', 'rrze-multisite-manager') => 'spreadsheets',
+                                ];
+                                $media_type_key = $media_type_keys[$summary_label] ?? '';
+
+                                if ($media_type_key !== '') {
+                                    $is_empty_media_type = (int)($storage_analysis['attachment_stats']['media_types'][$media_type_key]['count'] ?? 0) === 0;
+                                }
+
+                                if ($summary_label === 'Found in the uploads directory' || $summary_label === __('Found in the uploads directory', 'rrze-multisite-manager')) {
+                                    $summary_value = sprintf(
+                                        /* translators: %1$s: scanned upload size, %2$s: difference from WordPress storage. */
+                                        __('%1$s (%2$s difference)', 'rrze-multisite-manager'),
+                                        (string)($storage_analysis['actual_label'] ?? $summary_value),
+                                        (string)($storage_analysis['difference_label'] ?? '')
+                                    );
+                                }
+                                ?>
                                 <tr>
                                     <th><?php echo esc_html($summary_label); ?></th>
-                                    <td><?php echo esc_html((string)($summary_row['value'] ?? '')); ?></td>
+                                    <td><?php echo $is_empty_media_type ? '<em>' . esc_html__('Not present', 'rrze-multisite-manager') . '</em>' : esc_html($summary_value); ?></td>
                                 </tr>
                             <?php } ?>
                             <?php if (is_super_admin()) { ?>

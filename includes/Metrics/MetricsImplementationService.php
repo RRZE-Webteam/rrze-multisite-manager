@@ -31,7 +31,7 @@ class MetricsImplementationService {
     protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
     protected const DASHBOARD_REFRESH_SCHEDULE = 'rrze_msm_dashboard_metrics_cycle';
     protected const DASHBOARD_SCHEDULING_ENABLED_OPTION = 'rrze_msm_dashboard_metrics_scheduling_enabled';
-    protected const DASHBOARD_CACHE_VERSION = 3;
+    protected const DASHBOARD_CACHE_VERSION = 5;
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
     protected const SITE_DETAIL_CACHE_VERSION_META = 'rrze_msm_site_detail_cache_version';
     protected const RRZE_SETTINGS_OPTION = 'rrze_settings';
@@ -173,9 +173,9 @@ class MetricsImplementationService {
      */
     public function ensureDashboardRefreshContinuation(): void {
         if (!$this->isCentralNetworkCronSite()) {
-            // Dashboard metrics are a network-wide process. Remove stale events
-            // from subsite cron tables as soon as that site is loaded.
-            $this->clearScheduledDashboardRefreshEvents();
+            // Dashboard metrics are a network-wide process. Local legacy
+            // events are ignored here and can be removed explicitly from the
+            // network maintenance screen without taxing every subsite request.
             return;
         }
 
@@ -601,7 +601,14 @@ class MetricsImplementationService {
         $cached = $this->getStoredDashboardCache();
 
         if ($this->hasCompleteDashboardCache($cached)) {
-            if ($this->shouldRefreshDashboardCache($cached)) {
+            if (!$this->isUsableDashboardCache($cached)) {
+                // Keep the previous result visible while a version-related
+                // recalculation runs in bounded Cron batches. This must only
+                // be started from the central network site.
+                if ($this->isCentralNetworkCronSite() && $this->isDashboardSchedulingEnabled()) {
+                    $this->startDashboardRefreshRun(false);
+                }
+            } elseif ($this->shouldRefreshDashboardCache($cached)) {
                 $this->scheduleDashboardRefresh();
             }
 
@@ -3215,8 +3222,9 @@ class MetricsImplementationService {
     }
 
     protected function isBlockEditorEnabledNetworkWide(): bool {
-        $networkSettings = (array)get_site_option(self::RRZE_SETTINGS_OPTION, []);
-        $writingSettings = is_array($networkSettings['writing'] ?? null) ? $networkSettings['writing'] : [];
+        $writingSettings = $this->getRrzeSettingsWritingOptions(
+            get_site_option(self::RRZE_SETTINGS_OPTION, [])
+        );
 
         return !empty($writingSettings['enable_block_editor']);
     }
@@ -3226,11 +3234,34 @@ class MetricsImplementationService {
             return true;
         }
 
-        $siteSettings = (array)get_blog_option($siteId, self::RRZE_SETTINGS_OPTION, []);
-        $writingSettings = is_array($siteSettings['writing'] ?? null) ? $siteSettings['writing'] : [];
+        $writingSettings = $this->getRrzeSettingsWritingOptions(
+            get_blog_option($siteId, self::RRZE_SETTINGS_OPTION, [])
+        );
 
-        return !empty($writingSettings['try_enable_block_editor'])
-            && empty($writingSettings['enable_classic_editor']);
+        // Only with Classic Editor as the network default do sites have their
+        // own editor choice. This flag is that choice; try_enable_block_editor
+        // merely controls whether administrators may change it.
+        return empty($writingSettings['enable_classic_editor']);
+    }
+
+    /**
+     * RRZE Settings persists its settings as objects. Older installations can
+     * still contain arrays, so accept both persisted representations.
+     *
+     * @param mixed $settings RRZE Settings option value.
+     * @return array<string, mixed>
+     */
+    protected function getRrzeSettingsWritingOptions(mixed $settings): array {
+        if (!is_array($settings) && !is_object($settings)) {
+            return [];
+        }
+
+        $settings = (array)$settings;
+        $writingSettings = $settings['writing'] ?? [];
+
+        return is_array($writingSettings) || is_object($writingSettings)
+            ? (array)$writingSettings
+            : [];
     }
 
     protected function countSites(array $args = []): int {
@@ -4648,11 +4679,12 @@ class MetricsImplementationService {
             ],
             [
                 'label' => __('Found in the uploads directory', 'rrze-multisite-manager'),
-                'value' => $this->formatStorageAnalysisSize($actualBytes),
-            ],
-            [
-                'label' => __('Difference', 'rrze-multisite-manager'),
-                'value' => ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes)),
+                'value' => sprintf(
+                    /* translators: %1$s: scanned upload size, %2$s: difference from WordPress storage. */
+                    __('%1$s (%2$s difference)', 'rrze-multisite-manager'),
+                    $this->formatStorageAnalysisSize($actualBytes),
+                    ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes))
+                ),
             ],
             [
                 'label' => __('Files', 'rrze-multisite-manager'),
@@ -4976,6 +5008,10 @@ class MetricsImplementationService {
 
         try {
             $iterator = new \FilesystemIterator($absoluteDirectory, \FilesystemIterator::SKIP_DOTS);
+
+            if ($offset > 0) {
+                $iterator->seek($offset);
+            }
         } catch (\UnexpectedValueException $exception) {
             return 1;
         }
@@ -4985,9 +5021,7 @@ class MetricsImplementationService {
                 continue;
             }
 
-            if ($entryIndex++ < $offset) {
-                continue;
-            }
+            $entryIndex++;
 
             if ($processedEntries >= self::STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE) {
                 $hasMoreEntries = true;
@@ -5676,11 +5710,12 @@ class MetricsImplementationService {
             ],
             [
                 'label' => __('Found in the uploads directory', 'rrze-multisite-manager'),
-                'value' => $this->formatStorageAnalysisSize($actualBytes),
-            ],
-            [
-                'label' => __('Difference', 'rrze-multisite-manager'),
-                'value' => ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes)),
+                'value' => sprintf(
+                    /* translators: %1$s: scanned upload size, %2$s: difference from WordPress storage. */
+                    __('%1$s (%2$s difference)', 'rrze-multisite-manager'),
+                    $this->formatStorageAnalysisSize($actualBytes),
+                    ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes))
+                ),
             ],
             [
                 'label' => __('Files', 'rrze-multisite-manager'),
@@ -5705,18 +5740,22 @@ class MetricsImplementationService {
             [
                 'label' => __('Audio files', 'rrze-multisite-manager'),
                 'value' => (string)$attachmentSummaryLabels['Audio files'],
+                'is_empty' => empty($attachmentStats['media_types']['audio']['count']),
             ],
             [
                 'label' => __('Video files', 'rrze-multisite-manager'),
                 'value' => (string)$attachmentSummaryLabels['Video files'],
+                'is_empty' => empty($attachmentStats['media_types']['video']['count']),
             ],
             [
                 'label' => __('Documents', 'rrze-multisite-manager'),
                 'value' => (string)$attachmentSummaryLabels['Documents'],
+                'is_empty' => empty($attachmentStats['media_types']['documents']['count']),
             ],
             [
                 'label' => __('Spreadsheets', 'rrze-multisite-manager'),
                 'value' => (string)$attachmentSummaryLabels['Spreadsheets'],
+                'is_empty' => empty($attachmentStats['media_types']['spreadsheets']['count']),
             ],
             [
                 'label' => __('Folders', 'rrze-multisite-manager'),

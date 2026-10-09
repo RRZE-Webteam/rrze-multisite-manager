@@ -2663,6 +2663,105 @@ function initScheduleInitializationDialogs() {
     }
 }
 
+function initAnalysisTaskRemovalDialogs() {
+    var dialogs = document.querySelectorAll('.rrze-msm-analysis-task-removal-dialog');
+
+    Array.prototype.forEach.call(document.querySelectorAll('.rrze-msm-open-analysis-task-removal-dialog'), function (button) {
+        button.addEventListener('click', function () {
+            var dialog = document.getElementById(button.getAttribute('data-dialog-id') || '');
+            if (dialog && typeof dialog.showModal === 'function') {
+                dialog.showModal();
+            }
+        });
+    });
+
+    Array.prototype.forEach.call(dialogs, function (dialog) {
+        var confirm = dialog.querySelector('[data-analysis-task-removal-confirm]');
+        var start = dialog.querySelector('[data-analysis-task-removal-start]');
+        var close = dialog.querySelector('[data-analysis-task-removal-close]');
+        var reload = dialog.querySelector('[data-analysis-task-removal-reload]');
+        var status = dialog.querySelector('[data-analysis-task-removal-status]');
+        var progress = dialog.querySelector('[data-analysis-task-removal-progress]');
+        var update = function (data) {
+            dialog.querySelector('[data-analysis-task-removal-processed]').textContent = String(data.processed || 0);
+            dialog.querySelector('[data-analysis-task-removal-total]').textContent = String(data.total || 0);
+            dialog.querySelector('[data-analysis-task-removal-removed]').textContent = String(data.removed || 0);
+            progress.removeAttribute('hidden');
+            status.textContent = data.complete
+                ? String(dialog.getAttribute('data-completed-text') || '')
+                : String(dialog.getAttribute('data-running-text') || '');
+        };
+        var run = function (runId) {
+            requestScheduleInitialization(dialog, 'rrze_msm_run_analysis_task_removal_batch', {run_id: runId}).then(function (data) {
+                update(data);
+                if (data.complete) {
+                    if (reload) { reload.removeAttribute('hidden'); }
+                    if (close) { close.disabled = false; }
+                    return;
+                }
+                window.setTimeout(function () { run(runId); }, 50);
+            }).catch(function () {
+                status.textContent = String(dialog.getAttribute('data-failed-text') || '');
+                if (close) { close.disabled = false; }
+            });
+        };
+        if (confirm && start) {
+            confirm.addEventListener('change', function () { start.disabled = !confirm.checked; });
+            start.addEventListener('click', function () {
+                start.disabled = true;
+                if (close) { close.disabled = true; }
+                requestScheduleInitialization(dialog, 'rrze_msm_start_analysis_task_removal').then(function (data) {
+                    update(data);
+                    run(String(data.run_id || ''));
+                }).catch(function () {
+                    status.textContent = String(dialog.getAttribute('data-failed-text') || '');
+                    if (close) { close.disabled = false; }
+                });
+            });
+        }
+        if (reload) { reload.addEventListener('click', function () { window.location.reload(); }); }
+    });
+}
+
+function initLegacyCentralCronCleanupDialogs() {
+    Array.prototype.forEach.call(document.querySelectorAll('.rrze-msm-open-legacy-cron-cleanup-dialog'), function (button) {
+        button.addEventListener('click', function () {
+            var dialog = document.getElementById(button.getAttribute('data-dialog-id') || '');
+            if (dialog && typeof dialog.showModal === 'function') { dialog.showModal(); }
+        });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.rrze-msm-legacy-cron-cleanup-dialog'), function (dialog) {
+        var confirm = dialog.querySelector('[data-legacy-cron-cleanup-confirm]');
+        var start = dialog.querySelector('[data-legacy-cron-cleanup-start]');
+        var status = dialog.querySelector('[data-legacy-cron-cleanup-status]');
+        var progress = dialog.querySelector('[data-legacy-cron-cleanup-progress]');
+        var confirmation = dialog.querySelector('[data-legacy-cron-cleanup-confirmation]');
+        var cancel = dialog.querySelector('[data-legacy-cron-cleanup-cancel]');
+        var close = dialog.querySelector('[data-legacy-cron-cleanup-close]');
+        var run = function (runId) {
+            requestScheduleInitialization(dialog, 'rrze_msm_run_legacy_central_cron_cleanup_batch', {run_id: runId}).then(function (data) {
+                dialog.querySelector('[data-legacy-cron-cleanup-processed]').textContent = String(data.processed || 0);
+                dialog.querySelector('[data-legacy-cron-cleanup-total]').textContent = String(data.total || 0);
+                progress.removeAttribute('hidden');
+                if (data.complete) {
+                    status.textContent = String(dialog.getAttribute('data-completed-text') || '');
+                    if (confirmation) { confirmation.setAttribute('hidden', 'hidden'); }
+                    if (cancel) { cancel.setAttribute('hidden', 'hidden'); }
+                    if (start) { start.setAttribute('hidden', 'hidden'); }
+                    if (close) { close.removeAttribute('hidden'); }
+                    return;
+                }
+                window.setTimeout(function () { run(runId); }, 50);
+            }).catch(function () { status.textContent = String(dialog.getAttribute('data-failed-text') || ''); });
+        };
+        confirm.addEventListener('change', function () { start.disabled = !confirm.checked; });
+        start.addEventListener('click', function () {
+            start.disabled = true;
+            requestScheduleInitialization(dialog, 'rrze_msm_start_legacy_central_cron_cleanup').then(function (data) { run(String(data.run_id || '')); });
+        });
+    });
+}
+
 function initRrzeMultisiteManager() {
     var config = getAdminConfig();
     var savedMode = '';
@@ -2697,6 +2796,8 @@ function initRrzeMultisiteManager() {
     initStorageAnalysisRunner();
     initFullDataCleanupRunner();
     initScheduleInitializationDialogs();
+    initAnalysisTaskRemovalDialogs();
+    initLegacyCentralCronCleanupDialogs();
 }
 
 document.addEventListener('DOMContentLoaded', initRrzeMultisiteManager);
