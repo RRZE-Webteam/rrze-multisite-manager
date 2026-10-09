@@ -1,18 +1,18 @@
-# Theme-Uebersicht
+# Theme-Übersicht
 
 ## Zweck
 
-Die Theme-Uebersicht zeigt die im Netzwerk verfuegbaren Themes und ihre Verwendung auf Websites.
+Die Theme-Übersicht zeigt die im Netzwerk verfügbaren Themes und ihre Verwendung auf Websites.
 
 ## Inhalte
 
-Die Seite fasst Theme-Metadaten, Screenshots, Versionen und die Anzahl verwendender Websites zusammen. Links fuehren zu Theme-Details und zu den passenden Website-Details. Nicht verwendete Themes sind dadurch schnell erkennbar.
+Die Seite fasst Theme-Metadaten, Screenshots, Versionen und die Anzahl verwendender Websites zusammen. Links führen zu Theme-Details und zu den passenden Website-Details. Nicht verwendete Themes sind dadurch schnell erkennbar.
 
-Die Daten stammen aus den Dashboard-Metriken und werden im Hintergrund aktualisiert. Der Aufruf der Uebersicht startet keinen synchronen Theme-Scan fuer alle Websites.
+Die Daten stammen aus den Dashboard-Metriken und werden im Hintergrund aktualisiert. Der Aufruf der Übersicht startet keinen synchronen Theme-Scan für alle Websites.
 
 ## Verwaltung
 
-Netzwerkweite Theme-Verwaltung erfolgt weiterhin ueber die WordPress-Netzwerkadministration. Der Multisite Manager verlinkt auf die passenden WordPress-Funktionen und macht die Auswirkungen im Netzwerk sichtbar.
+Netzwerkweite Theme-Verwaltung erfolgt weiterhin über die WordPress-Netzwerkadministration. Der Multisite Manager verlinkt auf die passenden WordPress-Funktionen und macht die Auswirkungen im Netzwerk sichtbar.
 
 ## Implementierung
 

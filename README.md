@@ -2,7 +2,7 @@
 
 # RRZE Multisite Manager
 
-Verwaltungs- und Analysewerkzeug fuer WordPress-Multisite-Netzwerke. Das Plugin stellt zentrale Uebersichten, technische Monitoring-Daten, zeitgesteuerte Analysen sowie Verwaltungsfunktionen fuer Websites, Plugins und Themes bereit.
+Verwaltungs- und Analysewerkzeug für WordPress-Multisite-Netzwerke. Das Plugin stellt zentrale Übersichten, technische Monitoring-Daten, zeitgesteuerte Analysen sowie Verwaltungsfunktionen für Websites, Plugins und Themes bereit.
 
 ## Contributors
 
@@ -14,7 +14,7 @@ GNU General Public License (GPL) Version 3
 
 ## Dokumentation
 
-Die oeffentliche Dokumentation und Endanwender-Hinweise liegen unter:
+Die öffentliche Dokumentation und Endanwender-Hinweise liegen unter:
 
 * https://www.wp.rrze.fau.de
 
@@ -28,7 +28,7 @@ Die oeffentliche Dokumentation und Endanwender-Hinweise liegen unter:
 * WordPress ab 6.9.4
 * PHP ab 8.3
 * WordPress Multisite
-* Node.js/npm nur fuer lokale Entwicklungs- und Build-Schritte
+* Node.js/npm nur für lokale Entwicklungs- und Build-Schritte
 
 ## Installation
 
@@ -38,4 +38,4 @@ Die oeffentliche Dokumentation und Endanwender-Hinweise liegen unter:
 
 ## Entwicklerdokumentation
 
-Die technische Dokumentation zu Menue-Seiten, Klassen, Caches, Cron-Hooks, Optionen, Transients, Cookies und AJAX-Aktionen liegt in [doc/README.md](doc/README.md). Allgemeine Entwicklungs-, Build-, Test- und Uebersetzungshinweise stehen in [doc/development.md](doc/development.md). Die zentrale Referenz fuer Laufzeitdaten und Scheduler ist [doc/runtime-state.md](doc/runtime-state.md).
+Die technische Dokumentation zu Menü-Seiten, Klassen, Caches, Cron-Hooks, Optionen, Transients, Cookies und AJAX-Aktionen liegt in [doc/README.md](doc/README.md). Allgemeine Entwicklungs-, Build-, Test- und Übersetzungshinweise stehen in [doc/development.md](doc/development.md). Die zentrale Referenz für Laufzeitdaten und Scheduler ist [doc/runtime-state.md](doc/runtime-state.md).
