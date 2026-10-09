@@ -3110,8 +3110,8 @@ class Dashboard {
             $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($pluginCheckUrl) . '" title="' . esc_attr__('Check plugin', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Check plugin', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Check plugin', 'rrze-multisite-manager') . '</span></a>';
         }
 
-        if (!empty($pluginDetails['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['update_url']))) {
-            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url((string)$pluginDetails['update_url']) . '" title="' . esc_attr__('Update', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Update', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Update', 'rrze-multisite-manager') . '</span></a>';
+        if ($canUseNetworkAdminFeatures && !empty($pluginDetails['update_available']) && !empty($pluginDetails['file'])) {
+            $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($this->getNetworkPluginUpdateUrl((string)$pluginDetails['file'])) . '" title="' . esc_attr__('Update', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Update', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Update', 'rrze-multisite-manager') . '</span></a>';
         }
 
         if ($canUseNetworkAdminFeatures && !empty($pluginDetails['delete_url'])) {
@@ -3126,6 +3126,8 @@ class Dashboard {
     protected function renderPluginStatusUpdateHtml(array $pluginDetails): string {
         $html = '';
         $canUseNetworkAdminFeatures = $this->currentUserCanUseNetworkAdminFeatures();
+        $pluginFile = (string)($pluginDetails['file'] ?? '');
+        $hasUpdateAction = $canUseNetworkAdminFeatures && $pluginFile !== '';
 
         if (empty($pluginDetails['update_available']) || empty($pluginDetails['update_version'])) {
             return '';
@@ -3134,7 +3136,7 @@ class Dashboard {
         $html .= '<p class="rrze-msm-plugin-status-update">';
         $html .= '<strong>' . esc_html(sprintf(__('New version %s available.', 'rrze-multisite-manager'), (string)$pluginDetails['update_version'])) . '</strong>';
 
-        if (!empty($pluginDetails['update_details_url']) || !empty($pluginDetails['update_url'])) {
+        if (!empty($pluginDetails['update_details_url']) || $hasUpdateAction) {
             $html .= ' ';
         }
 
@@ -3142,12 +3144,12 @@ class Dashboard {
             $html .= '<a href="' . esc_url((string)$pluginDetails['update_details_url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Details', 'rrze-multisite-manager') . '</a>';
         }
 
-        if (!empty($pluginDetails['update_details_url']) && !empty($pluginDetails['update_url'])) {
+        if (!empty($pluginDetails['update_details_url']) && $hasUpdateAction) {
             $html .= ' | ';
         }
 
-        if (!empty($pluginDetails['update_url']) && ($canUseNetworkAdminFeatures || !$this->isNetworkAdminUrl((string)$pluginDetails['update_url']))) {
-            $html .= '<a href="' . esc_url((string)$pluginDetails['update_url']) . '">' . esc_html__('Update', 'rrze-multisite-manager') . '</a>';
+        if ($hasUpdateAction) {
+            $html .= '<a href="' . esc_url($this->getNetworkPluginUpdateUrl($pluginFile)) . '">' . esc_html__('Update', 'rrze-multisite-manager') . '</a>';
         }
 
         $html .= '</p>';
@@ -3250,6 +3252,19 @@ class Dashboard {
                 'plugin' => $pluginFile,
             ],
             get_admin_url($siteId, 'tools.php')
+        );
+    }
+
+    protected function getNetworkPluginUpdateUrl(string $pluginFile): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'upgrade-plugin',
+                    'plugin' => $pluginFile,
+                ],
+                network_admin_url('update.php')
+            ),
+            'upgrade-plugin_' . $pluginFile
         );
     }
 

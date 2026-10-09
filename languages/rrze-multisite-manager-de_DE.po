@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-10-08T10:10:45+00:00\n"
+"POT-Creation-Date: 2026-10-09T10:28:14+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -401,13 +401,13 @@ msgid "First page"
 msgstr "Erste Seite"
 
 #: includes/Dashboard.php:385 includes/Settings.php:1594
-#: includes/Widgets/PluginUsageWidget.php:530 includes/Widgets/Widgets.php:698
+#: includes/Widgets/PluginUsageWidget.php:543 includes/Widgets/Widgets.php:698
 #: includes/Widgets/Widgets.php:1441
 msgid "Previous page"
 msgstr "Vorherige Seite"
 
 #: includes/Dashboard.php:386 includes/Settings.php:1604
-#: includes/Widgets/PluginUsageWidget.php:539 includes/Widgets/Widgets.php:708
+#: includes/Widgets/PluginUsageWidget.php:552 includes/Widgets/Widgets.php:708
 #: includes/Widgets/Widgets.php:1443
 msgid "Next page"
 msgstr "Nächste Seite"
@@ -547,20 +547,20 @@ msgstr "Gesperrte Websites"
 msgid "Sites to be deleted"
 msgstr "Zu löschende Sites"
 
-#: includes/Dashboard.php:628 includes/Dashboard.php:3310
+#: includes/Dashboard.php:628 includes/Dashboard.php:3325
 #: includes/Metrics/MetricsServiceSiteTrait.php:237
 #: includes/Presentation/StatusFormatter.php:13
 msgid "Provisioning in progress"
 msgstr "Einrichtung läuft"
 
-#: includes/Dashboard.php:641 includes/Dashboard.php:3312
+#: includes/Dashboard.php:641 includes/Dashboard.php:3327
 #: includes/Metrics/MetricsServiceSiteTrait.php:242
 #: includes/Presentation/StatusFormatter.php:15 includes/Settings.php:2302
 #: includes/Settings.php:3085
 msgid "DNS missing"
 msgstr "DNS fehlt"
 
-#: includes/Dashboard.php:654 includes/Dashboard.php:3313
+#: includes/Dashboard.php:654 includes/Dashboard.php:3328
 #: includes/Metrics/MetricsServiceSiteTrait.php:247
 #: includes/Presentation/StatusFormatter.php:16
 msgid "Technically unreachable"
@@ -651,7 +651,7 @@ msgstr "Betriebsstatus"
 
 #: includes/Dashboard.php:985 includes/Dashboard.php:997
 #: includes/Dashboard.php:1005 includes/Dashboard.php:1009
-#: includes/Dashboard.php:3288
+#: includes/Dashboard.php:3303
 #: includes/Metrics/MetricsServiceEnvironmentTrait.php:102
 #: includes/Presentation/StatusFormatter.php:45
 #: includes/Widgets/Widgets.php:406 includes/Widgets/Widgets.php:407
@@ -954,9 +954,9 @@ msgstr "Deaktivieren"
 msgid "Check plugin"
 msgstr "Plugin prüfen"
 
-#: includes/Dashboard.php:3114 includes/Dashboard.php:3150
+#: includes/Dashboard.php:3114 includes/Dashboard.php:3152
 #: includes/Widgets/PluginUsageWidget.php:65
-#: includes/Widgets/PluginUsageWidget.php:156
+#: includes/Widgets/PluginUsageWidget.php:157
 msgid "Update"
 msgstr "Aktualisieren"
 
@@ -966,40 +966,40 @@ msgid "Delete"
 msgstr "Löschen"
 
 #. translators: %s: available plugin version number.
-#: includes/Dashboard.php:3135 includes/Widgets/PluginUsageWidget.php:145
+#: includes/Dashboard.php:3137 includes/Widgets/PluginUsageWidget.php:146
 msgid "New version %s available."
 msgstr "Neue Version %s verfügbar."
 
-#: includes/Dashboard.php:3142 includes/Settings.php:2004
-#: includes/Settings.php:2304 includes/Widgets/PluginUsageWidget.php:152
+#: includes/Dashboard.php:3144 includes/Settings.php:2004
+#: includes/Settings.php:2304 includes/Widgets/PluginUsageWidget.php:153
 #: includes/Widgets/PluginUsageWidget.php:167
-#: includes/Widgets/PluginUsageWidget.php:424 includes/Widgets/Widgets.php:1045
+#: includes/Widgets/PluginUsageWidget.php:437 includes/Widgets/Widgets.php:1045
 #: templates/site-details-page.php:364 templates/site-details-page.php:365
 msgid "Details"
 msgstr "Details"
 
-#: includes/Dashboard.php:3168
+#: includes/Dashboard.php:3170
 msgid "Open network theme management"
 msgstr "Theme-Verwaltung im Netzwerk öffnen"
 
-#: includes/Dashboard.php:3176
+#: includes/Dashboard.php:3178
 msgid "Disable network-wide"
 msgstr "Netzwerkfreigabe entziehen"
 
-#: includes/Dashboard.php:3178
+#: includes/Dashboard.php:3180
 msgid "Enable network-wide"
 msgstr "Netzwerkweit freigeben"
 
-#: includes/Dashboard.php:3182
+#: includes/Dashboard.php:3184
 msgid "Delete theme"
 msgstr "Theme löschen"
 
 #. translators: %d: user ID.
-#: includes/Dashboard.php:3280 includes/Widgets/Widgets.php:1160
+#: includes/Dashboard.php:3295 includes/Widgets/Widgets.php:1160
 msgid "User-ID %d"
 msgstr "Benutzer-ID %d"
 
-#: includes/Dashboard.php:3283
+#: includes/Dashboard.php:3298
 #: includes/Metrics/MediaMetadataAnalysisService.php:242
 #: includes/Metrics/MetricsImplementationService.php:3343
 #: includes/Metrics/MetricsImplementationService.php:3491
@@ -1019,11 +1019,11 @@ msgstr "Benutzer-ID %d"
 msgid "Unknown"
 msgstr "Unbekannt"
 
-#: includes/Dashboard.php:3298
+#: includes/Dashboard.php:3313
 msgid "Stand:"
 msgstr "Stand:"
 
-#: includes/Dashboard.php:3303
+#: includes/Dashboard.php:3318
 msgid ""
 "Dashboard metrics are not available yet. Start the “Dashboard metrics” job "
 "under Monitoring first."
@@ -1031,16 +1031,16 @@ msgstr ""
 "Es liegen noch keine Dashboard-Metriken vor. Starte zuerst unter Monitoring "
 "den Job „Dashboard-Metriken“."
 
-#: includes/Dashboard.php:3309 includes/Metrics/MetricsServiceSiteTrait.php:227
+#: includes/Dashboard.php:3324 includes/Metrics/MetricsServiceSiteTrait.php:227
 msgid "Not set / automatic"
 msgstr "Nicht gesetzt / automatisch"
 
-#: includes/Dashboard.php:3311 includes/Metrics/MetricsServiceSiteTrait.php:232
+#: includes/Dashboard.php:3326 includes/Metrics/MetricsServiceSiteTrait.php:232
 #: includes/Presentation/StatusFormatter.php:14 includes/Settings.php:3077
 msgid "Technically reachable"
 msgstr "Technisch erreichbar"
 
-#: includes/Dashboard.php:3314 includes/Metrics/MetricsServiceSiteTrait.php:252
+#: includes/Dashboard.php:3329 includes/Metrics/MetricsServiceSiteTrait.php:252
 #: includes/Presentation/StatusFormatter.php:17
 msgid "Out of service"
 msgstr "Außer Betrieb"
@@ -2448,7 +2448,7 @@ msgid "Apply"
 msgstr "Übernehmen"
 
 #: includes/Settings.php:1587 includes/Widgets/PluginUsageWidget.php:201
-#: includes/Widgets/PluginUsageWidget.php:322 includes/Widgets/Widgets.php:691
+#: includes/Widgets/PluginUsageWidget.php:335 includes/Widgets/Widgets.php:691
 #: templates/plugin-details-page.php:308
 #: templates/site-storage-analysis-page.php:355
 #: templates/site-storage-analysis-page.php:436
@@ -3322,7 +3322,7 @@ msgstr "Plugins"
 msgid "Themes"
 msgstr "Themes"
 
-#: includes/ViewManager.php:151 includes/Widgets/PluginUsageWidget.php:307
+#: includes/ViewManager.php:151 includes/Widgets/PluginUsageWidget.php:320
 msgid "Websites"
 msgstr "Websites"
 
@@ -3513,24 +3513,24 @@ msgstr "Keine Einträge vorhanden."
 #: includes/Widgets/PluginUsageWidget.php:63
 #: includes/Widgets/PluginUsageWidget.php:176
 msgid "Activate network-wide"
-msgstr ""
+msgstr "Netzwerkweit aktivieren"
 
 #: includes/Widgets/PluginUsageWidget.php:67
 #: includes/Widgets/PluginUsageWidget.php:181
 msgid "Enable auto-updates"
-msgstr ""
+msgstr "Automatische Aktualisierungen aktivieren"
 
 #: includes/Widgets/PluginUsageWidget.php:68
 #: includes/Widgets/PluginUsageWidget.php:181
 msgid "Disable auto-updates"
-msgstr ""
+msgstr "Automatische Aktualisierungen deaktivieren"
 
 #: includes/Widgets/PluginUsageWidget.php:74
 msgid "Open network plugin management"
 msgstr "Plugin-Verwaltung im Netzwerk öffnen"
 
 #: includes/Widgets/PluginUsageWidget.php:77
-#: includes/Widgets/PluginUsageWidget.php:277
+#: includes/Widgets/PluginUsageWidget.php:290
 msgid "Filter plugins:"
 msgstr "Plugin filtern:"
 
@@ -3543,7 +3543,7 @@ msgid "Filter plugins by name"
 msgstr "Plugins nach Namen filtern"
 
 #: includes/Widgets/PluginUsageWidget.php:79
-#: includes/Widgets/PluginUsageWidget.php:279
+#: includes/Widgets/PluginUsageWidget.php:292
 #: templates/plugin-details-page.php:250
 #: templates/site-storage-analysis-page.php:379
 #: templates/site-storage-analysis-page.php:556
@@ -3556,7 +3556,7 @@ msgstr "Anzeigen:"
 
 #. translators: %d: number of rows shown by default.
 #: includes/Widgets/PluginUsageWidget.php:89
-#: includes/Widgets/PluginUsageWidget.php:289 includes/Widgets/Widgets.php:644
+#: includes/Widgets/PluginUsageWidget.php:302 includes/Widgets/Widgets.php:644
 msgid "Default (%d)"
 msgstr "Standard (%d)"
 
@@ -3577,7 +3577,7 @@ msgid "Info"
 msgstr "Info"
 
 #: includes/Widgets/PluginUsageWidget.php:119
-#: includes/Widgets/PluginUsageWidget.php:306
+#: includes/Widgets/PluginUsageWidget.php:319
 msgid "Active sites"
 msgstr "Aktive Sites"
 
@@ -3587,65 +3587,65 @@ msgstr ""
 
 #: includes/Widgets/PluginUsageWidget.php:186
 msgid "Start PCP test"
-msgstr ""
+msgstr "PCP-Test starten"
 
 #: includes/Widgets/PluginUsageWidget.php:195
 msgid "Enabled"
 msgstr ""
 
-#: includes/Widgets/PluginUsageWidget.php:268
+#: includes/Widgets/PluginUsageWidget.php:281
 msgid "No orphaned plugin entries available."
 msgstr "Keine verwaisten Plugin-Einträge vorhanden."
 
-#: includes/Widgets/PluginUsageWidget.php:278
+#: includes/Widgets/PluginUsageWidget.php:291
 msgid "Search by plugin path"
 msgstr "Nach Pluginpfad suchen"
 
-#: includes/Widgets/PluginUsageWidget.php:278
+#: includes/Widgets/PluginUsageWidget.php:291
 msgid "Filter orphaned plugins by path"
 msgstr "Verwaiste Plugins nach Pfad filtern"
 
-#: includes/Widgets/PluginUsageWidget.php:305
+#: includes/Widgets/PluginUsageWidget.php:318
 #: templates/plugin-details-page.php:145
 msgid "Plugin file"
 msgstr "Plugindatei"
 
-#: includes/Widgets/PluginUsageWidget.php:426
+#: includes/Widgets/PluginUsageWidget.php:439
 msgid "Plugin page"
 msgstr "Plugin-Seite"
 
 #. translators: %s: plugin text domain.
-#: includes/Widgets/PluginUsageWidget.php:433
+#: includes/Widgets/PluginUsageWidget.php:446
 msgid "Text domain: %s"
 msgstr "Textdomain: %s"
 
 #. translators: %s: minimum supported WordPress version.
-#: includes/Widgets/PluginUsageWidget.php:443
+#: includes/Widgets/PluginUsageWidget.php:456
 #: templates/plugin-details-page.php:173 templates/theme-details-page.php:150
 msgid "WP from: %s"
 msgstr "WP ab: %s"
 
 #. translators: %s: minimum supported PHP version.
-#: includes/Widgets/PluginUsageWidget.php:453
+#: includes/Widgets/PluginUsageWidget.php:466
 #: templates/plugin-details-page.php:183 templates/theme-details-page.php:156
 msgid "PHP from: %s"
 msgstr "PHP ab: %s"
 
-#: includes/Widgets/PluginUsageWidget.php:486 includes/Widgets/Widgets.php:1400
+#: includes/Widgets/PluginUsageWidget.php:499 includes/Widgets/Widgets.php:1400
 msgid "Show websites"
 msgstr "Websites anzeigen"
 
-#: includes/Widgets/PluginUsageWidget.php:488 includes/Widgets/Widgets.php:1402
+#: includes/Widgets/PluginUsageWidget.php:501 includes/Widgets/Widgets.php:1402
 msgid "Hide websites"
 msgstr "Websites verbergen"
 
 #. translators: 1: number of previewed websites, 2: total number of websites.
-#: includes/Widgets/PluginUsageWidget.php:495 includes/Widgets/Widgets.php:1408
+#: includes/Widgets/PluginUsageWidget.php:508 includes/Widgets/Widgets.php:1408
 msgid "A preview of the first %1$s of %2$s websites is shown."
 msgstr "Es wird eine Vorschau der ersten %1$s von %2$s Websites angezeigt."
 
 #. translators: 1: current page number, 2: total number of pages.
-#: includes/Widgets/PluginUsageWidget.php:534 includes/Widgets/Widgets.php:1442
+#: includes/Widgets/PluginUsageWidget.php:547 includes/Widgets/Widgets.php:1442
 msgid "Page %1$d of %2$d"
 msgstr "Seite %1$d von %2$d"
 
