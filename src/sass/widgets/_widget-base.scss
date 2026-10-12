@@ -385,17 +385,39 @@ td.rrze-msm-plugin-col-active-sites {
 	vertical-align: middle;
 }
 
+.rrze-msm-plugin-overview-table th.rrze-msm-plugin-col-name,
+.rrze-msm-plugin-overview-table th.rrze-msm-plugin-col-version,
+.rrze-msm-plugin-overview-table th.rrze-msm-plugin-col-info {
+    text-align: left;
+    vertical-align: middle;
+}
+
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-status-group {
+    text-align: center;
+    vertical-align: middle;
+}
+
 .rrze-msm-plugin-overview-table .rrze-msm-plugin-col-network-active,
-.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-auto-updates {
-	width: 110px;
-	text-align: center;
-	vertical-align: middle;
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-auto-updates,
+.rrze-msm-plugin-overview-table .rrze-msm-plugin-col-enabled {
+    width: 110px;
+    text-align: center;
+    vertical-align: middle;
 }
 
 .rrze-msm-plugin-overview-table td.rrze-msm-plugin-col-network-active .dashicons,
-.rrze-msm-plugin-overview-table td.rrze-msm-plugin-col-auto-updates .dashicons {
-	display: inline-block;
-	vertical-align: middle;
+.rrze-msm-plugin-overview-table td.rrze-msm-plugin-col-auto-updates .dashicons,
+.rrze-msm-plugin-overview-table td.rrze-msm-plugin-col-enabled .dashicons {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.rrze-msm-network-audit-enabled {
+    color: var(--rrze-msm-status-active-bg) !important;
+}
+
+.rrze-msm-network-audit-disabled {
+    color: var(--rrze-msm-status-delete-bg) !important;
 }
 
 .rrze-msm-plugin-overview-table .check-column {

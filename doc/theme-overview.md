@@ -1,19 +1,19 @@
-# Theme-Übersicht
+# Theme overview
 
-## Zweck
+## Purpose
 
-Die Theme-Übersicht zeigt die im Netzwerk verfügbaren Themes und ihre Verwendung auf Websites.
+The Theme overview lists themes available in the network and their usage on sites.
 
-## Inhalte
+## Contents
 
-Die Seite fasst Theme-Metadaten, Screenshots, Versionen und die Anzahl verwendender Websites zusammen. Links führen zu Theme-Details und zu den passenden Website-Details. Nicht verwendete Themes sind dadurch schnell erkennbar.
+The page combines theme metadata, screenshots, versions, and the number of sites using each theme. Links lead to theme details and the appropriate site details. This makes unused themes easy to identify.
 
-Die Daten stammen aus den Dashboard-Metriken und werden im Hintergrund aktualisiert. Der Aufruf der Übersicht startet keinen synchronen Theme-Scan für alle Websites.
+The data comes from dashboard metrics and is updated in the background. Loading the overview does not start a synchronous theme scan across all sites.
 
-## Verwaltung
+## Management
 
-Netzwerkweite Theme-Verwaltung erfolgt weiterhin über die WordPress-Netzwerkadministration. Der Multisite Manager verlinkt auf die passenden WordPress-Funktionen und macht die Auswirkungen im Netzwerk sichtbar.
+Network-wide theme management remains part of WordPress network administration. Multisite Manager links to the appropriate WordPress functions and makes their network impact visible.
 
-## Implementierung
+## Implementation
 
-`Dashboard::renderThemeOverviewPage()` verwendet die im Dashboard-Metrics-Batch erzeugte Theme-Aggregation. Pro Theme werden nur begrenzte Vorschauen der verwendenden Websites im Metrikdatensatz gehalten; umfangreiche Website-Listen entstehen erst in der Detailansicht.
+`Dashboard::renderThemeOverviewPage()` uses the theme aggregation produced in the dashboard metrics batch. The metric record retains only bounded previews of sites using each theme; extensive site lists are created only in the detail view.

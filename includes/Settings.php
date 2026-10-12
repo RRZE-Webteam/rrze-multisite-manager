@@ -2964,6 +2964,10 @@ class Settings {
         $lastRun = (string)($process['last_run'] ?? '');
         $thresholdSeconds = $this->getProcessWarningThresholdSeconds($process);
 
+        if (!empty($process['run_state']['has_composition_error'])) {
+            return __('Dashboard metrics could not be assembled. Reset and restart the process.', 'rrze-multisite-manager');
+        }
+
         if ($isRunning && $currentDurationSeconds > $thresholdSeconds) {
             return __('Run is taking unusually long', 'rrze-multisite-manager');
         }

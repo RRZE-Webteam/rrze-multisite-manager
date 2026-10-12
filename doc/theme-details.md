@@ -1,17 +1,17 @@
-# Theme-Details
+# Theme details
 
-## Zweck
+## Purpose
 
-Die Seite **Theme-Details** beschreibt ein einzelnes Theme und seine Verwendung im Netzwerk.
+The **Theme details** page describes one theme and its use in the network.
 
-## Inhalte
+## Contents
 
-Sie zeigt Metadaten wie Name, Version, Autor, Beschreibung und Screenshot sowie die Websites, die dieses Theme verwenden. Bei Block-Themes kann die Detailansicht auf den Site Editor der jeweiligen Website verweisen.
+It shows metadata such as name, version, author, description, and screenshot, as well as the sites that use the theme. For block themes, the detail view can link to the Site Editor of the respective site.
 
-## Quellcodeanalyse
+## Source-code analysis
 
-Eine optionale Quellcodeanalyse ist nur eine explizit angeforderte Detailfunktion. Sie wird nicht bei der Initialisierung des Plugins, beim Dashboard-Aufruf oder durch die regulären Metrik-Batches gestartet.
+An optional source-code analysis is only an explicitly requested detail function. It is not started during plugin initialisation, when the dashboard loads, or by regular metric batches.
 
-## Implementierung
+## Implementation
 
-`Dashboard::renderThemeDetailsPage()` verwendet den Nonce-Namensraum `rrze_msm_source_analysis_theme_<stylesheet>`. Der Cache-Schlüssel folgt dem Muster `rrze_msm_theme_details_<detail-version>_<hash>` und kombiniert Stylesheet, Analysemodus und Theme-Fingerprint.
+`Dashboard::renderThemeDetailsPage()` uses the nonce namespace `rrze_msm_source_analysis_theme_<stylesheet>`. The cache key follows the pattern `rrze_msm_theme_details_<detail-version>_<hash>` and combines stylesheet, analysis mode, and theme fingerprint.

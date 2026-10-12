@@ -18,7 +18,8 @@ class DashboardMetricsBatchService {
      * @param callable(): array<string, mixed> $createInitialState
      * @param callable(\WP_Site): array<string, mixed> $formatSite
      * @param callable(array<string, mixed>&, \WP_Site, array<string, mixed>): void $accumulateSite
-     * @param callable(array<string, mixed>): void $finalize
+     * @param callable(string): void $queueComposition
+     * @param callable(string): void $queueCompositionWatchdog
      * @param callable(int, bool): void $schedule
      * @return array{complete: bool, checked_sites: int, total_sites: int}
      */
@@ -28,7 +29,8 @@ class DashboardMetricsBatchService {
         callable $createInitialState,
         callable $formatSite,
         callable $accumulateSite,
-        callable $finalize,
+        callable $queueComposition,
+        callable $queueCompositionWatchdog,
         callable $schedule
     ): array {
         if (!$this->refresh->acquireLock()) {
@@ -39,13 +41,26 @@ class DashboardMetricsBatchService {
             $progress = $this->refresh->getBatchProgress();
             $offset = $progress['offset'];
             $totalSites = $progress['total'];
-            $state = $this->refresh->getBatchState();
+            $runState = $this->refresh->getBatchState();
 
-            if ($offset <= 0 || $totalSites <= 0 || empty($state)) {
+            if ($offset <= 0 || $totalSites <= 0 || empty($runState['run_id'])) {
                 $totalSites = (int)get_sites(['count' => true, 'number' => 1]);
                 $this->refresh->saveBatchProgress($offset, $totalSites);
-                $state = $createInitialState();
+                $runState = [
+                    'run_id' => wp_generate_uuid4(),
+                    'started_at' => time(),
+                    'phase' => 'collecting',
+                    'partial_offsets' => [],
+                ];
+                $this->refresh->saveBatchState($runState);
             }
+
+            if ((string)($runState['phase'] ?? 'collecting') !== 'collecting') {
+                return ['complete' => false, 'checked_sites' => $offset, 'total_sites' => $totalSites];
+            }
+
+            $state = $createInitialState();
+            $state['started_at'] = (int)($runState['started_at'] ?? time());
 
             $siteIds = get_sites([
                 'fields' => 'ids',
@@ -72,22 +87,28 @@ class DashboardMetricsBatchService {
                 $accumulateSite($state, $site, $formattedSite);
             }
 
-            $this->refresh->saveBatchState($state);
+            $this->refresh->saveBatchPartialState((string)$runState['run_id'], $offset, $state);
+            $runState = $this->refresh->addBatchPartialOffset($runState, $offset);
             $nextOffset = $offset + count($siteIds);
 
             if (empty($siteIds) || $nextOffset >= $totalSites) {
-                $finalize($state);
-                $checkedSites = count((array)($state['site_overview'] ?? []));
-                $this->refresh->resetBatchState();
-                $schedule(60, false);
+                $runState['phase'] = 'composing';
+                $runState['composition_started_at'] = time();
+                $runState['composition_attempts'] = 0;
+                $runState['composition_error'] = '';
+                $this->refresh->saveBatchState($runState);
+                $this->refresh->saveBatchProgress($totalSites, $totalSites);
+                $queueComposition((string)$runState['run_id']);
+                $queueCompositionWatchdog((string)$runState['run_id']);
 
                 return [
-                    'complete' => true,
-                    'checked_sites' => $checkedSites,
+                    'complete' => false,
+                    'checked_sites' => $nextOffset,
                     'total_sites' => $totalSites,
                 ];
             }
 
+            $this->refresh->saveBatchState($runState);
             $this->refresh->saveBatchProgress($nextOffset, $totalSites);
             $schedule($manual ? 5 : 20, true);
 

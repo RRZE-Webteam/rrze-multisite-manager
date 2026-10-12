@@ -1,31 +1,31 @@
-# Speicheranalyse
+# Storage analysis
 
-## Zweck
+## Purpose
 
-Die Speicheranalyse untersucht das Upload-Verzeichnis und die Medienbibliothek einer einzelnen Website. Sie steht im Multisite Manager und - mit lokaler Berechtigung - auch über **Medien > Speicheranalyse** der jeweiligen Website zur Verfügung.
+Storage analysis examines the uploads directory and media library of one site. It is available in Multisite Manager and, with local permission, under **Media > Storage analysis** on the respective site.
 
-## Bereiche
+## Areas
 
-* **Analyse:** Speicherverbrauch, Dateitypen, größte Dateien und Verzeichnisse sowie potenziell verwaiste Dateien.
-* **Fehlende Metadaten:** Medien und Dateien, für die erwartete Metadaten nicht vollständig vorliegen. Hover-Aktionen führen zu Mediendatei-Details und zur Bearbeitung in der jeweiligen Mediathek.
-* **Mediendatei-Details:** Technische Daten einer Datei, Vorschau, Link zur Bearbeitung in der Quell-Website und bei Bildern eine optionale TinEye-Rückwärtssuche.
+* **Analysis:** storage consumption, file types, largest files and directories, and potentially orphaned files.
+* **Missing metadata:** media and files for which expected metadata is incomplete. Hover actions lead to media-file details and editing in the respective media library.
+* **Media-file details:** technical data for a file, preview, link to edit it in the source site, and an optional TinEye reverse image search for images.
 
-Die angezeigte Differenz zwischen WordPress-Speicherangabe und gefundenem Upload-Volumen wird direkt bei der gefundenen Speichergrösse ausgewiesen.
+The displayed difference between WordPress's storage value and the found upload volume is shown directly next to the found storage size.
 
-## Ausführung
+## Execution
 
-Kleine Websites können innerhalb begrenzter Browser-Batches untersucht werden. Große Websites werden ausschließlich durch fortsetzbare Hintergrundaufgaben verarbeitet. Die Analyse arbeitet schrittweise über Upload-Struktur, Medienindex, Metadaten und gegebenenfalls Referenzprüfungen; sie versucht nicht, Zehntausende Dateien in einem Request abzuarbeiten.
+Small sites can be examined in bounded browser batches. Large sites are processed exclusively by resumable background tasks. Analysis progresses through upload structure, media index, metadata, and, where applicable, reference checks; it does not attempt to process tens of thousands of files in one request.
 
-Geplante Speicheranalysen werden im Tab **Monitoring > Speicheranalysen** eingerichtet. Je nach Medienanzahl und gemessener Laufzeit wird eine Website einem Sammelbatch oder einer eigenen Aufgabe zugeordnet.
+Scheduled storage analyses are configured in **Monitoring > Storage analyses**. Depending on media count and measured execution time, a site is assigned to a collective batch or its own task.
 
-## Vorsicht bei verwaisten Dateien
+## Caution with orphaned files
 
-Eine potenziell verwaiste Datei ist nicht automatisch unbenutzt. Referenzen können aus Themes, Plugins, Widgets, Blockattributen oder nicht untersuchten Metafeldern stammen. Löschaktionen sind daher bewusst einzeln geschützt und sollten erst nach fachlicher Prüfung erfolgen.
+A potentially orphaned file is not automatically unused. References may exist in themes, plugins, widgets, block attributes, or unexamined meta fields. Deletion actions are therefore individually protected and should happen only after subject-matter review.
 
-## Implementierung und Persistenz
+## Implementation and persistence
 
-`Dashboard::renderSiteStorageAnalysisPage()` verwendet `StorageAnalysisService`, `StorageAnalysisStateService` und `StorageAnalysisResultService`. Das Template ist `templates/site-storage-analysis-page.php`; Detailansichten einer Datei verwenden `templates/site-storage-attachment-debug.php`.
+`Dashboard::renderSiteStorageAnalysisPage()` uses `StorageAnalysisService`, `StorageAnalysisStateService`, and `StorageAnalysisResultService`. The template is `templates/site-storage-analysis-page.php`; a file's detail view uses `templates/site-storage-attachment-debug.php`.
 
-Das dauerhafte Ergebnis liegt pro Website in den nicht autoloadenden Options `rrze_msm_site_storage_analysis_result`, `rrze_msm_site_storage_analysis_result_meta` und `rrze_msm_site_media_metadata_analysis_result`. Laufende Prozessdaten liegen in versionierten Network Transients; die vollständigen Schlüsselmuster, Cron-Hooks, Scheduler-Optionen und Sperren stehen in [Laufzeitdaten und Scheduler](runtime-state.md#speicheranalyse).
+The persistent result is stored per site in the non-autoloaded options `rrze_msm_site_storage_analysis_result`, `rrze_msm_site_storage_analysis_result_meta`, and `rrze_msm_site_media_metadata_analysis_result`. Running process data is held in versioned network transients; [Runtime state and scheduler](runtime-state.md#storage-analysis) lists complete key patterns, Cron hooks, scheduler options, and locks.
 
-Die Analyse verwendet feste Teilgrenzen: 250 Upload- beziehungsweise Attachment-Index-Einträge, 50 Metadaten-Einträge, zehn Dateien pro Orphan-Prüfschritt und maximal 500 gespeicherte Metadaten-Ergebniszeilen. Der dauerhafte Storage-Ergebniswert wird bei mehr als 2 MiB serialisierter Daten kompaktiert.
+The analysis uses fixed sub-limits: 250 upload or attachment-index entries, 50 metadata entries, ten files per orphan-check step, and at most 500 stored metadata-result rows. The persistent storage result is compacted when serialised data exceeds 2 MiB.

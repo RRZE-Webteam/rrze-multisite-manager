@@ -1,65 +1,65 @@
-# Entwicklung
+# Development
 
-## Verbindliche Grundlage
+## Binding basis
 
-Die verbindliche Grundlage für Entwicklung und Reviews von RRZE-WordPress-Plugins ist die [RRZE-SPEC](https://github.com/RRZE-Webteam/SPEC). Repository-spezifische Anweisungen in `AGENTS.md` ergänzen diese Vorgaben, dürfen ihnen aber nicht widersprechen.
+The binding basis for developing and reviewing RRZE WordPress plugins is the [RRZE specification](https://github.com/RRZE-Webteam/SPEC). Repository-specific instructions in `AGENTS.md` supplement these requirements but must not conflict with them.
 
-Wesentliche Regeln für dieses Plugin:
+Key rules for this plugin:
 
-* WordPress-APIs und Multisite-Kontext verwenden; Eingaben validieren, Berechtigungen und Nonces prüfen, Ausgaben erst am Ausgabepunkt escapen.
-* Keine vollständigen Netzwerk-Scans in normalen Admin- oder Frontend-Requests einführen. Netzwerkweite Arbeit ist als begrenzter, fortsetzbarer Batch zu modellieren.
-* Keine generierten Dateien direkt bearbeiten. Änderungen an JavaScript und Sass erfolgen in `src/`; die Ergebnisse werden nach `build/` erzeugt.
-* Neue sichtbare Strings müssen den Textdomain `rrze-multisite-manager` verwenden und mit den Sprachdateien aktualisiert werden.
-* Neue Hintergrundprozesse brauchen einen eindeutig benannten Hook, einen abgesicherten Zustand, Ablaufbehandlung für Sperren und Dokumentation in [Laufzeitdaten und Scheduler](runtime-state.md).
+* Use WordPress APIs and multisite context; validate input, check permissions and nonces, and escape output only at the output point.
+* Do not introduce complete network scans in regular admin or frontend requests. Model network-wide work as a bounded, resumable batch.
+* Do not edit generated files directly. Change JavaScript and Sass in `src/`; build the results into `build/`.
+* New visible strings must use the `rrze-multisite-manager` text domain and update language files.
+* New background processes require a clearly named hook, protected state, lock-expiry handling, and documentation in [Runtime state and scheduler](runtime-state.md).
 
-## Repository-Struktur
+## Repository structure
 
-| Pfad | Inhalt |
+| Path | Contents |
 | --- | --- |
-| `includes/` | PHP-Klassen, Services, Scheduler und Widgets |
-| `includes/Metrics/` | Metrics-Fassade, Implementierung, Caches, Detail- und Speicheranalyse-Services |
-| `templates/` | PHP-Templates für Seiten und Widgets |
-| `src/js/` | JavaScript-Quelldateien |
-| `src/sass/` | Sass-Quelldateien |
-| `build/` | generierte JavaScript- und CSS-Assets |
-| `languages/` | POT-, PO- und MO-Sprachdateien |
-| `tests/` | WordPress-PHPUnit-Tests und Test-Bootstrap |
-| `doc/` | Entwicklerdokumentation |
+| `includes/` | PHP classes, services, schedulers, and widgets |
+| `includes/Metrics/` | Metrics facade, implementation, caches, detail, and storage-analysis services |
+| `templates/` | PHP templates for pages and widgets |
+| `src/js/` | JavaScript source files |
+| `src/sass/` | Sass source files |
+| `build/` | Generated JavaScript and CSS assets |
+| `languages/` | POT, PO, and MO language files |
+| `tests/` | WordPress PHPUnit tests and test bootstrap |
+| `doc/` | Developer documentation |
 
 ## Build
 
-`npm run dev` erstellt Entwicklungs-Assets, aktualisiert Sprachdateien, synchronisiert die Entwicklungsversionsnummer und erzeugt `readme.txt`. Dieser Befehl ist nach einer Änderung auszuführen.
+`npm run dev` creates development assets, updates language files, synchronises the development version number, and generates `readme.txt`. Run this command after every completed code or documentation change.
 
-Weitere Skripte:
+Additional scripts:
 
-| Befehl | Zweck |
+| Command | Purpose |
 | --- | --- |
-| `npm run build` | Produktionsassets und Sprachdateien erzeugen |
-| `npm run prod` | Produktionsbuild mit Versions- und `readme.txt`-Aktualisierung |
-| `npm run release` | Releasebuild mit Release-Version |
-| `npm run watch` | Entwicklungsassets beobachten und neu erzeugen |
-| `npm test` | PHPUnit-Testlauf, wenn `vendor/bin/phpunit` installiert ist |
+| `npm run build` | Generate production assets and language files |
+| `npm run prod` | Production build with version and `readme.txt` update |
+| `npm run release` | Release build using the release version |
+| `npm run watch` | Watch and regenerate development assets |
+| `npm test` | Run PHPUnit when `vendor/bin/phpunit` is installed |
 
-`readme.txt` ist generiert und wird aus `package.json` aufgebaut. `README.md` und die Dateien in `doc/` sind dagegen manuell gepflegte Dokumentation.
+`readme.txt` is generated from `package.json`. `README.md` and files in `doc/` are manually maintained documentation.
 
 ## Tests
 
-Die Tests verwenden das offizielle WordPress-PHPUnit-Testframework und benötigen eine disposable Testdatenbank. `WP_TESTS_DIR` muss auf die WordPress-Testbibliothek zeigen. Details stehen in [tests/README.md](../tests/README.md).
+Tests use the official WordPress PHPUnit test framework and require a disposable test database. `WP_TESTS_DIR` must point to the WordPress test library. Details are in [tests/README.md](../tests/README.md).
 
-Tests dürfen niemals gegen eine produktive WordPress-Installation oder Datenbank laufen. Neue Berechnungs-, Cache-, Scheduler- und Bereinigungslogik sollte mindestens einen Regressionstest erhalten. Wenn die lokale PHPUnit-Abhängigkeit fehlt, ist das als nicht ausgeführter Test zu dokumentieren und nicht als erfolgreicher Testlauf darzustellen.
+Never run tests against a production WordPress installation or database. New calculation, cache, scheduler, and cleanup logic should receive at least one regression test. If the local PHPUnit dependency is missing, document that the test was not run instead of presenting it as a successful test run.
 
-## Übersetzungen
+## Translations
 
-Die Übersetzungen liegen in `languages/`. Originalstrings im Code sind Englisch und verwenden den Textdomain `rrze-multisite-manager`.
+Translations are in `languages/`. Source strings in code are English and use the `rrze-multisite-manager` text domain.
 
-Der Build ruft `scripts/build-languages.js` auf. Bei neuen oder geänderten Strings aktualisiert das Skript die POT-Datei sowie die vorhandenen deutschen PO- und MO-Dateien. Für einen manuellen Neuaufbau kann WP-CLI verwendet werden:
+The build invokes `scripts/build-languages.js`. For new or changed strings, the script updates the POT file and existing German PO and MO files. WP-CLI can be used for a manual rebuild:
 
 ```sh
 wp i18n make-pot . languages/rrze-multisite-manager.pot --domain=rrze-multisite-manager --exclude=node_modules,build,.git
 ```
 
-PO-Dateien können anschließend beispielsweise mit Loco Translate gepflegt und zu MO-Dateien kompiliert werden. Generierte Sprachdateien gehören bei String-Änderungen in denselben Change wie der PHP-, JavaScript- oder Template-String.
+PO files can then be maintained, for example, with Loco Translate and compiled to MO files. Generated language files belong in the same change as the PHP, JavaScript, or template string that changed.
 
-## Dokumentationspflege
+## Documentation maintenance
 
-Bei neuen oder umbenannten Menü-Seiten eine Datei in `doc/` anlegen beziehungsweise aktualisieren und in [doc/README.md](README.md) verlinken. Neue persistente Optionen, Meta-Schlüssel, Transients, Cron-Hooks, Locks und AJAX-Endpunkte sind zusätzlich in [Laufzeitdaten und Scheduler](runtime-state.md) zu dokumentieren.
+For new or renamed menu pages, create or update a file in `doc/` and link it from [doc/README.md](README.md). Document new persistent options, meta keys, transients, Cron hooks, locks, and AJAX endpoints additionally in [Runtime state and scheduler](runtime-state.md).

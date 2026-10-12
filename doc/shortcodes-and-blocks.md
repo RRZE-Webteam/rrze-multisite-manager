@@ -1,23 +1,23 @@
-# Shortcodes und Blöcke
+# Shortcodes and blocks
 
-## Zweck
+## Purpose
 
-Die Seite ermittelt die in Inhalten einer Website vorkommenden Shortcodes und Blöcke. Neben dem Eintrag selbst kann die Ausgabe Informationen zu Registrierung, Anbieter und Fundstellen enthalten.
+The page determines which shortcodes and blocks occur in a site's content. In addition to each entry, the output can include information about registration, provider, and occurrences.
 
-## Zugänge
+## Access
 
-Superadmins erreichen die netzwerkweite Seite im Multisite Manager. Für lokale Administratoren steht eine eingeschränkte Seite unter **Werkzeuge > Shortcodes und Blöcke** ihrer Website zur Verfügung, sofern sie die Voraussetzungen erfüllen.
+Super admins access the network-wide page in Multisite Manager. Local administrators have a restricted page under **Tools > Shortcodes and blocks** on their site when they meet the requirements.
 
-## Bedienung
+## Usage
 
-Die Tabs trennen Shortcodes und Blöcke. Eine Analyse kann für eine einzelne Website angefordert werden. Der Status zeigt, ob ein Ergebnis vorliegt, ob ein nächster Lauf geplant ist und welcher Ausführungsmodus verwendet wird.
+Tabs separate shortcodes and blocks. An analysis can be requested for an individual site. The status indicates whether a result exists, whether a next run is scheduled, and which execution mode is used.
 
-## Planung und Skalierung
+## Scheduling and scale
 
-Die Aufgaben werden unter **Monitoring > Shortcode und Blöcke** verwaltet. Kleine Websites können Sammelbatches zugeordnet werden; größere Websites erhalten eine eigene geplante Aufgabe. Die Analyse ist fortsetzbar, zeitlich begrenzt und speichert nur die Ergebnisdaten, nicht den vollständigen gerenderten Inhalt.
+Tasks are managed under **Monitoring > Shortcodes and blocks**. Small sites can be assigned to collective batches; larger sites receive their own scheduled task. The analysis is resumable, time-bounded, and stores only result data, not fully rendered content.
 
-## Implementierung und Persistenz
+## Implementation and persistence
 
-`Dashboard::renderShortcodeBlockAnalysisPage()` nutzt `ShortcodeBlockAnalysisSchedulerService` und `templates/shortcode-block-analysis-page.php`. Pro Website werden Ergebnis, Status und Zwischenzustand in den Options `rrze_msm_shortcode_block_analysis_result`, `rrze_msm_shortcode_block_analysis_status` und `rrze_msm_shortcode_block_analysis_state` gespeichert.
+`Dashboard::renderShortcodeBlockAnalysisPage()` uses `ShortcodeBlockAnalysisSchedulerService` and `templates/shortcode-block-analysis-page.php`. Per-site result, status, and intermediate state are stored in options `rrze_msm_shortcode_block_analysis_result`, `rrze_msm_shortcode_block_analysis_status`, and `rrze_msm_shortcode_block_analysis_state`.
 
-Der Scheduler verwendet getrennte Einzel- und Sammelbatch-Hooks, einen Legacy-Hook zur Rückwärtskompatibilität und pro Website einen Lock mit dem Präfix `rrze_msm_shortcode_block_analysis_lock_`. Die vollständige Liste der Scheduler-Options und Hooks steht in [Laufzeitdaten und Scheduler](runtime-state.md#shortcode--und-blockanalyse). Die Batch-Implementierung begrenzt sich auf 20 Websites, höchstens fünf Teilbatches pro Request und ein Request-Budget von 20 Sekunden; Fortsetzungen werden nach fünf Sekunden geplant.
+The scheduler uses separate individual and collective-batch hooks, a legacy hook for backward compatibility, and a per-site lock with the prefix `rrze_msm_shortcode_block_analysis_lock_`. [Runtime state and scheduler](runtime-state.md#shortcode-and-block-analysis) lists the scheduler options and hooks completely. The batch implementation is limited to 20 sites, at most five sub-batches per request, and a 20-second request budget; continuations are scheduled after five seconds.

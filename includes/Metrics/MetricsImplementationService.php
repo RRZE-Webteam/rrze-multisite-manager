@@ -29,6 +29,8 @@ class MetricsImplementationService {
 
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
+    protected const DASHBOARD_COMPOSE_HOOK = 'rrze_msm_compose_dashboard_metrics';
+    protected const DASHBOARD_COMPOSITION_WATCHDOG_HOOK = 'rrze_msm_watch_dashboard_metrics_composition';
     protected const DASHBOARD_REFRESH_SCHEDULE = 'rrze_msm_dashboard_metrics_cycle';
     protected const DASHBOARD_SCHEDULING_ENABLED_OPTION = 'rrze_msm_dashboard_metrics_scheduling_enabled';
     protected const DASHBOARD_CACHE_VERSION = 5;
@@ -62,6 +64,7 @@ class MetricsImplementationService {
     protected const STORAGE_MEDIA_METADATA_BATCH_SIZE = 50;
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
     protected const DASHBOARD_LOCK_TTL = 900;
+    protected const DASHBOARD_COMPOSITION_MAX_ATTEMPTS = 3;
     // Site lists are embedded in every matching plugin and theme row.
     protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 20;
     protected const DASHBOARD_BATCH_EVENT_ARGS = ['rrze_msm_dashboard_metrics_batch' => true];
@@ -152,6 +155,8 @@ class MetricsImplementationService {
 
     public function onLoaded(): void {
         add_action(self::DASHBOARD_REFRESH_HOOK, [$this, 'handleScheduledDashboardRefresh']);
+        add_action(self::DASHBOARD_COMPOSE_HOOK, [$this, 'handleScheduledDashboardComposition'], 10, 1);
+        add_action(self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK, [$this, 'handleDashboardCompositionWatchdog'], 10, 1);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action(self::STORAGE_ANALYSIS_CLEANUP_HOOK, [$this, 'runLegacyStorageAnalysisCleanup']);
         add_action(self::FULL_DATA_CLEANUP_HOOK, [$this, 'runFullDataCleanup']);
@@ -184,6 +189,10 @@ class MetricsImplementationService {
         }
 
         $this->ensureDashboardRefreshSchedule();
+
+        if ($this->recoverPendingDashboardComposition()) {
+            return;
+        }
 
         if (
             $this->isDashboardRefreshInProgress()
@@ -926,6 +935,10 @@ class MetricsImplementationService {
     }
 
     public function handleScheduledDashboardRefresh(...$args): void {
+        if ($this->recoverPendingDashboardComposition()) {
+            return;
+        }
+
         $this->dashboardRefresh->handleScheduledRefresh(
             $args,
             $this->config,
@@ -936,6 +949,158 @@ class MetricsImplementationService {
             fn(): bool => $this->isDashboardRefreshInProgress(),
             fn(): array => $this->runDashboardRefreshBatch()
         );
+    }
+
+    public function handleScheduledDashboardComposition(string $runId): void {
+        if (!$this->isCentralNetworkCronSite()
+            || self::isFullDataCleanupInProgress()
+            || !$this->isDashboardSchedulingEnabled()
+        ) {
+            return;
+        }
+
+        if (!$this->dashboardRefresh->acquireLock()) {
+            return;
+        }
+
+        if (!$this->dashboardRefresh->acquireCompositionLock($runId)) {
+            $this->dashboardRefresh->releaseLock();
+            return;
+        }
+
+        $runState = [];
+
+        try {
+            $runState = $this->dashboardRefresh->getBatchState();
+
+            if ($runId === ''
+                || !hash_equals((string)($runState['run_id'] ?? ''), $runId)
+                || (string)($runState['phase'] ?? '') !== 'composing'
+            ) {
+                return;
+            }
+
+            $runState['composition_attempts'] = (int)($runState['composition_attempts'] ?? 0) + 1;
+            $runState['composition_error'] = '';
+            $this->dashboardRefresh->saveBatchState($runState);
+
+            $state = $this->getInitialDashboardRefreshBatchState();
+            $state['started_at'] = (int)($runState['started_at'] ?? time());
+
+            foreach ($this->dashboardRefresh->getBatchPartialOffsets($runState) as $offset) {
+                $partialState = $this->dashboardRefresh->getBatchPartialState($runId, $offset);
+
+                if (empty($partialState)) {
+                    // A missing partial must not publish an incomplete cache.
+                    $this->scheduleDashboardComposition($runId, MINUTE_IN_SECONDS);
+                    return;
+                }
+
+                $this->mergeDashboardRefreshBatchState($state, $partialState);
+            }
+
+            $this->finalizeDashboardRefreshBatchState($state);
+            $this->dashboardRefresh->resetBatchState();
+            $this->scheduleDashboardRefresh(60, false);
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Metrics-Scheduler vollständig beendet',
+                ['success' => true, 'checked_sites' => count((array)$state['site_overview'])]
+            );
+        } catch (\Throwable $exception) {
+            do_action(
+                'rrze.log.error',
+                'RRZE-MSM: Fehler beim Zusammenführen der Dashboard-Metriken',
+                ['message' => $exception->getMessage()]
+            );
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Metrics-Scheduler beendet',
+                ['success' => false, 'message' => $exception->getMessage()]
+            );
+            $runState = $this->dashboardRefresh->getBatchState();
+            $runState['composition_error'] = $exception->getMessage();
+
+            if ((int)($runState['composition_attempts'] ?? 0) >= self::DASHBOARD_COMPOSITION_MAX_ATTEMPTS) {
+                $runState['phase'] = 'failed';
+                $runState['composition_failed_at'] = time();
+                $this->dashboardRefresh->saveBatchState($runState);
+                return;
+            }
+
+            $this->dashboardRefresh->saveBatchState($runState);
+            $this->scheduleDashboardComposition($runId, MINUTE_IN_SECONDS);
+        } finally {
+            $this->dashboardRefresh->releaseCompositionLock($runId);
+            $this->dashboardRefresh->releaseLock();
+        }
+    }
+
+    /** Requeues an interrupted composition even when no administrator visits the dashboard. */
+    public function handleDashboardCompositionWatchdog(string $runId): void {
+        if (!$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        $runState = $this->dashboardRefresh->getBatchState();
+
+        if ($runId === ''
+            || !hash_equals((string)($runState['run_id'] ?? ''), $runId)
+            || (string)($runState['phase'] ?? '') !== 'composing'
+        ) {
+            return;
+        }
+
+        if ((int)($runState['composition_attempts'] ?? 0) >= self::DASHBOARD_COMPOSITION_MAX_ATTEMPTS) {
+            $this->markDashboardCompositionFailed($runState);
+            return;
+        }
+
+        if (!$this->dashboardRefresh->isCompositionLocked()) {
+            $this->scheduleDashboardComposition($runId, 5);
+        }
+
+        $this->scheduleDashboardCompositionWatchdog($runId);
+    }
+
+    /**
+     * A regular metrics Cron event doubles as a recovery trigger when an
+     * earlier composition event was removed by a fatal error or timeout.
+     */
+    protected function recoverPendingDashboardComposition(): bool {
+        $runState = $this->dashboardRefresh->getBatchState();
+
+        if ((string)($runState['phase'] ?? '') !== 'composing') {
+            return false;
+        }
+
+        $runId = (string)($runState['run_id'] ?? '');
+
+        if ($runId === '') {
+            return true;
+        }
+
+        if ((int)($runState['composition_attempts'] ?? 0) >= self::DASHBOARD_COMPOSITION_MAX_ATTEMPTS) {
+            $this->markDashboardCompositionFailed($runState);
+            return true;
+        }
+
+        if (!$this->dashboardRefresh->isCompositionLocked()) {
+            $this->scheduleDashboardComposition($runId, 5);
+        }
+
+        return true;
+    }
+
+    protected function markDashboardCompositionFailed(array $runState): void {
+        $runState['phase'] = 'failed';
+        $runState['composition_failed_at'] = time();
+
+        if ((string)($runState['composition_error'] ?? '') === '') {
+            $runState['composition_error'] = __('Dashboard metrics could not be assembled after several attempts.', 'rrze-multisite-manager');
+        }
+
+        $this->dashboardRefresh->saveBatchState($runState);
     }
 
     public function invalidateCaches(...$args): void {
@@ -1247,7 +1412,8 @@ class MetricsImplementationService {
         $nextProgressRunTimestamp = $isRunning && $batchTotal > $checkedSites && $nextBatchRunTimestamp > 0
             ? $nextBatchRunTimestamp
             : $nextRunTimestamp;
-        $isStale = $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
+        $hasFailedComposition = (string)($batchState['phase'] ?? '') === 'failed';
+        $isStale = $hasFailedComposition || $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
 
         if ($batchTotal > 0) {
             $siteCount = $batchTotal;
@@ -1275,6 +1441,7 @@ class MetricsImplementationService {
             'current_duration_seconds' => $currentDurationSeconds,
             'last_duration_seconds' => (int)($cached['duration_seconds'] ?? 0),
             'is_stale' => $isStale,
+            'composition_error' => (string)($batchState['composition_error'] ?? ''),
         ];
     }
 
@@ -1311,6 +1478,7 @@ class MetricsImplementationService {
                     'has_data' => !empty($status['has_data']),
                     'needs_refresh' => !empty($status['needs_refresh']),
                     'is_dirty' => !empty($status['is_dirty']),
+                    'has_composition_error' => (string)($status['composition_error'] ?? '') !== '',
                 ],
             ],
         ];
@@ -1330,13 +1498,81 @@ class MetricsImplementationService {
             function (array &$state, \WP_Site $site, array $formattedSite): void {
                 $this->accumulateDashboardSiteMetrics($state, $site, $formattedSite);
             },
-            function (array $state): void {
-                $this->finalizeDashboardRefreshBatchState($state);
+            function (string $runId): void {
+                $this->scheduleDashboardComposition($runId, 5);
+            },
+            function (string $runId): void {
+                $this->scheduleDashboardCompositionWatchdog($runId);
             },
             function (int $delay, bool $isContinuation): void {
                 $this->scheduleDashboardRefresh($delay, $isContinuation);
             }
         );
+    }
+
+    /** Merges bounded partial batch results before publishing the final cache. */
+    protected function mergeDashboardRefreshBatchState(array &$state, array $partialState): void {
+        $state['site_overview'] = array_merge(
+            (array)($state['site_overview'] ?? []),
+            (array)($partialState['site_overview'] ?? [])
+        );
+
+        $this->mergeDashboardStorageUsageState($state['network_storage_usage'], (array)($partialState['network_storage_usage'] ?? []));
+        $this->mergeDashboardThemeAggregate($state['theme_aggregate'], (array)($partialState['theme_aggregate'] ?? []));
+        $this->mergeDashboardPluginUsageState($state['plugin_usage'], (array)($partialState['plugin_usage'] ?? []));
+        $state['editor_usage']['classic_sites'] = (int)($state['editor_usage']['classic_sites'] ?? 0) + (int)($partialState['editor_usage']['classic_sites'] ?? 0);
+        $state['editor_usage']['block_sites'] = (int)($state['editor_usage']['block_sites'] ?? 0) + (int)($partialState['editor_usage']['block_sites'] ?? 0);
+    }
+
+    protected function mergeDashboardStorageUsageState(array &$state, array $partialState): void {
+        $state['items'] = array_merge((array)($state['items'] ?? []), (array)($partialState['items'] ?? []));
+        $state['total_used_bytes'] = (int)($state['total_used_bytes'] ?? 0) + (int)($partialState['total_used_bytes'] ?? 0);
+        $state['total_max_bytes'] = (int)($state['total_max_bytes'] ?? 0) + (int)($partialState['total_max_bytes'] ?? 0);
+        $state['has_unlimited_site'] = !empty($state['has_unlimited_site']) || !empty($partialState['has_unlimited_site']);
+    }
+
+    protected function mergeDashboardThemeAggregate(array &$state, array $partialState): void {
+        foreach ((array)($partialState['counts'] ?? []) as $stylesheet => $count) {
+            $state['counts'][$stylesheet] = (int)($state['counts'][$stylesheet] ?? 0) + (int)$count;
+            $combinedSites = array_merge(
+                (array)($state['usage_map'][$stylesheet] ?? []),
+                (array)($partialState['usage_map'][$stylesheet] ?? [])
+            );
+            $state['truncated'][$stylesheet] = !empty($state['truncated'][$stylesheet])
+                || !empty($partialState['truncated'][$stylesheet])
+                || count($combinedSites) > self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT;
+            $state['usage_map'][$stylesheet] = array_slice($combinedSites, 0, self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT);
+        }
+    }
+
+    protected function mergeDashboardPluginUsageState(array &$state, array $partialState): void {
+        foreach ((array)($partialState['stats'] ?? []) as $pluginFile => $partialPlugin) {
+            if (!isset($state['stats'][$pluginFile]) || !is_array($state['stats'][$pluginFile])) {
+                $state['stats'][$pluginFile] = $partialPlugin;
+                continue;
+            }
+
+            $state['stats'][$pluginFile]['site_count'] = (int)($state['stats'][$pluginFile]['site_count'] ?? 0) + (int)($partialPlugin['site_count'] ?? 0);
+            $this->mergeDashboardActiveSitePreview($state['stats'][$pluginFile], $partialPlugin);
+        }
+
+        foreach ((array)($partialState['missing_plugins'] ?? []) as $pluginFile => $partialPlugin) {
+            if (!isset($state['missing_plugins'][$pluginFile]) || !is_array($state['missing_plugins'][$pluginFile])) {
+                $state['missing_plugins'][$pluginFile] = $partialPlugin;
+                continue;
+            }
+
+            $state['missing_plugins'][$pluginFile]['site_count'] = (int)($state['missing_plugins'][$pluginFile]['site_count'] ?? 0) + (int)($partialPlugin['site_count'] ?? 0);
+            $this->mergeDashboardActiveSitePreview($state['missing_plugins'][$pluginFile], $partialPlugin);
+        }
+    }
+
+    protected function mergeDashboardActiveSitePreview(array &$target, array $partial): void {
+        $sites = array_merge((array)($target['active_sites'] ?? []), (array)($partial['active_sites'] ?? []));
+        $target['active_sites_truncated'] = !empty($target['active_sites_truncated'])
+            || !empty($partial['active_sites_truncated'])
+            || count($sites) > self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT;
+        $target['active_sites'] = array_slice($sites, 0, self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT);
     }
 
     /** @param array<string, mixed> $state */
@@ -9089,6 +9325,38 @@ class MetricsImplementationService {
         );
     }
 
+    protected function scheduleDashboardComposition(string $runId, int $delay = 5): void {
+        if ($runId === '' || !$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        $args = [$runId];
+
+        if (wp_next_scheduled(self::DASHBOARD_COMPOSE_HOOK, $args)) {
+            return;
+        }
+
+        wp_schedule_single_event(time() + max(5, $delay), self::DASHBOARD_COMPOSE_HOOK, $args);
+    }
+
+    protected function scheduleDashboardCompositionWatchdog(string $runId): void {
+        if ($runId === '' || !$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        $args = [$runId];
+
+        if (wp_next_scheduled(self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK, $args)) {
+            return;
+        }
+
+        wp_schedule_single_event(
+            time() + self::DASHBOARD_LOCK_TTL,
+            self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK,
+            $args
+        );
+    }
+
     public function rescheduleDashboardRefreshCycle(): void {
         if (!$this->isCentralNetworkCronSite()) {
             return;
@@ -9157,13 +9425,15 @@ class MetricsImplementationService {
         $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
-            foreach ((array)($events[self::DASHBOARD_REFRESH_HOOK] ?? []) as $event) {
-                if (wp_unschedule_event(
-                    (int)$timestamp,
-                    self::DASHBOARD_REFRESH_HOOK,
-                    (array)($event['args'] ?? [])
-                )) {
-                    $removed++;
+            foreach ([self::DASHBOARD_REFRESH_HOOK, self::DASHBOARD_COMPOSE_HOOK, self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK] as $hook) {
+                foreach ((array)($events[$hook] ?? []) as $event) {
+                    if (wp_unschedule_event(
+                        (int)$timestamp,
+                        $hook,
+                        (array)($event['args'] ?? [])
+                    )) {
+                        $removed++;
+                    }
                 }
             }
         }

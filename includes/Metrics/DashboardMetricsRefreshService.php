@@ -17,6 +17,8 @@ class DashboardMetricsRefreshService {
     protected const BATCH_OFFSET_OPTION = 'rrze_msm_dashboard_metrics_batch_offset';
     protected const BATCH_TOTAL_OPTION = 'rrze_msm_dashboard_metrics_batch_total';
     protected const BATCH_STATE_OPTION = 'rrze_msm_dashboard_metrics_batch_state';
+    protected const BATCH_PARTIAL_OPTION_PREFIX = 'rrze_msm_dashboard_metrics_batch_partial_';
+    protected const COMPOSITION_LOCK_OPTION = 'rrze_msm_dashboard_metrics_composition_lock';
     protected const DIRTY_OPTION = 'rrze_msm_dashboard_metrics_dirty';
 
     protected int $cacheVersion;
@@ -105,8 +107,11 @@ class DashboardMetricsRefreshService {
         $progress = $this->getBatchProgress();
         $offset = $progress['offset'];
         $total = $progress['total'];
+        $state = $this->getBatchState();
 
-        return $total > 0 && $offset < $total && !empty($this->getBatchState());
+        return $total > 0
+            && !empty($state)
+            && ($offset < $total || (string)($state['phase'] ?? '') === 'composing');
     }
 
     public function getBatchState(): array {
@@ -119,10 +124,109 @@ class DashboardMetricsRefreshService {
         update_site_option(self::BATCH_STATE_OPTION, $state);
     }
 
+    /**
+     * Stores one bounded refresh result. The compact batch state only keeps
+     * bookkeeping, so it does not grow with every processed website.
+     */
+    public function saveBatchPartialState(string $runId, int $offset, array $state): void {
+        if ($runId === '' || $offset < 0) {
+            return;
+        }
+
+        update_site_option($this->getBatchPartialOptionName($runId, $offset), $state);
+    }
+
+    public function getBatchPartialState(string $runId, int $offset): array {
+        if ($runId === '' || $offset < 0) {
+            return [];
+        }
+
+        $state = get_site_option($this->getBatchPartialOptionName($runId, $offset), []);
+
+        return is_array($state) ? $state : [];
+    }
+
+    public function addBatchPartialOffset(array $state, int $offset): array {
+        $offsets = isset($state['partial_offsets']) && is_array($state['partial_offsets'])
+            ? array_map('absint', $state['partial_offsets'])
+            : [];
+        $offsets[] = max(0, $offset);
+        $state['partial_offsets'] = array_values(array_unique($offsets));
+
+        return $state;
+    }
+
+    public function getBatchPartialOffsets(array $state): array {
+        $offsets = isset($state['partial_offsets']) && is_array($state['partial_offsets'])
+            ? array_map('absint', $state['partial_offsets'])
+            : [];
+
+        sort($offsets, SORT_NUMERIC);
+
+        return array_values(array_unique($offsets));
+    }
+
+    public function deleteBatchPartialStates(array $state): void {
+        $runId = (string)($state['run_id'] ?? '');
+
+        foreach ($this->getBatchPartialOffsets($state) as $offset) {
+            delete_site_option($this->getBatchPartialOptionName($runId, $offset));
+        }
+    }
+
     public function resetBatchState(): void {
+        $this->deleteBatchPartialStates($this->getBatchState());
+        delete_site_option(self::COMPOSITION_LOCK_OPTION);
         update_site_option(self::BATCH_OFFSET_OPTION, 0);
         update_site_option(self::BATCH_TOTAL_OPTION, 0);
         delete_site_option(self::BATCH_STATE_OPTION);
+    }
+
+    protected function getBatchPartialOptionName(string $runId, int $offset): string {
+        return self::BATCH_PARTIAL_OPTION_PREFIX . md5($runId) . '_' . $offset;
+    }
+
+    public function acquireCompositionLock(string $runId): bool {
+        if ($runId === '') {
+            return false;
+        }
+
+        $lock = get_site_option(self::COMPOSITION_LOCK_OPTION, []);
+
+        if (!is_array($lock)
+            || (int)($lock['started_at'] ?? 0) <= 0
+            || (time() - (int)$lock['started_at']) >= $this->lockTtl
+        ) {
+            delete_site_option(self::COMPOSITION_LOCK_OPTION);
+        }
+
+        return add_site_option(self::COMPOSITION_LOCK_OPTION, [
+            'run_id' => $runId,
+            'started_at' => time(),
+        ]);
+    }
+
+    public function releaseCompositionLock(string $runId): void {
+        $lock = get_site_option(self::COMPOSITION_LOCK_OPTION, []);
+
+        if (!is_array($lock) || (string)($lock['run_id'] ?? '') === $runId) {
+            delete_site_option(self::COMPOSITION_LOCK_OPTION);
+        }
+    }
+
+    public function isCompositionLocked(): bool {
+        $lock = get_site_option(self::COMPOSITION_LOCK_OPTION, []);
+
+        if (!is_array($lock) || (int)($lock['started_at'] ?? 0) <= 0) {
+            return false;
+        }
+
+        if ((time() - (int)$lock['started_at']) >= $this->lockTtl) {
+            delete_site_option(self::COMPOSITION_LOCK_OPTION);
+            return false;
+        }
+
+        return true;
     }
 
     /**
