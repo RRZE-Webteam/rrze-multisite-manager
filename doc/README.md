@@ -6,6 +6,8 @@ The shared reference for persistence, Cron hooks, batches, and locks is [Runtime
 
 General requirements for development, builds, tests, and translations are in [Development](development.md).
 
+[Integrations and external services](integrations.md) documents optional plugin support and third-party browser links.
+
 ## Access model
 
 The Manager may be visible to authorised web support users. Network-wide administrative functions for environment, monitoring, and settings remain limited to super admins. Individual analysis pages are also available in the dashboard of the respective site when the user has the required local permission.

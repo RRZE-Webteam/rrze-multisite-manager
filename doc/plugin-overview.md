@@ -14,7 +14,7 @@ It can be sorted by plugin, number of active sites, vendor information, network 
 
 Super admins can activate or deactivate one or more plugins network-wide, update them, and enable or disable automatic updates. Individual action availability depends on WordPress and the current plugin status.
 
-When the optional RRZE Netzwerk-Audit plugin is network-active, the **Enabled** status column reflects its `enabled_plugins` setting. It displays a green check for enabled plugins and a yellow cross for disabled plugins. For plugins that Netzwerk-Audit can manage, super admins also receive an Enable or Disable hover action. Multisite Manager changes the shared setting through its own protected endpoint and redirects back to the active overview tab. Plugins that are network-active, network-only, or do not have a directory component cannot be managed by Netzwerk-Audit and do not receive a toggle action.
+When the optional RRZE Netzwerk-Audit plugin is network-active, the **Available** status column reflects its `enabled_plugins` setting. It displays a marker for network-active plugins, a green check for enabled plugins, and a red cross for disabled plugins. For plugins that Netzwerk-Audit can manage, super admins also receive an Enable or Disable hover action. Multisite Manager changes the shared setting through its own protected endpoint and redirects back to the active overview tab. Plugins that are network-active, network-only, or do not have a directory component cannot be managed by Netzwerk-Audit and do not receive a toggle action.
 
 Hover actions link to plugin details and, if available, to plugin settings. If the Plugin Check Plugin is active, an additional link to its individual test is available for a plugin.
 
