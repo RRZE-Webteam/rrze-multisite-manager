@@ -65,8 +65,6 @@ class NetworkAuditPluginIntegration {
             return false;
         }
 
-        $options = get_site_option(self::OPTION_NAME, []);
-        $options = is_object($options) ? (array)$options : (is_array($options) ? $options : []);
         $enabledPlugins = $this->getEnabledPlugins();
         $isEnabled = in_array($pluginFile, $enabledPlugins, true);
 
@@ -74,16 +72,60 @@ class NetworkAuditPluginIntegration {
             return true;
         }
 
-        if ($enabled) {
-            $enabledPlugins[] = $pluginFile;
-        } else {
-            $enabledPlugins = array_values(array_diff($enabledPlugins, [$pluginFile]));
+        return $this->setPluginsEnabled([$pluginFile], $enabled) === 1;
+    }
+
+    /**
+     * @param string[] $pluginFiles
+     */
+    public function setPluginsEnabled(array $pluginFiles, bool $enabled): int {
+        if (!$this->isAvailable()) {
+            return 0;
+        }
+
+        $options = get_site_option(self::OPTION_NAME, []);
+        $options = is_object($options) ? (array)$options : (is_array($options) ? $options : []);
+        $enabledPlugins = $this->getEnabledPlugins();
+        $updated = 0;
+        foreach (array_unique($pluginFiles) as $pluginFile) {
+            if (!is_string($pluginFile)) {
+                continue;
+            }
+
+            $pluginFile = plugin_basename($pluginFile);
+
+            if (!$this->isManageablePlugin($pluginFile) || !$this->pluginFileExists($pluginFile)) {
+                continue;
+            }
+
+            $isEnabled = in_array($pluginFile, $enabledPlugins, true);
+
+            if ($enabled === $isEnabled) {
+                continue;
+            }
+
+            if ($enabled) {
+                $enabledPlugins[] = $pluginFile;
+            } else {
+                $enabledPlugins = array_values(array_diff($enabledPlugins, [$pluginFile]));
+            }
+
+            $updated++;
+        }
+
+        if ($updated === 0) {
+            return 0;
         }
 
         $options['enabled_plugins'] = array_values(array_unique($enabledPlugins));
+
+        if (!update_site_option(self::OPTION_NAME, $options)) {
+            return 0;
+        }
+
         $this->enabledPlugins = $options['enabled_plugins'];
 
-        return update_site_option(self::OPTION_NAME, $options);
+        return $updated;
     }
 
     private function pluginFileExists(string $pluginFile): bool {

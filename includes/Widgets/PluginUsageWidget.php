@@ -70,7 +70,19 @@ class PluginUsageWidget extends Widgets {
             echo '<option value="delete-selected">' . esc_html__('Delete', 'rrze-multisite-manager') . '</option>';
             echo '<option value="enable-auto-update-selected">' . esc_html__('Enable auto-updates', 'rrze-multisite-manager') . '</option>';
             echo '<option value="disable-auto-update-selected">' . esc_html__('Disable auto-updates', 'rrze-multisite-manager') . '</option>';
-            echo '</select><input type="submit" class="button action" value="' . esc_attr__('Apply', 'rrze-multisite-manager') . '">';
+
+            if ($networkAudit->isAvailable()) {
+                echo '<option value="rrze_multisite_manager_enable_selected_network_audit_plugins">' . esc_html__('Enable selected plugins', 'rrze-multisite-manager') . '</option>';
+                echo '<option value="rrze_multisite_manager_disable_selected_network_audit_plugins">' . esc_html__('Disable selected plugins', 'rrze-multisite-manager') . '</option>';
+            }
+
+            echo '</select>';
+
+            if ($networkAudit->isAvailable()) {
+                echo '<input type="hidden" name="rrze_msm_redirect_to" value="' . esc_attr($networkAuditRedirectUrl) . '">';
+            }
+
+            echo '<input type="submit" class="button action" value="' . esc_attr__('Apply', 'rrze-multisite-manager') . '">';
             wp_nonce_field('bulk-plugins');
         }
 

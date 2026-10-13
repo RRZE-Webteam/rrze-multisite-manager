@@ -94,6 +94,8 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('admin_post_rrze_multisite_manager_toggle_network_audit_plugin', [$this, 'handleNetworkAuditPluginToggle']);
+        add_action('admin_action_rrze_multisite_manager_enable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
+        add_action('admin_action_rrze_multisite_manager_disable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
         add_action('network_admin_edit_rrze_multisite_manager_save_views', [$this, 'saveViews']);
         add_action('network_admin_edit_rrze_multisite_manager_site_status', [$this, 'handleSiteStatusAction']);
         add_action('network_admin_edit_rrze_multisite_manager_site_permanent_delete', [$this, 'handleSitePermanentDelete']);
@@ -1573,6 +1575,63 @@ class Dashboard {
             add_query_arg(
                 'network-audit-plugin-updated',
                 $enabled ? 'enabled' : 'disabled',
+                $redirectTo
+            )
+        );
+        exit;
+    }
+
+    public function handleNetworkAuditPluginBulkToggle(): void {
+        $pluginOverviewSlug = (string)($this->config->getMenuSettings()['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview');
+        $defaultRedirectUrl = add_query_arg(['page' => $pluginOverviewSlug], $this->getAdminPageBaseUrl());
+        $redirectTo = isset($_REQUEST['rrze_msm_redirect_to'])
+            ? wp_validate_redirect((string)wp_unslash($_REQUEST['rrze_msm_redirect_to']), $defaultRedirectUrl)
+            : $defaultRedirectUrl;
+        $action = isset($_REQUEST['action']) ? sanitize_key((string)wp_unslash($_REQUEST['action'])) : '';
+        $enabled = $action === 'rrze_multisite_manager_enable_selected_network_audit_plugins';
+        $selectedPlugins = isset($_REQUEST['checked']) && is_array($_REQUEST['checked'])
+            ? wp_unslash($_REQUEST['checked'])
+            : [];
+        $pluginFiles = [];
+        $pluginFile = '';
+        $requestedPluginFile = '';
+        $updated = 0;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
+        }
+
+        if (!in_array($action, [
+            'rrze_multisite_manager_enable_selected_network_audit_plugins',
+            'rrze_multisite_manager_disable_selected_network_audit_plugins',
+        ], true)) {
+            wp_die(esc_html__('Invalid plugin action.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('bulk-plugins');
+
+        foreach ($selectedPlugins as $requestedPluginFile) {
+            if (!is_string($requestedPluginFile)) {
+                continue;
+            }
+
+            $requestedPluginFile = sanitize_text_field($requestedPluginFile);
+            $pluginFile = plugin_basename($requestedPluginFile);
+
+            if ($requestedPluginFile === '' || $pluginFile !== $requestedPluginFile) {
+                continue;
+            }
+
+            $pluginFiles[$pluginFile] = $pluginFile;
+        }
+
+        $networkAudit = new NetworkAuditPluginIntegration();
+        $updated = $networkAudit->setPluginsEnabled(array_values($pluginFiles), $enabled);
+
+        wp_safe_redirect(
+            add_query_arg(
+                'network-audit-plugins-updated',
+                (string)$updated,
                 $redirectTo
             )
         );
