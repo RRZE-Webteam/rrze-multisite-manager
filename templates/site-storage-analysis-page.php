@@ -460,9 +460,14 @@ defined('ABSPATH') || exit;
                                 <thead><tr><th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></th><th class="rrze-msm-col-numeric"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th></tr></thead>
                                 <tbody>
                                     <?php foreach ((array)$storage_analysis['used_attachment_files'] as $orphan_row) { ?>
-                                        <?php $attachmentDetailsUrl = add_query_arg('debug_attachment_id', (int)($orphan_row['attachment_id'] ?? 0), $debugTabUrl); ?>
                                         <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
-                                            <td class="rrze-msm-col-numeric"><a href="<?php echo esc_url($attachmentDetailsUrl); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a></td>
+                                            <td class="rrze-msm-col-numeric">
+                                                <?php if (!empty($orphan_row['media_edit_url'])) { ?>
+                                                    <a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a>
+                                                <?php } else { ?>
+                                                    <?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?>
+                                                <?php } ?>
+                                            </td>
                                             <td><?php if (!empty($orphan_row['media_edit_url'])) { ?><a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></a><?php } else { ?><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code><?php } ?></td>
                                             <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
@@ -480,7 +485,7 @@ defined('ABSPATH') || exit;
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Potentially orphaned files', 'rrze-multisite-manager'); ?></h2>
-                        <p><?php echo esc_html__('These are files in the uploads folder that are currently not referenced by attachment metadata.', 'rrze-multisite-manager'); ?></p>
+                        <p><?php echo esc_html__('This includes files without a media library entry and media library files with no references found in the inspected sources.', 'rrze-multisite-manager'); ?></p>
                     </header>
                     <p>
                         <strong><?php echo esc_html(number_format_i18n((int)($storage_analysis['combined_flagged_file_count'] ?? 0))); ?></strong>
@@ -614,8 +619,17 @@ defined('ABSPATH') || exit;
                         <?php } ?>
 
                         <?php if ($orphanAnalysisComplete && !empty($storage_analysis['unused_attachment_files'])) { ?>
-                            <h3 id="rrze-msm-unused-attachments"><?php echo esc_html__('Registered in the media library, but not found in use anywhere', 'rrze-multisite-manager'); ?></h3>
+                            <h3 id="rrze-msm-unused-attachments"><?php echo esc_html__('Media library files without detected references', 'rrze-multisite-manager'); ?></h3>
                             <p><?php echo esc_html__('These files exist as media library attachments, but no direct references were found in content, blocks, templates, widgets, or inspected meta fields.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('Review these files in the media library before deleting them; other sources may still use them.', 'rrze-multisite-manager'); ?></p>
+                            <?php if ((int)($storage_analysis['unused_attachment_file_count'] ?? 0) > count((array)$storage_analysis['unused_attachment_files'])) { ?>
+                                <p><?php echo esc_html(sprintf(
+                                    /* translators: 1: displayed recent unused media files, 2: total unused media files. */
+                                    __('Showing the %1$s newest of %2$s media files without detected references.', 'rrze-multisite-manager'),
+                                    number_format_i18n(count((array)$storage_analysis['unused_attachment_files'])),
+                                    number_format_i18n((int)$storage_analysis['unused_attachment_file_count'])
+                                )); ?></p>
+                            <?php } ?>
                             <?php if (!empty($orphan_file_delete_notice)) { ?>
                                 <div class="notice notice-success inline">
                                     <p><?php echo esc_html(sprintf(_n('%d file deleted.', '%d files deleted.', (int)($orphan_file_delete_notice['count'] ?? 0), 'rrze-multisite-manager'), (int)($orphan_file_delete_notice['count'] ?? 0))); ?></p>
@@ -636,14 +650,6 @@ defined('ABSPATH') || exit;
                                     <?php } ?>
                                 </div>
                             <?php } ?>
-                            <form method="post" action="<?php echo esc_url((string)$orphan_file_delete_action); ?>">
-                                <input type="hidden" name="action" value="rrze_multisite_manager_delete_orphan_file">
-                                <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
-                                <?php wp_nonce_field('rrze_multisite_manager_delete_orphan_files_' . $site_id); ?>
-                                <p class="rrze-msm-site-actions">
-                                    <button type="button" class="button button-secondary rrze-msm-toggle-orphan-file-selection" data-select-label="<?php echo esc_attr__('Select all', 'rrze-multisite-manager'); ?>" data-unselect-label="<?php echo esc_attr__('Clear selection', 'rrze-multisite-manager'); ?>"><?php echo esc_html__('Select all', 'rrze-multisite-manager'); ?></button>
-                                    <button type="button" class="button button-primary rrze-msm-open-orphan-file-bulk-delete-modal" data-selection-name="attachment_ids[]" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Delete selected files', 'rrze-multisite-manager'); ?></button>
-                                </p>
                             <div class="rrze-msm-site-table-wrap" data-table-id="unused-attachment-files" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                                 <div class="tablenav top">
                                     <div class="alignleft actions">
@@ -660,7 +666,7 @@ defined('ABSPATH') || exit;
                                 <table class="widefat striped rrze-msm-table">
                                     <thead>
                                         <tr>
-                                            <th><?php echo esc_html__('Selection', 'rrze-multisite-manager'); ?></th>
+                                            <th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
@@ -670,11 +676,23 @@ defined('ABSPATH') || exit;
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['unused_attachment_files'] as $orphan_row) { ?>
+                                            <?php
+                                            $attachmentId = absint($orphan_row['attachment_id'] ?? 0);
+                                            $mediaEditUrl = $attachmentId > 0
+                                                ? get_admin_url((int)$site_id, 'post.php?post=' . $attachmentId . '&action=edit')
+                                                : '';
+                                            ?>
                                             <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
-                                                <td><input type="checkbox" name="attachment_ids[]" value="<?php echo esc_attr((string)($orphan_row['attachment_id'] ?? 0)); ?>"></td>
+                                                <td class="rrze-msm-col-numeric">
+                                                    <?php if ($mediaEditUrl !== '') { ?>
+                                                        <a href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a>
+                                                    <?php } else { ?>
+                                                        <?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?>
+                                                    <?php } ?>
+                                                </td>
                                                 <td>
-                                                    <?php if (!empty($orphan_row['media_edit_url'])) { ?>
-                                                        <a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></a>
+                                                    <?php if ($mediaEditUrl !== '') { ?>
+                                                        <a href="<?php echo esc_url($mediaEditUrl); ?>"><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></a>
                                                     <?php } else { ?>
                                                         <code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code>
                                                     <?php } ?>
@@ -684,14 +702,13 @@ defined('ABSPATH') || exit;
                                                 <td><?php echo esc_html((string)($orphan_row['modified_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
                                                     <div class="rrze-msm-site-actions">
-                                                        <?php if (!empty($orphan_row['media_edit_url'])) { ?>
-                                                            <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><?php echo esc_html__('Media library', 'rrze-multisite-manager'); ?></a>
+                                                        <?php if ($mediaEditUrl !== '') { ?>
+                                                            <a class="button button-secondary" href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html__('Media library', 'rrze-multisite-manager'); ?></a>
                                                         <?php } ?>
                                                         <?php if (!empty($orphan_row['file_url'])) { ?>
                                                             <a class="button button-secondary" href="<?php echo esc_url((string)$orphan_row['file_url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Open file', 'rrze-multisite-manager'); ?></a>
                                                             <a class="button button-secondary" href="<?php echo esc_url('https://www.google.com/search?q=' . rawurlencode('"' . (string)$orphan_row['file_url'] . '"')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__('Search on Google', 'rrze-multisite-manager'); ?></a>
                                                         <?php } ?>
-                                                        <button type="button" class="button button-primary rrze-msm-open-unused-attachment-delete-modal" data-attachment-id="<?php echo esc_attr((string)($orphan_row['attachment_id'] ?? 0)); ?>" data-file-path="<?php echo esc_attr((string)($orphan_row['path'] ?? '')); ?>" data-site-id="<?php echo esc_attr((string)$site_id); ?>" data-delete-nonce="<?php echo esc_attr(wp_create_nonce('rrze_multisite_manager_delete_orphan_files_' . $site_id)); ?>"><?php echo esc_html__('Delete file', 'rrze-multisite-manager'); ?></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -702,7 +719,6 @@ defined('ABSPATH') || exit;
                                     <div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Pagination', 'rrze-multisite-manager'); ?>"></div>
                                 </div>
                             </div>
-                            </form>
                         <?php } ?>
 
                         <?php if ($orphanAnalysisComplete && !empty($storage_analysis['used_attachment_files']) && !$usedAttachmentFilesRendered) { ?>
@@ -724,6 +740,7 @@ defined('ABSPATH') || exit;
                                 <table class="widefat striped rrze-msm-table">
                                     <thead>
                                         <tr>
+                                            <th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
@@ -734,6 +751,13 @@ defined('ABSPATH') || exit;
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['used_attachment_files'] as $orphan_row) { ?>
                                             <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                                <td class="rrze-msm-col-numeric">
+                                                    <?php if (!empty($orphan_row['media_edit_url'])) { ?>
+                                                        <a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a>
+                                                    <?php } else { ?>
+                                                        <?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?>
+                                                    <?php } ?>
+                                                </td>
                                                 <td>
                                                     <?php if (!empty($orphan_row['media_edit_url'])) { ?>
                                                         <a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></a>

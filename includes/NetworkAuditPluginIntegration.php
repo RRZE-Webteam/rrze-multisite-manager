@@ -162,7 +162,8 @@ class NetworkAuditPluginIntegration {
         }
 
         $options = get_site_option(self::OPTION_NAME, []);
-        $enabledPlugins = is_array($options) && is_array($options['enabled_plugins'] ?? null)
+        $options = is_object($options) ? (array)$options : (is_array($options) ? $options : []);
+        $enabledPlugins = is_array($options['enabled_plugins'] ?? null)
             ? $options['enabled_plugins']
             : [];
 

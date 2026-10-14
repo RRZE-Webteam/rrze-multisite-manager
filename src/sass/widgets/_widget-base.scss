@@ -281,14 +281,6 @@
     background: color-mix(in srgb, var(--rrze-msm-status-active-bg) 18%, var(--rrze-msm-surface) 82%);
 }
 
-.rrze-msm-plugin-overview-table tbody > tr > :first-child {
-	box-shadow: inset 5px 0 0 transparent;
-}
-
-.rrze-msm-plugin-overview-table .rrze-msm-detail-row-network-plugin > :first-child {
-	box-shadow: inset 5px 0 0 var(--rrze-msm-status-info-bg);
-}
-
 .rrze-msm-site-table-wrap .rrze-msm-table tbody > tr > :first-child {
 	box-shadow: inset 5px 0 0 transparent;
 }
@@ -335,6 +327,14 @@
 
 .rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-out-of-service > :first-child {
 	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-out-of-service);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-plugin-overview-table tbody > tr.rrze-msm-detail-row-network-plugin > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-info-bg);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-plugin-overview-table tbody > tr.rrze-msm-detail-row-hasupdate > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-warning-bg);
 }
 
 .rrze-msm-detail-row-superadmin-option th,

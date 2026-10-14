@@ -5,6 +5,8 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 class Config {
+    public const STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS = 8;
+
     private array $config = [];
 
     public function __construct() {
@@ -202,11 +204,11 @@ class Config {
                     [
                         'name' => 'storage_analysis_max_concurrent_runs',
                         'label' => __('Maximum concurrent storage analyses', 'rrze-multisite-manager'),
-                        'desc' => __('Runs one storage analysis at a time by default; at most two workers and temporary indexes are admitted across the network. Additional analyses wait for capacity.', 'rrze-multisite-manager'),
+                        'desc' => __('Allows four storage analyses and temporary indexes across the network by default, with up to eight. Additional analyses wait for capacity.', 'rrze-multisite-manager'),
                         'type' => 'number',
-                        'default' => 1,
-                        'min' => 1,
-                        'max' => 2,
+                        'default' => 4,
+                        'min' => 4,
+                        'max' => self::STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS,
                     ],
                     [
                         'name' => 'shortcode_block_analysis_frequency',
@@ -393,9 +395,9 @@ class Config {
 
     public function getStorageAnalysisMaxConcurrentRuns(): int {
         $options = get_site_option($this->getOptionName(), []);
-        $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_max_concurrent_runs'] ?? 1) : 1;
+        $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_max_concurrent_runs'] ?? 4) : 4;
 
-        return max(1, min(2, $limit));
+        return max(4, min(self::STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS, $limit));
     }
 
     public function getMonitoringBatchSize(): int {

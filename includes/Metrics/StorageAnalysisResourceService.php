@@ -16,6 +16,7 @@ class StorageAnalysisResourceService {
     private const SLOT_PREFIX = 'rrze_msm_storage_resource_slot_';
     private const MUTEX = 'rrze_msm_storage_resource_mutex';
     private const MAINTENANCE_OFFSET = 'rrze_msm_storage_resource_maintenance_offset';
+    private const MAX_SLOTS = Config::STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS;
     private Config $config;
     private static array $liveWorkerTokens = [];
 
@@ -30,7 +31,8 @@ class StorageAnalysisResourceService {
     public function acquire(int $siteId): void {
         $this->locked(function () use ($siteId): void {
             $available = -1;
-            for ($slot = 0; $slot < 2; $slot++) {
+            $occupiedSiteIds = [];
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $record = get_option(self::SLOT_PREFIX . $slot, []);
                 if (!empty($record['site_id']) && (int)($record['expires_at'] ?? 0) < time() && !$this->hasLiveWorker((int)$record['site_id'], false)) {
                     $this->deleteSiteKeys((int)$record['site_id']);
@@ -42,13 +44,29 @@ class StorageAnalysisResourceService {
                     $this->writeSlot($slot, $record);
                     return;
                 }
-                if (empty($record) && $slot < $this->config->getStorageAnalysisMaxConcurrentRuns()) {
+                if (!empty($record['site_id']) && $slot < $this->config->getStorageAnalysisMaxConcurrentRuns()) {
+                    $occupiedSiteIds[] = (int)$record['site_id'];
+                }
+                if ($available < 0 && empty($record) && $slot < $this->config->getStorageAnalysisMaxConcurrentRuns()) {
                     $available = $slot;
                 }
             }
             if ($available < 0) {
+                if (empty($occupiedSiteIds)) {
+                    // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                    throw new StorageAnalysisBusyException(__('Storage analysis capacity is occupied. The analysis will be retried.', 'rrze-multisite-manager'));
+                }
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new StorageAnalysisBusyException(__('Storage analysis capacity is occupied. The analysis will be retried.', 'rrze-multisite-manager'));
+                throw new StorageAnalysisBusyException(sprintf(
+                    /* translators: %s: comma-separated IDs of websites holding temporary storage-analysis reservations. */
+                    _n(
+                        'Storage analysis capacity is reserved by website ID %s. The analysis will be retried.',
+                        'Storage analysis capacity is reserved by website IDs %s. The analysis will be retried.',
+                        count($occupiedSiteIds),
+                        'rrze-multisite-manager'
+                    ),
+                    implode(', ', $occupiedSiteIds)
+                ));
             }
             $this->writeSlot($available, ['site_id' => $siteId, 'expires_at' => time() + DAY_IN_SECONDS, 'buckets' => []]);
         });
@@ -59,7 +77,7 @@ class StorageAnalysisResourceService {
         $token = wp_generate_uuid4();
         $selected = -1;
         $this->locked(function () use ($siteId, $token, &$selected): void {
-            for ($slot = 0; $slot < 2; $slot++) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $key = 'rrze_msm_storage_worker_' . $slot;
                 $record = get_option($key, []);
                 if (!empty($record) && $this->canReclaimWorker($record)) {
@@ -70,7 +88,7 @@ class StorageAnalysisResourceService {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
                     throw new StorageAnalysisBusyException(__('Another request is already processing this website.', 'rrze-multisite-manager'));
                 }
-                if (empty($record) && $slot < $this->config->getStorageAnalysisMaxConcurrentRuns()) {
+                if ($selected < 0 && empty($record) && $slot < $this->config->getStorageAnalysisMaxConcurrentRuns()) {
                     $selected = $slot;
                 }
             }
@@ -108,7 +126,7 @@ class StorageAnalysisResourceService {
     }
 
     private function hasLiveWorker(int $siteId, bool $allowOwned): bool {
-        for ($slot = 0; $slot < 2; $slot++) {
+        for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
             $record = get_option('rrze_msm_storage_worker_' . $slot, []);
             if ((int)($record['site_id'] ?? 0) === $siteId && !$this->canReclaimWorker($record)) {
                 if (!$allowOwned || empty(self::$liveWorkerTokens[(string)($record['token'] ?? '')])) {
@@ -120,29 +138,43 @@ class StorageAnalysisResourceService {
     }
 
     public function reserveIndexBytes(int $siteId, string $bucket, array $entries): void {
-        if ($siteId <= 0 || preg_match('/^[a-f0-9]{2}$/', $bucket) !== 1) {
+        $this->writeIndexBucketGroup($siteId, [$bucket => $entries], static function (): void {});
+    }
+
+    /** Check and write a bounded group under one network budget lock. */
+    public function writeIndexBucketGroup(int $siteId, array $buckets, callable $write): void {
+        if ($siteId <= 0 || !$buckets) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
             throw new \RuntimeException(__('Invalid media index reservation.', 'rrze-multisite-manager'));
         }
-        if (!BoundedArray::fits($entries, self::MAX_BUCKET_BYTES)) {
-            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('The media index exceeded its segment limit. The analysis was stopped without classifying additional files as orphaned.', 'rrze-multisite-manager'));
+        $sizes = [];
+        foreach ($buckets as $bucket => $entries) {
+            $bucket = (string)$bucket;
+            if (preg_match('/^[a-f0-9]{2}$/', $bucket) !== 1 || !is_array($entries)) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                throw new \RuntimeException(__('Invalid media index reservation.', 'rrze-multisite-manager'));
+            }
+            if (!BoundedArray::fits($entries, self::MAX_BUCKET_BYTES)) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                throw new \RuntimeException(__('The media index exceeded its segment limit. The analysis was stopped without classifying additional files as orphaned.', 'rrze-multisite-manager'));
+            }
+            $sizes[$bucket] = strlen(serialize($entries)); // Each input is already bounded to 128 KiB.
         }
-        $bytes = strlen(serialize($entries)); // The input is already bounded to 128 KiB.
-        $this->locked(function () use ($siteId, $bucket, $bytes): void {
-            for ($slot = 0; $slot < 2; $slot++) {
+        $this->locked(function () use ($siteId, $sizes, $write): void {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $record = get_option(self::SLOT_PREFIX . $slot, []);
                 if ((int)($record['site_id'] ?? 0) !== $siteId) {
                     continue;
                 }
-                $record['buckets'][$bucket] = $bytes;
+                $record['buckets'] = array_replace((array)($record['buckets'] ?? []), $sizes);
                 if (array_sum($record['buckets']) > self::MAX_INDEX_BYTES) {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
                     throw new \RuntimeException(__('The media index exceeded the temporary storage budget. The previous completed result is preserved.', 'rrze-multisite-manager'));
                 }
                 $record['expires_at'] = time() + DAY_IN_SECONDS;
-                // Reserve before writing a segment, so a killed PHP process cannot lose accounting.
+                // Reserve before writing so an interrupted request cannot leave unaccounted segments.
                 $this->writeSlot($slot, $record);
+                $write();
                 return;
             }
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
@@ -156,7 +188,7 @@ class StorageAnalysisResourceService {
         }
         $expected = false;
         $this->inMainSite(function () use ($siteId, $bucket, &$expected): void {
-            for ($slot = 0; $slot < 2; $slot++) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $record = get_option(self::SLOT_PREFIX . $slot, []);
                 if ((int)($record['site_id'] ?? 0) === $siteId && !empty($record['buckets'][$bucket])) {
                     $expected = true;
@@ -182,7 +214,7 @@ class StorageAnalysisResourceService {
 
     public function release(int $siteId): void {
         $this->locked(function () use ($siteId): void {
-            for ($slot = 0; $slot < 2; $slot++) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $record = get_option(self::SLOT_PREFIX . $slot, []);
                 if ((int)($record['site_id'] ?? 0) === $siteId) {
                     delete_option(self::SLOT_PREFIX . $slot);
@@ -256,7 +288,7 @@ class StorageAnalysisResourceService {
                 throw new StorageAnalysisBusyException(__('Another request is already processing this website.', 'rrze-multisite-manager'));
             }
             $this->deleteSiteKeys($siteId);
-            for ($slot = 0; $slot < 2; $slot++) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $record = get_option(self::SLOT_PREFIX . $slot, []);
                 if ((int)($record['site_id'] ?? 0) === $siteId) {
                     delete_option(self::SLOT_PREFIX . $slot);
@@ -305,7 +337,7 @@ class StorageAnalysisResourceService {
             return;
         }
         $this->locked(function (): void {
-            for ($slot = 0; $slot < 2; $slot++) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $record = get_option(self::SLOT_PREFIX . $slot, []);
                 if (!empty($record['site_id']) && (int)($record['expires_at'] ?? 0) < time() && !$this->hasLiveWorker((int)$record['site_id'], false)) {
                     $this->deleteSiteKeys((int)$record['site_id']);
@@ -314,7 +346,7 @@ class StorageAnalysisResourceService {
             }
         });
         $this->locked(function (): void {
-            for ($slot = 0; $slot < 2; $slot++) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $key = 'rrze_msm_storage_worker_' . $slot;
                 $record = get_option($key, []);
                 if (empty($record)) {

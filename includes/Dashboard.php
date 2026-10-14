@@ -1332,6 +1332,7 @@ class Dashboard {
         $allPlugins = is_array($pluginUsage['plugins'] ?? null) ? $pluginUsage['plugins'] : [];
         $missingPlugins = is_array($pluginUsage['missing_plugins'] ?? null) ? $pluginUsage['missing_plugins'] : [];
         $widget = new PluginUsageWidget($this->plugin, $this->config);
+        $allPlugins = $widget->hydrateRuntimeState($allPlugins);
         $networkPlugins = array_values(
             array_filter(
                 $allPlugins,

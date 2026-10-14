@@ -29,6 +29,8 @@ $GLOBALS['test_options'] = [];
 $GLOBALS['test_network_options'] = [];
 $GLOBALS['test_transients'] = [];
 $GLOBALS['test_events'] = [];
+$GLOBALS['test_actions'] = [];
+$GLOBALS['test_resource_mutex_acquisitions'] = 0;
 $GLOBALS['test_blog'] = 1;
 $GLOBALS['test_blog_stack'] = [];
 $GLOBALS['test_uploads'] = '';
@@ -59,10 +61,27 @@ function is_main_site() { return get_current_blog_id() === 1; }
 class WP_Post { public int $ID = 7; public string $post_type = 'attachment'; public string $post_mime_type = 'application/pdf'; public string $post_title = 'Document'; public string $post_excerpt = ''; public string $post_content = ''; }
 function get_post($id) { check($id === 7, 'Debug loaded an unrelated post.'); return new WP_Post(); }
 function get_post_meta($id, $key, $single = false) { check($id === 7, 'Debug loaded unrelated metadata.'); return $key === '_wp_attached_file' ? 'document.pdf' : []; }
+function get_post_types($args = [], $output = 'names') {
+    check(in_array($args, [['public' => true], []], true) && $output === 'names', 'Reference scan requested unexpected post types.');
+    $types = ['post' => 'post', 'page' => 'page', 'attachment' => 'attachment', 'event' => 'event'];
+    return $args === [] ? $types + ['wp_template' => 'wp_template'] : $types;
+}
+function wp_parse_url($url, $component = -1) {
+    return parse_url($url, $component);
+}
 function get_space_used() { throw new RuntimeException('A synchronous storage scan must not be started.'); }
 function get_option($key, $default = false) { check(!isset($GLOBALS['test_forbidden_option_reads'][$key]), 'Oversized legacy option was loaded through WordPress.'); return $GLOBALS['test_options'][get_current_blog_id()][$key] ?? $default; }
 function update_option($key, $value, $autoload = null) { if ($key === $GLOBALS['test_write_failure']) { return false; } if (($GLOBALS['test_options'][get_current_blog_id()][$key] ?? null) === $value) { return false; } $GLOBALS['test_options'][get_current_blog_id()][$key] = $value; return true; }
-function add_option($key, $value, $deprecated = '', $autoload = true) { if ($key === $GLOBALS['test_write_failure']) { return false; } if (array_key_exists($key, $GLOBALS['test_options'][get_current_blog_id()] ?? [])) { return false; } $GLOBALS['test_options'][get_current_blog_id()][$key] = $value; return true; }
+function add_option($key, $value, $deprecated = '', $autoload = true) {
+    if ($key === $GLOBALS['test_write_failure'] || array_key_exists($key, $GLOBALS['test_options'][get_current_blog_id()] ?? [])) {
+        return false;
+    }
+    $GLOBALS['test_options'][get_current_blog_id()][$key] = $value;
+    if ($key === 'rrze_msm_storage_resource_mutex') {
+        $GLOBALS['test_resource_mutex_acquisitions']++;
+    }
+    return true;
+}
 function delete_option($key) { unset($GLOBALS['test_options'][get_current_blog_id()][$key]); return true; }
 function get_blog_option($id, $key, $default = false) { return $GLOBALS['test_options'][$id][$key] ?? $default; }
 function update_blog_option($id, $key, $value) { $GLOBALS['test_options'][$id][$key] = $value; return true; }
@@ -75,6 +94,7 @@ function wp_cache_supports($feature) { return $feature === 'flush_runtime'; }
 function wp_cache_flush_runtime() { $GLOBALS['test_runtime_flushes']++; return true; }
 function wp_cache_delete($key, $group) { $GLOBALS['test_cache_deletions'][] = [$key, $group]; return true; }
 function wp_rand($min, $max) { return $min; }
+function absint($value) { return abs((int)$value); }
 function get_transient($key) { check(!isset($GLOBALS['test_forbidden_reads'][$key]), 'Cleanup attempted to load an oversized stale value.'); return $GLOBALS['test_transients'][$key] ?? false; }
 function get_site_transient($key) { return get_transient($key); }
 function set_site_transient($key, $value, $ttl) { $GLOBALS['test_transients'][$key] = $value; return true; }
@@ -82,12 +102,20 @@ function delete_site_transient($key) { unset($GLOBALS['test_transients'][$key]);
 function get_admin_url($id, $path = '') { return 'https://example.org/' . $id . '/wp-admin/' . $path; }
 function get_home_url($id, $path = '') { return 'https://example.org/' . $id . $path; }
 function get_edit_post_link($id, $context = '') { return 'https://example.org/wp-admin/post.php?post=' . $id; }
+function get_permalink($id) {
+    return 'https://example.org/post/' . $id;
+}
 function wp_generate_uuid4() { return bin2hex(random_bytes(16)); }
 function wp_convert_hr_to_bytes($value) { return (int)$value * (str_ends_with(strtolower($value), 'g') ? 1073741824 : (str_ends_with(strtolower($value), 'm') ? 1048576 : (str_ends_with(strtolower($value), 'k') ? 1024 : 1))); }
 function wp_next_scheduled($hook, $args = []) { return $GLOBALS['test_events'][$hook][serialize($args)] ?? false; }
 function wp_schedule_event($timestamp, $schedule, $hook, $args = []) { return wp_schedule_single_event($timestamp, $hook, $args); }
 function wp_schedule_single_event($timestamp, $hook, $args = []) { $GLOBALS['test_events'][$hook][serialize($args)] = $timestamp; return true; }
-function do_action(...$args) {}
+function wp_clear_scheduled_hook($hook, $args = []) {
+    unset($GLOBALS['test_events'][$hook][serialize($args)]);
+    return 1;
+}
+function is_wp_error($value) { return $value instanceof WP_Error; }
+function do_action(...$args) { $GLOBALS['test_actions'][] = $args; }
 function is_serialized($value) { return is_string($value) && preg_match('/^[abisOdN]:/', $value) === 1; }
 
 function check(bool $condition, string $message): void {
@@ -118,6 +146,33 @@ class ResourceMetrics extends RRZE\MultisiteManager\Metrics\MetricsImplementatio
     public function stats(array $state): array { return $this->processCurrentSiteStorageAttachmentStats($state); }
     public function index(array $state): array { return $this->buildCurrentSiteStorageAnalysisAttachmentIndexBatch($state); }
     public function entry(array $state, string $path): array { return $this->getCurrentSiteStorageAnalysisAttachmentEntry($state, $path); }
+    public function referencePostRows(int $cursor): array {
+        return $this->getCurrentSiteAttachmentUsagePostRows($cursor);
+    }
+    public function referenceMetaRows(int $cursor): array {
+        return $this->getCurrentSiteAttachmentUsageMetaRows($cursor);
+    }
+    public function initialOrphan(array $analysis): array {
+        return $this->initializeCurrentSiteStorageAnalysisOrphanState($analysis);
+    }
+    public function processOrphan(array $state): array {
+        return $this->processCurrentSiteStorageAnalysisOrphanState($state);
+    }
+    public function mediaPaths(string $value, array $state): array {
+        return $this->addCurrentSiteMediaUsagePaths($value, 'https://example.org/uploads', [], $state);
+    }
+    public function mediaIds(string $value, array $paths): array {
+        return $this->extractCurrentSiteAttachmentReferenceIds($value, $paths, 'https://example.org/uploads', true);
+    }
+    public function normalized(array $analysis): array {
+        return $this->normalizeSiteStorageAnalysis($analysis);
+    }
+    public function unusedPage(array &$state): void {
+        $this->processCurrentSiteUnusedAttachmentsBatch($state);
+    }
+    public function finishOrphan(array $analysis, array &$state): void {
+        $this->finalizeCurrentSiteStorageAnalysisOrphanState(get_current_blog_id(), $analysis, $state);
+    }
     public function cacheSize(): int { return count($this->currentSiteStorageAnalysisAttachmentIndexBucketCache); }
     public function initialStats(): array { return ['attachment_count' => 0, 'base_file_count' => 0, 'derived_variant_count' => 0, 'referenced_physical_file_count' => 0, 'media_types' => $this->getEmptyStorageAttachmentMediaTypes()]; }
     public function payload(array $scan): array { return $this->buildStorageAnalysisPayload('', '', ['used_bytes' => null], $scan, current_time('mysql', true)); }
@@ -140,6 +195,70 @@ class ResourceMetrics extends RRZE\MultisiteManager\Metrics\MetricsImplementatio
 
 final class MetadataProbe extends RRZE\MultisiteManager\Metrics\MediaMetadataAnalysisService {
     public function entry(object $row): array { return $this->buildEntry($row, ['alt' => false], 'images'); }
+}
+
+final class ReferenceRows {
+    public string $posts = 'posts';
+    public string $postmeta = 'postmeta';
+    public array $queries = [];
+    public function prepare(string $query, ...$args): string {
+        check(array_slice($args, 1, 4) === ['post', 'page', 'event', 'wp_template'], 'Reference scan must include public content and templates while excluding attachments.');
+        return vsprintf($query, $args);
+    }
+    public function get_results(string $query): array {
+        $this->queries[] = $query;
+        return [];
+    }
+}
+
+final class OrphanRows {
+    public string $posts = 'posts';
+    public string $postmeta = 'postmeta';
+    public string $options = 'options';
+    public string $sitemeta = 'sitemeta';
+    public string $referenceValue = '';
+    public function prepare(string $query, ...$args): string {
+        return vsprintf($query, $args);
+    }
+    public function query(string $query): int {
+        preg_match_all('/_site_transient_[A-Za-z0-9_]+/', $query, $matches);
+        foreach ($matches[0] as $key) {
+            if (!str_starts_with($key, '_site_transient_timeout_')) {
+                unset($GLOBALS['test_transients'][substr($key, strlen('_site_transient_'))]);
+            }
+        }
+        return 0;
+    }
+    public function get_results(string $query): array {
+        if (str_contains($query, "p.post_type = 'attachment'")) {
+            if (str_contains($query, 'p.ID <')) {
+                return str_contains($query, 'p.ID < 30') ? [] : [(object)['ID' => 30, 'post_mime_type' => 'application/pdf', 'attached_file' => 'new.pdf', 'path_bytes' => 7]];
+            }
+            return str_contains($query, 'p.ID > 0') ? [(object)['ID' => 30, 'post_mime_type' => 'application/pdf', 'attached_file' => 'new.pdf', 'attachment_metadata' => '', 'path_bytes' => 7, 'metadata_bytes' => 0]] : [];
+        }
+        if (str_contains($query, 'SELECT ID, post_type, post_title, post_content')) {
+            return $this->referenceValue !== '' && str_contains($query, 'ID > 0')
+                ? [(object)['ID' => 40, 'post_type' => 'post', 'post_title' => 'Test', 'post_content' => $this->referenceValue]]
+                : [];
+        }
+        return [];
+    }
+}
+
+final class AttachmentPageRows {
+    public string $posts = 'posts';
+    public string $postmeta = 'postmeta';
+    public function prepare(string $query, ...$args): string {
+        return vsprintf($query, $args);
+    }
+    public function get_results(string $query): array {
+        preg_match('/p\.ID < (\d+)/', $query, $cursor);
+        $rows = [];
+        for ($id = min(252, (int)($cursor[1] ?? 0) - 1); $id >= 1 && count($rows) < 50; $id--) {
+            $rows[] = (object)['ID' => $id, 'post_mime_type' => 'application/pdf', 'attached_file' => 'page-' . $id . '.pdf', 'path_bytes' => strlen('page-' . $id . '.pdf')];
+        }
+        return $rows;
+    }
 }
 
 final class AttachmentRows {
@@ -191,21 +310,27 @@ final class AttachmentRows {
 
 final class SliceAnalysis extends RRZE\MultisiteManager\Metrics\StorageAnalysisService {
     public array $calls = ['base' => 0, 'orphan' => 0, 'metadata' => 0];
+    public int $baseBatchesUntilComplete = 7;
+    public int $batchDelayMicroseconds = 0;
     public array $metadataRestarts = [];
     public int $clears = 0;
     public bool $fail = false;
+    public bool $busy = false;
     public bool $assertReserved = false;
     public function __construct() {}
     public function clearProcessStates(int $siteId): void { $this->clears++; }
     public function getProgressContext(int $siteId, string $phase): array { return []; }
+    public function getProcessStatus(int $siteId): array { return []; }
     public function runBaseBatch(int $siteId): array {
+        if ($this->batchDelayMicroseconds > 0) { usleep($this->batchDelayMicroseconds); }
+        if ($this->busy) { throw new RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException('Simulated occupied worker'); }
         if ($this->assertReserved) {
             $queue = get_site_option('rrze_msm_storage_analysis_continuation_queue', []);
             $status = get_blog_option($siteId, 'rrze_msm_storage_analysis_scheduler_status', []);
             check(($queue[$siteId] ?? '') === ($status['run_id'] ?? null), 'The next slice must be reserved before processing starts.');
         }
         if ($this->fail) { throw new RuntimeException('Simulated failure'); }
-        return ['success' => true, 'status' => ['base' => ['status' => ++$this->calls['base'] >= 7 ? 'complete' : 'running']]];
+        return ['success' => true, 'status' => ['base' => ['status' => ++$this->calls['base'] >= $this->baseBatchesUntilComplete ? 'complete' : 'running']]];
     }
     public function runOrphanBatch(int $siteId): array { return ['success' => true, 'status' => ['orphan' => ['status' => ++$this->calls['orphan'] >= 3 ? 'complete' : 'running']]]; }
     public function runMediaMetadataBatch(int $siteId, bool $restart): array {
@@ -214,7 +339,7 @@ final class SliceAnalysis extends RRZE\MultisiteManager\Metrics\StorageAnalysisS
     }
 }
 
-final class SliceScheduler extends RRZE\MultisiteManager\StorageAnalysisSchedulerService {
+class SliceScheduler extends RRZE\MultisiteManager\StorageAnalysisSchedulerService {
     public function runSlice(int $id): void { $this->runSingleProcessAnalysis($id); }
     public function recover(int $id): bool { return $this->recoverInterruptedRun($id); }
     public function getStatus(int $id): array { return (array)get_blog_option($id, 'rrze_msm_storage_analysis_scheduler_status', []); }
@@ -222,7 +347,53 @@ final class SliceScheduler extends RRZE\MultisiteManager\StorageAnalysisSchedule
     public function isSiteEligible(int $id): bool { return true; }
     public function isScheduleMigrationInProgress(): bool { return false; }
     protected function isTaskRemovalInProgress(): bool { return false; }
-    protected function isSiteSchedulingRemoved(int $id): bool { return false; }
+    protected function isSiteSchedulingRemoved(int $id): bool { return parent::isSiteSchedulingRemoved($id); }
+    protected function updateCompletedRunAssignment(int $id, float $duration): void {}
+    protected function logSiteInfo(string $label, int $id, string $mode = 'unassigned', array $context = []): void {}
+    protected function logStorageAnalysisError(int $id, string $phase, string $message, array $status = []): void {}
+}
+
+final class ExpiredDeadlineScheduler extends SliceScheduler {
+    protected function getAnalysisRequestDeadline(): float { return microtime(true) - 1; }
+}
+
+final class RestartScheduler extends SliceScheduler {
+    protected function unscheduleSite(int $siteId): void {
+    }
+
+    protected function scheduleIndividualAnalysisAt(int $siteId, int $timestamp): bool {
+        return wp_schedule_single_event($timestamp, 'rrze_msm_run_site_storage_analysis', [$siteId, 'scheduled']);
+    }
+}
+
+final class ReinitializeScheduler extends SliceScheduler {
+    protected function getNextRecurringScheduledTimestamp(int $siteId): int {
+        return 0;
+    }
+
+    protected function scheduleRecurringAnalysis(int $siteId): bool {
+        return wp_schedule_single_event(time() + MINUTE_IN_SECONDS, 'test_shared_storage_batch', [$siteId]);
+    }
+}
+
+final class ShortDeadlineScheduler extends SliceScheduler {
+    protected function getAnalysisRequestDeadline(): float { return microtime(true) + 0.02; }
+}
+
+final class LockedSliceScheduler extends SliceScheduler {
+    protected function acquireSiteLock(int $siteId): bool { return false; }
+}
+
+final class PausedSliceScheduler extends SliceScheduler {
+    public function isScheduleMigrationInProgress(): bool { return true; }
+}
+
+final class BatchSliceScheduler extends RRZE\MultisiteManager\StorageAnalysisSchedulerService {
+    public function getSiteAssignmentMode(int $id): string { return 'batch'; }
+    public function isSiteEligible(int $id): bool { return true; }
+    public function isScheduleMigrationInProgress(): bool { return false; }
+    protected function isTaskRemovalInProgress(): bool { return false; }
+    protected function isSiteSchedulingRemoved(int $id): bool { return parent::isSiteSchedulingRemoved($id); }
     protected function updateCompletedRunAssignment(int $id, float $duration): void {}
     protected function logSiteInfo(string $label, int $id, string $mode = 'unassigned', array $context = []): void {}
     protected function logStorageAnalysisError(int $id, string $phase, string $message, array $status = []): void {}
@@ -232,6 +403,77 @@ $temporary = sys_get_temp_dir() . '/msm-regression-' . bin2hex(random_bytes(8));
 mkdir($temporary);
 $GLOBALS['test_uploads'] = $temporary;
 try {
+    file_put_contents($temporary . '/new.pdf', 'unused media');
+    foreach (['', 'https://example.org/uploads/new.pdf', 'https:\/\/example.org\/uploads\/new.pdf', 'wp-image-30', '[gallery ids="30"]'] as $referenceValue) {
+        $GLOBALS['wpdb'] = new OrphanRows();
+        $GLOBALS['wpdb']->referenceValue = $referenceValue;
+        $metrics = new ResourceMetrics();
+        $state = $metrics->initialOrphan([
+            'upload_basedir' => $temporary,
+            'upload_baseurl' => 'https://example.org/uploads',
+            'largest_orphan_files' => [],
+        ]);
+        $steps = 0;
+        do {
+            if (($state['media_usage_stage'] ?? '') === 'references') {
+                check((int)($metrics->entry($state, 'new.pdf')['attachment_id'] ?? 0) === 30, 'Media reference index lost the attachment path.');
+                $paths = $metrics->mediaPaths('https://example.org/uploads/new.pdf', $state);
+                check($paths === ['new.pdf' => 30], 'Media reference URL did not resolve to its attachment.');
+                check($metrics->mediaIds('https://example.org/uploads/new.pdf', $paths) === [30], 'Media reference URL was not extracted.');
+            }
+            $state = $metrics->processOrphan($state);
+            check(++$steps < 30, 'Media usage scan did not terminate: ' . json_encode([
+                'stage' => $state['media_usage_stage'] ?? '',
+                'reference_stage' => $state['attachment_usage_stage'] ?? '',
+                'cursor' => $state['media_attachment_cursor'] ?? 0,
+            ]));
+        } while (($state['media_usage_stage'] ?? '') !== 'complete');
+        check((int)$state['unused_attachment_file_count'] === ($referenceValue !== '' ? 0 : 1), 'Media library reference classification is incorrect.');
+        check(count($state['unused_attachment_files']) === ($referenceValue !== '' ? 0 : 1), 'Unused media detail list is incorrect.');
+        if ($referenceValue === '') {
+            check(str_contains((string)($state['unused_attachment_files'][0]['media_edit_url'] ?? ''), 'post=30&action=edit'), 'Unused media entry has no attachment detail URL.');
+        }
+        $normalized = $metrics->normalized([
+            'unused_attachment_files' => $state['unused_attachment_files'],
+            'unused_attachment_file_count' => $state['unused_attachment_file_count'],
+            'unused_attachment_total_bytes' => $state['unused_attachment_total_bytes'],
+            'orphan_file_count' => 0,
+            'orphan_total_bytes' => 0,
+        ]);
+        check((int)$normalized['unused_attachment_file_count'] === ($referenceValue !== '' ? 0 : 1), 'Normalization discarded unused media totals.');
+        check(count($normalized['unused_attachment_files']) === ($referenceValue !== '' ? 0 : 1), 'Normalization discarded unused media rows.');
+        $metrics->finishOrphan(['orphan_file_count' => 0, 'orphan_total_bytes' => 0], $state);
+        check((int)($metrics->saved['unused_attachment_file_count'] ?? -1) === ($referenceValue !== '' ? 0 : 1), 'Completed analysis did not publish unused media totals.');
+        check(count((array)($metrics->saved['unused_attachment_files'] ?? [])) === ($referenceValue !== '' ? 0 : 1), 'Completed analysis did not publish unused media rows.');
+    }
+    unlink($temporary . '/new.pdf');
+    (new RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService())->clearSite(1);
+    for ($id = 1; $id <= 252; $id++) {
+        file_put_contents($temporary . '/page-' . $id . '.pdf', 'x');
+    }
+    $GLOBALS['wpdb'] = new AttachmentPageRows();
+    $pagedMetrics = new ResourceMetrics();
+    $pagedState = [
+        'media_attachment_cursor' => 253,
+        'media_attachment_processed' => 0,
+        'used_attachment_ids' => [250 => true],
+        'unused_attachment_file_count' => 0,
+        'unused_attachment_total_bytes' => 0,
+        'unused_attachment_files' => [],
+        'normalized_base_dir' => trailingslashit($temporary),
+        'upload_baseurl' => 'https://example.org/uploads',
+    ];
+    $pagedMetrics->unusedPage($pagedState);
+    check(($pagedState['media_usage_stage'] ?? '') !== 'complete' && $pagedState['media_attachment_cursor'] === 203, 'First media page lost its cursor.');
+    for ($page = 0; $page < 6 && ($pagedState['media_usage_stage'] ?? '') !== 'complete'; $page++) {
+        $pagedMetrics->unusedPage($pagedState);
+    }
+    check($pagedState['media_usage_stage'] === 'complete' && $pagedState['media_attachment_processed'] === 252, 'Media scan did not finish after its final page.');
+    check($pagedState['unused_attachment_file_count'] === 251 && count($pagedState['unused_attachment_files']) === 250, 'Media scan did not retain an exact count with a bounded preview.');
+    foreach (range(1, 252) as $id) {
+        unlink($temporary . '/page-' . $id . '.pdf');
+    }
+
     foreach ([0, 249, 250, 251, 500, 501, 1001] as $count) {
         $directory = $temporary . '/files-' . $count;
         mkdir($directory);
@@ -271,6 +513,13 @@ try {
     $GLOBALS['test_options'][1]['rrze_msm_site_storage_analysis_result_meta'] = ['actual_bytes' => 0, 'generated_at' => current_time('mysql', true)];
     unset($GLOBALS['test_transients']['dirsize_cache']);
     check($usage->getCurrentSiteUsage()['used_bytes'] === 0, 'A measured zero must remain a known value.');
+
+    $referenceRows = new ReferenceRows();
+    $GLOBALS['wpdb'] = $referenceRows;
+    $referenceMetrics = new ResourceMetrics();
+    check($referenceMetrics->referencePostRows(0) === [], 'Post reference scan did not run.');
+    check($referenceMetrics->referenceMetaRows(0) === [], 'Metadata reference scan did not run.');
+    check(count($referenceRows->queries) === 2, 'Both reference sources must be queried.');
 
     $wpdb = new AttachmentRows();
     $GLOBALS['wpdb'] = $wpdb;
@@ -337,10 +586,26 @@ try {
     check($states->getAttachmentIndexBucketKey(1, 10, 'aa') === $states->getAttachmentIndexBucketKey(1, 11, 'aa'), 'Index keys must remain stable during a run.');
 
     $analysis = new SliceAnalysis();
+    $analysis->baseBatchesUntilComplete = 1020;
     $analysis->assertReserved = true;
     $scheduler = new SliceScheduler($analysis);
     $scheduler->runSlice(2);
-    check($analysis->calls['base'] === 2, 'First Cron slice must stop after two batches.');
+    check(array_sum($analysis->calls) === 1000 && !empty($scheduler->getStatus(2)['is_running']), 'The first Cron slice must use its emergency cap and remain resumable.');
+    $startedLogs = array_filter($GLOBALS['test_actions'], static fn($action) => ($action[0] ?? '') === 'rrze.log.info' && ($action[2]['event'] ?? '') === 'batch_started' && ($action[2]['site_id'] ?? 0) === 2);
+    $completedLogs = array_filter($GLOBALS['test_actions'], static fn($action) => ($action[0] ?? '') === 'rrze.log.info' && ($action[2]['event'] ?? '') === 'batch_completed' && ($action[2]['site_id'] ?? 0) === 2);
+    check(count($startedLogs) === 63 && count($completedLogs) === 63, 'A long slice must sample batch diagnostics without logging every step.');
+    $expiredAnalysis = new SliceAnalysis();
+    $expiredScheduler = new ExpiredDeadlineScheduler($expiredAnalysis);
+    $expiredScheduler->runSlice(16);
+    check($expiredAnalysis->calls['base'] === 1, 'An exhausted request deadline must still process the first batch.');
+    check(!empty($expiredScheduler->getStatus(16)['is_running']), 'The bounded slice must retain its continuation.');
+    unset($GLOBALS['test_network_options']['rrze_msm_storage_analysis_continuation_queue'][16]);
+    $shortAnalysis = new SliceAnalysis();
+    $shortAnalysis->baseBatchesUntilComplete = 1020;
+    $shortAnalysis->batchDelayMicroseconds = 3000;
+    (new ShortDeadlineScheduler($shortAnalysis))->runSlice(17);
+    check($shortAnalysis->calls['base'] >= 1 && $shortAnalysis->calls['base'] < 1000, 'A slice must yield at its time budget before the emergency step cap.');
+    unset($GLOBALS['test_network_options']['rrze_msm_storage_analysis_continuation_queue'][17]);
     $first = $scheduler->getStatus(2);
     check(!empty($first['is_running']) && !empty($first['run_id']), 'A partial run must persist its identity.');
     check(!$scheduler->recover(2), 'A pending continuation must not be treated as interrupted.');
@@ -350,13 +615,127 @@ try {
         $before = array_sum($analysis->calls);
         unset($GLOBALS['test_events'][$queueHook]);
         $scheduler = new SliceScheduler($analysis); // Fresh service for the next request.
-        $scheduler->runAnalysisContinuation();
-        check(array_sum($analysis->calls) - $before <= 2, 'A continuation exceeded two batches.');
+        if ($request === 0) {
+            switch_to_blog(2); // A legacy continuation may be fired from a subsite's Cron table.
+        }
+        try {
+            $scheduler->runAnalysisContinuation();
+        } finally {
+            if ($request === 0) {
+                restore_current_blog();
+            }
+        }
+        check(array_sum($analysis->calls) - $before <= 1000, 'A continuation exceeded its emergency step cap.');
+        check(array_sum($analysis->calls) > $before, 'A subsite Cron continuation did not process its queued slice.');
     }
     check(empty($scheduler->getStatus(2)['is_running']), 'Resumed phases never completed.');
-    check($analysis->calls === ['base' => 7, 'orphan' => 3, 'metadata' => 2], 'Completed phases were restarted.');
+    check($analysis->calls === ['base' => 1020, 'orphan' => 3, 'metadata' => 2], 'Completed phases were restarted.');
     check($analysis->metadataRestarts === [true, false], 'Metadata phase must restart only once.');
     check($analysis->clears === 1, 'Continuation cleared progress instead of resuming it.');
+    $waitingStatus = ['is_running' => true, 'run_id' => 'waiting-run', 'run_phase' => 'base', 'last_started_at' => current_time('mysql', true)];
+    update_blog_option(15, 'rrze_msm_storage_analysis_scheduler_status', $waitingStatus);
+    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_continuation_queue'] = [15 => 'waiting-run'];
+    unset($GLOBALS['test_events'][$queueHook]);
+    (new LockedSliceScheduler(new SliceAnalysis()))->runAnalysisContinuation();
+    $waitingStatus = get_blog_option(15, 'rrze_msm_storage_analysis_scheduler_status');
+    check(!empty($waitingStatus['last_error']) && !empty($waitingStatus['last_attempt_at']), 'A locked continuation did not record why it skipped work.');
+    unset($GLOBALS['test_events'][$queueHook]);
+    (new PausedSliceScheduler(new SliceAnalysis()))->runAnalysisContinuation();
+    check((int)wp_next_scheduled($queueHook) >= time() + MINUTE_IN_SECONDS - 1, 'Paused maintenance lost the continuation event.');
+    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_continuation_queue'] = [];
+    update_blog_option(12, 'rrze_msm_storage_analysis_scheduler_status', ['last_was_aborted' => true, 'last_duration_seconds' => 42]);
+    $busyAnalysis = new SliceAnalysis();
+    $busyAnalysis->busy = true;
+    $busyScheduler = new SliceScheduler($busyAnalysis);
+    $busyScheduler->runSlice(12);
+    $busyStatus = $busyScheduler->getStatus(12);
+    check(empty($busyStatus['last_was_aborted']) && ($busyStatus['phases']['base']['status'] ?? '') === 'scheduled', 'A blocked new run must not display a previous abort or claim file-index progress.');
+    check(($busyStatus['last_error'] ?? '') === 'Simulated occupied worker', 'The capacity reason was not saved.');
+    $individualRetryHook = 'rrze_msm_run_site_storage_analysis';
+    check((int)wp_next_scheduled($individualRetryHook, [12, 'scheduled', true]) >= time() + MINUTE_IN_SECONDS - 1, 'A blocked individual run has no near-term site Cron retry.');
+    check(empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])), 'An individual capacity wait kept occupying the central continuation queue.');
+    $capacityWaitLogs = array_filter($GLOBALS['test_actions'], static fn($action) => ($action[0] ?? '') === 'rrze.log.info' && ($action[2]['event'] ?? '') === 'capacity_wait' && ($action[2]['site_id'] ?? 0) === 12);
+    check(count($capacityWaitLogs) === 1, 'The first capacity wait did not record its retry in the info log.');
+    $busyStatus['resource_wait_started_at'] = time() - DAY_IN_SECONDS - 301;
+    update_blog_option(12, 'rrze_msm_storage_analysis_scheduler_status', $busyStatus);
+    unset($GLOBALS['test_events'][$individualRetryHook][serialize([12, 'scheduled', true])]);
+    $busyScheduler->runScheduledAnalysis(12, 'scheduled');
+    $busyStatus = $busyScheduler->getStatus(12);
+    check(empty($busyStatus['is_running']) && ($busyStatus['phases']['base']['status'] ?? '') === 'error', 'A permanently occupied worker left an endless running state.');
+    check(str_contains((string)$busyStatus['last_error'], 'more than 24 hours'), 'An exhausted capacity wait still promises another retry.');
+    check(empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])), 'The failed run remained queued.');
+    $recoveringAnalysis = new SliceAnalysis();
+    $recoveringAnalysis->baseBatchesUntilComplete = 1020;
+    $recoveringAnalysis->busy = true;
+    $recoveringScheduler = new SliceScheduler($recoveringAnalysis);
+    $recoveringScheduler->runSlice(13);
+    $recoveringAnalysis->busy = false;
+    check((int)wp_next_scheduled($individualRetryHook, [13, 'scheduled', true]) > 0, 'The recoverable individual run lost its retry.');
+    $recoveringScheduler->recover(13);
+    check(empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])), 'Monitoring bypassed the individual retry backoff.');
+    unset($GLOBALS['test_events'][$individualRetryHook][serialize([13, 'scheduled', true])]);
+    $recoveringScheduler->runScheduledAnalysis(13, 'scheduled');
+    $recoveringStatus = $recoveringScheduler->getStatus(13);
+    check(!empty($recoveringStatus['is_running']) && empty($recoveringStatus['last_error']) && empty($recoveringStatus['resource_wait_started_at']), 'A successful retry kept the capacity error visible.');
+    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_continuation_queue'] = [];
+    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_batch_site_ids'] = [10, 11];
+    $batchHook = 'rrze_msm_run_site_storage_analysis_batch';
+    $GLOBALS['test_events'][$batchHook][serialize([])] = time() + DAY_IN_SECONDS;
+    $batchAnalysis = new SliceAnalysis();
+    $batchAnalysis->baseBatchesUntilComplete = 1020;
+    $batchScheduler = new BatchSliceScheduler($batchAnalysis);
+    $batchScheduler->runBatchScheduledAnalysis();
+    check(!empty(get_blog_option(10, 'rrze_msm_storage_analysis_scheduler_status')['is_running']), 'The first batch site did not start.');
+    check(empty(get_blog_option(11, 'rrze_msm_storage_analysis_scheduler_status')), 'The next batch site started before the active analysis finished.');
+    check((int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id') === 10, 'The batch cursor did not retain the active site.');
+    $batchScheduler->runBatchScheduledAnalysis(true);
+    check(empty(get_blog_option(11, 'rrze_msm_storage_analysis_scheduler_status')), 'A scheduled batch continuation ignored the active analysis.');
+    for ($request = 0; $request < 10 && !empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])); $request++) {
+        unset($GLOBALS['test_events'][$queueHook]);
+        $batchScheduler = new BatchSliceScheduler($batchAnalysis);
+        $batchScheduler->runAnalysisContinuation();
+    }
+    check(empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])), 'The active batch site did not finish.');
+    check((int)wp_next_scheduled($batchHook, ['rrze_msm_storage_analysis_batch' => true]) > 0, 'The next batch site was not scheduled after completion.');
+    $batchCursor = (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0);
+    $recurringBatchTimestamp = (int)wp_next_scheduled($batchHook);
+    update_blog_option(10, 'rrze_msm_storage_analysis_scheduler_status', ['last_was_aborted' => true, 'last_error' => 'Previous batch failed']);
+    $targetedAnalysis = new SliceAnalysis();
+    $targetedAnalysis->baseBatchesUntilComplete = 1020;
+    $targetedScheduler = new BatchSliceScheduler($targetedAnalysis);
+    check($targetedScheduler->startAnalysisNow(10), 'An aborted shared-batch website could not be restarted on its own.');
+    check((int)wp_next_scheduled($batchHook, [10, true]) > 0, 'The targeted shared-batch Cron event was not scheduled.');
+    check((int)wp_next_scheduled($batchHook) === $recurringBatchTimestamp && (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0) === $batchCursor, 'Targeted restart changed the shared recurring event or its cursor.');
+    check(get_site_option('rrze_msm_storage_analysis_batch_site_ids', []) === [10, 11], 'Targeted restart changed other batch assignments.');
+    check(empty($targetedScheduler->getStatus(10)['last_was_aborted']), 'Targeted restart retained the old abort.');
+    unset($GLOBALS['test_events'][$batchHook][serialize([10, true])]); // WP-Cron consumes a single event before invoking its callback.
+    update_site_option('rrze_msm_storage_analysis_batch_lock', ['started_at' => time(), 'token' => 'other-request']);
+    $targetedScheduler->runBatchScheduledAnalysis(10, true);
+    check((int)wp_next_scheduled($batchHook, [10, true]) >= time() + MINUTE_IN_SECONDS - 1, 'A busy shared batch discarded the targeted retry.');
+    delete_site_option('rrze_msm_storage_analysis_batch_lock');
+    unset($GLOBALS['test_events'][$batchHook][serialize([10, true])]);
+    $targetedScheduler->runBatchScheduledAnalysis(10, true);
+    check(!empty($targetedScheduler->getStatus(10)['is_running']) && (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0) === $batchCursor, 'Targeted batch execution did not start independently.');
+    for ($request = 0; $request < 10 && !empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])); $request++) {
+        unset($GLOBALS['test_events'][$queueHook]);
+        $targetedScheduler = new BatchSliceScheduler($targetedAnalysis);
+        $targetedScheduler->runAnalysisContinuation();
+    }
+    check(empty($targetedScheduler->getStatus(10)['is_running']) && $targetedAnalysis->calls === ['base' => 1020, 'orphan' => 3, 'metadata' => 2], 'Targeted batch restart did not complete all phases.');
+    check(empty(get_blog_option(11, 'rrze_msm_storage_analysis_scheduler_status', [])), 'Targeted restart also analyzed another batch website.');
+    check(!$targetedScheduler->startAnalysisNow(10), 'A healthy shared-batch website was restarted outside its scheduled run.');
+    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_removed_site_ids'] = [10];
+    update_blog_option(10, 'rrze_msm_storage_analysis_scheduler_status', [
+        'last_was_aborted' => false,
+        'last_error' => 'Scheduling for this website has been removed.',
+    ]);
+    check($targetedScheduler->startAnalysisNow(10), 'A failed shared-batch website could not be restarted on its own.');
+    check((int)wp_next_scheduled($batchHook, [10, true]) > 0, 'A failed shared-batch restart did not schedule its targeted Cron event.');
+    check(empty(get_site_option('rrze_msm_storage_analysis_removed_site_ids', [])), 'A failed shared-batch restart retained the scheduling removal marker.');
+    check(empty($targetedScheduler->getStatus(10)['last_error']), 'A failed shared-batch restart retained the old error.');
+    check((int)wp_next_scheduled($batchHook) === $recurringBatchTimestamp && (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0) === $batchCursor, 'A failed shared-batch restart changed the recurring event or cursor.');
+    check(get_site_option('rrze_msm_storage_analysis_batch_site_ids', []) === [10, 11], 'A failed shared-batch restart changed other batch assignments.');
+    unset($GLOBALS['test_network_options']['rrze_msm_storage_analysis_batch_site_ids'], $GLOBALS['test_network_options']['rrze_msm_storage_analysis_batch_last_site_id'], $GLOBALS['test_events'][$batchHook]);
     $GLOBALS['test_network_options']['rrze_msm_storage_analysis_continuation_queue'] = [2 => $oldRunId];
     $before = array_sum($analysis->calls);
     $scheduler->runAnalysisContinuation();
@@ -368,15 +747,46 @@ try {
     }
     $GLOBALS['test_network_options'][$queueKey] = [4 => 'run-4', 5 => 'run-5'];
     $queuedAnalysis = new SliceAnalysis();
+    $queuedAnalysis->baseBatchesUntilComplete = 1020;
     $scheduler = new SliceScheduler($queuedAnalysis);
     unset($GLOBALS['test_events'][$queueHook]);
     $scheduler->runAnalysisContinuation();
-    check($queuedAnalysis->calls['base'] === 2 && array_key_first($GLOBALS['test_network_options'][$queueKey]) === 5, 'One queue event must process only one website and preserve FIFO fairness.');
+    check(array_sum($queuedAnalysis->calls) === 1000 && array_key_first($GLOBALS['test_network_options'][$queueKey]) === 5, 'One queue event must process only one website and preserve FIFO fairness.');
     check(count($GLOBALS['test_events'][$queueHook]) === 1, 'Queue must use one central continuation event.');
     $GLOBALS['test_network_options'][$queueKey] = [];
 
+    $restartSiteId = 18;
+    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_removed_site_ids'] = [$restartSiteId];
+    update_blog_option($restartSiteId, 'rrze_msm_storage_analysis_scheduler_status', [
+        'last_was_aborted' => true,
+        'last_error' => 'Scheduling for this website has been removed.',
+        'last_attempt_at' => current_time('mysql', true),
+    ]);
+    $restartAnalysis = new SliceAnalysis();
+    $restartAnalysis->baseBatchesUntilComplete = 1020;
+    $restartScheduler = new RestartScheduler($restartAnalysis);
+    check($restartScheduler->startAnalysisNow($restartSiteId), 'An explicitly restarted website was not scheduled.');
+    check(empty(get_site_option('rrze_msm_storage_analysis_removed_site_ids', [])), 'An explicit restart retained the scheduling removal marker.');
+    $restartStatus = $restartScheduler->getStatus($restartSiteId);
+    check(empty($restartStatus['last_was_aborted']) && empty($restartStatus['last_error']) && empty($restartStatus['last_attempt_at']), 'An explicit restart retained the old abort status.');
+    $GLOBALS['test_events'][$queueHook][serialize([])] = time() + 245 * HOUR_IN_SECONDS;
+    $restartScheduler->runSlice($restartSiteId);
+    check(!empty($restartScheduler->getStatus($restartSiteId)['is_running']), 'The restarted single assignment did not begin.');
+    check((int)wp_next_scheduled($queueHook) <= time() + 10, 'A distant continuation delayed the orphan and metadata phases.');
+    unset($GLOBALS['test_events'][$queueHook]);
+    (new RestartScheduler($restartAnalysis))->runAnalysisContinuation();
+    check(empty($restartScheduler->getStatus($restartSiteId)['is_running']), 'The single assignment did not finish all phases after its index.');
+    check($restartAnalysis->calls === ['base' => 1020, 'orphan' => 3, 'metadata' => 2], 'The single assignment skipped or repeated a phase.');
+    unset($GLOBALS['test_events'][$queueHook]);
+    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_removed_site_ids'] = [19];
+    update_blog_option(19, 'rrze_msm_storage_analysis_scheduler_status', ['last_was_aborted' => true, 'last_error' => 'Old batch stopped']);
+    $reinitialized = new ReinitializeScheduler(new SliceAnalysis());
+    check($reinitialized->scheduleSelectedActiveSites([19]) === 1, 'A removed batch assignment was not rescheduled.');
+    check(empty(get_site_option('rrze_msm_storage_analysis_removed_site_ids', [])) && empty($reinitialized->getStatus(19)['last_was_aborted']), 'Reinitializing a shared batch retained its removal marker or abort.');
+
     $GLOBALS['test_options'][1]['rrze_msm_storage_analysis_run_slots_lock'] = ['token' => 'other-request', 'expires_at' => time() + 60];
     $collidingAnalysis = new SliceAnalysis();
+    $collidingAnalysis->baseBatchesUntilComplete = 1020;
     $scheduler = new SliceScheduler($collidingAnalysis);
     $scheduler->runSlice(6);
     check(!empty($scheduler->getStatus(6)['is_running']) && $collidingAnalysis->clears === 1, 'Queue-lock contention must preserve progress and schedule a retry.');
@@ -437,10 +847,53 @@ try {
 
     $resources = new RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService();
     $resources->acquire(40);
+    $resources->acquire(41);
+    $resources->acquire(42);
+    $resources->acquire(43);
     $blocked = false;
-    try { $resources->acquire(41); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = true; }
-    check($blocked, 'Default admission must allow only one temporary index.');
+    try { $resources->acquire(44); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = str_contains($exception->getMessage(), '40'); }
+    check($blocked, 'Default admission must allow four temporary indexes.');
     $resources->reserveIndexBytes(40, 'ab', ['sample' => ['i' => 40, 'm' => 'image/jpeg', 'f' => 1]]);
+    $group = [
+        '01' => ['first' => ['i' => 40, 'f' => 1]],
+        '02' => ['second' => ['i' => 40, 'f' => 1]],
+    ];
+    $written = 0;
+    $mutexAcquisitions = $GLOBALS['test_resource_mutex_acquisitions'];
+    $resources->writeIndexBucketGroup(40, $group, function () use (&$written): void {
+        $reservation = get_option('rrze_msm_storage_resource_slot_0', []);
+        check(!empty($reservation['buckets']['01']) && !empty($reservation['buckets']['02']), 'Index writes must be reserved before the callback runs.');
+        $written++;
+        set_site_transient('index-group-01', ['first' => true], DAY_IN_SECONDS);
+        set_site_transient('index-group-02', ['second' => true], DAY_IN_SECONDS);
+    });
+    $reservation = get_option('rrze_msm_storage_resource_slot_0', []);
+    check($written === 1 && $GLOBALS['test_resource_mutex_acquisitions'] === $mutexAcquisitions + 1 && !empty($reservation['buckets']['01']) && !empty($reservation['buckets']['02']), 'A group of index segments must use one budget lock and account for both writes.');
+    $failed = false;
+    try {
+        $resources->writeIndexBucketGroup(40, ['03' => ['third' => ['i' => 40, 'f' => 1]]], function (): void {
+            set_site_transient('index-group-03', ['third' => true], DAY_IN_SECONDS);
+            throw new RuntimeException('Interrupted group write');
+        });
+    } catch (RuntimeException $exception) {
+        $failed = true;
+    }
+    check($failed && !empty(get_option('rrze_msm_storage_resource_slot_0', [])['buckets']['03']) && get_site_transient('index-group-03') !== false, 'A partial group write must keep its reservation for safe replay.');
+    $resources->writeIndexBucketGroup(40, ['03' => ['third' => ['i' => 40, 'f' => 1]]], static function (): void {});
+    check(!empty(get_option('rrze_msm_storage_resource_slot_0', [])['buckets']['03']), 'Replaying an interrupted group must reserve its completed segment.');
+    $reservation = get_option('rrze_msm_storage_resource_slot_0', []);
+    $fullReservation = $reservation;
+    $fullReservation['buckets']['ff'] = RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService::MAX_INDEX_BYTES;
+    update_option('rrze_msm_storage_resource_slot_0', $fullReservation);
+    $wroteOverBudget = false;
+    $blocked = false;
+    try {
+        $resources->writeIndexBucketGroup(40, ['04' => ['fourth' => ['i' => 40, 'f' => 1]]], function () use (&$wroteOverBudget): void { $wroteOverBudget = true; });
+    } catch (RuntimeException $exception) {
+        $blocked = true;
+    }
+    check($blocked && !$wroteOverBudget, 'An over-budget group must be rejected before any segment is written.');
+    update_option('rrze_msm_storage_resource_slot_0', $reservation);
     $blocked = false;
     try { $resources->reserveIndexBytes(40, 'cd', ['oversized' => str_repeat('x', 131073)]); } catch (RuntimeException $exception) { $blocked = true; }
     check($blocked, 'An oversized segment must be rejected before storage.');
@@ -450,13 +903,18 @@ try {
     $blocked = false;
     try { RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService::saveState('bounded-test', ['huge' => str_repeat('x', 1048577)], DAY_IN_SECONDS); } catch (RuntimeException $exception) { $blocked = true; }
     check($blocked && get_site_transient('bounded-test') === false, 'Working-state cap must be enforced before writing.');
-    $resources->release(40);
+    foreach (range(40, 43) as $siteId) {
+        $resources->release($siteId);
+    }
+    $GLOBALS['test_network_options']['rrze-multisite-manager']['monitoring_storage_analysis_max_concurrent_runs'] = 1;
+    check((new RRZE\MultisiteManager\Config())->getStorageAnalysisMaxConcurrentRuns() === 4, 'A saved one-site limit must not starve an existing network.');
     $GLOBALS['test_network_options']['rrze-multisite-manager']['monitoring_storage_analysis_max_concurrent_runs'] = 100;
-    check((new RRZE\MultisiteManager\Config())->getStorageAnalysisMaxConcurrentRuns() === 2, 'Old large concurrency values must be clamped to two.');
-    $resources->acquire(40);
-    $resources->acquire(41);
+    check((new RRZE\MultisiteManager\Config())->getStorageAnalysisMaxConcurrentRuns() === 8, 'Old large concurrency values must be clamped to eight.');
+    foreach (range(40, 47) as $siteId) {
+        $resources->acquire($siteId);
+    }
     $blocked = false;
-    try { $resources->acquire(42); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = true; }
+    try { $resources->acquire(48); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = true; }
     check($blocked, 'Network temporary indexes exceeded the hard admission cap.');
     $resources->run(40, function () use ($resources): void {
         $blocked = false;
@@ -466,9 +924,15 @@ try {
             if (str_starts_with($key, 'rrze_msm_storage_worker_')) { $GLOBALS['test_options'][1][$key]['expires_at'] = time() - 1; }
         }
         $resources->run(41, function () use ($resources): void {
+            for ($slot = 2; $slot < 8; $slot++) {
+                update_option('rrze_msm_storage_worker_' . $slot, ['site_id' => 40 + $slot, 'host' => 'other-host.invalid', 'pid' => 120 + $slot, 'token' => 'remote-' . $slot, 'expires_at' => time() + DAY_IN_SECONDS]);
+            }
             $blocked = false;
-            try { $resources->run(42, static fn() => null); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = true; }
-            check($blocked, 'Global workers exceeded two.');
+            try { $resources->run(48, static fn() => null); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = true; }
+            check($blocked, 'Global workers exceeded eight.');
+            for ($slot = 2; $slot < 8; $slot++) {
+                delete_option('rrze_msm_storage_worker_' . $slot);
+            }
         });
     });
     $staleKey = 'rrze_msm_site_storage_attachment_index_bucket_resumable_v2_40_ab';
@@ -481,20 +945,25 @@ try {
     }
     $resources->maintain();
     check(!isset($GLOBALS['test_transients'][$staleKey]), 'Abandoned-run cleanup left its payload behind.');
-    $resources->acquire(42); // The expired reservation must have been reclaimed.
-    $resources->release(41);
-    $resources->release(42);
-    check(empty(get_option('rrze_msm_storage_worker_0')) && empty(get_option('rrze_msm_storage_worker_1')), 'Worker tokens were not released.');
-    $GLOBALS['test_options'][1]['rrze_msm_storage_worker_0'] = ['site_id' => 70, 'host' => 'other-host.invalid', 'pid' => 123, 'token' => 'remote', 'expires_at' => time() - 1];
-    $GLOBALS['test_options'][1]['rrze_msm_storage_worker_1'] = ['site_id' => 71, 'host' => 'other-host.invalid', 'pid' => 124, 'token' => 'remote2', 'expires_at' => time() - 1];
+    $resources->acquire(48); // The expired reservation must have been reclaimed.
+    foreach (range(41, 48) as $siteId) {
+        $resources->release($siteId);
+    }
+    foreach (range(0, 7) as $slot) {
+        check(empty(get_option('rrze_msm_storage_worker_' . $slot)), 'Worker token was not released from slot ' . $slot . '.');
+    }
+    for ($slot = 0; $slot < 8; $slot++) {
+        $GLOBALS['test_options'][1]['rrze_msm_storage_worker_' . $slot] = ['site_id' => 70 + $slot, 'host' => 'other-host.invalid', 'pid' => 123 + $slot, 'token' => 'remote-' . $slot, 'expires_at' => time() - 1];
+    }
     $blocked = false;
     try { $resources->run(72, static fn() => null); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = true; }
     check($blocked, 'An expired lease must not reclaim a worker whose termination cannot be verified.');
     $blocked = false;
     try { $resources->clearSite(70); } catch (RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException $exception) { $blocked = true; }
     check($blocked, 'Reset must not delete an index while another worker can still be using it.');
-    delete_option('rrze_msm_storage_worker_0');
-    delete_option('rrze_msm_storage_worker_1');
+    for ($slot = 0; $slot < 8; $slot++) {
+        delete_option('rrze_msm_storage_worker_' . $slot);
+    }
     $GLOBALS['test_maintenance_sites'] = range(100, 125);
     $GLOBALS['test_options'][125][$legacyKey] = ['huge' => str_repeat('x', 3000000)];
     $GLOBALS['test_forbidden_option_reads'][$legacyKey] = true;
