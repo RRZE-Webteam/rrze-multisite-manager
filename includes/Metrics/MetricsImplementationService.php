@@ -29,9 +29,12 @@ class MetricsImplementationService {
 
     protected const SITE_TABLE_MAX_ROWS = 100;
     protected const DASHBOARD_REFRESH_HOOK = 'rrze_msm_refresh_dashboard_metrics';
+    protected const DASHBOARD_COMPOSE_HOOK = 'rrze_msm_compose_dashboard_metrics';
+    protected const DASHBOARD_COMPOSITION_WATCHDOG_HOOK = 'rrze_msm_watch_dashboard_metrics_composition';
     protected const DASHBOARD_REFRESH_SCHEDULE = 'rrze_msm_dashboard_metrics_cycle';
     protected const DASHBOARD_SCHEDULING_ENABLED_OPTION = 'rrze_msm_dashboard_metrics_scheduling_enabled';
-    protected const DASHBOARD_CACHE_VERSION = 5;
+    protected const DETAIL_CACHE_MAINTENANCE_HOOK = 'rrze_msm_maintain_detail_cache';
+    protected const DASHBOARD_CACHE_VERSION = 6;
     protected const DETAIL_CACHE_VERSION_OPTION = 'rrze_msm_detail_cache_version';
     protected const SITE_DETAIL_CACHE_VERSION_META = 'rrze_msm_site_detail_cache_version';
     protected const RRZE_SETTINGS_OPTION = 'rrze_settings';
@@ -53,15 +56,19 @@ class MetricsImplementationService {
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const DETAIL_OPTION_VALUE_MAX_BYTES = 16384;
-    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 3;
+    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 4;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE = 250;
-    protected const STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE = 250;
+    protected const STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE = 25;
+    protected const STORAGE_ANALYSIS_INDEX_WRITE_BATCH_SIZE = 8;
+    protected const STORAGE_ANALYSIS_INDEX_CACHE_BUCKETS = 4;
     protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
     protected const STORAGE_MEDIA_METADATA_BATCH_SIZE = 50;
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
+    protected const STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES = 262144;
     protected const DASHBOARD_LOCK_TTL = 900;
+    protected const DASHBOARD_COMPOSITION_MAX_ATTEMPTS = 3;
     // Site lists are embedded in every matching plugin and theme row.
     protected const DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT = 20;
     protected const DASHBOARD_BATCH_EVENT_ARGS = ['rrze_msm_dashboard_metrics_batch' => true];
@@ -70,6 +77,7 @@ class MetricsImplementationService {
     protected AssetSearchService $assetSearch;
     protected EnvironmentMetricsService $environmentMetrics;
     protected StorageAnalysisStateService $storageAnalysisState;
+    protected StorageAnalysisResourceService $storageResources;
     protected StorageAnalysisResultService $storageAnalysisResults;
     protected StorageUsageService $storageUsage;
     protected MediaMetadataAnalysisService $mediaMetadataAnalysis;
@@ -93,6 +101,7 @@ class MetricsImplementationService {
     protected array $currentSiteAttachmentUsagePathIndexCache = [];
     protected array $currentSiteStorageAnalysisAttachmentIndexCache = [];
     protected array $currentSiteStorageAnalysisAttachmentIndexBucketCache = [];
+    protected int $storageIndexRuntimeCacheReads = 0;
     protected ?array $themeSiteAggregate = null;
     protected ?int $dashboardSiteCount = null;
 
@@ -110,6 +119,7 @@ class MetricsImplementationService {
         $this->assetSearch = new AssetSearchService();
         $this->environmentMetrics = new EnvironmentMetricsService($this);
         $this->storageAnalysisState = new StorageAnalysisStateService();
+        $this->storageResources = new StorageAnalysisResourceService($this->config);
         $this->storageAnalysisResults = new StorageAnalysisResultService();
         $this->storageUsage = new StorageUsageService();
         $this->metricsCache = new MetricsCacheService(
@@ -152,10 +162,15 @@ class MetricsImplementationService {
 
     public function onLoaded(): void {
         add_action(self::DASHBOARD_REFRESH_HOOK, [$this, 'handleScheduledDashboardRefresh']);
+        add_action(self::DASHBOARD_COMPOSE_HOOK, [$this, 'handleScheduledDashboardComposition'], 10, 1);
+        add_action(self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK, [$this, 'handleDashboardCompositionWatchdog'], 10, 1);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action(self::STORAGE_ANALYSIS_CLEANUP_HOOK, [$this, 'runLegacyStorageAnalysisCleanup']);
         add_action(self::FULL_DATA_CLEANUP_HOOK, [$this, 'runFullDataCleanup']);
+        add_action(self::DETAIL_CACHE_MAINTENANCE_HOOK, [$this, 'maintainDetailCache']);
         add_action('init', [$this, 'ensureDashboardRefreshContinuation'], 24);
+        add_action('init', [$this, 'ensureDetailCacheMaintenance'], 24);
+        $this->storageResources->register();
         $this->registerInvalidationHooks();
     }
 
@@ -166,6 +181,24 @@ class MetricsImplementationService {
         ];
 
         return $schedules;
+    }
+
+    public function ensureDetailCacheMaintenance(): void {
+        if (!$this->isCentralNetworkCronSite() || wp_next_scheduled(self::DETAIL_CACHE_MAINTENANCE_HOOK)) {
+            return;
+        }
+
+        wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', self::DETAIL_CACHE_MAINTENANCE_HOOK);
+    }
+
+    public function maintainDetailCache(): void {
+        if (!$this->isCentralNetworkCronSite()) {
+            return;
+        }
+
+        if ($this->metricsCache->deleteInvalidatedTransients()) {
+            wp_schedule_single_event(time() + MINUTE_IN_SECONDS, self::DETAIL_CACHE_MAINTENANCE_HOOK);
+        }
     }
 
     /**
@@ -184,6 +217,10 @@ class MetricsImplementationService {
         }
 
         $this->ensureDashboardRefreshSchedule();
+
+        if ($this->recoverPendingDashboardComposition()) {
+            return;
+        }
 
         if (
             $this->isDashboardRefreshInProgress()
@@ -817,11 +854,11 @@ class MetricsImplementationService {
 
         $totalSites = max(1, count($sites));
         $rows = [
-            ['label' => __('Active and public', 'rrze-multisite-manager'), 'value' => $buckets['active_public'], 'accent' => 'positive'],
-            ['label' => __('Active, excluded from search engines', 'rrze-multisite-manager'), 'value' => $buckets['active_private'], 'accent' => 'info'],
-            ['label' => __('Archived', 'rrze-multisite-manager'), 'value' => $buckets['archived'], 'accent' => 'warning'],
-            ['label' => __('Blocked', 'rrze-multisite-manager'), 'value' => $buckets['spam'], 'accent' => 'blocked'],
-            ['label' => __('Marked for deletion', 'rrze-multisite-manager'), 'value' => $buckets['deleted'], 'accent' => 'danger'],
+            ['label' => __('Active and public', 'rrze-multisite-manager'), 'status_key' => 'active_public', 'value' => $buckets['active_public'], 'accent' => 'positive', 'color' => $this->config->getSiteStatusColor('active_public')],
+            ['label' => __('Active, excluded from search engines', 'rrze-multisite-manager'), 'status_key' => 'active_private', 'value' => $buckets['active_private'], 'accent' => 'info', 'color' => $this->config->getSiteStatusColor('active_private')],
+            ['label' => __('Archived', 'rrze-multisite-manager'), 'status_key' => 'archived', 'value' => $buckets['archived'], 'accent' => 'warning', 'color' => $this->config->getSiteStatusColor('archived')],
+            ['label' => __('Blocked', 'rrze-multisite-manager'), 'status_key' => 'blocked', 'value' => $buckets['spam'], 'accent' => 'blocked', 'color' => $this->config->getSiteStatusColor('blocked')],
+            ['label' => __('Marked for deletion', 'rrze-multisite-manager'), 'status_key' => 'deleted', 'value' => $buckets['deleted'], 'accent' => 'danger', 'color' => $this->config->getSiteStatusColor('deleted')],
         ];
 
         foreach ($rows as $index => $row) {
@@ -926,6 +963,10 @@ class MetricsImplementationService {
     }
 
     public function handleScheduledDashboardRefresh(...$args): void {
+        if ($this->recoverPendingDashboardComposition()) {
+            return;
+        }
+
         $this->dashboardRefresh->handleScheduledRefresh(
             $args,
             $this->config,
@@ -936,6 +977,158 @@ class MetricsImplementationService {
             fn(): bool => $this->isDashboardRefreshInProgress(),
             fn(): array => $this->runDashboardRefreshBatch()
         );
+    }
+
+    public function handleScheduledDashboardComposition(string $runId): void {
+        if (!$this->isCentralNetworkCronSite()
+            || self::isFullDataCleanupInProgress()
+            || !$this->isDashboardSchedulingEnabled()
+        ) {
+            return;
+        }
+
+        if (!$this->dashboardRefresh->acquireLock()) {
+            return;
+        }
+
+        if (!$this->dashboardRefresh->acquireCompositionLock($runId)) {
+            $this->dashboardRefresh->releaseLock();
+            return;
+        }
+
+        $runState = [];
+
+        try {
+            $runState = $this->dashboardRefresh->getBatchState();
+
+            if ($runId === ''
+                || !hash_equals((string)($runState['run_id'] ?? ''), $runId)
+                || (string)($runState['phase'] ?? '') !== 'composing'
+            ) {
+                return;
+            }
+
+            $runState['composition_attempts'] = (int)($runState['composition_attempts'] ?? 0) + 1;
+            $runState['composition_error'] = '';
+            $this->dashboardRefresh->saveBatchState($runState);
+
+            $state = $this->getInitialDashboardRefreshBatchState();
+            $state['started_at'] = (int)($runState['started_at'] ?? time());
+
+            foreach ($this->dashboardRefresh->getBatchPartialOffsets($runState) as $offset) {
+                $partialState = $this->dashboardRefresh->getBatchPartialState($runId, $offset);
+
+                if (empty($partialState)) {
+                    // A missing partial must not publish an incomplete cache.
+                    $this->scheduleDashboardComposition($runId, MINUTE_IN_SECONDS);
+                    return;
+                }
+
+                $this->mergeDashboardRefreshBatchState($state, $partialState);
+            }
+
+            $this->finalizeDashboardRefreshBatchState($state);
+            $this->dashboardRefresh->resetBatchState();
+            $this->scheduleDashboardRefresh(60, false);
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Metrics-Scheduler vollständig beendet',
+                ['success' => true, 'checked_sites' => count((array)$state['site_overview'])]
+            );
+        } catch (\Throwable $exception) {
+            do_action(
+                'rrze.log.error',
+                'RRZE-MSM: Fehler beim Zusammenführen der Dashboard-Metriken',
+                ['message' => $exception->getMessage()]
+            );
+            LoggingService::info(
+                $this->config,
+                'RRZE-MSM: Metrics-Scheduler beendet',
+                ['success' => false, 'message' => $exception->getMessage()]
+            );
+            $runState = $this->dashboardRefresh->getBatchState();
+            $runState['composition_error'] = $exception->getMessage();
+
+            if ((int)($runState['composition_attempts'] ?? 0) >= self::DASHBOARD_COMPOSITION_MAX_ATTEMPTS) {
+                $runState['phase'] = 'failed';
+                $runState['composition_failed_at'] = time();
+                $this->dashboardRefresh->saveBatchState($runState);
+                return;
+            }
+
+            $this->dashboardRefresh->saveBatchState($runState);
+            $this->scheduleDashboardComposition($runId, MINUTE_IN_SECONDS);
+        } finally {
+            $this->dashboardRefresh->releaseCompositionLock($runId);
+            $this->dashboardRefresh->releaseLock();
+        }
+    }
+
+    /** Requeues an interrupted composition even when no administrator visits the dashboard. */
+    public function handleDashboardCompositionWatchdog(string $runId): void {
+        if (!$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        $runState = $this->dashboardRefresh->getBatchState();
+
+        if ($runId === ''
+            || !hash_equals((string)($runState['run_id'] ?? ''), $runId)
+            || (string)($runState['phase'] ?? '') !== 'composing'
+        ) {
+            return;
+        }
+
+        if ((int)($runState['composition_attempts'] ?? 0) >= self::DASHBOARD_COMPOSITION_MAX_ATTEMPTS) {
+            $this->markDashboardCompositionFailed($runState);
+            return;
+        }
+
+        if (!$this->dashboardRefresh->isCompositionLocked()) {
+            $this->scheduleDashboardComposition($runId, 5);
+        }
+
+        $this->scheduleDashboardCompositionWatchdog($runId);
+    }
+
+    /**
+     * A regular metrics Cron event doubles as a recovery trigger when an
+     * earlier composition event was removed by a fatal error or timeout.
+     */
+    protected function recoverPendingDashboardComposition(): bool {
+        $runState = $this->dashboardRefresh->getBatchState();
+
+        if ((string)($runState['phase'] ?? '') !== 'composing') {
+            return false;
+        }
+
+        $runId = (string)($runState['run_id'] ?? '');
+
+        if ($runId === '') {
+            return true;
+        }
+
+        if ((int)($runState['composition_attempts'] ?? 0) >= self::DASHBOARD_COMPOSITION_MAX_ATTEMPTS) {
+            $this->markDashboardCompositionFailed($runState);
+            return true;
+        }
+
+        if (!$this->dashboardRefresh->isCompositionLocked()) {
+            $this->scheduleDashboardComposition($runId, 5);
+        }
+
+        return true;
+    }
+
+    protected function markDashboardCompositionFailed(array $runState): void {
+        $runState['phase'] = 'failed';
+        $runState['composition_failed_at'] = time();
+
+        if ((string)($runState['composition_error'] ?? '') === '') {
+            $runState['composition_error'] = __('Dashboard metrics could not be assembled after several attempts.', 'rrze-multisite-manager');
+        }
+
+        $this->dashboardRefresh->saveBatchState($runState);
     }
 
     public function invalidateCaches(...$args): void {
@@ -1247,7 +1440,8 @@ class MetricsImplementationService {
         $nextProgressRunTimestamp = $isRunning && $batchTotal > $checkedSites && $nextBatchRunTimestamp > 0
             ? $nextBatchRunTimestamp
             : $nextRunTimestamp;
-        $isStale = $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
+        $hasFailedComposition = (string)($batchState['phase'] ?? '') === 'failed';
+        $isStale = $hasFailedComposition || $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
 
         if ($batchTotal > 0) {
             $siteCount = $batchTotal;
@@ -1275,6 +1469,7 @@ class MetricsImplementationService {
             'current_duration_seconds' => $currentDurationSeconds,
             'last_duration_seconds' => (int)($cached['duration_seconds'] ?? 0),
             'is_stale' => $isStale,
+            'composition_error' => (string)($batchState['composition_error'] ?? ''),
         ];
     }
 
@@ -1311,6 +1506,7 @@ class MetricsImplementationService {
                     'has_data' => !empty($status['has_data']),
                     'needs_refresh' => !empty($status['needs_refresh']),
                     'is_dirty' => !empty($status['is_dirty']),
+                    'has_composition_error' => (string)($status['composition_error'] ?? '') !== '',
                 ],
             ],
         ];
@@ -1330,13 +1526,82 @@ class MetricsImplementationService {
             function (array &$state, \WP_Site $site, array $formattedSite): void {
                 $this->accumulateDashboardSiteMetrics($state, $site, $formattedSite);
             },
-            function (array $state): void {
-                $this->finalizeDashboardRefreshBatchState($state);
+            function (string $runId): void {
+                $this->scheduleDashboardComposition($runId, 5);
+            },
+            function (string $runId): void {
+                $this->scheduleDashboardCompositionWatchdog($runId);
             },
             function (int $delay, bool $isContinuation): void {
                 $this->scheduleDashboardRefresh($delay, $isContinuation);
             }
         );
+    }
+
+    /** Merges bounded partial batch results before publishing the final cache. */
+    protected function mergeDashboardRefreshBatchState(array &$state, array $partialState): void {
+        $state['site_overview'] = array_merge(
+            (array)($state['site_overview'] ?? []),
+            (array)($partialState['site_overview'] ?? [])
+        );
+
+        $this->mergeDashboardStorageUsageState($state['network_storage_usage'], (array)($partialState['network_storage_usage'] ?? []));
+        $this->mergeDashboardThemeAggregate($state['theme_aggregate'], (array)($partialState['theme_aggregate'] ?? []));
+        $this->mergeDashboardPluginUsageState($state['plugin_usage'], (array)($partialState['plugin_usage'] ?? []));
+        $state['editor_usage']['classic_sites'] = (int)($state['editor_usage']['classic_sites'] ?? 0) + (int)($partialState['editor_usage']['classic_sites'] ?? 0);
+        $state['editor_usage']['block_sites'] = (int)($state['editor_usage']['block_sites'] ?? 0) + (int)($partialState['editor_usage']['block_sites'] ?? 0);
+    }
+
+    protected function mergeDashboardStorageUsageState(array &$state, array $partialState): void {
+        $state['items'] = array_merge((array)($state['items'] ?? []), (array)($partialState['items'] ?? []));
+        $state['total_used_bytes'] = (int)($state['total_used_bytes'] ?? 0) + (int)($partialState['total_used_bytes'] ?? 0);
+        $state['total_max_bytes'] = (int)($state['total_max_bytes'] ?? 0) + (int)($partialState['total_max_bytes'] ?? 0);
+        $state['has_unlimited_site'] = !empty($state['has_unlimited_site']) || !empty($partialState['has_unlimited_site']);
+        $state['unknown_site_count'] = (int)($state['unknown_site_count'] ?? 0) + (int)($partialState['unknown_site_count'] ?? 0);
+    }
+
+    protected function mergeDashboardThemeAggregate(array &$state, array $partialState): void {
+        foreach ((array)($partialState['counts'] ?? []) as $stylesheet => $count) {
+            $state['counts'][$stylesheet] = (int)($state['counts'][$stylesheet] ?? 0) + (int)$count;
+            $combinedSites = array_merge(
+                (array)($state['usage_map'][$stylesheet] ?? []),
+                (array)($partialState['usage_map'][$stylesheet] ?? [])
+            );
+            $state['truncated'][$stylesheet] = !empty($state['truncated'][$stylesheet])
+                || !empty($partialState['truncated'][$stylesheet])
+                || count($combinedSites) > self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT;
+            $state['usage_map'][$stylesheet] = array_slice($combinedSites, 0, self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT);
+        }
+    }
+
+    protected function mergeDashboardPluginUsageState(array &$state, array $partialState): void {
+        foreach ((array)($partialState['stats'] ?? []) as $pluginFile => $partialPlugin) {
+            if (!isset($state['stats'][$pluginFile]) || !is_array($state['stats'][$pluginFile])) {
+                $state['stats'][$pluginFile] = $partialPlugin;
+                continue;
+            }
+
+            $state['stats'][$pluginFile]['site_count'] = (int)($state['stats'][$pluginFile]['site_count'] ?? 0) + (int)($partialPlugin['site_count'] ?? 0);
+            $this->mergeDashboardActiveSitePreview($state['stats'][$pluginFile], $partialPlugin);
+        }
+
+        foreach ((array)($partialState['missing_plugins'] ?? []) as $pluginFile => $partialPlugin) {
+            if (!isset($state['missing_plugins'][$pluginFile]) || !is_array($state['missing_plugins'][$pluginFile])) {
+                $state['missing_plugins'][$pluginFile] = $partialPlugin;
+                continue;
+            }
+
+            $state['missing_plugins'][$pluginFile]['site_count'] = (int)($state['missing_plugins'][$pluginFile]['site_count'] ?? 0) + (int)($partialPlugin['site_count'] ?? 0);
+            $this->mergeDashboardActiveSitePreview($state['missing_plugins'][$pluginFile], $partialPlugin);
+        }
+    }
+
+    protected function mergeDashboardActiveSitePreview(array &$target, array $partial): void {
+        $sites = array_merge((array)($target['active_sites'] ?? []), (array)($partial['active_sites'] ?? []));
+        $target['active_sites_truncated'] = !empty($target['active_sites_truncated'])
+            || !empty($partial['active_sites_truncated'])
+            || count($sites) > self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT;
+        $target['active_sites'] = array_slice($sites, 0, self::DASHBOARD_ACTIVE_SITE_PREVIEW_LIMIT);
     }
 
     /** @param array<string, mixed> $state */
@@ -3507,7 +3772,7 @@ class MetricsImplementationService {
     }
 
     protected function getSiteOverviewMetrics(int $siteId): array {
-        $cacheKey = 'rrze_msm_site_overview_metrics_' . $this->getDetailCacheVersion() . '_' . $siteId;
+        $cacheKey = 'rrze_msm_site_overview_metrics_v2_' . $this->getDetailCacheVersion() . '_' . $siteId;
         $roleCounts = [
             'admins' => 0,
             'editors' => 0,
@@ -4591,7 +4856,15 @@ class MetricsImplementationService {
         switch_to_blog($siteId);
 
         try {
-            $status = $this->runCurrentSiteStorageAnalysisBatch($siteId, $restart);
+            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageAnalysisBatch($siteId, $restart));
+            if (empty($status['success'])) {
+                $this->storageResources->clearSite($siteId);
+            }
+        } catch (StorageAnalysisBusyException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $this->storageResources->clearSite($siteId);
+            throw $exception;
         } finally {
             restore_current_blog();
         }
@@ -4613,7 +4886,15 @@ class MetricsImplementationService {
         switch_to_blog($siteId);
 
         try {
-            $status = $this->runCurrentSiteStorageOrphanAnalysisBatch($siteId, $restart);
+            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageOrphanAnalysisBatch($siteId, $restart));
+            if (empty($status['success'])) {
+                $this->storageResources->clearSite($siteId);
+            }
+        } catch (StorageAnalysisBusyException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $this->storageResources->clearSite($siteId);
+            throw $exception;
         } finally {
             restore_current_blog();
         }
@@ -4670,12 +4951,12 @@ class MetricsImplementationService {
         $excludedTopLevelDirectories = $this->getExcludedUploadTopLevelDirectoriesForCurrentSite();
         $scan = $this->scanUploadDirectory($baseDir, $baseUrl, $attachmentIndex, $excludedTopLevelDirectories);
         $actualBytes = (int)($scan['total_bytes'] ?? 0);
-        $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
+        $differenceBytes = isset($wordpressStorage['used_bytes']) ? $actualBytes - (int)$wordpressStorage['used_bytes'] : null;
         $warnings = $this->buildStorageAnalysisWarnings($differenceBytes, $actualBytes, $wordpressStorage, $scan);
         $summary = [
             [
-                'label' => __('Reported by WordPress', 'rrze-multisite-manager'),
-                'value' => $this->formatStorageAnalysisSize((int)($wordpressStorage['used_bytes'] ?? 0)),
+                'label' => __('Previously measured storage usage', 'rrze-multisite-manager'),
+                'value' => isset($wordpressStorage['used_bytes']) ? $this->formatStorageAnalysisSize((int)$wordpressStorage['used_bytes']) : __('Unknown', 'rrze-multisite-manager'),
             ],
             [
                 'label' => __('Found in the uploads directory', 'rrze-multisite-manager'),
@@ -4683,7 +4964,7 @@ class MetricsImplementationService {
                     /* translators: %1$s: scanned upload size, %2$s: difference from WordPress storage. */
                     __('%1$s (%2$s difference)', 'rrze-multisite-manager'),
                     $this->formatStorageAnalysisSize($actualBytes),
-                    ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes))
+                    $differenceBytes === null ? __('Unknown', 'rrze-multisite-manager') : ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes))
                 ),
             ],
             [
@@ -4720,7 +5001,7 @@ class MetricsImplementationService {
             'actual_bytes' => $actualBytes,
             'actual_label' => size_format($actualBytes),
             'difference_bytes' => $differenceBytes,
-            'difference_label' => ($differenceBytes >= 0 ? '+' : '-') . size_format(abs($differenceBytes)),
+            'difference_label' => $differenceBytes === null ? __('Unknown', 'rrze-multisite-manager') : ($differenceBytes >= 0 ? '+' : '-') . size_format(abs($differenceBytes)),
             'total_files' => (int)($scan['total_files'] ?? 0),
             'total_directories' => (int)($scan['total_directories'] ?? 0),
             'orphan_file_count' => (int)($scan['orphan_file_count'] ?? 0),
@@ -4750,12 +5031,13 @@ class MetricsImplementationService {
     }
 
     protected function runCurrentSiteStorageAnalysisBatch(int $siteId, bool $restart = false): array {
+        $this->storageResources->acquire($siteId);
         return $this->storageAnalysisBatch->runBase(
             $siteId,
             $restart,
             $this->getSiteStorageAnalysisBaseStateKey($siteId),
             $this->getSiteStorageAnalysisOrphanStateKey($siteId),
-            $this->getDetailCacheTtl(),
+            max(7 * DAY_IN_SECONDS, $this->config->getStorageAnalysisTimeoutSeconds()),
             fn(): array => $this->getSiteStorageAnalysisProcessStatus($siteId),
             fn(): array => $this->initializeCurrentSiteStorageAnalysisBaseState($siteId),
             fn(array $state): array => $this->processCurrentSiteStorageAnalysisBaseState($state),
@@ -4767,12 +5049,15 @@ class MetricsImplementationService {
 
     protected function runCurrentSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false): array {
         $analysis = $this->getCachedSiteStorageAnalysis($siteId);
+        if (!empty($analysis)) {
+            $this->storageResources->acquire($siteId);
+        }
 
         return $this->storageAnalysisBatch->runOrphan(
             $restart,
             $analysis,
             $this->getSiteStorageAnalysisOrphanStateKey($siteId),
-            $this->getDetailCacheTtl(),
+            max(7 * DAY_IN_SECONDS, $this->config->getStorageAnalysisTimeoutSeconds()),
             fn(): array => $this->getSiteStorageAnalysisProcessStatus($siteId),
             fn(array $storedAnalysis): array => $this->initializeCurrentSiteStorageAnalysisOrphanState($storedAnalysis),
             fn(array $state): array => $this->processCurrentSiteStorageAnalysisOrphanState($state),
@@ -4806,6 +5091,7 @@ class MetricsImplementationService {
         }
 
         $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
+        $this->storageResources->acquire($siteId);
 
         return [
             'site_id' => $siteId,
@@ -4821,6 +5107,19 @@ class MetricsImplementationService {
             'queue_directories' => [['path' => '.', 'offset' => 0]],
             'attachment_index_last_id' => 0,
             'attachment_index_complete' => false,
+            'attachment_index_source_complete' => false,
+            'pending_index_buckets' => [],
+            'attachment_stats_bucket' => 0,
+            'attachment_stats_offset' => 0,
+            'attachment_stats_complete' => false,
+            'wordpress_storage' => $this->getSiteStorageUsage(),
+            'attachment_stats' => [
+                'attachment_count' => 0,
+                'base_file_count' => 0,
+                'derived_variant_count' => 0,
+                'referenced_physical_file_count' => 0,
+                'media_types' => $this->getEmptyStorageAttachmentMediaTypes(),
+            ],
             'processed_steps' => 0,
             'processed_files' => 0,
             'processed_directories' => 0,
@@ -4845,10 +5144,18 @@ class MetricsImplementationService {
     protected function buildCurrentSiteStorageAnalysisAttachmentIndexBatch(array $state): array {
         global $wpdb;
 
+        if (!empty($state['pending_index_buckets'])) {
+            return $this->saveCurrentSiteStorageIndexBuckets($state);
+        }
+
+        $this->storageResources->acquire(get_current_blog_id());
         $lastAttachmentId = max(0, (int)($state['attachment_index_last_id'] ?? 0));
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file, pm_meta.meta_value AS attachment_metadata
+                "SELECT p.ID, p.post_mime_type,
+                    CASE WHEN OCTET_LENGTH(pm_file.meta_value) <= 1024 THEN pm_file.meta_value ELSE NULL END AS attached_file,
+                    CASE WHEN OCTET_LENGTH(pm_meta.meta_value) <= 262144 THEN pm_meta.meta_value ELSE NULL END AS attachment_metadata,
+                    OCTET_LENGTH(pm_file.meta_value) AS path_bytes, OCTET_LENGTH(pm_meta.meta_value) AS metadata_bytes
                 FROM {$wpdb->posts} p
                 LEFT JOIN {$wpdb->postmeta} pm_file
                     ON pm_file.post_id = p.ID AND pm_file.meta_key = '_wp_attached_file'
@@ -4865,6 +5172,10 @@ class MetricsImplementationService {
         $registeredImageSizeSlugs = $this->getCurrentSiteRegisteredImageSizeSlugs();
 
         foreach ($rows as $row) {
+            if ((int)($row->path_bytes ?? 0) > 1024 || (int)($row->metadata_bytes ?? 0) > 262144) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                throw new \RuntimeException(__('Attachment metadata exceeded the analysis input limit. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
+            }
             $attachmentId = (int)($row->ID ?? 0);
             $attachedPath = is_string($row->attached_file ?? null) ? (string)$row->attached_file : '';
             $lastAttachmentId = max($lastAttachmentId, $attachmentId);
@@ -4882,35 +5193,205 @@ class MetricsImplementationService {
             $paths = [$this->normalizeRelativeUploadPath($attachedPath) => $baseEntry];
             $metadata = $this->serializedValue->decode($row->attachment_metadata ?? '')['value'];
 
+            if (is_array($metadata) && count((array)($metadata['sizes'] ?? [])) > 256) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                throw new \RuntimeException(__('An attachment exceeded the permitted number of image variants.', 'rrze-multisite-manager'));
+            }
             if (is_array($metadata)) {
                 $this->collectAttachmentIndexPathsFromMetadata($paths, $baseEntry, $metadata, $registeredImageSizeSlugs);
             }
+
+            $category = $this->getStorageAttachmentMediaCategory((string)($row->post_mime_type ?? ''));
+            $state['attachment_stats']['attachment_count']++;
+            $state['attachment_stats']['media_types'][$category]['count']++;
+            $this->annotateStorageIndexPaths($paths, $attachedPath, is_array($metadata) ? $metadata : []);
 
             foreach ($paths as $path => $entry) {
                 if ($path === '') {
                     continue;
                 }
+                if (strlen($path) > 1024) {
+                    // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                    throw new \RuntimeException(__('An indexed file path exceeded the analysis input limit.', 'rrze-multisite-manager'));
+                }
 
-                $bucketEntries[$this->getStorageAttachmentIndexBucket($path)][$path] = $entry;
+                $bucket = $this->getStorageAttachmentIndexBucket($path);
+                $bucketEntries[$bucket][$path] = $this->packStorageIndexEntry($this->mergeStorageIndexEntry($this->unpackStorageIndexEntry((array)($bucketEntries[$bucket][$path] ?? [])), $entry));
             }
         }
 
-        $siteId = get_current_blog_id();
-
-        foreach ($bucketEntries as $bucket => $entries) {
-            $key = $this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket);
-            $stored = get_site_transient($key);
-            $stored = is_array($stored) ? $stored : [];
-            set_site_transient(
-                $key,
-                array_replace($stored, $entries),
-                max($this->getDetailCacheTtl(), $this->config->getStorageAnalysisTimeoutSeconds())
-            );
-            $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$siteId . ':' . $bucket] = array_replace($stored, $entries);
+        if (!\RRZE\MultisiteManager\Support\BoundedArray::fits($bucketEntries, intdiv(StorageAnalysisResourceService::MAX_STATE_BYTES, 2))) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+            throw new \RuntimeException(__('The pending media index exceeded its working-state budget.', 'rrze-multisite-manager'));
         }
-
         $state['attachment_index_last_id'] = $lastAttachmentId;
-        $state['attachment_index_complete'] = count($rows) < self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE;
+        $state['attachment_index_source_complete'] = count($rows) < self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE;
+        $state['pending_index_buckets'] = $bucketEntries;
+
+        return $this->saveCurrentSiteStorageIndexBuckets($state);
+    }
+
+    /** Writes only a small number of existing index segments in one step. */
+    protected function saveCurrentSiteStorageIndexBuckets(array $state): array {
+        $siteId = get_current_blog_id();
+        $processed = 0;
+
+        foreach ((array)$state['pending_index_buckets'] as $bucket => $entries) {
+            if ($processed >= self::STORAGE_ANALYSIS_INDEX_WRITE_BATCH_SIZE) {
+                break;
+            }
+            $key = $this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), (string)$bucket);
+            $stored = $this->readStorageIndexBucket($key);
+            $stored = is_array($stored) ? $stored : [];
+            foreach ($entries as $path => $entry) {
+                $stored[$path] = $this->packStorageIndexEntry($this->mergeStorageIndexEntry($this->unpackStorageIndexEntry((array)($stored[$path] ?? [])), $this->unpackStorageIndexEntry($entry)));
+            }
+            $this->storageResources->reserveIndexBytes($siteId, (string)$bucket, $stored);
+            StorageAnalysisResourceService::saveState($key, $stored, 7 * DAY_IN_SECONDS);
+            $this->releaseStorageIndexRuntimeCache($key);
+            unset($state['pending_index_buckets'][$bucket], $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$siteId . ':' . $bucket]);
+            $processed++;
+        }
+        $state['attachment_index_complete'] = !empty($state['attachment_index_source_complete']) && empty($state['pending_index_buckets']);
+
+        return $state;
+    }
+
+    protected function packStorageIndexEntry(array $entry): array {
+        $flags = 0;
+        foreach (['stats_base', 'stats_attached', 'stats_variant', 'stats_original', 'is_unregistered_image_size'] as $bit => $flag) {
+            if (!empty($entry[$flag])) {
+                $flags |= 1 << $bit;
+            }
+        }
+        return ['i' => (int)($entry['attachment_id'] ?? 0), 'm' => substr((string)($entry['mime_type'] ?? ''), 0, 128), 's' => substr((string)($entry['image_size_slug'] ?? ''), 0, 128), 'f' => $flags];
+    }
+
+    protected function unpackStorageIndexEntry(array $entry): array {
+        if (empty($entry)) {
+            return [];
+        }
+        $result = ['attachment_id' => (int)($entry['i'] ?? 0), 'mime_type' => (string)($entry['m'] ?? ''), 'image_size_slug' => (string)($entry['s'] ?? '')];
+        foreach (['stats_base', 'stats_attached', 'stats_variant', 'stats_original', 'is_unregistered_image_size'] as $bit => $flag) {
+            $result[$flag] = ((int)($entry['f'] ?? 0) & (1 << $bit)) !== 0;
+        }
+        return $result;
+    }
+
+    protected function mergeStorageIndexEntry(array $stored, array $entry): array {
+        $flags = [];
+        foreach (['stats_base', 'stats_attached', 'stats_variant', 'stats_original'] as $flag) {
+            $flags[$flag] = !empty($entry[$flag]) || !empty($stored[$flag]);
+        }
+        // Prefer a base attachment over a variant when multiple records share one path.
+        if (!empty($stored['stats_attached']) && empty($entry['stats_attached'])) {
+            $entry = $stored;
+        }
+        return array_replace($entry, $flags);
+    }
+
+    protected function readStorageIndexBucket(string $key): array {
+        $stored = get_site_transient($key);
+        if (preg_match('/_resumable_v2_(\d+)_([a-f0-9]{2})$/', $key, $parts)) {
+            $this->storageResources->assertBucketPresent((int)$parts[1], $parts[2], is_array($stored));
+        }
+        $this->releaseStorageIndexRuntimeCache($key);
+        return is_array($stored) ? $stored : [];
+    }
+
+    /** Do not leave a second, unlimited segment cache inside WordPress's runtime cache. */
+    protected function releaseStorageIndexRuntimeCache(string $key): void {
+        if (!wp_using_ext_object_cache()) {
+            // Only the in-process copies are removed; the transient remains in sitemeta.
+            $network = get_current_network_id();
+            wp_cache_delete($network . ':_site_transient_' . $key, 'site-options');
+            wp_cache_delete($network . ':_site_transient_timeout_' . $key, 'site-options');
+        } elseif (++$this->storageIndexRuntimeCacheReads >= 8 && wp_cache_supports('flush_runtime')) {
+            // Never flush persistent cache data or use a fallback to wp_cache_flush().
+            wp_cache_flush_runtime();
+            $this->storageIndexRuntimeCacheReads = 0;
+        }
+    }
+
+    /** Adds file roles used by the paginated summary, without storing a second path index. */
+    protected function annotateStorageIndexPaths(array &$paths, string $attachedPath, array $metadata): void {
+        $attachedPath = $this->normalizeRelativeUploadPath($attachedPath);
+        if (isset($paths[$attachedPath])) {
+            $paths[$attachedPath]['stats_base'] = true;
+            $paths[$attachedPath]['stats_attached'] = true;
+        }
+        $baseFile = is_string($metadata['file'] ?? null) ? $this->normalizeRelativeUploadPath($metadata['file']) : '';
+        if (isset($paths[$baseFile])) {
+            $paths[$baseFile]['stats_base'] = true;
+        }
+        $directory = dirname($baseFile);
+        $prefix = $directory === '.' || $directory === DIRECTORY_SEPARATOR ? '' : $directory . '/';
+        foreach ((array)($metadata['sizes'] ?? []) as $size) {
+            if (is_array($size) && is_string($size['file'] ?? null)) {
+                $path = $this->normalizeRelativeUploadPath($prefix . $size['file']);
+                if (isset($paths[$path])) {
+                    $paths[$path]['stats_variant'] = true;
+                }
+            }
+        }
+        if (is_string($metadata['original_image'] ?? null)) {
+            $path = $this->normalizeRelativeUploadPath($prefix . $metadata['original_image']);
+            if (isset($paths[$path])) {
+                $paths[$path]['stats_original'] = true;
+            }
+        }
+    }
+
+    /** Counts unique indexed paths in bounded steps before scanning uploads. */
+    protected function processCurrentSiteStorageAttachmentStats(array $state): array {
+        $processed = 0;
+        $scannedBuckets = 0;
+        $stats = &$state['attachment_stats'];
+        while ((int)$state['attachment_stats_bucket'] < 256 && $processed < self::STORAGE_ANALYSIS_BATCH_SIZE && $scannedBuckets < 16) {
+            $bucketNumber = (int)$state['attachment_stats_bucket'];
+            $bucket = str_pad(dechex($bucketNumber), 2, '0', STR_PAD_LEFT);
+            $stored = $this->readStorageIndexBucket($this->storageAnalysisState->getAttachmentIndexBucketKey((int)$state['site_id'], $this->getDetailCacheVersion(), $bucket));
+            $stored = is_array($stored) ? $stored : [];
+            $offset = (int)$state['attachment_stats_offset'];
+            $position = 0;
+            $processedInBucket = 0;
+            foreach ($stored as $path => $entry) {
+                $entry = $this->unpackStorageIndexEntry($entry);
+                if ($position++ < $offset) {
+                    continue;
+                }
+                if ($processed >= self::STORAGE_ANALYSIS_BATCH_SIZE) {
+                    break;
+                }
+                $processed++;
+                $processedInBucket++;
+                $stats['base_file_count'] += !empty($entry['stats_base']) ? 1 : 0;
+                $stats['derived_variant_count'] += !empty($entry['stats_variant']) ? 1 : 0;
+                $stats['referenced_physical_file_count']++;
+                $category = $this->getStorageAttachmentMediaCategory((string)($entry['mime_type'] ?? ''));
+                $size = $this->getStorageAttachmentFileSize((string)$state['normalized_base_dir'], (string)$path);
+                if (!empty($entry['stats_attached'])) {
+                    $stats['media_types'][$category]['bytes'] += $size;
+                    if ($category === 'images') {
+                        $stats['media_types']['images']['original_bytes'] += $size;
+                    }
+                } elseif (empty($entry['stats_base']) && (!empty($entry['stats_variant']) || !empty($entry['stats_original']))) {
+                    $stats['media_types']['images']['bytes'] += $size;
+                    $key = !empty($entry['stats_original']) ? 'original_bytes' : 'variant_bytes';
+                    $stats['media_types']['images'][$key] += $size;
+                }
+            }
+            if ($offset + $processedInBucket >= count($stored)) {
+                $state['attachment_stats_bucket'] = $bucketNumber + 1;
+                $state['attachment_stats_offset'] = 0;
+            } else {
+                $state['attachment_stats_offset'] = $offset + $processedInBucket;
+            }
+            $scannedBuckets++;
+        }
+        $state['attachment_stats_complete'] = (int)$state['attachment_stats_bucket'] >= 256;
+        $state['updated_at'] = current_time('mysql', true);
+        $state['message'] = __('Media-library statistics are being collected.', 'rrze-multisite-manager');
 
         return $state;
     }
@@ -4927,15 +5408,23 @@ class MetricsImplementationService {
         $cacheKey = $siteId . ':' . $bucket;
 
         if (!isset($this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey])) {
-            $stored = get_site_transient(
+            $stored = $this->readStorageIndexBucket(
                 $this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket)
             );
+            if (count($this->currentSiteStorageAnalysisAttachmentIndexBucketCache) >= self::STORAGE_ANALYSIS_INDEX_CACHE_BUCKETS) {
+                array_shift($this->currentSiteStorageAnalysisAttachmentIndexBucketCache);
+            }
             $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey] = is_array($stored) ? $stored : [];
         }
 
         $entry = $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$cacheKey][$path] ?? [];
 
-        return is_array($entry) ? $entry : [];
+        $entry = is_array($entry) ? $this->unpackStorageIndexEntry($entry) : [];
+        if (!empty($entry['attachment_id'])) {
+            $entry['media_edit_url'] = get_admin_url($siteId, 'post.php?post=' . $entry['attachment_id'] . '&action=edit');
+            $entry['type_label'] = $this->getStorageFileTypeLabel($path, $entry['mime_type']);
+        }
+        return $entry;
     }
 
     protected function getStorageAttachmentIndexBucket(string $path): string {
@@ -4946,12 +5435,8 @@ class MetricsImplementationService {
         if ($siteId <= 0) {
             return;
         }
-
-        foreach (range(0, 255) as $bucket) {
-            $bucket = str_pad(dechex($bucket), 2, '0', STR_PAD_LEFT);
-            delete_site_transient($this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket));
-            unset($this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$siteId . ':' . $bucket]);
-        }
+        $this->storageResources->clearSite($siteId);
+        $this->currentSiteStorageAnalysisAttachmentIndexBucketCache = [];
     }
 
     protected function processCurrentSiteStorageAnalysisBaseState(array $state): array {
@@ -4965,11 +5450,15 @@ class MetricsImplementationService {
             return $state;
         }
 
+        if (empty($state['attachment_stats_complete'])) {
+            return $this->processCurrentSiteStorageAttachmentStats($state);
+        }
+
         while (
             $processedInBatch < self::STORAGE_ANALYSIS_BATCH_SIZE
             && !empty($state['queue_directories'])
         ) {
-            $processedInBatch += $this->processCurrentSiteStorageAnalysisDirectory($state);
+            $processedInBatch += $this->processCurrentSiteStorageAnalysisDirectory($state, self::STORAGE_ANALYSIS_BATCH_SIZE - $processedInBatch);
         }
 
         $state['processed_steps'] = (int)($state['processed_steps'] ?? 0) + $processedInBatch;
@@ -4984,7 +5473,7 @@ class MetricsImplementationService {
         return $state;
     }
 
-    protected function processCurrentSiteStorageAnalysisDirectory(array &$state): int {
+    protected function processCurrentSiteStorageAnalysisDirectory(array &$state, int $maxEntries = self::STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE): int {
         $directory = array_shift($state['queue_directories']);
         $directory = is_array($directory) ? $directory : [];
         $normalizedRelativeDirectory = (string)($directory['path'] ?? '.');
@@ -4994,7 +5483,6 @@ class MetricsImplementationService {
         $entryName = '';
         $entryRelativePath = '';
         $entryAbsolutePath = '';
-        $entryIndex = 0;
         $processedEntries = 0;
         $hasMoreEntries = false;
 
@@ -5012,18 +5500,18 @@ class MetricsImplementationService {
             if ($offset > 0) {
                 $iterator->seek($offset);
             }
-        } catch (\UnexpectedValueException $exception) {
+        } catch (\UnexpectedValueException | \OutOfBoundsException $exception) {
             return 1;
         }
 
-        foreach ($iterator as $fileInfo) {
+        // foreach would rewind a previously positioned FilesystemIterator.
+        for (; $iterator->valid(); $iterator->next()) {
+            $fileInfo = $iterator->current();
             if (!$fileInfo instanceof \SplFileInfo) {
                 continue;
             }
 
-            $entryIndex++;
-
-            if ($processedEntries >= self::STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE) {
+            if ($processedEntries >= min(self::STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE, max(1, $maxEntries))) {
                 $hasMoreEntries = true;
                 break;
             }
@@ -5102,10 +5590,11 @@ class MetricsImplementationService {
     }
 
     protected function finalizeCurrentSiteStorageAnalysisBaseState(int $siteId, array &$state): void {
-        $wordpressStorage = $this->getSiteStorageUsage();
+        $wordpressStorage = (array)($state['wordpress_storage'] ?? $this->getSiteStorageUsage());
         $actualBytes = (int)($state['total_bytes'] ?? 0);
-        $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
+        $differenceBytes = isset($wordpressStorage['used_bytes']) ? $actualBytes - (int)$wordpressStorage['used_bytes'] : null;
         $scan = [
+            'attachment_stats' => (array)$state['attachment_stats'],
             'total_bytes' => $actualBytes,
             'total_files' => (int)($state['processed_files'] ?? 0),
             'total_directories' => (int)($state['processed_directories'] ?? 0),
@@ -5154,11 +5643,12 @@ class MetricsImplementationService {
     }
 
     protected function initializeCurrentSiteStorageAnalysisOrphanState(array $analysis): array {
+        $this->storageResources->acquire(get_current_blog_id());
         $candidates = is_array($analysis['largest_orphan_files'] ?? null) ? array_values((array)$analysis['largest_orphan_files']) : [];
 
         return [
             'status' => 'running',
-            'message' => __('Orphan check is running.', 'rrze-multisite-manager'),
+            'message' => __('Media references are being indexed.', 'rrze-multisite-manager'),
             'started_at' => current_time('mysql', true),
             'updated_at' => current_time('mysql', true),
             'finished_at' => '',
@@ -5172,6 +5662,11 @@ class MetricsImplementationService {
             'unregistered_image_size_variant_index' => 0,
             'unregistered_image_size_variants_found_in_content' => [],
             'unregistered_image_size_variants_without_content_matches' => [],
+            'orphan_reference_index' => true,
+            'attachment_usage_stage' => 'posts',
+            'attachment_usage_post_cursor' => 0,
+            'attachment_usage_meta_cursor' => 0,
+            'attachment_usage_matches' => [],
         ];
     }
 
@@ -5237,6 +5732,45 @@ class MetricsImplementationService {
     }
 
     protected function processCurrentSiteStorageAnalysisOrphanState(array $state): array {
+        // Resume legacy in-flight states through the reference index as well.
+        // A missing match must never be derived from the former per-file SQL path.
+        if (!array_key_exists('orphan_reference_index', $state)) {
+            $state['orphan_reference_index'] = true;
+            $state['attachment_usage_stage'] = 'posts';
+            $state['attachment_usage_post_cursor'] = 0;
+            $state['attachment_usage_meta_cursor'] = 0;
+            $state['attachment_usage_matches'] = [];
+            $state['current_index'] = 0;
+            $state['unregistered_image_size_variant_index'] = 0;
+            $state['found_in_content'] = [];
+            $state['without_matches'] = [];
+            $state['unregistered_image_size_variants_found_in_content'] = [];
+            $state['unregistered_image_size_variants_without_content_matches'] = [];
+        }
+
+        if (!empty($state['orphan_reference_index']) && (string)($state['attachment_usage_stage'] ?? '') !== 'complete') {
+            $this->processCurrentSiteAttachmentUsageIndexBatch($state);
+
+            return $state;
+        }
+
+        if (!empty($state['orphan_reference_index'])) {
+            $this->applyCurrentSiteAttachmentUsageIndexToOrphanCandidates($state);
+            unset(
+                $state['orphan_reference_index'],
+                $state['attachment_usage_stage'],
+                $state['attachment_usage_post_cursor'],
+                $state['attachment_usage_meta_cursor'],
+                $state['attachment_usage_matches']
+            );
+            $state['current_index'] = (int)($state['total'] ?? 0);
+            $state['unregistered_image_size_variant_index'] = count((array)($state['unregistered_image_size_variant_candidates'] ?? []));
+            $state['updated_at'] = current_time('mysql', true);
+            $state['message'] = __('Media references have been indexed.', 'rrze-multisite-manager');
+
+            return $state;
+        }
+
         $index = (int)($state['current_index'] ?? 0);
         $processed = 0;
         $candidate = [];
@@ -5336,7 +5870,9 @@ class MetricsImplementationService {
      */
     protected function processCurrentSiteAttachmentUsageIndexBatch(array &$state): void {
         $stage = (string)($state['attachment_usage_stage'] ?? 'posts');
-        $attachmentPathIndex = $this->getCurrentSiteAttachmentUsagePathIndex();
+        $attachmentPathIndex = !empty($state['orphan_reference_index'])
+            ? $this->getCurrentSiteOrphanUsagePathIndex($state)
+            : $this->getCurrentSiteAttachmentUsagePathIndex();
         $baseUrl = (string)($state['upload_baseurl'] ?? '');
         $usageMatches = is_array($state['attachment_usage_matches'] ?? null)
             ? (array)$state['attachment_usage_matches']
@@ -5442,6 +5978,86 @@ class MetricsImplementationService {
     }
 
     /**
+     * Uses deterministic numeric keys so existing reference extraction can build
+     * one index for files without media-library attachment records as well.
+     *
+     * @return array<string, int>
+     */
+    protected function getCurrentSiteOrphanUsagePathIndex(array $state): array {
+        $index = [];
+
+        foreach ((array)($state['candidates'] ?? []) as $position => $candidate) {
+            $path = is_array($candidate) ? $this->normalizeRelativeUploadPath((string)($candidate['path'] ?? '')) : '';
+
+            if ($path !== '') {
+                $index[$path] = $this->getCurrentSiteOrphanUsageKey((array)$candidate, (int)$position, false);
+            }
+        }
+
+        foreach ((array)($state['unregistered_image_size_variant_candidates'] ?? []) as $position => $candidate) {
+            $path = is_array($candidate) ? $this->normalizeRelativeUploadPath((string)($candidate['path'] ?? '')) : '';
+
+            if ($path !== '') {
+                $index[$path] = $this->getCurrentSiteOrphanUsageKey((array)$candidate, (int)$position, true);
+            }
+        }
+
+        return $index;
+    }
+
+    protected function applyCurrentSiteAttachmentUsageIndexToOrphanCandidates(array &$state): void {
+        $usageMatches = is_array($state['attachment_usage_matches'] ?? null) ? (array)$state['attachment_usage_matches'] : [];
+        $state['found_in_content'] = [];
+        $state['without_matches'] = [];
+        $state['unregistered_image_size_variants_found_in_content'] = [];
+        $state['unregistered_image_size_variants_without_content_matches'] = [];
+
+        foreach ((array)($state['candidates'] ?? []) as $position => $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            $matches = $this->getCurrentSiteAttachmentUsageMatches($usageMatches, $this->getCurrentSiteOrphanUsageKey($candidate, (int)$position, false));
+            $candidate['content_usage_count'] = count($matches);
+            $candidate['content_usage_label'] = sprintf(_n('%d matches', '%d matches', count($matches), 'rrze-multisite-manager'), count($matches));
+
+            if (!empty($matches)) {
+                $candidate['content_usage_results'] = $matches;
+                $state['found_in_content'][] = $candidate;
+            } else {
+                $state['without_matches'][] = $candidate;
+            }
+        }
+
+        foreach ((array)($state['unregistered_image_size_variant_candidates'] ?? []) as $position => $candidate) {
+            if (!is_array($candidate)) {
+                continue;
+            }
+
+            $matches = $this->getCurrentSiteAttachmentUsageMatches($usageMatches, $this->getCurrentSiteOrphanUsageKey($candidate, (int)$position, true));
+            $candidate['content_usage_count'] = count($matches);
+            $candidate['content_usage_label'] = sprintf(_n('%d matches', '%d matches', count($matches), 'rrze-multisite-manager'), count($matches));
+
+            if (!empty($matches)) {
+                $candidate['content_usage_results'] = $matches;
+                $state['unregistered_image_size_variants_found_in_content'][] = $candidate;
+            } else {
+                $state['unregistered_image_size_variants_without_content_matches'][] = $candidate;
+            }
+        }
+    }
+
+    protected function getCurrentSiteOrphanUsageKey(array $candidate, int $position, bool $isVariant): int {
+        $attachmentId = (int)($candidate['attachment_id'] ?? 0);
+
+        if ($attachmentId > 0) {
+            return $attachmentId;
+        }
+
+        return ($isVariant ? 200000000 : 100000000) + $position;
+    }
+
+    /**
      * @return array<int, object>
      */
     protected function getCurrentSiteAttachmentUsagePostRows(int $lastPostId): array {
@@ -5459,12 +6075,13 @@ class MetricsImplementationService {
             WHERE ID > %d
             AND post_type IN ({$placeholders})
             AND post_status NOT IN ('auto-draft', 'trash')
+            AND OCTET_LENGTH(post_content) <= %d
             ORDER BY ID ASC
             LIMIT %d";
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Internally generated placeholders are bound via $wpdb->prepare().
         return (array)$wpdb->get_results(
-            $wpdb->prepare($query, ...array_merge([$lastPostId], array_values($postTypes), [self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
+            $wpdb->prepare($query, ...array_merge([$lastPostId], array_values($postTypes), [self::STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES, self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
         );
     }
 
@@ -5487,12 +6104,13 @@ class MetricsImplementationService {
             WHERE pm.meta_id > %d
             AND p.post_type IN ({$placeholders})
             AND p.post_status NOT IN ('auto-draft', 'trash')
+            AND OCTET_LENGTH(pm.meta_value) <= %d
             ORDER BY pm.meta_id ASC
             LIMIT %d";
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Internally generated placeholders are bound via $wpdb->prepare().
         return (array)$wpdb->get_results(
-            $wpdb->prepare($query, ...array_merge([$lastMetaId], array_values($postTypes), [self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
+            $wpdb->prepare($query, ...array_merge([$lastMetaId], array_values($postTypes), [self::STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES, self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
         );
     }
 
@@ -5506,8 +6124,9 @@ class MetricsImplementationService {
         return (array)$wpdb->get_results(
             "SELECT option_name, option_value
             FROM {$wpdb->options}
-            WHERE option_name IN ('widget_block', 'widget_media_audio', 'widget_media_gallery', 'widget_media_image', 'widget_media_video')
-            OR option_name LIKE 'theme_mods\\_%'"
+            WHERE (option_name IN ('widget_block', 'widget_media_audio', 'widget_media_gallery', 'widget_media_image', 'widget_media_video')
+            OR option_name LIKE 'theme_mods\\_%')
+            AND OCTET_LENGTH(option_value) <= " . self::STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES
         );
     }
 
@@ -5675,6 +6294,7 @@ class MetricsImplementationService {
 
         // The completed orphan status is part of the persistent analysis result.
         delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        $this->storageResources->release($siteId);
     }
 
     protected function buildStorageAnalysisPayload(
@@ -5687,11 +6307,11 @@ class MetricsImplementationService {
         string $orphanAnalysisGeneratedAt = ''
     ): array {
         $actualBytes = (int)($scan['total_bytes'] ?? 0);
-        $differenceBytes = $actualBytes - (int)($wordpressStorage['used_bytes'] ?? 0);
+        $differenceBytes = isset($wordpressStorage['used_bytes']) ? $actualBytes - (int)$wordpressStorage['used_bytes'] : null;
         $uploadsAreEmpty = !empty($scan['uploads_are_empty']);
-        $attachmentStats = $uploadsAreEmpty
-            ? $this->getCurrentSiteEmptyUploadAttachmentStats()
-            : $this->getCurrentSiteUploadAttachmentStats();
+        $attachmentStats = is_array($scan['attachment_stats'] ?? null)
+            ? $scan['attachment_stats']
+            : ($uploadsAreEmpty ? $this->getCurrentSiteEmptyUploadAttachmentStats() : $this->getCurrentSiteUploadAttachmentStats());
         $referencedFileCount = $uploadsAreEmpty
             ? 0
             : (array_key_exists('referenced_file_count', $scan)
@@ -5705,8 +6325,8 @@ class MetricsImplementationService {
         $attachmentSummaryLabels = $this->getStorageAttachmentStatsSummaryLabels($attachmentStats);
         $summary = [
             [
-                'label' => __('Reported by WordPress', 'rrze-multisite-manager'),
-                'value' => $this->formatStorageAnalysisSize((int)($wordpressStorage['used_bytes'] ?? 0)),
+                'label' => __('Previously measured storage usage', 'rrze-multisite-manager'),
+                'value' => isset($wordpressStorage['used_bytes']) ? $this->formatStorageAnalysisSize((int)$wordpressStorage['used_bytes']) : __('Unknown', 'rrze-multisite-manager'),
             ],
             [
                 'label' => __('Found in the uploads directory', 'rrze-multisite-manager'),
@@ -5714,7 +6334,7 @@ class MetricsImplementationService {
                     /* translators: %1$s: scanned upload size, %2$s: difference from WordPress storage. */
                     __('%1$s (%2$s difference)', 'rrze-multisite-manager'),
                     $this->formatStorageAnalysisSize($actualBytes),
-                    ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes))
+                    $differenceBytes === null ? __('Unknown', 'rrze-multisite-manager') : ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes))
                 ),
             ],
             [
@@ -5775,7 +6395,7 @@ class MetricsImplementationService {
             'actual_bytes' => $actualBytes,
             'actual_label' => $this->formatStorageAnalysisSize($actualBytes),
             'difference_bytes' => $differenceBytes,
-            'difference_label' => ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes)),
+            'difference_label' => $differenceBytes === null ? __('Unknown', 'rrze-multisite-manager') : ($differenceBytes >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs($differenceBytes)),
             'total_files' => (int)($scan['total_files'] ?? 0),
             'total_directories' => (int)($scan['total_directories'] ?? 0),
             'orphan_file_count' => (int)($scan['orphan_file_count'] ?? 0),
@@ -5881,6 +6501,10 @@ class MetricsImplementationService {
     protected function saveCurrentSiteStorageAnalysisResult(array $analysis): void {
         $result = $this->normalizeSiteStorageAnalysis($analysis);
         $this->storageAnalysisResults->saveCurrentResult($result);
+        $siteId = get_current_blog_id();
+        delete_site_transient('rrze_msm_site_overview_metrics_v2_' . $this->getDetailCacheVersion() . '_' . $siteId);
+        $this->metricsCache->invalidateSite($siteId);
+        $this->markDashboardCacheDirty();
     }
 
     protected function getSiteStorageAnalysisResultMeta(int $siteId): array {
@@ -6657,24 +7281,24 @@ class MetricsImplementationService {
         return __('File', 'rrze-multisite-manager');
     }
 
-    protected function buildStorageAnalysisWarnings(int $differenceBytes, int $actualBytes, array $wordpressStorage, array $scan): array {
+    protected function buildStorageAnalysisWarnings(?int $differenceBytes, int $actualBytes, array $wordpressStorage, array $scan): array {
         $warnings = [];
-        $differencePercent = $actualBytes > 0 ? abs($differenceBytes) / $actualBytes : 0.0;
+        $differencePercent = $actualBytes > 0 && $differenceBytes !== null ? abs($differenceBytes) / $actualBytes : 0.0;
         $orphanFileCount = (int)($scan['orphan_file_count'] ?? 0);
         $orphanTotalBytes = (int)($scan['orphan_total_bytes'] ?? 0);
 
-        if (abs($differenceBytes) >= (50 * MB_IN_BYTES) && $differencePercent >= 0.2) {
+        if ($differenceBytes !== null && abs($differenceBytes) >= (50 * MB_IN_BYTES) && $differencePercent >= 0.2) {
             $warnings[] = [
                 'type' => $differenceBytes > 0 ? 'warning' : 'info',
                 'message' => $differenceBytes > 0
                     ? sprintf(
                         /* translators: %s: storage size difference. */
-                        __('The upload directory is %s larger than the storage value reported by WordPress. This often indicates outdated core caches or additional files in the uploads folder.', 'rrze-multisite-manager'),
+                        __('The uploads directory is %s larger than the previous measurement. Files may have changed since that measurement.', 'rrze-multisite-manager'),
                         size_format(abs($differenceBytes))
                     )
                     : sprintf(
                         /* translators: %s: storage size difference. */
-                        __('WordPress reports %s more storage than was found in the currently scanned uploads directory. This often indicates an outdated WordPress storage value.', 'rrze-multisite-manager'),
+                        __('%s less storage was found than in the previous measurement. Files may have changed since that measurement.', 'rrze-multisite-manager'),
                         size_format(abs($differenceBytes))
                     ),
             ];
@@ -6840,8 +7464,13 @@ class MetricsImplementationService {
         $baseUrl = is_array($uploadDir) && !empty($uploadDir['baseurl']) ? (string)$uploadDir['baseurl'] : '';
         $absolutePath = $normalizedPath !== '' ? trailingslashit(wp_normalize_path($baseDir)) . ltrim($normalizedPath, '/') : '';
         $cachedAnalysis = $this->getCachedSiteStorageAnalysis(get_current_blog_id());
-        $attachmentCandidates = $this->getCurrentSiteAttachmentBaseEntriesForAnalysis($baseUrl);
-        $attachmentIndex = $this->getCurrentSiteUploadAttachmentIndex();
+        $attachmentIndex = [];
+        if ($normalizedPath !== '') {
+            $attachmentIndex[$normalizedPath] = ['attachment_id' => $attachmentId, 'mime_type' => $mimeType];
+            if (is_array($metadata)) {
+                $this->collectAttachmentIndexPathsFromMetadata($attachmentIndex, $attachmentIndex[$normalizedPath], $metadata, $this->getCurrentSiteRegisteredImageSizeSlugs());
+            }
+        }
         $candidateEntry = [];
         $usedEntry = [];
         $unusedEntry = [];
@@ -6849,14 +7478,7 @@ class MetricsImplementationService {
         $matchesWithCode = [];
         $row = [];
 
-        foreach ($attachmentCandidates as $row) {
-            if (!is_array($row) || (int)($row['attachment_id'] ?? 0) !== $attachmentId) {
-                continue;
-            }
-
-            $candidateEntry = $row;
-            break;
-        }
+        $candidateEntry = $normalizedPath !== '' && $absolutePath !== '' && is_file($absolutePath) ? ['attachment_id' => $attachmentId] : [];
 
         foreach ((array)($cachedAnalysis['used_attachment_files'] ?? []) as $row) {
             if (!is_array($row) || (int)($row['attachment_id'] ?? 0) !== $attachmentId) {
@@ -7423,9 +8045,9 @@ class MetricsImplementationService {
         ];
         $summaryLabels = array_merge(
             [
-                'Reported by WordPress' => $this->formatStorageAnalysisSize((int)($analysis['wordpress_storage']['used_bytes'] ?? 0)),
+                'Previously measured storage usage' => isset($analysis['wordpress_storage']['used_bytes']) ? $this->formatStorageAnalysisSize((int)$analysis['wordpress_storage']['used_bytes']) : __('Unknown', 'rrze-multisite-manager'),
                 'Found in the uploads directory' => $this->formatStorageAnalysisSize((int)($analysis['actual_bytes'] ?? 0)),
-                'Difference' => ((int)($analysis['difference_bytes'] ?? 0) >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs((int)($analysis['difference_bytes'] ?? 0))),
+                'Difference' => isset($analysis['difference_bytes']) ? ((int)$analysis['difference_bytes'] >= 0 ? '+' : '-') . $this->formatStorageAnalysisSize(abs((int)$analysis['difference_bytes'])) : __('Unknown', 'rrze-multisite-manager'),
             ],
             $this->getStorageAttachmentStatsSummaryLabels($attachmentStats)
         );
@@ -8393,45 +9015,37 @@ class MetricsImplementationService {
         $status = [];
         $operationalStatus = (string)get_site_meta($siteId, 'rrze_msm_operational_status', true);
 
-        if ((int)$site->archived === 1) {
-            $status[] = [
-                'label' => __('Archived', 'rrze-multisite-manager'),
-                'accent' => 'warning',
-            ];
-        }
-
         if ((int)$site->deleted === 1) {
             $status[] = [
                 'label' => __('Deleted', 'rrze-multisite-manager'),
                 'accent' => 'danger',
+                'color' => $this->config->getSiteStatusColor('deleted'),
             ];
-        }
-
-        if ((int)$site->spam === 1) {
+        } elseif ((int)$site->spam === 1) {
             $status[] = [
                 'label' => __('Blocked', 'rrze-multisite-manager'),
                 'accent' => 'neutral',
+                'color' => $this->config->getSiteStatusColor('blocked'),
             ];
-        }
-
-        if ((int)$site->public === 1) {
+        } elseif ((int)$site->archived === 1) {
             $status[] = [
-                'label' => __('Public', 'rrze-multisite-manager'),
-                'accent' => 'info',
+                'label' => __('Archived', 'rrze-multisite-manager'),
+                'accent' => 'warning',
+                'color' => $this->config->getSiteStatusColor('archived'),
             ];
-        }
-
-        if (empty($status)) {
+        } else {
             $status[] = [
                 'label' => __('Active', 'rrze-multisite-manager'),
                 'accent' => 'positive',
+                'color' => $this->config->getSiteStatusColor('active'),
             ];
-        }
 
-        if ((int)$site->public === 0) {
             $status[] = [
-                'label' => __('Not public', 'rrze-multisite-manager'),
-                'accent' => 'neutral',
+                'label' => (int)$site->public === 1
+                    ? __('Public', 'rrze-multisite-manager')
+                    : __('Not public', 'rrze-multisite-manager'),
+                'accent' => (int)$site->public === 1 ? 'info' : 'neutral',
+                'color' => $this->config->getSiteStatusColor((int)$site->public === 1 ? 'public' : 'not_public'),
             ];
         }
 
@@ -8439,6 +9053,14 @@ class MetricsImplementationService {
             $status[] = [
                 'label' => $this->getOperationalStatusLabel($operationalStatus),
                 'accent' => $this->getOperationalStatusAccent($operationalStatus),
+                'color' => $this->config->getSiteStatusColor(match ($operationalStatus) {
+                    'healthy' => 'technically_reachable',
+                    'provisioning' => 'provisioning',
+                    'dns_missing' => 'dns_missing',
+                    'unreachable' => 'technically_unreachable',
+                    'retired' => 'out_of_service',
+                    default => 'automatic',
+                }),
             ];
         }
 
@@ -9089,6 +9711,38 @@ class MetricsImplementationService {
         );
     }
 
+    protected function scheduleDashboardComposition(string $runId, int $delay = 5): void {
+        if ($runId === '' || !$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        $args = [$runId];
+
+        if (wp_next_scheduled(self::DASHBOARD_COMPOSE_HOOK, $args)) {
+            return;
+        }
+
+        wp_schedule_single_event(time() + max(5, $delay), self::DASHBOARD_COMPOSE_HOOK, $args);
+    }
+
+    protected function scheduleDashboardCompositionWatchdog(string $runId): void {
+        if ($runId === '' || !$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
+            return;
+        }
+
+        $args = [$runId];
+
+        if (wp_next_scheduled(self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK, $args)) {
+            return;
+        }
+
+        wp_schedule_single_event(
+            time() + self::DASHBOARD_LOCK_TTL,
+            self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK,
+            $args
+        );
+    }
+
     public function rescheduleDashboardRefreshCycle(): void {
         if (!$this->isCentralNetworkCronSite()) {
             return;
@@ -9157,13 +9811,15 @@ class MetricsImplementationService {
         $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
-            foreach ((array)($events[self::DASHBOARD_REFRESH_HOOK] ?? []) as $event) {
-                if (wp_unschedule_event(
-                    (int)$timestamp,
-                    self::DASHBOARD_REFRESH_HOOK,
-                    (array)($event['args'] ?? [])
-                )) {
-                    $removed++;
+            foreach ([self::DASHBOARD_REFRESH_HOOK, self::DASHBOARD_COMPOSE_HOOK, self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK] as $hook) {
+                foreach ((array)($events[$hook] ?? []) as $event) {
+                    if (wp_unschedule_event(
+                        (int)$timestamp,
+                        $hook,
+                        (array)($event['args'] ?? [])
+                    )) {
+                        $removed++;
+                    }
                 }
             }
         }
@@ -9704,6 +10360,10 @@ class MetricsImplementationService {
             $storageState['has_unlimited_site'] = true;
         }
 
+        if (!isset($storage['used_bytes'])) {
+            $storageState['unknown_site_count'] = (int)($storageState['unknown_site_count'] ?? 0) + 1;
+        }
+
         if ($usedBytes <= 0) {
             return;
         }
@@ -9721,6 +10381,7 @@ class MetricsImplementationService {
         $totalUsedBytes = (int)($storageState['total_used_bytes'] ?? 0);
         $totalMaxBytes = (int)($storageState['total_max_bytes'] ?? 0);
         $hasUnlimitedSite = !empty($storageState['has_unlimited_site']);
+        $unknownSiteCount = (int)($storageState['unknown_site_count'] ?? 0);
         $freeBytes = 0;
         $item = [];
         $index = 0;
@@ -9729,7 +10390,7 @@ class MetricsImplementationService {
 
         usort($items, [self::class, 'compareUsageDistributionRows']);
 
-        if ($hasUnlimitedSite) {
+        if ($hasUnlimitedSite || $unknownSiteCount > 0) {
             $mode = 'usage';
             $percentBase = $totalUsedBytes;
         } else {
@@ -9760,10 +10421,13 @@ class MetricsImplementationService {
             'mode' => $mode,
             'items' => $items,
             'total_used_bytes' => $totalUsedBytes,
-            'total_used_label' => size_format($totalUsedBytes),
+            'total_used_label' => $unknownSiteCount > 0
+                ? sprintf(/* translators: %s: sum of measured storage sizes. */ __('At least %s', 'rrze-multisite-manager'), size_format($totalUsedBytes))
+                : size_format($totalUsedBytes),
+            'unknown_site_count' => $unknownSiteCount,
             'total_max_bytes' => $totalMaxBytes,
             'total_max_label' => $totalMaxBytes > 0 ? size_format($totalMaxBytes) : '',
-            'percent' => (!$hasUnlimitedSite && $totalMaxBytes > 0)
+            'percent' => (!$hasUnlimitedSite && $unknownSiteCount === 0 && $totalMaxBytes > 0)
                 ? (int)round(($totalUsedBytes / $totalMaxBytes) * 100)
                 : null,
             'has_unlimited_site' => $hasUnlimitedSite,

@@ -13,11 +13,11 @@ class StorageAnalysisStateService {
     }
 
     public function getBaseStateKey(int $siteId, int $cacheVersion): string {
-        return 'rrze_msm_site_storage_analysis_base_state_' . $cacheVersion . '_' . $siteId;
+        return 'rrze_msm_site_storage_analysis_base_state_resumable_v2_' . $siteId;
     }
 
     public function getOrphanStateKey(int $siteId, int $cacheVersion): string {
-        return 'rrze_msm_site_storage_analysis_orphan_state_' . $cacheVersion . '_' . $siteId;
+        return 'rrze_msm_site_storage_analysis_orphan_state_resumable_v2_' . $siteId;
     }
 
     public function getAttachmentIndexKey(int $siteId, int $cacheVersion): string {
@@ -25,7 +25,7 @@ class StorageAnalysisStateService {
     }
 
     public function getAttachmentIndexBucketKey(int $siteId, int $cacheVersion, string $bucket): string {
-        return 'rrze_msm_site_storage_attachment_index_bucket_v1_' . $cacheVersion . '_' . $siteId . '_' . $bucket;
+        return 'rrze_msm_site_storage_attachment_index_bucket_resumable_v2_' . $siteId . '_' . $bucket;
     }
 
     public function getMediaMetadataCacheKey(int $siteId, int $cacheVersion): string {
@@ -54,12 +54,7 @@ class StorageAnalysisStateService {
     }
 
     private function clearCurrentRuntimeStates(int $siteId, int $cacheVersion): void {
-        delete_site_transient($this->getBaseStateKey($siteId, $cacheVersion));
-        delete_site_transient($this->getOrphanStateKey($siteId, $cacheVersion));
+        (new StorageAnalysisResourceService())->clearSite($siteId);
         delete_site_transient($this->getAttachmentIndexKey($siteId, $cacheVersion));
-
-        foreach (range(0, 255) as $bucket) {
-            delete_site_transient($this->getAttachmentIndexBucketKey($siteId, $cacheVersion, str_pad(dechex($bucket), 2, '0', STR_PAD_LEFT)));
-        }
     }
 }

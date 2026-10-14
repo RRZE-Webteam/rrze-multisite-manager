@@ -27,6 +27,7 @@ use RRZE\MultisiteManager\Widgets\StatusWidget;
 use RRZE\MultisiteManager\Widgets\SummaryWidget;
 use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
+use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
 
 class Settings {
     protected const LEGACY_CENTRAL_CRON_CLEANUP_STATE_OPTION = 'rrze_msm_legacy_central_cron_cleanup_state';
@@ -2577,6 +2578,7 @@ class Settings {
     protected function getWidgetInstances(): array {
         return [
             'summary' => new SummaryWidget($this->plugin, $this->config),
+            'website_status' => new WebsiteStatusWidget($this->plugin, $this->config),
             'status' => new StatusWidget($this->plugin, $this->config),
             'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
@@ -2963,6 +2965,10 @@ class Settings {
         $nextRunTimestamp = (int)($process['next_run_timestamp'] ?? 0);
         $lastRun = (string)($process['last_run'] ?? '');
         $thresholdSeconds = $this->getProcessWarningThresholdSeconds($process);
+
+        if (!empty($process['run_state']['has_composition_error'])) {
+            return __('Dashboard metrics could not be assembled. Reset and restart the process.', 'rrze-multisite-manager');
+        }
 
         if ($isRunning && $currentDurationSeconds > $thresholdSeconds) {
             return __('Run is taking unusually long', 'rrze-multisite-manager');

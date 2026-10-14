@@ -1,36 +1,36 @@
-# Einstellungen
+# Settings
 
-## Zweck
+## Purpose
 
-Die Seite **Einstellungen** konfiguriert den Multisite Manager. Sie ist nur fuer Superadmins sichtbar und besitzt die Tabs **Allgemeines**, **Monitoring** und **Ansichten**.
+The **Settings** page configures Multisite Manager. It is visible only to super admins and has the **General**, **Monitoring**, and **Views** tabs.
 
-## Allgemeines
+## General
 
-Hier werden Standardwerte fuer Dashboard-Tabellen, die Inaktivitaetsmarkierung und das optionale Logging von Hintergrundprozessen gepflegt. Die Einstellungen bestimmen keine WordPress-Kernoptionen ausserhalb des Multisite Manager.
+This tab maintains defaults for dashboard tables, inactivity marking, and optional logging of background processes. The settings do not control WordPress core options outside Multisite Manager.
 
 ## Monitoring
 
-Der Tab konfiguriert:
+The tab configures:
 
-* Intervalle fuer Dashboard-Metriken und Verfuegbarkeitspruefungen
-* Batch-Groesse fuer netzwerkweite Prozesse
-* Schonfrist neuer Websites sowie DNS- und HTTP-Fehlerschwellen
-* Intervalle, Laufzeitgrenzen und Zuweisungskriterien fuer Speicheranalysen
-* Intervalle und Laufzeitgrenzen fuer Shortcode-/Blockanalysen
-* Anzahl aufbewahrter Protokoll- und Ereigniseintraege
+* intervals for dashboard metrics and availability checks
+* batch size for network-wide processes
+* grace period for new sites and DNS/HTTP failure thresholds
+* intervals, execution limits, and assignment criteria for storage analyses
+* intervals and execution limits for shortcode/block analyses
+* number of retained log and event entries
 
-Groessere Batches verkuerzen einen Gesamtlauf, erhoehen aber Last und Laufzeit eines einzelnen Cron-Requests. Die Werte sollten daher an PHP-Limits, Cron-Takt und Groesse des Netzwerks angepasst werden.
+Larger batches shorten the entire run but increase the load and execution time of an individual Cron request. Values should therefore match PHP limits, the Cron cadence, and network size.
 
-## Ansichten
+## Views
 
-Ansichten bestimmen, welche Widgets im Dashboard sichtbar sind und in welcher Reihenfolge sie standardmaessig erscheinen. Die individuelle Reihenfolge eines Benutzers wird getrennt im Browser gespeichert.
+Views determine which widgets are visible in the dashboard and their default order. A user's individual order is stored separately in the browser.
 
-## Speichern und Wirkung
+## Saving and effect
 
-Beim Speichern prueft das Plugin Wertebereiche und plant geaenderte wiederkehrende Prozesse neu. Bereits laufende Batches werden nicht durch einen Seitenaufruf parallel gestartet. Fuer das manuelle Starten, Zuruecksetzen oder Entfernen von Aufgaben ist die Seite [Monitoring](monitoring.md) vorgesehen.
+When saving, the plugin validates value ranges and reschedules changed recurring processes. A page request cannot start parallel batches that are already running. Use [Monitoring](monitoring.md) to manually start, reset, or remove tasks.
 
-## Implementierung
+## Implementation
 
-`Settings` liest und schreibt die Network Option `rrze-multisite-manager`. Die Form-Handler werden sowohl als `admin_post_*` als auch als `network_admin_edit_*` registriert, damit die Oberflaeche im normalen Admin- und im Netzwerk-Admin-Kontext funktioniert. Alle schreibenden Handler pruefen `is_super_admin()` und den passenden Nonce.
+`Settings` reads and writes the network option `rrze-multisite-manager`. Form handlers are registered as both `admin_post_*` and `network_admin_edit_*` so that the interface works in normal admin and network-admin contexts. All writing handlers check `is_super_admin()` and the appropriate nonce.
 
-Frequenzaenderungen rufen keine synchrone Netzwerkschleife auf. Sie schreiben Signatur- und Fortschrittsdaten wie `rrze_msm_storage_analysis_schedule_signature`, `rrze_msm_shortcode_block_analysis_schedule_signature` und die jeweiligen `*_frequency_reschedule_state`-Options. Die nachgelagerten Migrationshooks sind in [Laufzeitdaten und Scheduler](runtime-state.md) dokumentiert.
+Frequency changes do not run a synchronous network loop. They write signature and progress data such as `rrze_msm_storage_analysis_schedule_signature`, `rrze_msm_shortcode_block_analysis_schedule_signature`, and the respective `*_frequency_reschedule_state` options. [Runtime state and scheduler](runtime-state.md) documents the downstream migration hooks.

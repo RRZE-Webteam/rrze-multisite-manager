@@ -1,45 +1,47 @@
 # Monitoring
 
-## Zweck
+## Purpose
 
-Die Seite **Monitoring** ist die zentrale Betriebsoberflaeche fuer Dashboard-Metriken, Verfuegbarkeitspruefungen, Speicheranalysen, Shortcode-/Blockanalysen und Wartungswerkzeuge. Sie ist nur fuer Superadmins sichtbar.
+The **Monitoring** page is the central operations interface for dashboard metrics, availability checks, storage analyses, shortcode/block analyses, and maintenance tools. It is visible only to super admins.
 
 ## Tabs
 
-### Netzwerkweit
+### Network-wide
 
-Zeigt Dashboard-Metriken und Website-Verfuegbarkeitsmonitoring. Beide Prozesse koennen geplant, gestartet, zurueckgesetzt oder entfernt werden. Status-Pills verwenden einheitlich:
+Displays dashboard metrics and site availability monitoring. Both processes can be scheduled, started, reset, or removed. Status pills consistently mean:
 
-* **Nicht geplant** in Grau: kein naechster Lauf, unabhaengig davon, ob bereits ein Ergebnis vorliegt.
-* **Geplant** in Gelb/Orange: noch kein Ergebnis, aber ein kommender Lauf ist geplant.
-* **Ok** in Gruen: ein Ergebnis liegt vor und ein kommender Lauf ist geplant.
+* **Not scheduled** in grey: no next run, regardless of whether a result already exists.
+* **Scheduled** in yellow/orange: no result yet, but a future run is scheduled.
+* **OK** in green: a result exists and a future run is scheduled.
 
-Die Verfuegbarkeitspruefung arbeitet mit DNS- und HTTP-Pruefungen. HTTP-Timeouts und der Request-Zeitrahmen sind begrenzt. DNS-Aufrufe werden nicht mehr begonnen, wenn das Batch-Zeitbudget weniger als fuenf Sekunden betraegt; Details zur unvermeidbaren serverseitigen Resolver-Konfiguration stehen in [Laufzeitdaten und Scheduler](runtime-state.md#serverbetrieb-dns-timeouts).
+Availability checks use DNS and HTTP checks. HTTP timeouts and the request time budget are bounded. DNS calls are no longer started when fewer than five seconds remain in the batch budget; [Runtime state and scheduler](runtime-state.md#server-operation-dns-timeouts) describes the unavoidable server-side resolver configuration.
 
-### Speicheranalysen
+Dashboard metric batches keep only bounded partial results until a separate composition task publishes the completed cache record. The composition task has an expiring lock and watchdog. A failed composition is shown as a stale process state and must be reset before a new run can start.
 
-Zeigt geplante Einzelaufgaben und Sammelbatches fuer Speicheranalysen. Websites ohne Planung werden nur dann als eigene Tabelle angezeigt, wenn es solche Websites tatsaechlich gibt. Mehrfachaktionen erlauben das Einrichten oder Entfernen geplanter Analysen fuer ausgewaehlte Websites.
+### Storage analyses
 
-### Shortcode und Bloecke
+Displays scheduled individual tasks and collective batches for storage analyses. Sites without scheduling are shown as a separate table only when such sites exist. Bulk actions can create or remove scheduled analyses for selected sites.
 
-Entspricht dem Speicheranalyse-Tab fuer die Shortcode-/Blockanalyse: geplante Aufgaben, Sammelbatches, Status, Start und Mehrfachaktionen werden zentral verwaltet.
+### Shortcodes and blocks
 
-### Werkzeuge
+This corresponds to the Storage analyses tab for shortcode/block analysis: scheduled tasks, collective batches, status, start actions, and bulk actions are centrally managed.
 
-Enthaelt Wartungsaktionen, etwa das Entfernen veralteter lokaler zentraler Cron-Eintraege und das Bereinigen von Daten. Umfangreiche Bereinigungen laufen als Admin-AJAX-Batches. Ein Abbruch hinterlaesst keine dauerhafte Sperre; ein veralteter Laufstatus wird nach Ablauf behandelt.
+### Tools
 
-## Ereignislinks
+Contains maintenance actions, such as removing obsolete local central Cron entries and cleaning up data. Extensive cleanups run as admin-AJAX batches. A cancellation leaves no permanent lock; stale run state is handled after expiry.
 
-Links auf WP Crontrol zeigen bei Sammelbatches immer auf die Hauptwebsite des Netzwerks, weil dort die zentralen Sammelereignisse laufen. Einzelaufgaben verlinken auf den Cron-Kontext ihrer Website.
+## Event links
 
-## Technische Ausfuehrung
+For collective batches, links to WP Crontrol always point to the main network site because central collective events run there. Individual tasks link to the Cron context of their site.
 
-`Settings::renderMonitoringPage()` ist ausschliesslich eine Steuer- und Statusoberflaeche. Die eigentlichen Laeufer sind `MetricsImplementationService`, `MonitoringService`, `StorageAnalysisSchedulerService` und `ShortcodeBlockAnalysisSchedulerService`.
+## Technical execution
 
-Alle wiederkehrenden Netzwerkprozesse werden im Cron-Kontext der Hauptwebsite registriert. Einzelaufgaben fuer Speicher- und Shortcode-/Blockanalysen laufen hingegen in der Cron-Tabelle der jeweiligen Website. Sammelbatches pruefen ihren Ausfuehrungskontext und verschieben beziehungsweise entfernen falsch auf einer Subsite eingetragene zentrale Events.
+`Settings::renderMonitoringPage()` is exclusively a control and status interface. The actual runners are `MetricsImplementationService`, `MonitoringService`, `StorageAnalysisSchedulerService`, and `ShortcodeBlockAnalysisSchedulerService`.
 
-Die verwendeten Cron-Hooks, Schedule-Keys, Fortsetzungsargumente, Network Options, Locks und TTLs sind vollstaendig in [Laufzeitdaten und Scheduler](runtime-state.md) aufgefuehrt. Die Seite selbst startet keine versteckte Vollanalyse beim Rendern.
+All recurring network processes are registered in the Cron context of the main site. Individual storage and shortcode/block analysis tasks, however, run in the Cron table of their respective site. Collective batches verify their execution context and move or remove central events incorrectly registered on a subsite.
 
-## AJAX-Schnittstellen
+[Runtime state and scheduler](runtime-state.md) completely lists the Cron hooks, schedule keys, continuation arguments, network options, locks, and TTLs. The page itself starts no hidden full scan while rendering.
 
-Die Dialoge fuer Planungsinitialisierung, Aufgabenentfernung und alte zentrale Cron-Bereinigung rufen `admin-ajax.php` auf. Ihre registrierten Hooks beginnen mit `wp_ajax_rrze_msm_`; sie sind nonce- und Superadmin-geschuetzt. Die Queue-Zustaende liegen als Network Options vor und verwenden bei browsergetriebenen Laeufen einen 15-Minuten-Lease, damit ein abgebrochener Dialog keine dauerhafte Sperre hinterlaesst.
+## AJAX interfaces
+
+The dialogs for schedule initialisation, task removal, and old central Cron cleanup call `admin-ajax.php`. Their registered hooks start with `wp_ajax_rrze_msm_`; they are protected by nonce and super-admin checks. Queue state is stored as network options and uses a 15-minute lease for browser-driven runs, so an abandoned dialog does not leave a permanent lock.

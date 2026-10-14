@@ -4,6 +4,9 @@ defined('ABSPATH') || exit;
 ?>
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
     <div class="rrze-msm-page-shell">
+        <?php if (!empty($storage_analysis['result_truncated'])) { ?>
+            <div class="notice notice-warning"><p><?php echo !empty($storage_analysis['requires_reanalysis']) ? esc_html__('The stored analysis exceeded its storage limit. Run the analysis again to restore its details.', 'rrze-multisite-manager') : esc_html__('Some analysis details were shortened or omitted. Summary totals are unchanged.', 'rrze-multisite-manager'); ?></p></div>
+        <?php } ?>
         <div class="rrze-msm-page-header">
             <div>
                 <h1><?php echo esc_html__('Storage Analysis', 'rrze-multisite-manager'); ?></h1>
@@ -35,25 +38,17 @@ defined('ABSPATH') || exit;
 
         <?php if (!empty($site_summary)) { ?>
             <?php
-            $baseStatus = is_array($storage_analysis_status['base'] ?? null) ? (array)$storage_analysis_status['base'] : [];
             $orphanStatus = is_array($storage_analysis_status['orphan'] ?? null) ? (array)$storage_analysis_status['orphan'] : [];
-            $hasCachedAnalysis = !empty($storage_analysis_status['has_cached_analysis']);
-            $baseState = (string)($baseStatus['status'] ?? 'idle');
             $orphanState = (string)($orphanStatus['status'] ?? 'idle');
             $orphanAnalysisComplete = (($storage_analysis['orphan_analysis_state'] ?? '') === 'complete') || $orphanState === 'complete';
             $storageAnalysisTasksAllowed = !empty($storage_analysis_tasks_allowed);
             $schedulerStatus = is_array($storage_analysis_scheduler_status ?? null) ? $storage_analysis_scheduler_status : [];
             $nextScheduledRunTimestamp = (int)($schedulerStatus['next_run_timestamp'] ?? 0);
-            $analysisIsRunning = $baseState === 'running' || $orphanState === 'running'
-                || !empty($schedulerStatus['metadata_started']);
             $lastAnalysisCompletedAt = (string)($schedulerStatus['last_completed_at'] ?? '');
             if ($lastAnalysisCompletedAt === '') {
                 $lastAnalysisCompletedAt = (string)($storage_analysis['generated_at'] ?? ($storage_analysis_status['cached_generated_at'] ?? ''));
             }
 
-            $canRequestStorageAnalysis = !empty($can_request_storage_analysis)
-                && $storageAnalysisTasksAllowed
-                && !$analysisIsRunning;
             $storageTab = isset($_GET['storage_tab']) ? sanitize_key((string)wp_unslash($_GET['storage_tab'])) : 'analysis';
             $storageTab = in_array($storageTab, ['analysis', 'debug', 'missing-metadata'], true) ? $storageTab : 'analysis';
             $storageAnalysisScheduled = isset($_GET['storage_analysis_scheduled']) ? sanitize_key((string)wp_unslash($_GET['storage_analysis_scheduled'])) : '';
@@ -61,7 +56,7 @@ defined('ABSPATH') || exit;
             $debugTabUrl = add_query_arg(['site_id' => (int)$site_id, 'storage_tab' => 'debug'], $site_storage_analysis_base_url);
             $missingMetadataTabUrl = add_query_arg(['site_id' => (int)$site_id, 'storage_tab' => 'missing-metadata'], $site_storage_analysis_base_url);
             $usedAttachmentFilesRendered = false;
-            $siteStorageMegabytes = (int)round((int)($site_summary['storage']['used_bytes'] ?? 0) / MB_IN_BYTES);
+            $siteStorageLabel = (string)($site_summary['storage']['used_label'] ?? __('Unknown', 'rrze-multisite-manager'));
             $unregisteredImageSizeVariants = (array)($storage_analysis['largest_unregistered_image_size_variants'] ?? []);
             $unregisteredImageSizeVariantResults = array_merge(
                 (array)($storage_analysis['unregistered_image_size_variants_found_in_content'] ?? []),
@@ -112,12 +107,32 @@ defined('ABSPATH') || exit;
                         </div>
                         <div class="rrze-msm-site-details-meta-item">
                             <p>
-                                <strong><?php echo esc_html__('WordPress storage value', 'rrze-multisite-manager'); ?></strong>
-                                <span class="rrze-msm-site-size"><?php echo esc_html(number_format_i18n($siteStorageMegabytes) . ' MB'); ?></span>
+                                <strong><?php echo esc_html__('Last measured storage usage', 'rrze-multisite-manager'); ?></strong>
+                                <span class="rrze-msm-site-size"><?php echo esc_html($siteStorageLabel); ?></span>
                             </p>
                             <p>
                                 <strong><?php echo esc_html__('Detected size', 'rrze-multisite-manager'); ?></strong>
                                 <span class="rrze-msm-site-size"><?php echo esc_html((string)($storage_analysis['actual_label'] ?? '')); ?></span>
+                            </p>
+                            <p>
+                                <strong><?php echo esc_html__('Last completed', 'rrze-multisite-manager'); ?></strong>
+                                <span class="rrze-msm-site-size">
+                                    <?php
+                                    echo esc_html($lastAnalysisCompletedAt !== ''
+                                        ? mysql2date(get_option('date_format') . ' ' . get_option('time_format'), $lastAnalysisCompletedAt, true)
+                                        : __('No completed storage analysis is available yet.', 'rrze-multisite-manager'));
+                                    ?>
+                                </span>
+                            </p>
+                            <p>
+                                <strong><?php echo esc_html__('Next scheduled run', 'rrze-multisite-manager'); ?></strong>
+                                <span class="rrze-msm-site-size">
+                                    <?php
+                                    echo esc_html($nextScheduledRunTimestamp > 0
+                                        ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), $nextScheduledRunTimestamp)
+                                        : __('No scheduled batch is currently available.', 'rrze-multisite-manager'));
+                                    ?>
+                                </span>
                             </p>
                         </div>
                     </div>
@@ -145,41 +160,6 @@ defined('ABSPATH') || exit;
             <?php if (!$storageAnalysisTasksAllowed && $storageAnalysisScheduled !== 'inactive') { ?>
                 <div class="notice notice-warning inline"><p><?php echo esc_html__('Storage analysis is inactive for this website because its current website or monitoring status does not permit scheduled tasks.', 'rrze-multisite-manager'); ?></p></div>
             <?php } ?>
-            <section class="rrze-msm-widget rrze-msm-widget-span-12">
-                <header class="rrze-msm-widget-header">
-                    <h2><?php echo esc_html__('Analysis status', 'rrze-multisite-manager'); ?></h2>
-                </header>
-                <p>
-                    <?php
-                    if ($lastAnalysisCompletedAt !== '') {
-                        echo esc_html(sprintf(__('Last completed: %s', 'rrze-multisite-manager'), mysql2date(get_option('date_format') . ' ' . get_option('time_format'), $lastAnalysisCompletedAt, true)));
-                    } else {
-                        echo esc_html__('No completed storage analysis is available yet.', 'rrze-multisite-manager');
-                    }
-
-                    echo '; ';
-
-                    if ($nextScheduledRunTimestamp > 0) {
-                        /* translators: %s: date and time of the next scheduled storage analysis. */
-                        echo esc_html(sprintf(__('Next scheduled run: %s', 'rrze-multisite-manager'), wp_date(get_option('date_format') . ' ' . get_option('time_format'), $nextScheduledRunTimestamp)));
-                    } else {
-                        echo esc_html__('No scheduled batch is currently available.', 'rrze-multisite-manager');
-                    }
-                    ?>
-                </p>
-                <?php if ($canRequestStorageAnalysis) { ?>
-                    <form method="post" action="<?php echo esc_url($storage_analysis_request_action); ?>">
-                        <p>
-                            <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
-                            <input type="hidden" name="redirect_to" value="<?php echo esc_attr((string)add_query_arg(['site_id' => (int)$site_id, 'storage_tab' => 'analysis'], $site_storage_analysis_base_url)); ?>">
-                            <?php wp_nonce_field('rrze_msm_request_site_storage_analysis_' . (int)$site_id); ?>
-                            <button type="submit" class="button button-secondary"><?php echo esc_html__('Request storage analysis again', 'rrze-multisite-manager'); ?></button>
-                        </p>
-                    </form>
-                <?php } ?>
-                <div id="rrze-msm-storage-analysis-feedback" class="rrze-msm-storage-analysis-feedback" hidden></div>
-            </section>
-
             <?php if (!empty($storage_analysis['error'])) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <div class="notice notice-error inline">
@@ -200,7 +180,7 @@ defined('ABSPATH') || exit;
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Overview', 'rrze-multisite-manager'); ?></h2>
-                        <p><?php echo esc_html__('Compares the storage value reported by WordPress with the upload directory that was actually scanned.', 'rrze-multisite-manager'); ?></p>
+                        <p><?php echo esc_html__('Compares the previously measured storage usage with the upload directory that was actually scanned.', 'rrze-multisite-manager'); ?></p>
                     </header>
                     <table class="striped rrze-msm-datatable">
                         <tbody>

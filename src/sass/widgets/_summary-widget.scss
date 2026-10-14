@@ -40,6 +40,58 @@
     background: var(--rrze-msm-info);
 }
 
+.rrze-msm-card-status::before {
+    display: none;
+}
+
+.rrze-msm-card-status {
+    border-left-width: 6px;
+}
+
+.rrze-msm-card-status.rrze-msm-status-active {
+    border-left-color: var(--rrze-msm-status-color-active);
+}
+
+.rrze-msm-card-status.rrze-msm-status-active-nobots {
+    border-left-color: var(--rrze-msm-status-color-active-nobots);
+}
+
+.rrze-msm-card-status.rrze-msm-status-archive {
+    border-left-color: var(--rrze-msm-status-color-archive);
+}
+
+.rrze-msm-card-status.rrze-msm-status-blocked {
+    border-left-color: var(--rrze-msm-status-color-blocked);
+}
+
+.rrze-msm-card-status.rrze-msm-status-deleted {
+    border-left-color: var(--rrze-msm-status-color-deleted);
+}
+
+.rrze-msm-card-status.rrze-msm-status-automatic {
+    border-left-color: var(--rrze-msm-status-color-automatic);
+}
+
+.rrze-msm-card-status.rrze-msm-status-reachable {
+    border-left-color: var(--rrze-msm-status-color-reachable);
+}
+
+.rrze-msm-card-status.rrze-msm-status-provisioning {
+    border-left-color: var(--rrze-msm-status-color-provisioning);
+}
+
+.rrze-msm-card-status.rrze-msm-status-dns-missing {
+    border-left-color: var(--rrze-msm-status-color-dns-missing);
+}
+
+.rrze-msm-card-status.rrze-msm-status-unreachable {
+    border-left-color: var(--rrze-msm-status-color-unreachable);
+}
+
+.rrze-msm-card-status.rrze-msm-status-out-of-service {
+    border-left-color: var(--rrze-msm-status-color-out-of-service);
+}
+
 .rrze-msm-card-label {
     display: block;
     color: var(--rrze-msm-muted);

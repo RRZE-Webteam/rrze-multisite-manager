@@ -1,30 +1,32 @@
 # Dashboard
 
-## Zweck
+## Purpose
 
-Das Dashboard ist die zentrale, konfigurierbare Uebersicht des Multisite Manager. Es fasst die zuletzt berechneten Netzwerkmetriken in Widgets zusammen und vermeidet dabei eine Vollanalyse bei jedem Seitenaufruf.
+The Dashboard is the central, configurable overview of the Multisite Manager. It combines the most recently calculated network metrics in widgets and avoids a full analysis on every page load.
 
-## Inhalte
+## Contents
 
-Je nach gewaehlter Ansicht stehen unter anderem Widgets fuer Website-Status, Betriebsstatus, Speicherverbrauch, aktuelle Probleme, neue Monitoring-Hinweise, Theme- und Plugin-Nutzung sowie inaktive oder zuletzt geaenderte Websites zur Verfuegung.
+Depending on the selected view, widgets are available for site status, operational status, storage consumption, current issues, new monitoring notices, theme and plugin usage, and inactive or recently changed sites.
 
-Die Editor-Nutzung orientiert sich an RRZE Settings. Ist der Block Editor netzwerkweit als Standardeditor gesetzt, erscheint ein Hinweis mit Link zu den RRZE-Settings statt einer Tortengrafik, weil alle Websites denselben Editor verwenden.
+Editor usage follows RRZE Settings. If the Block Editor is configured as the network-wide default editor, a notice links to RRZE Settings instead of showing a pie chart because all sites use the same editor.
 
-## Bedienung
+## Usage
 
-* Widgets koennen innerhalb einer Ansicht verschoben werden. Die Reihenfolge wird pro Benutzer und Ansicht im Browser gespeichert.
-* Ansichten und die darin sichtbaren Widgets werden von Superadmins unter **Einstellungen > Ansichten** verwaltet.
-* Tabellen-Widgets sortieren und paginieren nur die sichtbaren Eintraege im Browser.
-* Die Zeit des letzten Metrics-Laufs und der Fortschritt einer laufenden Aktualisierung sind auf der Seite sichtbar.
+* Widgets can be moved within a view. Their order is stored per user and view in the browser.
+* Super admins manage views and their visible widgets under **Settings > Views**.
+* Table widgets sort and paginate only their currently visible entries in the browser.
+* The page displays the time of the latest metrics run and the progress of a running refresh.
 
-## Datenaktualisierung
+## Data refresh
 
-Dashboard-Metriken werden zentral auf der Hauptwebsite des Netzwerks im Hintergrund berechnet. Ein Durchlauf verarbeitet Websites in Batches und schreibt erst nach Abschluss einen vollstaendigen Datensatz in den Netzwerk-Cache. Waerend einer Aktualisierung bleibt der letzte vollstaendige Datensatz sichtbar.
+Dashboard metrics are calculated centrally on the network's main site in the background. A run processes sites in batches. Each batch writes an independent, bounded intermediate result; a separate composition task merges all intermediate results and writes one complete record to the network cache only after every batch has completed. The intermediate results are then removed. The previous complete record remains visible while a refresh is running.
 
-Bei einer geaenderten Berechnungslogik erkennt der Cache seine Versionsaenderung und plant eine erneute Batch-Berechnung ein. Das vermeidet einen zeitaufwaendigen synchronen Lauf im Admin-Request.
+The composition task has its own expiring lock and watchdog. A new metrics run is held back while composition is pending. If composition repeatedly fails, the run is marked as failed and is visible in Monitoring, where it can be reset. This prevents a crashed final task from leaving a permanent lock or allowing overlapping runs.
 
-## Implementierung
+When the calculation logic changes, the cache detects its version change and schedules a new batch calculation. This avoids an expensive synchronous run in an admin request.
 
-Einstieg ist `Dashboard::renderDashboardPage()`. Die Daten stammen aus `MetricsService::getDashboardData()`; die Fassade delegiert an `MetricsImplementationService`. Die Widget-Implementierungen liegen in `includes/Widgets/`, die Templates in `templates/widgets/`.
+## Implementation
 
-Die Persistenz des Dashboard-Datensatzes, die Cron-Hooks und die Batch-Sperren sind in [Laufzeitdaten und Scheduler](runtime-state.md#zentrale-dashboard-metriken) aufgefuehrt. Die individuelle Widget-Reihenfolge wird zusaetzlich als User Meta `rrze_msm_widget_orders` gespeichert; die Definition der Netzwerkansichten liegt in der Network Option `rrze_multisite_manager_dashboard_views`.
+The entry point is `Dashboard::renderDashboardPage()`. Data comes from `MetricsService::getDashboardData()`; the facade delegates to `MetricsImplementationService`. Widget implementations are in `includes/Widgets/`, and templates are in `templates/widgets/`.
+
+[Runtime state and scheduler](runtime-state.md#central-dashboard-metrics) lists dashboard persistence, Cron hooks, batches, and locks. The individual widget order is additionally stored as user meta `rrze_msm_widget_orders`; network view definitions are stored in the network option `rrze_multisite_manager_dashboard_views`.

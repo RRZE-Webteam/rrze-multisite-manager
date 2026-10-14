@@ -10,16 +10,32 @@
     </header>
     <?php echo wp_kses_post($this->renderPieChart($items, $empty_message)); ?>
     <?php if (!empty($status_explanations) && is_array($status_explanations)) { ?>
-        <div class="rrze-msm-status-explanations">
-            <h3><?php echo esc_html__('Quick explanation', 'rrze-multisite-manager'); ?></h3>
+        <?php
+        $statusClasses = [
+            'active_public' => 'rrze-msm-status-active',
+            'active_private' => 'rrze-msm-status-active-nobots',
+            'archived' => 'rrze-msm-status-archive',
+            'blocked' => 'rrze-msm-status-blocked',
+            'deleted' => 'rrze-msm-status-deleted',
+        ];
+        $statusClassesByIndex = array_values($statusClasses);
+        ?>
+        <details class="rrze-msm-status-explanations">
+            <summary><?php echo esc_html__('Quick explanation', 'rrze-multisite-manager'); ?></summary>
             <ul>
-                <?php foreach ($status_explanations as $status_explanation) { ?>
+                <?php foreach ($status_explanations as $status_key => $status_explanation) { ?>
+                    <?php
+                    $statusClass = $statusClasses[(string) $status_key]
+                        ?? $statusClassesByIndex[(int) $status_key]
+                        ?? '';
+                    ?>
                     <li>
+                        <span class="rrze-msm-status-explanation-swatch <?php echo esc_attr($statusClass); ?>" aria-hidden="true"></span>
                         <strong><?php echo esc_html((string)($status_explanation['label'] ?? '')); ?>:</strong>
                         <?php echo esc_html((string)($status_explanation['text'] ?? '')); ?>
                     </li>
                 <?php } ?>
             </ul>
-        </div>
+        </details>
     <?php } ?>
 </section>

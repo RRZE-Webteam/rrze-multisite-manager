@@ -36,6 +36,8 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const REQUEST_BUDGET_SECONDS = 20;
     protected const CONTINUATION_DELAY_SECONDS = 5;
     protected const META_VALUES_PER_POST_LIMIT = 100;
+    protected const ANALYSIS_VALUE_MAX_BYTES = 262144;
+    protected const RESULT_MAX_BYTES = 1048576;
     protected const SHORTCODE_PHASE = 'shortcodes';
     protected const BLOCK_PHASE = 'blocks';
 
@@ -1209,6 +1211,11 @@ class ShortcodeBlockAnalysisSchedulerService {
             'post_url' => get_permalink($postId),
         ];
         $content = (string)$post->post_content;
+
+        if (strlen($content) > self::ANALYSIS_VALUE_MAX_BYTES) {
+            return true;
+        }
+
         $this->collectShortcodes($content, $location, $state['shortcodes']);
 
         // Unregistered tags are only meaningful when authors deliberately used a Shortcode block.
@@ -1240,8 +1247,9 @@ class ShortcodeBlockAnalysisSchedulerService {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded scan avoids loading an entire post-meta cache for one analysis step.
         return (array)$wpdb->get_results(
             $wpdb->prepare(
-                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d ORDER BY meta_id ASC LIMIT %d",
+                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND OCTET_LENGTH(meta_value) <= %d ORDER BY meta_id ASC LIMIT %d",
                 $postId,
+                self::ANALYSIS_VALUE_MAX_BYTES,
                 self::META_VALUES_PER_POST_LIMIT
             )
         );
@@ -1260,7 +1268,11 @@ class ShortcodeBlockAnalysisSchedulerService {
             'post_type' => $post->post_type,
             'post_url' => get_permalink($postId),
         ];
-        $this->collectBlocks((string)$post->post_content, $location, $state['blocks']);
+        $content = (string)$post->post_content;
+
+        if (strlen($content) <= self::ANALYSIS_VALUE_MAX_BYTES) {
+            $this->collectBlocks($content, $location, $state['blocks']);
+        }
     }
 
     protected function collectShortcodesFromValue($value, array $location, array &$shortcodes, int $depth = 0): void {
@@ -1756,7 +1768,8 @@ class ShortcodeBlockAnalysisSchedulerService {
             'shortcodes' => array_values((array)($state['shortcodes'] ?? [])),
             'blocks' => array_values((array)($state['blocks'] ?? [])),
         ];
-        update_blog_option($siteId, self::RESULT_OPTION, $result);
+        $result = $this->limitResultSize($result);
+        $this->saveResult($siteId, $result);
         $status = $this->getStatus($siteId);
         $status = array_merge($status, [
             'status' => 'complete',
@@ -1773,6 +1786,60 @@ class ShortcodeBlockAnalysisSchedulerService {
             'shortcodes' => count($result['shortcodes']),
             'blocks' => count($result['blocks']),
         ]);
+    }
+
+    protected function limitResultSize(array $result): array {
+        $truncated = false;
+
+        while (strlen(serialize($result)) > self::RESULT_MAX_BYTES) {
+            if (!empty($result['blocks'])) {
+                array_pop($result['blocks']);
+            } elseif (!empty($result['shortcodes'])) {
+                array_pop($result['shortcodes']);
+            } else {
+                break;
+            }
+
+            $truncated = true;
+
+        }
+
+        if ($truncated) {
+            $result['truncated'] = true;
+
+            while (strlen(serialize($result)) > self::RESULT_MAX_BYTES) {
+                if (!empty($result['blocks'])) {
+                    array_pop($result['blocks']);
+                } elseif (!empty($result['shortcodes'])) {
+                    array_pop($result['shortcodes']);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    protected function saveResult(int $siteId, array $result): void {
+        $currentSiteId = get_current_blog_id();
+        $switched = $currentSiteId !== $siteId;
+
+        if ($switched) {
+            switch_to_blog($siteId);
+        }
+
+        try {
+            if (get_option(self::RESULT_OPTION, null) === null) {
+                add_option(self::RESULT_OPTION, $result, '', false);
+            } else {
+                update_option(self::RESULT_OPTION, $result, false);
+            }
+        } finally {
+            if ($switched) {
+                restore_current_blog();
+            }
+        }
     }
 
     protected function markFailed(int $siteId, string $message): void {

@@ -1,23 +1,23 @@
-# Website-Uebersicht
+# Website overview
 
-## Zweck
+## Purpose
 
-Die Website-Uebersicht listet die Websites des Netzwerks mit den zuletzt bekannten Kennzahlen und technischen Statusinformationen.
+The Website overview lists network sites with their most recently known metrics and technical status information.
 
-## Inhalte und Filter
+## Contents and filters
 
-Die Seite bietet Statusansichten fuer aktive, archivierte, blockierte und zur Loeschung markierte Websites sowie fuer technische Zustaende wie Bereitstellung, fehlendes DNS oder Nichterreichbarkeit. Eine Suche filtert nach Titel oder URL.
+The page provides status views for active, archived, blocked, and marked-for-deletion sites, as well as technical states such as provisioning, missing DNS, or unavailability. Search filters by title or URL.
 
-Die Tabelle zeigt unter anderem Website, Registrierung, letzte Aktivitaet, Administrator, Rollen- und Inhaltszahlen, Speicherverbrauch sowie Schnellaktionen. Die genauen Spalten koennen je nach Ansicht und Berechtigung variieren.
+The table shows, among other things, site, registration, last activity, administrator, role and content counts, storage use, and quick actions. The exact columns can vary by view and permission.
 
-## Aktionen
+## Actions
 
-Von einer Zeile aus fuehren Links zu den Website-Details, zur WordPress-Netzwerkverwaltung und zu passenden Analyse-Seiten. Statusaenderungen und netzwerkweite Verwaltungsaktionen sind Superadmins vorbehalten.
+Links from a row lead to Website details, WordPress network administration, and appropriate analysis pages. Status changes and network-wide management actions are limited to super admins.
 
-## Datenstand
+## Data state
 
-Die Uebersicht verwendet die Dashboard-Metriken. Sie ist daher eine aggregierte Momentaufnahme und keine Live-Abfrage jeder einzelnen Website. Den Zeitstempel und Fortschritt der Aktualisierung zeigt das Dashboard beziehungsweise Monitoring an.
+The overview uses dashboard metrics. It is therefore an aggregated snapshot, not a live query of every individual site. The dashboard or Monitoring shows the refresh timestamp and progress.
 
-## Implementierung
+## Implementation
 
-`Dashboard::renderSiteOverviewPage()` rendert `templates/site-overview-page.php` auf Basis von `site_overview` im Dashboard-Datensatz. Die technische Statusanreicherung wird von `MonitoringService` als Site Meta persistiert; die vollstaendige Liste dieser Schluessel steht in [Laufzeitdaten und Scheduler](runtime-state.md#verfuegbarkeitsmonitoring). Tabelleninteraktionen fuer Sortierung und Seitengroesse bleiben im Browser und loesen keine serverseitige Neuberechnung der Aggregation aus.
+`Dashboard::renderSiteOverviewPage()` renders `templates/site-overview-page.php` using `site_overview` from the dashboard record. `MonitoringService` persists technical-status enrichment as site meta; [Runtime state and scheduler](runtime-state.md#availability-monitoring) lists these keys completely. Table interactions for sorting and page size stay in the browser and do not trigger server-side recalculation of the aggregate.

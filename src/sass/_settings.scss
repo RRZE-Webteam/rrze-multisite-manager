@@ -49,8 +49,19 @@ body.rrze-msm-mode-dark {
     --rrze-msm-inactive-text: #000;
     --rrze-msm-widget-border-radius: 5px;
     --rrze-msm-badge-border-radius: 999px;
-    --rrze-msm-actions-text-min-width: 25em;
+    --rrze-msm-actions-text-min-width: 12rem;
     --rrze-msm-actions-icon-min-width: 240px;
+    --rrze-msm-status-color-active: #43a047;
+    --rrze-msm-status-color-active-nobots: #039be5;
+    --rrze-msm-status-color-archive: #a15c00;
+    --rrze-msm-status-color-blocked: #9f1239;
+    --rrze-msm-status-color-deleted: #7f1d1d;
+    --rrze-msm-status-color-automatic: #64748b;
+    --rrze-msm-status-color-reachable: #26a69a;
+    --rrze-msm-status-color-provisioning: #6d28d9;
+    --rrze-msm-status-color-dns-missing: #b45309;
+    --rrze-msm-status-color-unreachable: #c2410c;
+    --rrze-msm-status-color-out-of-service: #7f1d1d;
 }
 
 .rrze-msm-mode-dark,

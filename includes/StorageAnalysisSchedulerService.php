@@ -3,6 +3,8 @@
 namespace RRZE\MultisiteManager;
 
 use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
+use RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException;
+use RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService;
 use RRZE\MultisiteManager\Support\NetworkCronCleanupQueue;
 
 defined('ABSPATH') || exit;
@@ -13,6 +15,11 @@ class StorageAnalysisSchedulerService {
     protected const ORPHAN_PHASE = 'orphan';
     protected const METADATA_PHASE = 'metadata';
     protected const SCHEDULED_PHASE = 'scheduled';
+    protected const CONTINUATION_HOOK = 'rrze_msm_continue_storage_analysis';
+    protected const CONTINUATION_QUEUE_OPTION = 'rrze_msm_storage_analysis_continuation_queue';
+    protected const REQUEST_BUDGET_SECONDS = 5;
+    protected const MAX_BATCHES_PER_REQUEST = 2;
+    protected const REQUEST_LOCK_TTL = 120;
     // Only retained to remove obsolete continuation events from older releases.
     protected const LEGACY_ACTIVE_PHASE = 'active';
     protected const SCHEDULE_SIGNATURE_OPTION = 'rrze_msm_storage_analysis_schedule_signature';
@@ -41,6 +48,7 @@ class StorageAnalysisSchedulerService {
 
     protected StorageAnalysisService $storageAnalysis;
     protected Config $config;
+    protected string $networkRunSlotsLockToken = '';
     /** @var array<int, int>|null */
     protected ?array $currentRecurringScheduleTimestamps = null;
     /** @var array<int, true>|null */
@@ -56,6 +64,7 @@ class StorageAnalysisSchedulerService {
     public function onLoaded(): void {
         add_action($this->config->getStorageAnalysisHook(), [$this, 'runScheduledAnalysis'], 10, 2);
         add_action($this->config->getStorageAnalysisBatchHook(), [$this, 'runBatchScheduledAnalysis'], 10, 2);
+        add_action(self::CONTINUATION_HOOK, [$this, 'runAnalysisContinuation']);
         add_action(self::FREQUENCY_RESCHEDULE_HOOK, [$this, 'runFrequencyRescheduleBatch']);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action('init', [$this, 'ensureRecurringSchedules'], 20);
@@ -715,7 +724,7 @@ class StorageAnalysisSchedulerService {
                         continue;
                     }
 
-                    foreach ([$config->getStorageAnalysisHook(), $config->getStorageAnalysisBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK, self::TASK_REMOVAL_HOOK] as $hook) {
+                    foreach ([$config->getStorageAnalysisHook(), $config->getStorageAnalysisBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK, self::TASK_REMOVAL_HOOK, self::CONTINUATION_HOOK, StorageAnalysisResourceService::MAINTENANCE_HOOK] as $hook) {
                         if (empty($events[$hook])) {
                             continue;
                         }
@@ -749,6 +758,7 @@ class StorageAnalysisSchedulerService {
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::CONTINUATION_QUEUE_OPTION);
         delete_site_option(self::NETWORK_RUN_SLOTS_OPTION);
         delete_site_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
         delete_site_option(self::MIGRATION_STATE_OPTION);
@@ -813,6 +823,7 @@ class StorageAnalysisSchedulerService {
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::CONTINUATION_QUEUE_OPTION);
         delete_site_option(self::MIGRATION_STATE_OPTION);
         delete_site_option(self::MIGRATION_LOCK_OPTION);
         delete_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION);
@@ -823,7 +834,7 @@ class StorageAnalysisSchedulerService {
         $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
-            foreach ([$this->config->getStorageAnalysisHook(), $this->config->getStorageAnalysisBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK] as $hook) {
+            foreach ([$this->config->getStorageAnalysisHook(), $this->config->getStorageAnalysisBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK, self::CONTINUATION_HOOK, StorageAnalysisResourceService::MAINTENANCE_HOOK] as $hook) {
                 if (empty($events[$hook])) {
                     continue;
                 }
@@ -943,10 +954,119 @@ class StorageAnalysisSchedulerService {
             }
 
             $this->runSingleProcessAnalysis($siteId);
+        } catch (StorageAnalysisBusyException $exception) {
+            if ($fromBatch) {
+                $this->inBatchCronContext(fn(): mixed => wp_schedule_single_event(time() + MINUTE_IN_SECONDS, $this->config->getStorageAnalysisBatchHook(), [$siteId, true]));
+            } else {
+                $this->scheduleIndividualRetry($siteId);
+            }
         } finally {
             $this->releaseNetworkRunSlot($siteId);
             $this->releaseSiteLock($siteId);
         }
+    }
+
+    /** One central event resumes one website, not every queued website in the same wp-cron process. */
+    public function runAnalysisContinuation(): void {
+        if (get_current_blog_id() !== $this->getBatchCronSiteId()
+            || MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress() || $this->isScheduleMigrationInProgress()
+        ) {
+            return;
+        }
+        if (!$this->acquireNetworkRunSlotsLock()) {
+            $this->scheduleContinuationQueueEvent();
+            return;
+        }
+        try {
+            $queue = get_site_option(self::CONTINUATION_QUEUE_OPTION, []);
+            $queue = is_array($queue) ? $queue : [];
+            $siteId = (int)array_key_first($queue);
+            $runId = (string)($queue[$siteId] ?? '');
+            unset($queue[$siteId]);
+            if ($siteId > 0 && $runId !== '') {
+                // Keep the item at the tail until completion, even if PHP dies in this slice.
+                $queue[$siteId] = $runId;
+            }
+            update_site_option(self::CONTINUATION_QUEUE_OPTION, $queue);
+        } finally {
+            $this->releaseNetworkRunSlotsLock();
+        }
+        $keepQueued = false;
+        $this->scheduleContinuationQueueEvent();
+        try {
+            if ($siteId <= 0 || $runId === '') {
+                return;
+            }
+            $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+            if ($runId === '' || !is_array($status) || empty($status['is_running'])
+                || !hash_equals((string)($status['run_id'] ?? ''), $runId) || $this->isSiteSchedulingRemoved($siteId)
+            ) {
+                return;
+            }
+            $mode = $this->getSiteAssignmentMode($siteId);
+            if ($mode === 'unassigned') {
+                return;
+            }
+            $keepQueued = true;
+            $this->runScheduledAnalysis($siteId, self::SCHEDULED_PHASE, $mode === 'batch');
+            $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+            $keepQueued = !empty($status['is_running']) && (string)($status['run_id'] ?? '') === $runId;
+        } finally {
+            if (!$keepQueued) {
+                $this->removeAnalysisContinuation($siteId, $runId);
+            }
+            $this->scheduleContinuationQueueEvent();
+        }
+    }
+
+    protected function removeAnalysisContinuation(int $siteId, string $runId): void {
+        if (!$this->acquireNetworkRunSlotsLock()) {
+            return;
+        }
+        try {
+            $queue = get_site_option(self::CONTINUATION_QUEUE_OPTION, []);
+            if (is_array($queue) && (string)($queue[$siteId] ?? '') === $runId) {
+                unset($queue[$siteId]);
+                update_site_option(self::CONTINUATION_QUEUE_OPTION, $queue);
+            }
+        } finally {
+            $this->releaseNetworkRunSlotsLock();
+        }
+    }
+
+    protected function scheduleAnalysisContinuation(int $siteId, string $runId): bool {
+        if ($runId === '' || $this->isTaskRemovalInProgress() || $this->isSiteSchedulingRemoved($siteId)) {
+            return false;
+        }
+        if (!$this->acquireNetworkRunSlotsLock()) {
+            // A brief queue-lock collision must not discard a website's saved progress.
+            if ($this->getSiteAssignmentMode($siteId) === 'batch') {
+                return (bool)$this->inBatchCronContext(function () use ($siteId): bool {
+                    $args = [$siteId, true];
+                    $hook = $this->config->getStorageAnalysisBatchHook();
+                    return (bool)wp_next_scheduled($hook, $args) || (bool)wp_schedule_single_event(time() + MINUTE_IN_SECONDS, $hook, $args);
+                });
+            }
+            return $this->scheduleIndividualRetry($siteId);
+        }
+        try {
+            $queue = get_site_option(self::CONTINUATION_QUEUE_OPTION, []);
+            $queue = is_array($queue) ? $queue : [];
+            $queue[$siteId] = $runId;
+            update_site_option(self::CONTINUATION_QUEUE_OPTION, $queue);
+        } finally {
+            $this->releaseNetworkRunSlotsLock();
+        }
+        return $this->scheduleContinuationQueueEvent();
+    }
+
+    protected function scheduleContinuationQueueEvent(): bool {
+        return (bool)$this->inBatchCronContext(function (): bool {
+            if (empty(get_site_option(self::CONTINUATION_QUEUE_OPTION, [])) || wp_next_scheduled(self::CONTINUATION_HOOK)) {
+                return true;
+            }
+            return (bool)wp_schedule_single_event(time() + 5, self::CONTINUATION_HOOK);
+        });
     }
 
     /**
@@ -1241,7 +1361,7 @@ class StorageAnalysisSchedulerService {
         $existing = get_site_option(self::BATCH_LOCK_OPTION, []);
         $startedAt = is_array($existing) ? (int)($existing['started_at'] ?? 0) : (int)$existing;
 
-        if ($startedAt > 0 && (time() - $startedAt) > ($this->getTimeoutSeconds() + MINUTE_IN_SECONDS)) {
+        if ($startedAt > 0 && (time() - $startedAt) > self::REQUEST_LOCK_TTL) {
             delete_site_option(self::BATCH_LOCK_OPTION);
         }
 
@@ -1258,118 +1378,123 @@ class StorageAnalysisSchedulerService {
         }
     }
 
+    /** Runs a bounded slice; the following Cron request resumes the same run. */
     protected function runSingleProcessAnalysis(int $siteId): void {
-        $status = $this->getStatus($siteId);
+        $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+        $status = is_array($status) ? $status : [];
+        $memoryBaseline = memory_get_usage(true);
+        $started = hrtime(true);
+        $deadline = microtime(true) + self::REQUEST_BUDGET_SECONDS;
+        $phase = (string)($status['run_phase'] ?? self::BASE_PHASE);
 
-        if (!empty($status['is_running'])) {
-            $startedTimestamp = !empty($status['last_started_at'])
-                ? (int)strtotime((string)$status['last_started_at'] . ' UTC')
-                : 0;
+        if (empty($status['is_running']) || empty($status['run_id'])) {
+            $this->storageAnalysis->clearProcessStates($siteId);
+            $this->markRunStarted($siteId, true);
+            $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+            $status['run_id'] = wp_generate_uuid4();
+            $status['run_phase'] = self::BASE_PHASE;
+            $status['active_duration_seconds'] = 0.0;
+            $phase = self::BASE_PHASE;
+            update_blog_option($siteId, self::OPTION_STATUS, $status);
+        }
 
-            if ($startedTimestamp > 0 && (time() - $startedTimestamp) >= $this->getTimeoutSeconds()) {
-                $this->abortSingleProcessAnalysis(
-                    $siteId,
-                    $this->getRunningPhase($status),
-                    __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager')
-                );
-                return;
-            }
-
-            $this->logSiteInfo('Speicherplatzanalyse übersprungen', $siteId, 'unassigned', ['reason' => 'analysis_already_running']);
+        $runId = (string)$status['run_id'];
+        $startedAt = (int)strtotime((string)$status['last_started_at'] . ' UTC');
+        if ((float)($status['active_duration_seconds'] ?? 0) >= $this->getTimeoutSeconds() || ($startedAt > 0 && time() - $startedAt >= 7 * DAY_IN_SECONDS)) {
+            $this->abortSingleProcessAnalysis($siteId, $phase, __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
             return;
         }
 
-        // Wall-clock timestamps remain part of the visible process status.
-        // Use a monotonic clock exclusively for the classification decision so
-        // an NTP adjustment cannot move a website across the threshold.
-        $runStartedAt = hrtime(true);
-
-        $this->storageAnalysis->clearProcessStates($siteId);
-        $this->markRunStarted($siteId, true);
-        $this->extendRuntimeLimit();
-        $this->logSiteInfo('Speicherplatzanalyse gestartet', $siteId, 'unassigned', ['phase' => self::BASE_PHASE]);
-
-        $deadline = time() + $this->getTimeoutSeconds();
-        $phase = self::BASE_PHASE;
-
         try {
-            foreach ([self::BASE_PHASE, self::ORPHAN_PHASE, self::METADATA_PHASE] as $phase) {
-                if ($this->isTaskRemovalInProgress()) {
+            // Reserve the next slice before doing work so a fatal PHP error cannot lose it.
+            if (!$this->scheduleAnalysisContinuation($siteId, $runId)) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when rendered.
+                throw new \RuntimeException(__('The storage analysis continuation could not be scheduled.', 'rrze-multisite-manager'));
+            }
+            if ($this->isRequestMemoryBudgetReached($memoryBaseline)) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                throw new \RuntimeException(__('Not enough PHP memory is available to start another analysis step.', 'rrze-multisite-manager'));
+            }
+            for ($batch = 0; $batch < self::MAX_BATCHES_PER_REQUEST && microtime(true) < $deadline; $batch++) {
+                if ((float)($status['active_duration_seconds'] ?? 0) + (hrtime(true) - $started) / 1000000000 >= $this->getTimeoutSeconds()) {
+                    $this->abortSingleProcessAnalysis($siteId, $phase, __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
+                    return;
+                }
+                if ($this->isTaskRemovalInProgress() || $this->isSiteSchedulingRemoved($siteId)) {
                     $this->abortSingleProcessAnalysis($siteId, $phase, __('The storage analysis was stopped because its scheduled tasks are being removed.', 'rrze-multisite-manager'));
                     return;
                 }
-
-                $this->runAnalysisPhaseToCompletion($siteId, $phase, $deadline);
-
-                if ($this->isTaskRemovalInProgress()) {
-                    $this->abortSingleProcessAnalysis($siteId, $phase, __('The storage analysis was stopped because its scheduled tasks are being removed.', 'rrze-multisite-manager'));
-                    return;
+                $this->markPhaseStarted($siteId, $phase);
+                if ($phase === self::BASE_PHASE) {
+                    $result = $this->storageAnalysis->runBaseBatch($siteId);
+                    $complete = ($result['status']['base']['status'] ?? '') === 'complete';
+                } elseif ($phase === self::ORPHAN_PHASE) {
+                    $result = $this->storageAnalysis->runOrphanBatch($siteId);
+                    $complete = ($result['status']['orphan']['status'] ?? '') === 'complete';
+                } elseif ($phase === self::METADATA_PHASE) {
+                    $current = get_blog_option($siteId, self::OPTION_STATUS, []);
+                    $result = $this->storageAnalysis->runMediaMetadataBatch($siteId, empty($current['metadata_started']));
+                    $this->markMediaMetadataStarted($siteId);
+                    $complete = ($result['analysis']['status'] ?? '') === 'complete';
+                } else {
+                    // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when rendered.
+                    throw new \RuntimeException(__('Invalid storage analysis phase.', 'rrze-multisite-manager'));
+                }
+                if (empty($result['success'])) {
+                    // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when rendered.
+                    throw new \RuntimeException((string)($result['message'] ?? __('The storage analysis could not be completed.', 'rrze-multisite-manager')));
+                }
+                if ($complete) {
+                    $this->markPhaseFinished($siteId, $phase);
+                    if ($phase === self::METADATA_PHASE) {
+                        $duration = (float)($status['active_duration_seconds'] ?? 0) + (hrtime(true) - $started) / 1000000000;
+                        $this->markRunFinished($siteId, $duration);
+                        $this->removeAnalysisContinuation($siteId, $runId);
+                        try {
+                            $this->updateCompletedRunAssignment($siteId, $duration);
+                        } catch (\Throwable $exception) {
+                            $this->logStorageAnalysisError($siteId, self::SCHEDULED_PHASE, $exception->getMessage());
+                        }
+                        return;
+                    }
+                    $phase = $phase === self::BASE_PHASE ? self::ORPHAN_PHASE : self::METADATA_PHASE;
+                }
+                $current = get_blog_option($siteId, self::OPTION_STATUS, []);
+                $current['run_phase'] = $phase;
+                update_blog_option($siteId, self::OPTION_STATUS, $current);
+                if ($this->isRequestMemoryBudgetReached($memoryBaseline)) {
+                    break;
                 }
             }
-
-            $durationSeconds = max(0.0, (hrtime(true) - $runStartedAt) / 1000000000);
-            $this->markRunFinished($siteId, $durationSeconds);
-
-            try {
-                $this->updateCompletedRunAssignment($siteId, $durationSeconds);
-            } catch (\Throwable $exception) {
-                // The analysis result is valid even if creating its next Cron
-                // event fails. Do not turn a completed run into a failed one.
-                $this->logStorageAnalysisError($siteId, self::SCHEDULED_PHASE, $exception->getMessage());
+            $current = get_blog_option($siteId, self::OPTION_STATUS, []);
+            $current['active_duration_seconds'] = (float)($status['active_duration_seconds'] ?? 0) + (hrtime(true) - $started) / 1000000000;
+            update_blog_option($siteId, self::OPTION_STATUS, $current);
+            if (!$this->scheduleAnalysisContinuation($siteId, $runId)) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when rendered.
+                throw new \RuntimeException(__('The storage analysis continuation could not be scheduled.', 'rrze-multisite-manager'));
             }
+        } catch (StorageAnalysisBusyException $exception) {
+            $current = get_blog_option($siteId, self::OPTION_STATUS, []);
+            $current['active_duration_seconds'] = (float)($status['active_duration_seconds'] ?? 0) + (hrtime(true) - $started) / 1000000000;
+            update_blog_option($siteId, self::OPTION_STATUS, $current);
+            // Capacity contention leaves the run and previous result intact for its reserved continuation.
+            $this->scheduleAnalysisContinuation($siteId, $runId);
         } catch (\Throwable $exception) {
-            if (time() >= $deadline) {
-                $this->abortSingleProcessAnalysis($siteId, $phase, $exception->getMessage());
-                return;
-            }
-
+            $progress = $this->storageAnalysis->getProgressContext($siteId, $phase);
+            $this->storageAnalysis->clearProcessStates($siteId);
             $this->markRunFailed($siteId, $exception->getMessage());
             $this->markPhaseFailed($siteId, $phase, $exception->getMessage());
-            $this->logStorageAnalysisError(
-                $siteId,
-                $phase,
-                $exception->getMessage(),
-                $this->storageAnalysis->getProgressContext($siteId, $phase)
-            );
+            $this->removeAnalysisContinuation($siteId, $runId);
+            $this->logStorageAnalysisError($siteId, $phase, $exception->getMessage(), $progress);
         }
     }
 
-    protected function runAnalysisPhaseToCompletion(int $siteId, string $phase, int $deadline): void {
-        $restartMetadataAnalysis = true;
-
-        $this->markPhaseStarted($siteId, $phase);
-
-        while (time() < $deadline) {
-            if ($this->isTaskRemovalInProgress()) {
-                return;
-            }
-
-            if ($phase === self::BASE_PHASE) {
-                $result = $this->storageAnalysis->runBaseBatch($siteId);
-                $isComplete = (($result['status']['base']['status'] ?? '') === 'complete');
-            } elseif ($phase === self::ORPHAN_PHASE) {
-                $result = $this->storageAnalysis->runOrphanBatch($siteId);
-                $isComplete = (($result['status']['orphan']['status'] ?? '') === 'complete');
-            } else {
-                $result = $this->storageAnalysis->runMediaMetadataBatch($siteId, $restartMetadataAnalysis);
-                $restartMetadataAnalysis = false;
-                $isComplete = (($result['analysis']['status'] ?? '') === 'complete');
-                $this->markMediaMetadataStarted($siteId);
-            }
-
-            if (empty($result['success'])) {
-                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- This exception message is not HTML output and is escaped when rendered.
-                throw new \RuntimeException((string)($result['message'] ?? __('The storage analysis could not be completed.', 'rrze-multisite-manager')));
-            }
-
-            if ($isComplete) {
-                $this->markPhaseFinished($siteId, $phase);
-                return;
-            }
-        }
-
-        // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- This exception message is not HTML output and is escaped when rendered.
-        throw new \RuntimeException(__('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
+    /** Stop before another step when PHP allocations approach the configured limit. */
+    protected function isRequestMemoryBudgetReached(int $baseline): bool {
+        $value = trim((string)ini_get('memory_limit'));
+        $limit = $value === '' || $value === '-1' ? PHP_INT_MAX : wp_convert_hr_to_bytes($value);
+        $budget = min($baseline + 32 * MB_IN_BYTES, (int)($limit * 0.7));
+        return memory_get_usage(true) + 16 * MB_IN_BYTES > $budget;
     }
 
     protected function abortSingleProcessAnalysis(int $siteId, string $phase, string $message): void {
@@ -1379,6 +1504,8 @@ class StorageAnalysisSchedulerService {
         $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
         $duration = $startedTimestamp > 0 ? max(0, time() - $startedTimestamp) : 0;
 
+        $stored = get_blog_option($siteId, self::OPTION_STATUS, []);
+        $this->removeAnalysisContinuation($siteId, (string)($stored['run_id'] ?? ''));
         $this->storageAnalysis->clearProcessStates($siteId);
         $this->markRunAborted($siteId, $startedAt, $duration, $message);
         $this->markPhaseAborted($siteId, $phase, $message);
@@ -1393,12 +1520,6 @@ class StorageAnalysisSchedulerService {
                 'progress' => $progressContext,
             ]
         );
-    }
-
-    protected function extendRuntimeLimit(): void {
-        if (function_exists('set_time_limit')) {
-            @set_time_limit($this->getTimeoutSeconds() + MINUTE_IN_SECONDS);
-        }
     }
 
     public function getSiteProcesses(): array {
@@ -1656,6 +1777,17 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function unscheduleSiteEvents(int $siteId): void {
+        if ($this->acquireNetworkRunSlotsLock()) {
+            try {
+                $queue = get_site_option(self::CONTINUATION_QUEUE_OPTION, []);
+                if (is_array($queue) && isset($queue[$siteId])) {
+                    unset($queue[$siteId]);
+                    update_site_option(self::CONTINUATION_QUEUE_OPTION, $queue);
+                }
+            } finally {
+                $this->releaseNetworkRunSlotsLock();
+            }
+        }
         foreach ([self::BASE_PHASE, self::ORPHAN_PHASE, self::METADATA_PHASE, self::SCHEDULED_PHASE, self::LEGACY_ACTIVE_PHASE] as $phase) {
             $this->unschedule($siteId, $phase);
         }
@@ -1796,7 +1928,7 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function getScheduleSignature(): string {
-        return $this->getScheduleKey() . ':single-process-v3';
+        return $this->getScheduleKey() . ':resumable-v4';
     }
 
     protected function getScheduleLabel(): string {
@@ -1879,7 +2011,7 @@ class StorageAnalysisSchedulerService {
         $optionName = self::LOCK_OPTION_PREFIX . $siteId;
         $existing = (int)get_site_option($optionName, 0);
 
-        if ($existing > 0 && (time() - $existing) > ($this->getTimeoutSeconds() + MINUTE_IN_SECONDS)) {
+        if ($existing > 0 && (time() - $existing) > self::REQUEST_LOCK_TTL) {
             delete_site_option($optionName);
         }
 
@@ -1898,7 +2030,7 @@ class StorageAnalysisSchedulerService {
         try {
             $slots = get_site_option(self::NETWORK_RUN_SLOTS_OPTION, []);
             $slots = is_array($slots) ? $slots : [];
-            $expiresBefore = time() - ($this->getTimeoutSeconds() + MINUTE_IN_SECONDS);
+            $expiresBefore = time() - self::REQUEST_LOCK_TTL;
 
             foreach ($slots as $lockedSiteId => $startedAt) {
                 if ((int)$startedAt <= $expiresBefore) {
@@ -1946,25 +2078,47 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function acquireNetworkRunSlotsLock(): bool {
-        $startedAt = (int)get_site_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, 0);
-
-        if ($startedAt > 0 && (time() - $startedAt) > MINUTE_IN_SECONDS) {
-            delete_site_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
+        // wp_options has a unique option_name index; network metadata does not.
+        $token = wp_generate_uuid4();
+        $acquired = (bool)$this->inBatchCronContext(function () use ($token): bool {
+            $lock = get_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, []);
+            if (is_array($lock) && (int)($lock['expires_at'] ?? 0) < time()) {
+                delete_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
+            }
+            return add_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, ['token' => $token, 'expires_at' => time() + MINUTE_IN_SECONDS], '', false);
+        });
+        if ($acquired) {
+            $this->networkRunSlotsLockToken = $token;
+            // Refresh data potentially read before another request held the lock.
+            $network = get_current_network_id();
+            wp_cache_delete($network . ':' . self::NETWORK_RUN_SLOTS_OPTION, 'site-options');
+            wp_cache_delete($network . ':' . self::CONTINUATION_QUEUE_OPTION, 'site-options');
         }
-
-        return add_site_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, time());
+        return $acquired;
     }
 
     protected function releaseNetworkRunSlotsLock(): void {
-        delete_site_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
+        $token = $this->networkRunSlotsLockToken;
+        $this->inBatchCronContext(function () use ($token): void {
+            $lock = get_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, []);
+            if ($token !== '' && is_array($lock) && (string)($lock['token'] ?? '') === $token) {
+                delete_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
+            }
+        });
+        $this->networkRunSlotsLockToken = '';
     }
 
-    protected function scheduleIndividualRetry(int $siteId): void {
-        $this->inSiteCronContext($siteId, function () use ($siteId): void {
-            wp_schedule_single_event(
+    protected function scheduleIndividualRetry(int $siteId): bool {
+        return (bool)$this->inSiteCronContext($siteId, function () use ($siteId): bool {
+            $args = [$siteId, self::SCHEDULED_PHASE, true];
+            $hook = $this->config->getStorageAnalysisHook();
+            if (wp_next_scheduled($hook, $args)) {
+                return true;
+            }
+            return (bool)wp_schedule_single_event(
                 time() + MINUTE_IN_SECONDS + wp_rand(0, 30),
-                $this->config->getStorageAnalysisHook(),
-                [$siteId, self::SCHEDULED_PHASE, true]
+                $hook,
+                $args
             );
         });
     }
@@ -1972,7 +2126,7 @@ class StorageAnalysisSchedulerService {
     protected function hasActiveSiteLock(int $siteId): bool {
         $startedAt = (int)get_site_option(self::LOCK_OPTION_PREFIX . $siteId, 0);
 
-        return $startedAt > 0 && (time() - $startedAt) <= ($this->getTimeoutSeconds() + MINUTE_IN_SECONDS);
+        return $startedAt > 0 && (time() - $startedAt) <= self::REQUEST_LOCK_TTL;
     }
 
     protected function recoverInterruptedRun(int $siteId, array $analysisStatus = [], array $scheduleStatus = []): bool {
@@ -1985,6 +2139,18 @@ class StorageAnalysisSchedulerService {
         }
 
         if (empty($scheduleStatus['is_running']) || $this->hasActiveSiteLock($siteId)) {
+            return false;
+        }
+
+        $stored = get_blog_option($siteId, self::OPTION_STATUS, []);
+        $runId = is_array($stored) ? (string)($stored['run_id'] ?? '') : '';
+        $startedTimestamp = !empty($scheduleStatus['last_started_at']) ? (int)strtotime((string)$scheduleStatus['last_started_at'] . ' UTC') : 0;
+        if ($runId !== '' && $startedTimestamp > 0 && (float)($stored['active_duration_seconds'] ?? 0) < $this->getTimeoutSeconds()
+            && time() - $startedTimestamp < 7 * DAY_IN_SECONDS
+            && !$this->isTaskRemovalInProgress() && !$this->isSiteSchedulingRemoved($siteId)
+            && $this->getSiteAssignmentMode($siteId) !== 'unassigned'
+        ) {
+            $this->scheduleAnalysisContinuation($siteId, $runId);
             return false;
         }
 

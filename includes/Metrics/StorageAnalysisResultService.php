@@ -4,6 +4,9 @@ namespace RRZE\MultisiteManager\Metrics;
 
 defined('ABSPATH') || exit;
 
+use RRZE\MultisiteManager\Support\BoundedArray;
+use RRZE\MultisiteManager\Support\SafeSerializedValue;
+
 /**
  * Persists storage-analysis results and their compact status metadata.
  */
@@ -13,15 +16,14 @@ class StorageAnalysisResultService {
     private const MEDIA_METADATA_RESULT_OPTION = 'rrze_msm_site_media_metadata_analysis_result';
     private const MAX_STORAGE_RESULT_BYTES = 2097152;
     private const MAX_MEDIA_METADATA_RESULT_BYTES = 2097152;
+    private const MAX_META_BYTES = 16384;
 
     public function getResult(int $siteId): array {
-        $result = $siteId > 0 ? get_blog_option($siteId, self::RESULT_OPTION, []) : [];
-        return is_array($result) ? $result : [];
+        return $this->getSiteResult($siteId, self::RESULT_OPTION);
     }
 
     public function getCurrentResult(): array {
-        $result = get_option(self::RESULT_OPTION, []);
-        return is_array($result) ? $result : [];
+        return $this->readBoundedOption(self::RESULT_OPTION);
     }
 
     /** @return array<int, string> */
@@ -35,8 +37,7 @@ class StorageAnalysisResultService {
     }
 
     public function getMeta(int $siteId): array {
-        $meta = $siteId > 0 ? get_blog_option($siteId, self::META_OPTION, []) : [];
-        return is_array($meta) ? $meta : [];
+        return $this->getSiteResult($siteId, self::META_OPTION);
     }
 
     public function ensureMeta(int $siteId, array $result): void {
@@ -60,12 +61,11 @@ class StorageAnalysisResultService {
     }
 
     public function getMediaMetadataResult(int $siteId): array {
-        $result = $siteId > 0 ? get_blog_option($siteId, self::MEDIA_METADATA_RESULT_OPTION, []) : [];
-        return is_array($result) ? $result : [];
+        return $this->getSiteResult($siteId, self::MEDIA_METADATA_RESULT_OPTION);
     }
 
-    public function saveCurrentMediaMetadataResult(array $result): void {
-        $this->updateCurrentOption(self::MEDIA_METADATA_RESULT_OPTION, $result);
+    public function saveCurrentMediaMetadataResult(array $result): array {
+        return $this->updateCurrentOption(self::MEDIA_METADATA_RESULT_OPTION, $result);
     }
 
     public function buildMeta(array $result): array {
@@ -81,76 +81,99 @@ class StorageAnalysisResultService {
         ];
     }
 
-    private function updateCurrentOption(string $option, array $value): void {
-        if ($option === self::RESULT_OPTION) {
-            $value = $this->compactStorageResult($value);
-        } elseif ($option === self::MEDIA_METADATA_RESULT_OPTION) {
-            $value = $this->compactMediaMetadataResult($value);
+    /** Repairs only oversized derived options, without reading their complete payloads. */
+    public function repairCurrentOversizedResults(): void {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Three exact owned option names; metadata and result byte limits differ.
+        $names = (array)$wpdb->get_col($wpdb->prepare("SELECT option_name FROM {$wpdb->options} WHERE (option_name IN (%s, %s) AND OCTET_LENGTH(option_value) > %d) OR (option_name = %s AND OCTET_LENGTH(option_value) > %d)", self::RESULT_OPTION, self::MEDIA_METADATA_RESULT_OPTION, self::MAX_STORAGE_RESULT_BYTES, self::META_OPTION, self::MAX_META_BYTES));
+        foreach ($names as $name) {
+            if (in_array($name, [self::RESULT_OPTION, self::MEDIA_METADATA_RESULT_OPTION, self::META_OPTION], true)) {
+                $this->readBoundedOption((string)$name);
+            }
         }
-
-        if (get_option($option, null) === null) {
-            add_option($option, $value, '', false);
-            return;
-        }
-
-        update_option($option, $value, false);
     }
 
-    /**
-     * Keeps a pathological analysis result from creating an unbounded option row.
-     * Summary counts remain intact; only verbose reference lists are compacted.
-     */
+    private function getSiteResult(int $siteId, string $option): array {
+        if ($siteId <= 0) {
+            return [];
+        }
+        switch_to_blog($siteId);
+        try {
+            return $this->readBoundedOption($option);
+        } finally {
+            restore_current_blog();
+        }
+    }
+
+    private function readBoundedOption(string $option): array {
+        $row = $this->getBoundedRow($option);
+        if (!$row) {
+            return [];
+        }
+        $limit = $option === self::META_OPTION ? self::MAX_META_BYTES : self::MAX_STORAGE_RESULT_BYTES;
+        if ((int)$row->value_bytes > $limit) {
+            // Derived details can be regenerated; never fetch an oversized legacy payload.
+            $summary = $option === self::RESULT_OPTION ? $this->readBoundedOption(self::META_OPTION) : [];
+            $fallback = $option === self::META_OPTION ? [] : $summary + ['result_truncated' => true, 'requires_reanalysis' => true, 'status' => 'idle', 'error' => __('The stored analysis exceeded its storage limit. Run the analysis again to restore its details.', 'rrze-multisite-manager')];
+            $this->replaceOversizedOption($option, $fallback);
+            return $fallback;
+        }
+        $decoded = (new SafeSerializedValue())->decode((string)$row->bounded_value, $limit)['value'];
+        return is_array($decoded) ? BoundedArray::compact($decoded, $limit) : [];
+    }
+
+    private function getBoundedRow(string $option): ?object {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Size-gated legacy reads must not prime an oversized option in WordPress/PHP caches.
+        return $wpdb->get_row($wpdb->prepare("SELECT OCTET_LENGTH(option_value) AS value_bytes, CASE WHEN OCTET_LENGTH(option_value) <= %d THEN option_value ELSE NULL END AS bounded_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1", ($option === self::META_OPTION ? self::MAX_META_BYTES : self::MAX_STORAGE_RESULT_BYTES), $option));
+    }
+
+    private function replaceOversizedOption(string $option, array $value): void {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Exact owned result option only, guarded against replacing an intervening bounded write; no original media/content is changed.
+        $saved = $wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = %s, autoload = 'off' WHERE option_name = %s AND OCTET_LENGTH(option_value) > %d", serialize($value), $option, ($option === self::META_OPTION ? self::MAX_META_BYTES : self::MAX_STORAGE_RESULT_BYTES)));
+        if ($saved === 0) {
+            $current = $this->getBoundedRow($option);
+            if (!$current || (string)$current->bounded_value !== serialize($value)) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                throw new \RuntimeException(__('The analysis result changed during its update. Retry the analysis.', 'rrze-multisite-manager'));
+            }
+        }
+        if ($saved === false) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+            throw new \RuntimeException(__('The oversized legacy analysis result could not be replaced.', 'rrze-multisite-manager'));
+        }
+        wp_cache_delete($option, 'options');
+        wp_cache_delete('alloptions', 'options');
+    }
+
+    private function updateCurrentOption(string $option, array $value): array {
+        $value = $option === self::META_OPTION ? BoundedArray::compact($value, self::MAX_META_BYTES) : ($option === self::MEDIA_METADATA_RESULT_OPTION
+            ? $this->compactMediaMetadataResult($value)
+            : $this->compactStorageResult($value));
+        $row = $this->getBoundedRow($option);
+        $limit = $option === self::META_OPTION ? self::MAX_META_BYTES : self::MAX_STORAGE_RESULT_BYTES;
+        if ($row && (int)$row->value_bytes > $limit) {
+            $this->replaceOversizedOption($option, $value);
+            return $value;
+        }
+        $previous = get_option($option, null);
+        if ($previous === $value) {
+            return $value;
+        }
+        $saved = $previous === null ? add_option($option, $value, '', false) : update_option($option, $value, false);
+        if (!$saved) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped by callers when displayed.
+            throw new \RuntimeException(__('The analysis result could not be saved to the database.', 'rrze-multisite-manager'));
+        }
+        return $value;
+    }
+
     private function compactStorageResult(array $result): array {
-        if (strlen(serialize($result)) <= self::MAX_STORAGE_RESULT_BYTES) {
-            return $result;
-        }
-
-        foreach ([
-            'orphan_files_found_in_content',
-            'orphan_files_without_content_matches',
-            'unregistered_image_size_variants_found_in_content',
-            'unregistered_image_size_variants_without_content_matches',
-        ] as $key) {
-            $entries = is_array($result[$key] ?? null) ? $result[$key] : [];
-
-            foreach ($entries as $index => $entry) {
-                if (is_array($entry)) {
-                    unset($entries[$index]['content_usage_results']);
-                }
-            }
-
-            $result[$key] = array_slice(array_values($entries), 0, 100);
-        }
-
-        foreach (['largest_files', 'largest_orphan_files', 'largest_unregistered_image_size_variants'] as $key) {
-            if (is_array($result[$key] ?? null)) {
-                $result[$key] = array_slice(array_values($result[$key]), 0, 100);
-            }
-        }
-
-        $result['result_truncated'] = true;
-
-        return $result;
+        return BoundedArray::compact($result, self::MAX_STORAGE_RESULT_BYTES);
     }
 
-    /** Keeps metadata result options bounded on sites with many incomplete media entries. */
     private function compactMediaMetadataResult(array $result): array {
-        if (strlen(serialize($result)) <= self::MAX_MEDIA_METADATA_RESULT_BYTES) {
-            return $result;
-        }
-
-        foreach (['images', 'documents', 'spreadsheets', 'audio_video'] as $category) {
-            if (is_array($result['results'][$category] ?? null)) {
-                $result['results'][$category] = array_slice(
-                    array_values($result['results'][$category]),
-                    0,
-                    100
-                );
-            }
-        }
-
-        $result['result_truncated'] = true;
-
-        return $result;
+        return BoundedArray::compact($result, self::MAX_MEDIA_METADATA_RESULT_BYTES);
     }
 }
