@@ -45,6 +45,22 @@ class Config {
                 'shortcode_block_analysis_timeout_minutes' => 60,
                 'storage_analysis_timeout_minutes' => 60,
                 'monitoring_user_agent' => 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)',
+                'site_status_colors' => [
+                    'active' => '#43A047',
+                    'public' => '#1565C0',
+                    'not_public' => '#039BE5',
+                    'active_public' => '#43A047',
+                    'active_private' => '#039BE5',
+                    'archived' => '#A15C00',
+                    'blocked' => '#9F1239',
+                    'deleted' => '#7F1D1D',
+                    'automatic' => '#64748B',
+                    'technically_reachable' => '#26A69A',
+                    'provisioning' => '#6D28D9',
+                    'dns_missing' => '#B45309',
+                    'technically_unreachable' => '#C2410C',
+                    'out_of_service' => '#7F1D1D',
+                ],
                 'scheduler_frequencies' => $schedulerFrequencies,
                 'storage_analysis_schedule_keys' => [
                     'weekly' => 'rrze_msm_storage_weekly',
@@ -186,11 +202,11 @@ class Config {
                     [
                         'name' => 'storage_analysis_max_concurrent_runs',
                         'label' => __('Maximum concurrent storage analyses', 'rrze-multisite-manager'),
-                        'desc' => __('Limits simultaneously running storage analyses across the network. Additional scheduled analyses are retried shortly.', 'rrze-multisite-manager'),
+                        'desc' => __('Runs one storage analysis at a time by default; at most two workers and temporary indexes are admitted across the network. Additional analyses wait for capacity.', 'rrze-multisite-manager'),
                         'type' => 'number',
-                        'default' => 10,
+                        'default' => 1,
                         'min' => 1,
-                        'max' => 100,
+                        'max' => 2,
                     ],
                     [
                         'name' => 'shortcode_block_analysis_frequency',
@@ -203,7 +219,7 @@ class Config {
                     [
                         'name' => 'storage_analysis_timeout_minutes',
                         'label' => __('Maximum storage analysis runtime in minutes', 'rrze-multisite-manager'),
-                        'desc' => __('A storage analysis runs in one scheduled process and is aborted when this runtime limit is reached.', 'rrze-multisite-manager'),
+                        'desc' => __('Limits the active processing time across short scheduled steps. Waiting for Cron or analysis capacity does not count towards this limit.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 60,
                         'min' => 1,
@@ -302,6 +318,18 @@ class Config {
         return $this->config['constants'];
     }
 
+    public function getSiteStatusColors(): array {
+        return (array)($this->config['constants']['site_status_colors'] ?? []);
+    }
+
+    public function getSiteStatusColor(string $status, string $fallback = '#343a40'): string {
+        $colors = $this->getSiteStatusColors();
+
+        return isset($colors[$status]) && is_string($colors[$status])
+            ? $colors[$status]
+            : $fallback;
+    }
+
     public function getRequiredWpVersion(): string {
         return (string)($this->config['constants']['wp_version'] ?? '');
     }
@@ -365,9 +393,9 @@ class Config {
 
     public function getStorageAnalysisMaxConcurrentRuns(): int {
         $options = get_site_option($this->getOptionName(), []);
-        $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_max_concurrent_runs'] ?? 10) : 10;
+        $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_max_concurrent_runs'] ?? 1) : 1;
 
-        return max(1, min(100, $limit));
+        return max(1, min(2, $limit));
     }
 
     public function getMonitoringBatchSize(): int {

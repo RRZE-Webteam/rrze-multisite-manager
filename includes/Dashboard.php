@@ -25,6 +25,7 @@ use RRZE\MultisiteManager\Widgets\StatusWidget;
 use RRZE\MultisiteManager\Widgets\SummaryWidget;
 use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
+use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
 
 class Dashboard {
     protected Plugin $plugin;
@@ -579,7 +580,7 @@ class Dashboard {
                 'slug' => 'active',
                 'label' => __('Active websites', 'rrze-multisite-manager'),
                 'count' => (int)($summary['active_sites'] ?? 0),
-                'class' => 'rrze-msm-tab-positive',
+                'class' => 'rrze-msm-status-active',
                 'url' => add_query_arg(
                     [
                         'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
@@ -592,7 +593,7 @@ class Dashboard {
                 'slug' => 'archived',
                 'label' => __('Archived websites', 'rrze-multisite-manager'),
                 'count' => (int)($summary['archived_sites'] ?? 0),
-                'class' => 'rrze-msm-tab-warning',
+                'class' => 'rrze-msm-status-archive',
                 'url' => add_query_arg(
                     [
                         'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
@@ -605,7 +606,7 @@ class Dashboard {
                 'slug' => 'blocked',
                 'label' => __('Blocked websites', 'rrze-multisite-manager'),
                 'count' => (int)($summary['spam_sites'] ?? 0),
-                'class' => 'rrze-msm-tab-gold',
+                'class' => 'rrze-msm-status-blocked',
                 'url' => add_query_arg(
                     [
                         'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
@@ -618,7 +619,7 @@ class Dashboard {
                 'slug' => 'deleted',
                 'label' => __('Sites to be deleted', 'rrze-multisite-manager'),
                 'count' => (int)($summary['deleted_sites'] ?? 0),
-                'class' => 'rrze-msm-tab-danger',
+                'class' => 'rrze-msm-status-deleted',
                 'url' => add_query_arg(
                     [
                         'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
@@ -631,7 +632,7 @@ class Dashboard {
                 'slug' => 'provisioning',
                 'label' => __('Provisioning in progress', 'rrze-multisite-manager'),
                 'count' => count((array)($dashboardData['provisioning_sites'] ?? [])),
-                'class' => 'rrze-msm-tab-info',
+                'class' => 'rrze-msm-status-provisioning',
                 'url' => add_query_arg(
                     [
                         'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
@@ -644,7 +645,7 @@ class Dashboard {
                 'slug' => 'dns-missing',
                 'label' => __('DNS missing', 'rrze-multisite-manager'),
                 'count' => count((array)($dashboardData['dns_missing_sites'] ?? [])),
-                'class' => 'rrze-msm-tab-danger',
+                'class' => 'rrze-msm-status-dns-missing',
                 'url' => add_query_arg(
                     [
                         'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
@@ -657,7 +658,7 @@ class Dashboard {
                 'slug' => 'unreachable',
                 'label' => __('Technically unreachable', 'rrze-multisite-manager'),
                 'count' => count((array)($dashboardData['unreachable_sites'] ?? [])),
-                'class' => 'rrze-msm-tab-gold',
+                'class' => 'rrze-msm-status-unreachable',
                 'url' => add_query_arg(
                     [
                         'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
@@ -703,7 +704,6 @@ class Dashboard {
             'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
             'sort_key' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'name' : 'registered',
             'sort_direction' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'asc' : 'desc',
-            'action_mode' => 'text',
             'top_controls_html' => $this->renderSiteOverviewSearchControl($siteSearch, $currentTab),
         ];
         $tableSites = match ($currentTab) {
@@ -1134,8 +1134,6 @@ class Dashboard {
                 'storage_analysis_tasks_allowed' => $storageAnalysisTasksAllowed,
                 'storage_analysis_browser_limit_megabytes' => $storageAnalysisBrowserLimitMegabytes,
                 'storage_analysis_scheduler_status' => $storageAnalysisSchedulerStatus,
-                'storage_analysis_request_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_request_site_storage_analysis'),
-                'can_request_storage_analysis' => $this->currentUserCanRequestSiteAnalysis(),
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
@@ -1215,7 +1213,8 @@ class Dashboard {
     }
 
     protected function isSiteStorageAnalysisScheduledOnly(array $siteSummary): bool {
-        return (int)($siteSummary['storage']['used_bytes'] ?? 0) > ($this->getStorageAnalysisBrowserLimitMegabytes() * MB_IN_BYTES);
+        return !isset($siteSummary['storage']['used_bytes'])
+            || (int)$siteSummary['storage']['used_bytes'] > ($this->getStorageAnalysisBrowserLimitMegabytes() * MB_IN_BYTES);
     }
 
     protected function isSiteStorageAnalysisScheduledOnlyForSite(int $siteId): bool {
@@ -3077,6 +3076,7 @@ class Dashboard {
     protected function getWidgetInstances(): array {
         return [
             'summary' => new SummaryWidget($this->plugin, $this->config),
+            'website_status' => new WebsiteStatusWidget($this->plugin, $this->config),
             'status' => new StatusWidget($this->plugin, $this->config),
             'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),

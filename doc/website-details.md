@@ -16,8 +16,8 @@ Super admins can maintain status information and access further network actions.
 
 ## Caching
 
-Detail data is cached per site so that extensive options or media information do not need to be collected again on every request. Changes to relevant WordPress data invalidate the appropriate detail and dashboard caches.
+Detail data is cached per site so that extensive options or media information do not need to be collected again on every request. Changes to relevant WordPress data invalidate the appropriate detail and dashboard caches. Version-invalidated detail cache transients are removed by bounded hourly maintenance; this also removes their timeout rows when an external object cache would otherwise leave database rows behind.
 
 ## Implementation
 
-The page is provided by `Dashboard::renderSiteDetailsPage()` and `templates/site-details-page.php`. `SiteDetailMetricsService` collects the individual sections; `MetricsCacheService` creates the site transient keys `rrze_msm_site_details_<detail-version>_<site-version>_<hash>` and `rrze_msm_site_detail_section_<format-version>_<detail-version>_<site-version>_<hash>`. The global detail version is stored in `rrze_msm_detail_cache_version`; a site's version is stored in site meta `rrze_msm_site_detail_cache_version`.
+The page is provided by `Dashboard::renderSiteDetailsPage()` and `templates/site-details-page.php`. `SiteDetailMetricsService` collects the individual sections; `MetricsCacheService` creates the site transient keys `rrze_msm_site_details_<format-version>_<detail-version>_<site-version>_<hash>` and `rrze_msm_site_detail_section_<format-version>_<detail-version>_<site-version>_<hash>`. The global detail version is stored in `rrze_msm_detail_cache_version`; a site's version is stored in site meta `rrze_msm_site_detail_cache_version`.

@@ -47,7 +47,12 @@ abstract class Widgets {
         $statusItem = [];
 
         foreach ($statusItems as $statusItem) {
-            $html .= '<span class="rrze-msm-badge rrze-msm-badge-' . esc_attr((string)$statusItem['accent']) . '">' . esc_html((string)$statusItem['label']) . '</span> ';
+            $color = (string)($statusItem['color'] ?? '');
+            $style = preg_match('/^#[0-9a-f]{6}$/i', $color) === 1
+                ? ' style="background-color: ' . esc_attr($color) . '; color: #fff;"'
+                : '';
+
+            $html .= '<span class="rrze-msm-badge rrze-msm-badge-' . esc_attr((string)$statusItem['accent']) . '"' . $style . '>' . esc_html((string)$statusItem['label']) . '</span> ';
         }
 
         return trim($html);
@@ -55,6 +60,56 @@ abstract class Widgets {
 
     public function renderActionsForSite(array $site, string $displayMode = 'text'): string {
         return $this->renderSiteActions($site, $displayMode);
+    }
+
+    protected function getSiteStatusCssClass(string $status): string {
+        $classes = [
+            'active_public' => 'rrze-msm-status-active',
+            'active_private' => 'rrze-msm-status-active-nobots',
+            'archived' => 'rrze-msm-status-archive',
+            'blocked' => 'rrze-msm-status-blocked',
+            'deleted' => 'rrze-msm-status-deleted',
+            'automatic' => 'rrze-msm-status-automatic',
+            'technically_reachable' => 'rrze-msm-status-reachable',
+            'provisioning' => 'rrze-msm-status-provisioning',
+            'dns_missing' => 'rrze-msm-status-dns-missing',
+            'technically_unreachable' => 'rrze-msm-status-unreachable',
+            'out_of_service' => 'rrze-msm-status-out-of-service',
+        ];
+
+        return $classes[$status] ?? 'rrze-msm-status-automatic';
+    }
+
+    protected function getSiteRowStatusClass(array $site, bool $useOperationalStatus = false): string {
+        if ($useOperationalStatus) {
+            $operationalStatus = sanitize_key((string)($site['operational_status'] ?? ''));
+            $operationalStatus = match ($operationalStatus) {
+                'healthy' => 'technically_reachable',
+                'unreachable' => 'technically_unreachable',
+                'not_scheduled' => 'automatic',
+                default => $operationalStatus,
+            };
+
+            return $this->getSiteStatusCssClass($operationalStatus);
+        }
+
+        if (!empty($site['is_deleted'])) {
+            return $this->getSiteStatusCssClass('deleted');
+        }
+
+        if (!empty($site['is_spam'])) {
+            return $this->getSiteStatusCssClass('blocked');
+        }
+
+        if (!empty($site['is_archived'])) {
+            return $this->getSiteStatusCssClass('archived');
+        }
+
+        if (array_key_exists('is_public', $site) && empty($site['is_public'])) {
+            return $this->getSiteStatusCssClass('active_private');
+        }
+
+        return $this->getSiteStatusCssClass('active_public');
     }
 
     public function renderThemeCard(array $theme, array $args = []): string {
@@ -128,14 +183,10 @@ abstract class Widgets {
 
     public function renderSiteTable(array $sites, array $args = []): string {
         $site = [];
-        $rowClass = '';
         $tableId = sanitize_key((string)($args['table_id'] ?? 'sites'));
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $actionMode = (string)($args['action_mode'] ?? 'text');
-        $actionModeClass = $actionMode === 'text' ? 'rrze-msm-site-overview-text-actions' : 'rrze-msm-site-overview-icon-actions';
-        $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
@@ -145,7 +196,7 @@ abstract class Widgets {
         }
 
         ob_start();
-        echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
+        echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
         echo '<div class="tablenav top">';
         echo $this->renderSiteTablePerPageControl($tableId, 'rrze-msm-per-page-' . $tableId, $defaultPerPage, $perPage);
         echo '</div>';
@@ -155,12 +206,16 @@ abstract class Widgets {
         echo '<th>' . $this->renderSiteTableSortButton('registered', __('Registered', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('last-updated', __('Last updated', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('admin-email', __('Admin email', 'rrze-multisite-manager')) . '</th>';
-        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Actions', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
-            $rowClass = !empty($site['highlight_inactive']) ? ' class="rrze-msm-site-row-inactive"' : '';
-            echo '<tr' . $rowClass;
+            $rowClasses = [$this->getSiteRowStatusClass($site)];
+
+            if (!empty($site['highlight_inactive'])) {
+                $rowClasses[] = 'rrze-msm-site-row-inactive';
+            }
+
+            echo '<tr class="' . esc_attr(implode(' ', $rowClasses)) . '"';
             echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
             echo ' data-sort-registered="' . esc_attr((string)($site['registered_timestamp'] ?? 0)) . '"';
             echo ' data-sort-last-updated="' . esc_attr((string)($site['last_updated_timestamp'] ?? 0)) . '"';
@@ -170,7 +225,6 @@ abstract class Widgets {
             echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['registered_timestamp'] ?? 0))) . '</td>';
             echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['last_updated_timestamp'] ?? 0))) . '</td>';
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -222,6 +276,7 @@ abstract class Widgets {
             'aria-label' => true,
             'target' => true,
             'rel' => true,
+            'data-*' => true,
         ];
         $allowedHtml['span'] = [
             'class' => true,
@@ -238,9 +293,6 @@ abstract class Widgets {
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $actionMode = (string)($args['action_mode'] ?? 'text');
-        $actionModeClass = $actionMode === 'text' ? 'rrze-msm-site-overview-text-actions' : 'rrze-msm-site-overview-icon-actions';
-        $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $topControlsHtml = (string)($args['top_controls_html'] ?? '');
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
@@ -252,7 +304,7 @@ abstract class Widgets {
         }
 
         ob_start();
-        echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-site-overview-wrap ' . esc_attr($actionModeClass) . '" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
+        echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-site-overview-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
         echo '<div class="tablenav top rrze-msm-site-table-controls">';
         echo $topControlsHtml;
         echo $this->renderSiteTablePerPageControl($tableId, 'rrze-msm-overview-per-page-' . $tableId, $defaultPerPage, $perPage);
@@ -267,12 +319,16 @@ abstract class Widgets {
         echo '<th>' . esc_html__('Users', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Content', 'rrze-multisite-manager') . '</th>';
         echo '<th class="rrze-msm-col-numeric">' . $this->renderSiteTableSortButton('storage', __('Storage', 'rrze-multisite-manager')) . '</th>';
-        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Actions', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
-            echo '<tr';
-            echo !empty($site['storage']['warn_level']) && (string)$site['storage']['warn_level'] === 'critical' ? ' class="rrze-msm-site-row-capacity-critical"' : '';
+            $rowClasses = [$this->getSiteRowStatusClass($site)];
+
+            if (!empty($site['storage']['warn_level']) && (string)$site['storage']['warn_level'] === 'critical') {
+                $rowClasses[] = 'rrze-msm-site-row-capacity-critical';
+            }
+
+            echo '<tr class="' . esc_attr(implode(' ', $rowClasses)) . '"';
             echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
             echo ' data-sort-registered="' . esc_attr((string)($site['registered_timestamp'] ?? 0)) . '"';
             echo ' data-sort-last-updated="' . esc_attr((string)($site['last_updated_timestamp'] ?? 0)) . '"';
@@ -287,7 +343,6 @@ abstract class Widgets {
             echo '<td>' . $this->renderRoleCounts((int)($site['id'] ?? 0), (array)($site['role_counts'] ?? [])) . '</td>';
             echo '<td>' . $this->renderContentCounts((array)($site['content_counts'] ?? [])) . '</td>';
             echo '<td class="' . esc_attr(trim('rrze-msm-col-numeric ' . $this->getStorageCellClass((array)($site['storage'] ?? [])))) . '">' . $this->renderStorageUsage((array)($site['storage'] ?? [])) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -307,8 +362,6 @@ abstract class Widgets {
         $statusType = (string)($args['status_type'] ?? 'archive');
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'last-updated'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        $actionMode = (string)($args['action_mode'] ?? 'text');
-        $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $statusLabel = $statusType === 'spam'
             ? __('Blocked since', 'rrze-multisite-manager')
             : __('Archived since', 'rrze-multisite-manager');
@@ -332,11 +385,10 @@ abstract class Widgets {
         echo '<th>' . esc_html($statusLabel) . '</th>';
         echo '<th>' . esc_html__('By', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Note', 'rrze-multisite-manager') . '</th>';
-        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Actions', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
-            echo '<tr';
+            echo '<tr class="' . esc_attr($this->getSiteRowStatusClass($site)) . '"';
             echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
             echo ' data-sort-registered="0"';
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site[$statusMetaKey] ?? ''))) . '"';
@@ -346,7 +398,6 @@ abstract class Widgets {
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site[$statusMetaKey] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusUser((int)($site['status_user_id'] ?? 0)) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['status_note'] ?? '')) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -365,8 +416,6 @@ abstract class Widgets {
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $actionMode = (string)($args['action_mode'] ?? 'text');
-        $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $topControlsHtml = (string)($args['top_controls_html'] ?? '');
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
@@ -391,11 +440,10 @@ abstract class Widgets {
         echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Last check', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Note', 'rrze-multisite-manager') . '</th>';
-        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Actions', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
-            echo '<tr';
+            echo '<tr class="' . esc_attr($this->getSiteRowStatusClass($site, true)) . '"';
             echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
             echo ' data-sort-registered="0"';
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site['last_availability_check'] ?? ''))) . '"';
@@ -407,7 +455,6 @@ abstract class Widgets {
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['last_availability_check'] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['monitoring_note'] ?? '')) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -426,8 +473,6 @@ abstract class Widgets {
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'last-updated'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        $actionMode = (string)($args['action_mode'] ?? 'text');
-        $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
@@ -449,11 +494,10 @@ abstract class Widgets {
         echo '<th>' . esc_html__('Changed at', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('DNS', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
-        echo '<th class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . esc_html__('Actions', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ($sites as $site) {
-            echo '<tr';
+            echo '<tr class="' . esc_attr($this->getSiteRowStatusClass($site, true)) . '"';
             echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
             echo ' data-sort-registered="0"';
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site['operational_status_changed_at'] ?? ''))) . '"';
@@ -465,7 +509,6 @@ abstract class Widgets {
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['operational_status_changed_at'] ?? ''))) . '</td>';
             echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
-            echo '<td class="rrze-msm-col-actions ' . esc_attr($actionCellClass) . '">' . $this->renderSiteActions($site, $actionMode, false) . '</td>';
             echo '</tr>';
         }
 
@@ -773,6 +816,16 @@ abstract class Widgets {
     }
 
     protected function getPieItemColor(array $item): string {
+        $statusKey = sanitize_key((string)($item['status_key'] ?? $item['color_key'] ?? ''));
+
+        if ($statusKey !== '') {
+            $statusColor = $this->config->getSiteStatusColor($statusKey, '');
+
+            if (preg_match('/^#[0-9a-f]{6}$/i', $statusColor) === 1) {
+                return $statusColor;
+            }
+        }
+
         if (!empty($item['color']) && is_string($item['color'])) {
             return (string)$item['color'];
         }
@@ -1042,21 +1095,79 @@ abstract class Widgets {
             return $html;
         }
 
-        $actions[] = '<span class="rrze-msm-row-action-details"><a href="' . esc_url($this->getSiteDetailsPageUrl($siteId)) . '">' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
+        $actions[] = '<span class="rrze-msm-row-action-details"><a href="' . esc_url($this->getSiteDetailsPageUrl($siteId)) . '"><span class="dashicons dashicons-admin-site-alt3" aria-hidden="true"></span>' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
 
         if ($this->currentUserCanUseNetworkAdminFeatures()) {
-            $actions[] = '<span class="rrze-msm-row-action-edit"><a href="' . esc_url(network_admin_url('site-info.php?id=' . $siteId)) . '">' . esc_html__('Edit', 'rrze-multisite-manager') . '</a></span>';
+            $actions[] = '<span class="rrze-msm-row-action-edit"><a href="' . esc_url(network_admin_url('site-info.php?id=' . $siteId)) . '"><span class="dashicons dashicons-edit" aria-hidden="true"></span>' . esc_html__('Edit', 'rrze-multisite-manager') . '</a></span>';
         }
 
         if (!$this->isTechnicallyUnavailableSite($site)) {
-            $actions[] = '<span class="rrze-msm-row-action-dashboard"><a href="' . esc_url(get_admin_url($siteId)) . '">' . esc_html__('Dashboard', 'rrze-multisite-manager') . '</a></span>';
+            $actions[] = '<span class="rrze-msm-row-action-dashboard"><a href="' . esc_url(get_admin_url($siteId)) . '"><span class="dashicons dashicons-dashboard" aria-hidden="true"></span>' . esc_html__('Dashboard', 'rrze-multisite-manager') . '</a></span>';
 
             if ($siteUrl !== '') {
-                $actions[] = '<span class="rrze-msm-row-action-open"><a href="' . esc_url($siteUrl) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Open', 'rrze-multisite-manager') . '</a></span>';
+                $actions[] = '<span class="rrze-msm-row-action-open"><a href="' . esc_url($siteUrl) . '" target="_blank" rel="noopener noreferrer"><span class="dashicons dashicons-external" aria-hidden="true"></span>' . esc_html__('Open', 'rrze-multisite-manager') . '</a></span>';
             }
         }
 
+        $actions = array_merge($actions, $this->getSiteStatusRowActions($site));
+
         return $html . '<div class="row-actions">' . implode(' | ', $actions) . '</div>';
+    }
+
+    protected function getSiteStatusRowActions(array $site): array {
+        $siteId = (int)($site['id'] ?? 0);
+        $isMainSite = !empty($site['is_main_site']);
+        $isArchived = !empty($site['is_archived']);
+        $isSpam = !empty($site['is_spam']);
+        $isDeleted = !empty($site['is_deleted']);
+        $isNormal = !$isArchived && !$isSpam && !$isDeleted;
+        $isRestricted = $isArchived || $isSpam;
+
+        if ($siteId <= 0 || $isMainSite || !$this->currentUserCanUseNetworkAdminFeatures()) {
+            return [];
+        }
+
+        if ($isNormal) {
+            return [
+                $this->renderSiteRowActionLink($this->getSiteStatusPageUrl($siteId, 'archive'), __('Archive', 'rrze-multisite-manager'), 'archive'),
+                $this->renderSiteRowActionLink($this->getSiteStatusPageUrl($siteId, 'spam'), __('Block', 'rrze-multisite-manager'), 'lock'),
+            ];
+        }
+
+        if ($isDeleted) {
+            return [
+                $this->renderSiteRowActionLink($this->getSiteStatusSubmitUrl($siteId, 'restore'), __('Restore', 'rrze-multisite-manager'), 'backup'),
+                $this->renderPermanentDeleteSiteRowAction($site),
+            ];
+        }
+
+        if ($isRestricted) {
+            return [
+                $this->renderSiteRowActionLink($this->getSiteStatusSubmitUrl($siteId, 'restore'), __('Restore', 'rrze-multisite-manager'), 'backup'),
+                $this->renderSiteRowActionLink($this->getSiteStatusSubmitUrl($siteId, 'delete'), __('Mark for deletion', 'rrze-multisite-manager'), 'trash', 'delete'),
+            ];
+        }
+
+        return [];
+    }
+
+    protected function renderSiteRowActionLink(string $url, string $label, string $icon, string $rowActionClass = ''): string {
+        $classes = trim('rrze-msm-row-action-status ' . $rowActionClass);
+
+        return '<span class="' . esc_attr($classes) . '"><a href="' . esc_url($url) . '"><span class="dashicons dashicons-' . esc_attr($icon) . '" aria-hidden="true"></span>' . esc_html($label) . '</a></span>';
+    }
+
+    protected function renderPermanentDeleteSiteRowAction(array $site): string {
+        $siteId = (int)($site['id'] ?? 0);
+        $siteName = (string)($site['name'] ?? '');
+        $url = $this->getSitePermanentDeleteUrl($siteId);
+        $label = __('Permanently delete site', 'rrze-multisite-manager');
+
+        if ($siteId <= 0 || $url === '') {
+            return '';
+        }
+
+        return '<span class="delete rrze-msm-row-action-status"><a class="rrze-msm-open-site-delete-modal" href="' . esc_url($url) . '" data-site-name="' . esc_attr($siteName) . '" data-delete-url="' . esc_url($url) . '"><span class="dashicons dashicons-warning" aria-hidden="true"></span>' . esc_html($label) . '</a></span>';
     }
 
     protected function renderSiteActionLink(string $url, string $label, string $icon, bool $newTab = false, string $displayMode = 'icon'): string {
@@ -1188,7 +1299,17 @@ abstract class Widgets {
             $label = __('Not set', 'rrze-multisite-manager');
         }
 
-        return '<span class="rrze-msm-badge rrze-msm-badge-' . esc_attr($accent) . '">' . esc_html($label) . '</span>';
+        $colorKey = match ($status) {
+            'healthy' => 'technically_reachable',
+            'provisioning' => 'provisioning',
+            'dns_missing' => 'dns_missing',
+            'unreachable' => 'technically_unreachable',
+            'retired' => 'out_of_service',
+            default => 'automatic',
+        };
+        $color = $this->config->getSiteStatusColor($colorKey);
+
+        return '<span class="rrze-msm-badge rrze-msm-badge-' . esc_attr($accent) . '" style="background-color: ' . esc_attr($color) . '; color: #fff;">' . esc_html($label) . '</span>';
     }
 
     protected function renderSiteTitleAndUrl(array $site): string {

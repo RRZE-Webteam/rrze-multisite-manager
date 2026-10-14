@@ -35,10 +35,10 @@ class NetworkStorageUsageWidget extends Widgets {
             'items' => $this->normalizeStorageUsageItems($items),
             'summary_label' => $this->getSummaryLabel($storageUsage),
             'mode_note' => $this->getModeNote($storageUsage),
-            'center_title' => !empty($storageUsage['has_unlimited_site'])
+            'center_title' => (!empty($storageUsage['has_unlimited_site']) || !empty($storageUsage['unknown_site_count']))
                 ? __('Used', 'rrze-multisite-manager')
                 : __('Maximum', 'rrze-multisite-manager'),
-            'center_value' => !empty($storageUsage['has_unlimited_site'])
+            'center_value' => (!empty($storageUsage['has_unlimited_site']) || !empty($storageUsage['unknown_site_count']))
                 ? (string)($storageUsage['total_used_label'] ?? '')
                 : (string)($storageUsage['total_max_label'] ?? ''),
             'empty_message' => __('No storage usage data available.', 'rrze-multisite-manager'),
@@ -104,7 +104,7 @@ class NetworkStorageUsageWidget extends Widgets {
             ? (int)$storageUsage['percent']
             : null;
 
-        if (!empty($storageUsage['has_unlimited_site'])) {
+        if (!empty($storageUsage['has_unlimited_site']) || !empty($storageUsage['unknown_site_count'])) {
             return sprintf(
                 /* translators: %s: total used storage label. */
                 __('Total used storage space: %s', 'rrze-multisite-manager'),
@@ -135,6 +135,9 @@ class NetworkStorageUsageWidget extends Widgets {
     }
 
     protected function getModeNote(array $storageUsage): string {
+        if (!empty($storageUsage['unknown_site_count'])) {
+            return __('Storage usage is unknown for some websites. The chart shows only the most recently measured values; free capacity cannot be calculated reliably.', 'rrze-multisite-manager');
+        }
         if (empty($storageUsage['has_unlimited_site'])) {
             return __('The pie chart shows the used storage share per website relative to the total available storage capacity of the network.', 'rrze-multisite-manager');
         }

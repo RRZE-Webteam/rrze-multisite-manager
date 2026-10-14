@@ -115,6 +115,7 @@ class ViewManager {
                 'label' => __('Default', 'rrze-multisite-manager'),
                 'widgets' => [
                     'summary',
+                    'website_status',
                     'status',
                     'operational_status',
                     'network_storage_usage',
@@ -151,6 +152,7 @@ class ViewManager {
                 'label' => __('Websites', 'rrze-multisite-manager'),
                 'widgets' => [
                     'summary',
+                    'website_status',
                     'site_overview',
                     'status',
                     'operational_status',

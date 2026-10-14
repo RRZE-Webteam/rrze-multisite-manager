@@ -201,6 +201,8 @@ function onSiteDeleteButtonClick(event) {
     var submit = document.querySelector('#rrze-msm-site-delete-submit');
     var checkbox = document.querySelector('#rrze-msm-site-delete-confirm');
 
+    event.preventDefault();
+
     if (!button || !modal || !target || !submit || !checkbox) {
         return;
     }

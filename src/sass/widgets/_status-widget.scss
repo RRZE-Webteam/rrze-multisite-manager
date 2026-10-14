@@ -125,20 +125,28 @@
 }
 
 .rrze-msm-status-explanations {
+    display: block !important;
     margin-top: 18px;
     padding-top: 16px;
     border-top: 1px solid var(--rrze-msm-border);
 }
 
-.rrze-msm-status-explanations h3 {
-    margin: 0 0 10px;
+.rrze-msm-status-explanations summary {
+    display: list-item !important;
     color: var(--rrze-msm-text);
     font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.rrze-msm-status-explanations[open] summary {
+    margin-bottom: 10px;
 }
 
 .rrze-msm-status-explanations ul {
     margin: 0;
-    padding-left: 18px;
+    padding: 0;
+    list-style: none;
 }
 
 .rrze-msm-status-explanations li {
@@ -148,6 +156,59 @@
 
 .rrze-msm-status-explanations strong {
     color: var(--rrze-msm-text);
+}
+
+.rrze-msm-status-explanation-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    background: var(--rrze-msm-neutral);
+    vertical-align: -1px;
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-active {
+    background-color: var(--rrze-msm-status-color-active);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-active-nobots {
+    background-color: var(--rrze-msm-status-color-active-nobots);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-archive {
+    background-color: var(--rrze-msm-status-color-archive);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-blocked {
+    background-color: var(--rrze-msm-status-color-blocked);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-deleted {
+    background-color: var(--rrze-msm-status-color-deleted);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-automatic {
+    background-color: var(--rrze-msm-status-color-automatic);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-reachable {
+    background-color: var(--rrze-msm-status-color-reachable);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-provisioning {
+    background-color: var(--rrze-msm-status-color-provisioning);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-dns-missing {
+    background-color: var(--rrze-msm-status-color-dns-missing);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-unreachable {
+    background-color: var(--rrze-msm-status-color-unreachable);
+}
+
+.rrze-msm-status-explanation-swatch.rrze-msm-status-out-of-service {
+    background-color: var(--rrze-msm-status-color-out-of-service);
 }
 
 @media (max-width: 960px) {

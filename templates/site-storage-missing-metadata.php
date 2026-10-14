@@ -35,6 +35,10 @@ $metadataTables = [
     ],
 ];
 ?>
+<?php if (!empty($media_metadata_analysis['result_truncated'])) { ?>
+    <div class="notice notice-warning"><p><?php echo !empty($media_metadata_analysis['requires_reanalysis']) ? esc_html__('The stored analysis exceeded its storage limit. Run the analysis again to restore its details.', 'rrze-multisite-manager') : esc_html__('Some analysis details were shortened or omitted. Summary totals are unchanged.', 'rrze-multisite-manager'); ?></p></div>
+<?php } ?>
+
 <section class="rrze-msm-widget rrze-msm-widget-span-12">
     <header class="rrze-msm-widget-header">
         <h2><?php echo esc_html__('Missing metadata', 'rrze-multisite-manager'); ?></h2>

@@ -135,7 +135,7 @@
 
 .rrze-msm-table th.rrze-msm-col-actions.rrze-msm-col-actions-text,
 .rrze-msm-table td.rrze-msm-col-actions.rrze-msm-col-actions-text {
-    width: 20%;
+    width: 1%;
     min-width: var(--rrze-msm-actions-text-min-width);
     white-space: normal;
 }
@@ -162,6 +162,16 @@
     gap: 12px;
     margin: 0 0 12px;
     padding: 0;
+}
+
+.rrze-msm-site-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.rrze-msm-site-hover-actions-table .rrze-msm-site-overview-site {
+    width: 35%;
+    min-width: 14rem;
 }
 
 .rrze-msm-site-table-wrap .tablenav.bottom {
@@ -277,6 +287,54 @@
 
 .rrze-msm-plugin-overview-table .rrze-msm-detail-row-network-plugin > :first-child {
 	box-shadow: inset 5px 0 0 var(--rrze-msm-status-info-bg);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr > :first-child {
+	box-shadow: inset 5px 0 0 transparent;
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-active > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-active);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-active-nobots > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-active-nobots);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-archive > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-archive);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-blocked > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-blocked);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-deleted > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-deleted);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-automatic > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-automatic);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-reachable > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-reachable);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-provisioning > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-provisioning);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-dns-missing > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-dns-missing);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-unreachable > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-unreachable);
+}
+
+.rrze-msm-site-table-wrap .rrze-msm-table tbody > tr.rrze-msm-status-out-of-service > :first-child {
+	box-shadow: inset 5px 0 0 var(--rrze-msm-status-color-out-of-service);
 }
 
 .rrze-msm-detail-row-superadmin-option th,
@@ -1150,16 +1208,16 @@ a.rrze-msm-subtab.is-active:visited {
     box-shadow: 0 10px 24px rgba(16, 24, 40, 0.15);
 }
 
-.rrze-msm-tab-positive {
-    background: var(--rrze-msm-status-active-bg);
-    color: var(--rrze-msm-status-active-text);
+.rrze-msm-overview-tab.rrze-msm-status-active {
+    background: var(--rrze-msm-status-color-active);
+    color: var(--rrze-msm-surface);
 }
 
-.rrze-msm-tab-positive:visited,
-.rrze-msm-tab-positive:hover,
-.rrze-msm-tab-positive:focus,
-.rrze-msm-tab-positive.is-active {
-    color: var(--rrze-msm-status-active-text);
+.rrze-msm-overview-tab.rrze-msm-status-active:visited,
+.rrze-msm-overview-tab.rrze-msm-status-active:hover,
+.rrze-msm-overview-tab.rrze-msm-status-active:focus,
+.rrze-msm-overview-tab.rrze-msm-status-active.is-active {
+    color: var(--rrze-msm-surface);
 }
 
 .rrze-msm-tab-all {
@@ -1174,52 +1232,64 @@ a.rrze-msm-subtab.is-active:visited {
     color: var(--rrze-msm-tab-all-text);
 }
 
-.rrze-msm-tab-warning {
-    background: var(--rrze-msm-status-archive-bg);
-    color: var(--rrze-msm-status-archive-text);
+.rrze-msm-overview-tab.rrze-msm-status-archive,
+.rrze-msm-overview-tab.rrze-msm-status-blocked,
+.rrze-msm-overview-tab.rrze-msm-status-deleted,
+.rrze-msm-overview-tab.rrze-msm-status-provisioning,
+.rrze-msm-overview-tab.rrze-msm-status-dns-missing,
+.rrze-msm-overview-tab.rrze-msm-status-unreachable {
+    color: var(--rrze-msm-surface);
 }
 
-.rrze-msm-tab-warning:visited,
-.rrze-msm-tab-warning:hover,
-.rrze-msm-tab-warning:focus,
-.rrze-msm-tab-warning.is-active {
-    color: var(--rrze-msm-status-archive-text);
+.rrze-msm-overview-tab.rrze-msm-status-archive {
+    background: var(--rrze-msm-status-color-archive);
 }
 
-.rrze-msm-tab-gold {
-    background: var(--rrze-msm-status-blocked-bg);
-    color: var(--rrze-msm-status-blocked-text);
+.rrze-msm-overview-tab.rrze-msm-status-blocked {
+    background: var(--rrze-msm-status-color-blocked);
 }
 
-.rrze-msm-tab-gold:visited,
-.rrze-msm-tab-gold:hover,
-.rrze-msm-tab-gold:focus,
-.rrze-msm-tab-gold.is-active {
-    color: var(--rrze-msm-status-blocked-text);
+.rrze-msm-overview-tab.rrze-msm-status-deleted {
+    background: var(--rrze-msm-status-color-deleted);
 }
 
-.rrze-msm-tab-danger {
-    background: var(--rrze-msm-status-delete-bg);
-    color: var(--rrze-msm-status-delete-text);
+.rrze-msm-overview-tab.rrze-msm-status-provisioning {
+    background: var(--rrze-msm-status-color-provisioning);
 }
 
-.rrze-msm-tab-danger:visited,
-.rrze-msm-tab-danger:hover,
-.rrze-msm-tab-danger:focus,
-.rrze-msm-tab-danger.is-active {
-    color: var(--rrze-msm-status-delete-text);
+.rrze-msm-overview-tab.rrze-msm-status-dns-missing {
+    background: var(--rrze-msm-status-color-dns-missing);
 }
 
-.rrze-msm-tab-info {
-    background: var(--rrze-msm-status-info-bg);
-    color: var(--rrze-msm-status-info-text);
+.rrze-msm-overview-tab.rrze-msm-status-unreachable {
+    background: var(--rrze-msm-status-color-unreachable);
 }
 
-.rrze-msm-tab-info:visited,
-.rrze-msm-tab-info:hover,
-.rrze-msm-tab-info:focus,
-.rrze-msm-tab-info.is-active {
-    color: var(--rrze-msm-status-info-text);
+.rrze-msm-overview-tab.rrze-msm-status-archive:visited,
+.rrze-msm-overview-tab.rrze-msm-status-archive:hover,
+.rrze-msm-overview-tab.rrze-msm-status-archive:focus,
+.rrze-msm-overview-tab.rrze-msm-status-archive.is-active,
+.rrze-msm-overview-tab.rrze-msm-status-blocked:visited,
+.rrze-msm-overview-tab.rrze-msm-status-blocked:hover,
+.rrze-msm-overview-tab.rrze-msm-status-blocked:focus,
+.rrze-msm-overview-tab.rrze-msm-status-blocked.is-active,
+.rrze-msm-overview-tab.rrze-msm-status-deleted:visited,
+.rrze-msm-overview-tab.rrze-msm-status-deleted:hover,
+.rrze-msm-overview-tab.rrze-msm-status-deleted:focus,
+.rrze-msm-overview-tab.rrze-msm-status-deleted.is-active,
+.rrze-msm-overview-tab.rrze-msm-status-provisioning:visited,
+.rrze-msm-overview-tab.rrze-msm-status-provisioning:hover,
+.rrze-msm-overview-tab.rrze-msm-status-provisioning:focus,
+.rrze-msm-overview-tab.rrze-msm-status-provisioning.is-active,
+.rrze-msm-overview-tab.rrze-msm-status-dns-missing:visited,
+.rrze-msm-overview-tab.rrze-msm-status-dns-missing:hover,
+.rrze-msm-overview-tab.rrze-msm-status-dns-missing:focus,
+.rrze-msm-overview-tab.rrze-msm-status-dns-missing.is-active,
+.rrze-msm-overview-tab.rrze-msm-status-unreachable:visited,
+.rrze-msm-overview-tab.rrze-msm-status-unreachable:hover,
+.rrze-msm-overview-tab.rrze-msm-status-unreachable:focus,
+.rrze-msm-overview-tab.rrze-msm-status-unreachable.is-active {
+    color: var(--rrze-msm-surface);
 }
 
 .rrze-multisite-manager-admin a.rrze-msm-overview-tab span,
@@ -1227,13 +1297,49 @@ a.rrze-msm-subtab.is-active:visited {
     color: currentColor;
 }
 
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:visited,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:hover,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:focus,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive:active,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-positive.is-active {
-    color: var(--rrze-msm-status-active-text) !important;
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-active:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-active:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-active:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-active:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-active.is-active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-archive,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-archive:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-archive:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-archive:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-archive:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-archive.is-active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-blocked,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-blocked:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-blocked:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-blocked:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-blocked:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-blocked.is-active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-deleted,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-deleted:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-deleted:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-deleted:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-deleted:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-deleted.is-active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-provisioning,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-provisioning:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-provisioning:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-provisioning:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-provisioning:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-provisioning.is-active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-dns-missing,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-dns-missing:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-dns-missing:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-dns-missing:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-dns-missing:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-dns-missing.is-active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-unreachable,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-unreachable:visited,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-unreachable:hover,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-unreachable:focus,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-unreachable:active,
+.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-status-unreachable.is-active {
+    color: var(--rrze-msm-surface) !important;
 }
 
 .rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all,
@@ -1243,42 +1349,6 @@ a.rrze-msm-subtab.is-active:visited {
 .rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all:active,
 .rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-all.is-active {
     color: var(--rrze-msm-tab-all-text) !important;
-}
-
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:visited,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:hover,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:focus,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning:active,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-warning.is-active {
-    color: var(--rrze-msm-status-archive-text) !important;
-}
-
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:visited,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:hover,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:focus,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold:active,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-gold.is-active {
-    color: var(--rrze-msm-status-blocked-text) !important;
-}
-
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:visited,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:hover,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:focus,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger:active,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-danger.is-active {
-    color: var(--rrze-msm-status-delete-text) !important;
-}
-
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:visited,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:hover,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:focus,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info:active,
-.rrze-multisite-manager-admin a.rrze-msm-overview-tab.rrze-msm-tab-info.is-active {
-    color: var(--rrze-msm-status-info-text) !important;
 }
 
 .rrze-msm-site-details-actions .rrze-msm-site-actions {

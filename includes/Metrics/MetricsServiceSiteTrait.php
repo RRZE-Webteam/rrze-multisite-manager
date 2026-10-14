@@ -186,28 +186,38 @@ trait MetricsServiceSiteTrait {
         $rows = [
             [
                 'label' => __('Active and public', 'rrze-multisite-manager'),
+                'status_key' => 'active_public',
                 'value' => (int)$siteBuckets['active_public'],
                 'accent' => 'positive',
+                'color' => $this->config->getSiteStatusColor('active_public'),
             ],
             [
                 'label' => __('Active, excluded from search engines', 'rrze-multisite-manager'),
+                'status_key' => 'active_private',
                 'value' => (int)$siteBuckets['active_private'],
                 'accent' => 'info',
+                'color' => $this->config->getSiteStatusColor('active_private'),
             ],
             [
                 'label' => __('Archived', 'rrze-multisite-manager'),
+                'status_key' => 'archived',
                 'value' => (int)$siteBuckets['archived'],
                 'accent' => 'warning',
+                'color' => $this->config->getSiteStatusColor('archived'),
             ],
             [
                 'label' => __('Blocked', 'rrze-multisite-manager'),
+                'status_key' => 'blocked',
                 'value' => (int)$siteBuckets['spam'],
                 'accent' => 'blocked',
+                'color' => $this->config->getSiteStatusColor('blocked'),
             ],
             [
                 'label' => __('Marked for deletion', 'rrze-multisite-manager'),
+                'status_key' => 'deleted',
                 'value' => (int)$siteBuckets['deleted'],
                 'accent' => 'danger',
+                'color' => $this->config->getSiteStatusColor('deleted'),
             ],
         ];
         $index = 0;
@@ -225,33 +235,45 @@ trait MetricsServiceSiteTrait {
         $rows = [
             [
                 'label' => __('Not set / automatic', 'rrze-multisite-manager'),
+                'status_key' => 'automatic',
                 'value' => (int)$statusBuckets['automatic'],
                 'accent' => 'theme-1',
+                'color' => $this->config->getSiteStatusColor('automatic'),
             ],
             [
                 'label' => __('Technically reachable', 'rrze-multisite-manager'),
+                'status_key' => 'technically_reachable',
                 'value' => (int)$statusBuckets['healthy'],
                 'accent' => 'positive',
+                'color' => $this->config->getSiteStatusColor('technically_reachable'),
             ],
             [
                 'label' => __('Provisioning in progress', 'rrze-multisite-manager'),
+                'status_key' => 'provisioning',
                 'value' => (int)$statusBuckets['provisioning'],
                 'accent' => 'info',
+                'color' => $this->config->getSiteStatusColor('provisioning'),
             ],
             [
                 'label' => __('DNS missing', 'rrze-multisite-manager'),
+                'status_key' => 'dns_missing',
                 'value' => (int)$statusBuckets['dns_missing'],
                 'accent' => 'danger',
+                'color' => $this->config->getSiteStatusColor('dns_missing'),
             ],
             [
                 'label' => __('Technically unreachable', 'rrze-multisite-manager'),
+                'status_key' => 'technically_unreachable',
                 'value' => (int)$statusBuckets['unreachable'],
                 'accent' => 'warning',
+                'color' => $this->config->getSiteStatusColor('technically_unreachable'),
             ],
             [
                 'label' => __('Out of service', 'rrze-multisite-manager'),
+                'status_key' => 'out_of_service',
                 'value' => (int)$statusBuckets['retired'],
                 'accent' => 'neutral',
+                'color' => $this->config->getSiteStatusColor('out_of_service'),
             ],
         ];
         $index = 0;

@@ -36,7 +36,7 @@ class StorageAnalysisBatchService {
             $state = $initialize();
 
             if (($state['status'] ?? '') === 'error') {
-                set_site_transient($baseStateKey, $state, $ttl);
+                StorageAnalysisResourceService::saveState($baseStateKey, $state, $ttl);
 
                 return [
                     'success' => false,
@@ -56,10 +56,12 @@ class StorageAnalysisBatchService {
 
         $state = $process($state);
 
-        if (empty($state['queue_directories']) && empty($state['queue_files']) && ($state['status'] ?? '') === 'running') {
+        if (!empty($state['attachment_index_complete']) && !empty($state['attachment_stats_complete'])
+            && empty($state['queue_directories']) && empty($state['queue_files']) && ($state['status'] ?? '') === 'running'
+        ) {
             $finalize($state);
         } else {
-            set_site_transient($baseStateKey, $state, $ttl);
+            StorageAnalysisResourceService::saveState($baseStateKey, $state, $ttl);
         }
 
         return [
@@ -119,7 +121,7 @@ class StorageAnalysisBatchService {
         if ($isComplete($state)) {
             $finalize($state);
         } else {
-            set_site_transient($orphanStateKey, $state, $ttl);
+            StorageAnalysisResourceService::saveState($orphanStateKey, $state, $ttl);
         }
 
         return [

@@ -40,7 +40,6 @@ class SiteOverviewWidget extends Widgets {
                 'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
                 'sort_key' => 'registered',
                 'sort_direction' => 'desc',
-                'action_mode' => 'text',
             ]
         );
     }

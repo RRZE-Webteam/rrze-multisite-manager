@@ -9,4 +9,18 @@
         <p><?php echo esc_html($widget_description); ?></p>
     </header>
     <?php echo wp_kses_post($this->renderPieChart($items, $empty_message)); ?>
+    <?php if (!empty($status_explanations) && is_array($status_explanations)) { ?>
+        <details class="rrze-msm-status-explanations">
+            <summary><?php echo esc_html__('Quick explanation', 'rrze-multisite-manager'); ?></summary>
+            <ul>
+                <?php foreach ($status_explanations as $status_key => $status_explanation) { ?>
+                    <li>
+                        <span class="rrze-msm-status-explanation-swatch <?php echo esc_attr((string) $status_explanation['css_class']); ?>" aria-hidden="true"></span>
+                        <strong><?php echo esc_html((string)($status_explanation['label'] ?? '')); ?>:</strong>
+                        <?php echo esc_html((string)($status_explanation['text'] ?? '')); ?>
+                    </li>
+                <?php } ?>
+            </ul>
+        </details>
+    <?php } ?>
 </section>
