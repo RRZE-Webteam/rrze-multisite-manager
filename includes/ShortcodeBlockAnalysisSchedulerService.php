@@ -344,7 +344,12 @@ class ShortcodeBlockAnalysisSchedulerService {
             $this->markTimedOut($siteId);
         }
 
+        $wasRunning = $this->isRunning($siteId);
         $this->recoverInterruptedAnalysis($siteId);
+
+        if ($wasRunning && !$this->isRunning($siteId) && $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
+            return true;
+        }
 
         if (!$this->isSiteActive($siteId) || $this->isRunning($siteId)) {
             return false;
@@ -2520,7 +2525,18 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function scheduleContinuationForRunningAnalysis(int $siteId): bool {
-        if ($this->getSiteAssignmentMode($siteId) === 'batch') {
+        $assignmentMode = $this->getSiteAssignmentMode($siteId);
+
+        if ($assignmentMode === 'unassigned') {
+            // A previous task may have been removed after its last slice. Its
+            // checkpoint is still valid, but a one-time continuation alone
+            // would leave the website invisible in the scheduled-task table.
+            // Recreate the normal assignment so the resumed run is both
+            // visible and continued by the regular scheduler afterwards.
+            return $this->scheduleRecurringAnalysisAt($siteId, time() + self::CONTINUATION_DELAY_SECONDS);
+        }
+
+        if ($assignmentMode === 'batch') {
             return $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS);
         }
 

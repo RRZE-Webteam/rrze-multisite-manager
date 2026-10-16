@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-10-16T14:50:11+00:00\n"
+"POT-Creation-Date: 2026-10-16T14:59:07+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -1050,11 +1050,11 @@ msgstr "Benutzer-ID %d"
 #: includes/Metrics/MetricsImplementationService.php:8318
 #: includes/Metrics/StorageUsageService.php:44
 #: includes/Presentation/StatusFormatter.php:41
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1364
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1393
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1474
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1574
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1590
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1369
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1398
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1479
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1579
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1595
 #: includes/Widgets/NetworkStorageUsageWidget.php:111
 #: includes/Widgets/Widgets.php:978 includes/Widgets/Widgets.php:1242
 #: includes/Widgets/Widgets.php:1265 includes/Widgets/Widgets.php:1376
@@ -1286,7 +1286,7 @@ msgstr "Theme/Plugin"
 
 #: includes/Metrics/MetricsImplementationService.php:2789
 #: includes/Metrics/MetricsImplementationService.php:9050
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1392
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1397
 msgid "WordPress Core"
 msgstr "WordPress Core"
 
@@ -2417,7 +2417,7 @@ msgid "Missing"
 msgstr "Fehlt"
 
 #: includes/Presentation/StatusFormatter.php:39 includes/Settings.php:2814
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:792
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:797
 #: includes/StorageAnalysisSchedulerService.php:2255
 msgid "Error"
 msgstr "Fehler"
@@ -2925,14 +2925,14 @@ msgid "<1 sec."
 msgstr "<1 Sek."
 
 #: includes/Settings.php:1819
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:793
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:798
 #: includes/StorageAnalysisSchedulerService.php:2253
 msgid "Waiting for cron"
 msgstr "Wartet auf Cron"
 
 #: includes/Settings.php:1825 includes/Settings.php:2033
 #: includes/Settings.php:2661 includes/Settings.php:2810
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:791
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:796
 #: includes/StorageAnalysisSchedulerService.php:2251
 msgid "Running"
 msgstr "Läuft"
@@ -2956,7 +2956,7 @@ msgstr ""
 
 #: includes/Settings.php:1908 includes/Settings.php:2110
 #: includes/Settings.php:2707 includes/Settings.php:2822
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:796
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:801
 #: includes/StorageAnalysisSchedulerService.php:2258
 msgid "Not scheduled"
 msgstr "Nicht geplant"
@@ -3494,7 +3494,7 @@ msgid "Completed"
 msgstr "Abgeschlossen"
 
 #: includes/Settings.php:2665 includes/Settings.php:2827
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:795
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:800
 #: includes/StorageAnalysisSchedulerService.php:2257
 msgid "Scheduled"
 msgstr "Eingeplant"
@@ -3548,7 +3548,7 @@ msgid "Composition pending"
 msgstr "Zusammenführung ausstehend"
 
 #: includes/Settings.php:2826
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:794
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:799
 #: includes/StorageAnalysisSchedulerService.php:2256
 msgid "Ok"
 msgstr "Ok"
@@ -3677,27 +3677,27 @@ msgstr "HTTP nicht erreichbar"
 msgid "Decommissioned"
 msgstr "Stillgelegt"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:790
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:795
 #: includes/StorageAnalysisSchedulerService.php:2252
 msgid "Inactive"
 msgstr "Deaktiv"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1493
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1498
 #: includes/Widgets/PluginUsageWidget.php:199
 msgid "Plugin"
 msgstr "Plugin"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1497
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1571
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1502
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1576
 #: templates/site-details-page.php:108 templates/theme-details-page.php:38
 msgid "Theme"
 msgstr "Theme"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1567
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1572
 msgid "MU-plugin"
 msgstr "MU-Plugin"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1885
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1890
 msgid ""
 "The shortcode and block analysis was aborted because it exceeded the "
 "configured runtime limit."
@@ -3706,7 +3706,7 @@ msgstr ""
 "konfigurierte Laufzeitgrenze überschritten hat."
 
 #. translators: 1: analysis phase, 2: processed posts, 3: total posts.
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:2448
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:2453
 msgid ""
 "The analysis was interrupted in the %1$s phase after %2$d of %3$d posts. The "
 "last saved checkpoint is included in the error log."
