@@ -2574,6 +2574,7 @@ class Settings {
             }
 
             echo '<div class="rrze-msm-widget-selector">';
+            echo '<input type="hidden" name="views[' . esc_attr((string)$view['slug']) . '][widgets_present]" value="1">';
 
             foreach ($widgetOptions as $widgetOption) {
                 echo '<label class="rrze-msm-widget-check">';

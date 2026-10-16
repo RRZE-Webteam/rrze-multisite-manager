@@ -13,7 +13,7 @@ Editor usage follows RRZE Settings. If the Block Editor is configured as the net
 ## Usage
 
 * Widgets can be moved within a view. Their order is stored per user and view in the browser.
-* Super admins manage views and their visible widgets under **Settings > Views**.
+* Super admins manage views and their visible widgets under **Settings > Views**. System-view names stay fixed, but their widget selection is stored exactly as saved; only **All widgets** is intentionally immutable.
 * Table widgets sort and paginate only their currently visible entries in the browser.
 * The page displays the time of the latest metrics run and the progress of a running refresh.
 

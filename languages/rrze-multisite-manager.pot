@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.3.9\n"
+"Project-Id-Version: RRZE Multisite Manager 1.3.10\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-16T12:54:02+00:00\n"
-"PO-Revision-Date: 2026-10-16 12:54+0000\n"
+"POT-Creation-Date: 2026-10-16T13:30:26+00:00\n"
+"PO-Revision-Date: 2026-10-16 13:30+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -449,13 +449,13 @@ msgstr ""
 
 #. translators: 1: processed websites, 2: total websites.
 #: includes/Dashboard.php:411
-#: includes/Settings.php:3082
+#: includes/Settings.php:3083
 msgid "Websites processed: %1$s of %2$s"
 msgstr ""
 
 #. translators: 1: transient value rows, 2: timeout rows, 3: website options.
 #: includes/Dashboard.php:412
-#: includes/Settings.php:3094
+#: includes/Settings.php:3095
 msgid "Deleted so far: %1$s transient values, %2$s timeout rows, %3$s website options."
 msgstr ""
 
@@ -465,7 +465,7 @@ msgstr ""
 
 #: includes/Dashboard.php:414
 #: includes/Metrics/MetricsImplementationService.php:513
-#: includes/Settings.php:3069
+#: includes/Settings.php:3070
 msgid "Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden."
 msgstr ""
 
@@ -539,7 +539,7 @@ msgstr ""
 #: includes/Metrics/MetricsServiceSiteTrait.php:258
 #: includes/Presentation/StatusFormatter.php:15
 #: includes/Settings.php:2459
-#: includes/Settings.php:3293
+#: includes/Settings.php:3294
 #: includes/Widgets/OperationalStatusWidget.php:83
 #: includes/Widgets/WebsiteStatusWidget.php:51
 msgid "DNS missing"
@@ -1078,7 +1078,7 @@ msgstr ""
 #: includes/Dashboard.php:3447
 #: includes/Metrics/MetricsServiceSiteTrait.php:244
 #: includes/Presentation/StatusFormatter.php:14
-#: includes/Settings.php:3285
+#: includes/Settings.php:3286
 #: includes/Widgets/OperationalStatusWidget.php:67
 #: includes/Widgets/WebsiteStatusWidget.php:50
 msgid "Technically reachable"
@@ -2245,7 +2245,7 @@ msgstr ""
 
 #. translators: %d: site ID.
 #: includes/MonitoringService.php:1027
-#: includes/Settings.php:3225
+#: includes/Settings.php:3226
 msgid "Site %d"
 msgstr ""
 
@@ -2302,7 +2302,7 @@ msgid "Missing"
 msgstr ""
 
 #: includes/Presentation/StatusFormatter.php:39
-#: includes/Settings.php:2800
+#: includes/Settings.php:2801
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:779
 #: includes/StorageAnalysisSchedulerService.php:2255
 msgid "Error"
@@ -2781,18 +2781,18 @@ msgstr ""
 
 #: includes/Settings.php:1800
 #: includes/Settings.php:2010
-#: includes/Settings.php:2706
-#: includes/Settings.php:2777
-#: includes/Settings.php:2784
-#: includes/Settings.php:3256
-#: includes/Settings.php:3276
-#: includes/Settings.php:3280
-#: includes/Settings.php:3304
+#: includes/Settings.php:2707
+#: includes/Settings.php:2778
+#: includes/Settings.php:2785
+#: includes/Settings.php:3257
+#: includes/Settings.php:3277
+#: includes/Settings.php:3281
+#: includes/Settings.php:3305
 msgid "-"
 msgstr ""
 
 #: includes/Settings.php:1802
-#: includes/Settings.php:2804
+#: includes/Settings.php:2805
 #: includes/StorageAnalysisSchedulerService.php:2254
 msgid "Aborted"
 msgstr ""
@@ -2810,8 +2810,8 @@ msgstr ""
 
 #: includes/Settings.php:1816
 #: includes/Settings.php:2020
-#: includes/Settings.php:2647
-#: includes/Settings.php:2796
+#: includes/Settings.php:2648
+#: includes/Settings.php:2797
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:778
 #: includes/StorageAnalysisSchedulerService.php:2251
 msgid "Running"
@@ -2836,8 +2836,8 @@ msgstr ""
 
 #: includes/Settings.php:1899
 #: includes/Settings.php:2097
-#: includes/Settings.php:2693
-#: includes/Settings.php:2808
+#: includes/Settings.php:2694
+#: includes/Settings.php:2809
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:783
 #: includes/StorageAnalysisSchedulerService.php:2258
 msgid "Not scheduled"
@@ -3195,8 +3195,8 @@ msgid "Sites checked"
 msgstr ""
 
 #: includes/Settings.php:2456
-#: includes/Settings.php:3119
-#: includes/Settings.php:3261
+#: includes/Settings.php:3120
+#: includes/Settings.php:3262
 msgid "Status change"
 msgstr ""
 
@@ -3304,195 +3304,195 @@ msgstr ""
 msgid "Delete view"
 msgstr ""
 
-#: includes/Settings.php:2590
+#: includes/Settings.php:2591
 #: templates/views-page.php:73
 msgid "Save views"
 msgstr ""
 
-#: includes/Settings.php:2638
+#: includes/Settings.php:2639
 msgid "Not started"
 msgstr ""
 
-#: includes/Settings.php:2643
+#: includes/Settings.php:2644
 msgid "Completed"
 msgstr ""
 
-#: includes/Settings.php:2651
-#: includes/Settings.php:2813
+#: includes/Settings.php:2652
+#: includes/Settings.php:2814
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:782
 #: includes/StorageAnalysisSchedulerService.php:2257
 msgid "Scheduled"
 msgstr ""
 
 #. translators: 1: last indexed attachment ID, 2: number of index segments awaiting storage.
-#: includes/Settings.php:2658
+#: includes/Settings.php:2659
 msgid "Attachment ID %1$s; %2$s index segments pending"
 msgstr ""
 
-#: includes/Settings.php:2685
+#: includes/Settings.php:2686
 msgid "Not run yet"
 msgstr ""
 
-#: includes/Settings.php:2706
+#: includes/Settings.php:2707
 msgid "0 sec."
 msgstr ""
 
 #. translators: %d: number of hours.
-#: includes/Settings.php:2715
+#: includes/Settings.php:2716
 msgid "%d hr."
 msgid_plural "%d hr."
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of minutes.
-#: includes/Settings.php:2720
-#: includes/Settings.php:2748
+#: includes/Settings.php:2721
+#: includes/Settings.php:2749
 msgid "%d min."
 msgid_plural "%d min."
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: number of seconds.
-#: includes/Settings.php:2725
-#: includes/Settings.php:2741
+#: includes/Settings.php:2726
+#: includes/Settings.php:2742
 msgid "%d sec."
 msgid_plural "%d sec."
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: 1: checked websites, 2: total websites, 3: completion percentage.
-#: includes/Settings.php:2761
+#: includes/Settings.php:2762
 msgid "%1$s / %2$s (%3$d%%)"
 msgstr ""
 
 #. translators: 1: checked websites, 2: total websites.
-#: includes/Settings.php:2771
+#: includes/Settings.php:2772
 msgid "%1$s / %2$s"
 msgstr ""
 
-#: includes/Settings.php:2792
+#: includes/Settings.php:2793
 msgid "Composition pending"
 msgstr ""
 
-#: includes/Settings.php:2812
+#: includes/Settings.php:2813
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:781
 #: includes/StorageAnalysisSchedulerService.php:2256
 msgid "Ok"
 msgstr ""
 
 #. translators: %s: batch size.
-#: includes/Settings.php:2852
+#: includes/Settings.php:2853
 msgid "Batch size: %s"
 msgstr ""
 
 #. translators: %s: number of processed websites.
-#: includes/Settings.php:2860
+#: includes/Settings.php:2861
 msgid "Last processed: %s sites"
 msgstr ""
 
-#: includes/Settings.php:2952
+#: includes/Settings.php:2953
 msgid "Start early now"
 msgstr ""
 
-#: includes/Settings.php:2953
+#: includes/Settings.php:2954
 msgid "Create task"
 msgstr ""
 
-#: includes/Settings.php:2970
-#: includes/Settings.php:2996
+#: includes/Settings.php:2971
+#: includes/Settings.php:2997
 msgid "Reset"
 msgstr ""
 
-#: includes/Settings.php:2978
-#: includes/Settings.php:3004
+#: includes/Settings.php:2979
+#: includes/Settings.php:3005
 msgid "Reset and restart"
 msgstr ""
 
-#: includes/Settings.php:3032
+#: includes/Settings.php:3033
 msgid "Dashboard metrics could not be assembled. Reset and restart the process."
 msgstr ""
 
-#: includes/Settings.php:3036
+#: includes/Settings.php:3037
 msgid "Run is taking unusually long"
 msgstr ""
 
-#: includes/Settings.php:3040
+#: includes/Settings.php:3041
 msgid "Next run is overdue"
 msgstr ""
 
-#: includes/Settings.php:3044
+#: includes/Settings.php:3045
 msgid "No completed process data is available yet"
 msgstr ""
 
-#: includes/Settings.php:3074
+#: includes/Settings.php:3075
 msgid "Clean up legacy MSM data"
 msgstr ""
 
-#: includes/Settings.php:3075
+#: includes/Settings.php:3076
 msgid "Deletes stored storage-analysis results, their metadata, and all MSM transients. Dashboard metrics are also removed. This cannot be undone."
 msgstr ""
 
-#: includes/Settings.php:3079
+#: includes/Settings.php:3080
 msgid "Status:"
 msgstr ""
 
 #. translators: 1: transient row count, 2: data size.
-#: includes/Settings.php:3088
+#: includes/Settings.php:3089
 msgid "Transient rows found at start: %1$s (%2$s)"
 msgstr ""
 
-#: includes/Settings.php:3105
+#: includes/Settings.php:3106
 msgid "I understand that saved storage analyses, metrics, and MSM transient caches will be permanently deleted."
 msgstr ""
 
-#: includes/Settings.php:3106
+#: includes/Settings.php:3107
 msgid "Start complete data cleanup"
 msgstr ""
 
-#: includes/Settings.php:3123
+#: includes/Settings.php:3124
 msgid "Technical issues"
 msgstr ""
 
-#: includes/Settings.php:3127
+#: includes/Settings.php:3128
 msgid "No notable issues have been logged."
 msgstr ""
 
 #. translators: %s: DNS status.
-#: includes/Settings.php:3156
+#: includes/Settings.php:3157
 msgid "DNS: %s"
 msgstr ""
 
 #. translators: %s: HTTP status.
-#: includes/Settings.php:3167
+#: includes/Settings.php:3168
 msgid "HTTP: %s"
 msgstr ""
 
 #. translators: 1: previous status, 2: current status.
-#: includes/Settings.php:3246
+#: includes/Settings.php:3247
 msgid "%1$s -> %2$s"
 msgstr ""
 
-#: includes/Settings.php:3265
+#: includes/Settings.php:3266
 msgid "DNS issue"
 msgstr ""
 
-#: includes/Settings.php:3269
+#: includes/Settings.php:3270
 msgid "HTTP issue"
 msgstr ""
 
-#: includes/Settings.php:3272
+#: includes/Settings.php:3273
 msgid "Monitoring event"
 msgstr ""
 
-#: includes/Settings.php:3289
+#: includes/Settings.php:3290
 msgid "Provisioning phase"
 msgstr ""
 
-#: includes/Settings.php:3297
+#: includes/Settings.php:3298
 msgid "HTTP unreachable"
 msgstr ""
 
-#: includes/Settings.php:3301
+#: includes/Settings.php:3302
 msgid "Decommissioned"
 msgstr ""
 
@@ -3617,32 +3617,32 @@ msgstr ""
 msgid "The analysis result could not be reduced to its storage limit."
 msgstr ""
 
-#: includes/ViewManager.php:115
+#: includes/ViewManager.php:120
 msgid "Default"
 msgstr ""
 
-#: includes/ViewManager.php:133
+#: includes/ViewManager.php:138
 #: includes/Widgets/SummaryWidget.php:54
 #: templates/site-details-page.php:109
 msgid "Plugins"
 msgstr ""
 
-#: includes/ViewManager.php:142
+#: includes/ViewManager.php:147
 #: includes/Widgets/SummaryWidget.php:64
 #: templates/theme-overview-page.php:29
 msgid "Themes"
 msgstr ""
 
-#: includes/ViewManager.php:152
+#: includes/ViewManager.php:157
 #: includes/Widgets/PluginUsageWidget.php:431
 msgid "Websites"
 msgstr ""
 
-#: includes/ViewManager.php:173
+#: includes/ViewManager.php:178
 msgid "All widgets"
 msgstr ""
 
-#: includes/ViewManager.php:201
+#: includes/ViewManager.php:206
 msgid "New view"
 msgstr ""
 
