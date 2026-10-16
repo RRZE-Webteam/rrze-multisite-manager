@@ -233,6 +233,10 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                     <div class="notice notice-success inline"><p><?php echo esc_html__('The shortcode and block analysis has been scheduled.', 'rrze-multisite-manager'); ?></p></div>
                 <?php } elseif ($requested === 'running') { ?>
                     <div class="notice notice-info inline"><p><?php echo esc_html__('The shortcode and block analysis is already running.', 'rrze-multisite-manager'); ?></p></div>
+                <?php } elseif ($requested === 'inactive') { ?>
+                    <div class="notice notice-warning inline"><p><?php echo esc_html__('The shortcode and block analysis cannot be scheduled for this inactive website.', 'rrze-multisite-manager'); ?></p></div>
+                <?php } elseif ($requested === 'failed') { ?>
+                    <div class="notice notice-error inline"><p><?php echo esc_html__('The shortcode and block analysis task could not be scheduled. Please check the error log.', 'rrze-multisite-manager'); ?></p></div>
                 <?php } ?>
                 <ul>
                     <li>

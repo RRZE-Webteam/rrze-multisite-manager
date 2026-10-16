@@ -361,10 +361,8 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         $this->unschedule($siteId);
-        $this->markScheduled($siteId);
-        $this->scheduleIndividualAnalysisAt($siteId, time());
 
-        return true;
+        return $this->scheduleRecurringAnalysisAt($siteId, time());
     }
 
     public function deactivateSite(int $siteId): void {
@@ -547,6 +545,15 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     public function getNextScheduledRunTimestamp(int $siteId): int {
         return $siteId > 0 ? $this->getNextRecurringScheduledTimestamp($siteId) : 0;
+    }
+
+    /** @return 'inactive'|'running'|'failed' */
+    public function getRequestAnalysisFailureState(int $siteId): string {
+        if (!$this->isSiteActive($siteId)) {
+            return 'inactive';
+        }
+
+        return $this->isRunning($siteId) ? 'running' : 'failed';
     }
 
     /**
@@ -1986,9 +1993,25 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         $this->unschedule($siteId);
-        $this->markScheduled($siteId);
+        $useBatch = $this->isSmallSite($siteId);
 
-        if ($this->isSmallSite($siteId)) {
+        if ($useBatch) {
+            $scheduled = $this->scheduleBatchAnalysisAt($timestamp);
+        } else {
+            $scheduled = $this->scheduleIndividualAnalysisAt($siteId, $timestamp);
+        }
+
+        if (!$scheduled) {
+            LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block analysis task could not be scheduled.', [
+                'site_id' => $siteId,
+                'site_url' => get_home_url($siteId, '/'),
+                'assignment_mode' => $useBatch ? 'batch' : 'site',
+            ]);
+
+            return false;
+        }
+
+        if ($useBatch) {
             $siteIds = array_values(array_unique(array_merge(
                 array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
                 [$siteId]
@@ -1998,14 +2021,25 @@ class ShortcodeBlockAnalysisSchedulerService {
             $status = $this->getStatus($siteId);
             $status['schedule_mode'] = 'batch';
             update_blog_option($siteId, self::STATUS_OPTION, $status);
-            $scheduled = $this->scheduleBatchAnalysisAt($timestamp);
-        } else {
-            $scheduled = $this->scheduleIndividualAnalysisAt($siteId, $timestamp);
         }
 
         $this->clearRecurringScheduleCache();
 
-        return $scheduled;
+        if ($this->getNextRecurringScheduledTimestamp($siteId) <= 0) {
+            $this->unschedule($siteId);
+            $this->clearRecurringScheduleCache();
+            LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block analysis task could not be verified after scheduling.', [
+                'site_id' => $siteId,
+                'site_url' => get_home_url($siteId, '/'),
+                'assignment_mode' => $useBatch ? 'batch' : 'site',
+            ]);
+
+            return false;
+        }
+
+        $this->markScheduled($siteId);
+
+        return true;
     }
 
     protected function scheduleIndividualAnalysisAt(int $siteId, int $timestamp): bool {
