@@ -202,6 +202,42 @@ class Config {
                         'max' => 3600,
                     ],
                     [
+                        'name' => 'storage_analysis_shared_attachment_index_batch_size',
+                        'label' => __('Media attachments per index step in shared storage analyses', 'rrze-multisite-manager'),
+                        'desc' => __('Allowed values: 5 to 25. Use 25 unless a shared batch causes noticeable load; 25 is the safe upper limit so one website cannot delay the remaining batch.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 25,
+                        'min' => 5,
+                        'max' => 25,
+                    ],
+                    [
+                        'name' => 'storage_analysis_shared_index_write_batch_size',
+                        'label' => __('Index segments written per step in shared storage analyses', 'rrze-multisite-manager'),
+                        'desc' => __('Allowed values: 4 to 16. Use 16 unless database writes from shared batches cause noticeable load; 16 is the safe upper limit.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 16,
+                        'min' => 4,
+                        'max' => 16,
+                    ],
+                    [
+                        'name' => 'storage_analysis_individual_attachment_index_batch_size',
+                        'label' => __('Media attachments per index step in individual storage analyses', 'rrze-multisite-manager'),
+                        'desc' => __('Allowed values: 25 to 100. The default of 50 is intended for websites with more than 1,000 media items. Only use 100 if the server has sufficient database and PHP capacity.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 50,
+                        'min' => 25,
+                        'max' => 100,
+                    ],
+                    [
+                        'name' => 'storage_analysis_individual_index_write_batch_size',
+                        'label' => __('Index segments written per step in individual storage analyses', 'rrze-multisite-manager'),
+                        'desc' => __('Allowed values: 8 to 32. Use the default of 24; use 32 only if database writes remain fast. Larger values reduce continuation requests but increase database work per step.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 24,
+                        'min' => 8,
+                        'max' => 32,
+                    ],
+                    [
                         'name' => 'storage_analysis_max_concurrent_runs',
                         'label' => __('Maximum concurrent storage analyses', 'rrze-multisite-manager'),
                         'desc' => __('Allows four storage analyses and temporary indexes across the network by default, with up to eight. Additional analyses wait for capacity.', 'rrze-multisite-manager'),
@@ -391,6 +427,30 @@ class Config {
         $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_batch_runtime_threshold_seconds'] ?? 5) : 5;
 
         return max(1, min(3600, $threshold));
+    }
+
+    public function getStorageAnalysisAttachmentIndexBatchSize(string $assignmentMode): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $isIndividual = $assignmentMode === 'site';
+        $option = $isIndividual
+            ? 'monitoring_storage_analysis_individual_attachment_index_batch_size'
+            : 'monitoring_storage_analysis_shared_attachment_index_batch_size';
+        $default = $isIndividual ? 50 : 25;
+        $size = is_array($options) ? (int)($options[$option] ?? $default) : $default;
+
+        return $isIndividual ? max(25, min(100, $size)) : max(5, min(25, $size));
+    }
+
+    public function getStorageAnalysisIndexWriteBatchSize(string $assignmentMode): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $isIndividual = $assignmentMode === 'site';
+        $option = $isIndividual
+            ? 'monitoring_storage_analysis_individual_index_write_batch_size'
+            : 'monitoring_storage_analysis_shared_index_write_batch_size';
+        $default = $isIndividual ? 24 : 16;
+        $size = is_array($options) ? (int)($options[$option] ?? $default) : $default;
+
+        return $isIndividual ? max(8, min(32, $size)) : max(4, min(16, $size));
     }
 
     public function getStorageAnalysisMaxConcurrentRuns(): int {

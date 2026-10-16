@@ -1613,6 +1613,7 @@ class StorageAnalysisSchedulerService {
                 throw new \RuntimeException(__('Not enough PHP memory is available to start another analysis step.', 'rrze-multisite-manager'));
             }
             $batchesProcessed = 0;
+            $assignmentMode = $this->getSiteAssignmentMode($siteId);
             for ($batch = 0; $batch < self::MAX_BATCHES_PER_REQUEST && ($batch === 0 || microtime(true) < $deadline); $batch++) {
                 if ((float)($status['active_duration_seconds'] ?? 0) + (hrtime(true) - $started) / 1000000000 >= $this->getTimeoutSeconds()) {
                     $this->abortSingleProcessAnalysis($siteId, $phase, __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
@@ -1631,10 +1632,10 @@ class StorageAnalysisSchedulerService {
                     ]);
                 }
                 if ($phase === self::BASE_PHASE) {
-                    $result = $this->storageAnalysis->runBaseBatch($siteId);
+                    $result = $this->storageAnalysis->runBaseBatch($siteId, $assignmentMode);
                     $complete = ($result['status']['base']['status'] ?? '') === 'complete';
                 } elseif ($phase === self::ORPHAN_PHASE) {
-                    $result = $this->storageAnalysis->runOrphanBatch($siteId);
+                    $result = $this->storageAnalysis->runOrphanBatch($siteId, $assignmentMode);
                     $complete = ($result['status']['orphan']['status'] ?? '') === 'complete';
                 } elseif ($phase === self::METADATA_PHASE) {
                     $current = get_blog_option($siteId, self::OPTION_STATUS, []);

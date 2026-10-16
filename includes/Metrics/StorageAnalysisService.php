@@ -31,12 +31,12 @@ class StorageAnalysisService {
         return $this->metrics->getSiteStorageAnalysisProgressContext($siteId, $phase);
     }
 
-    public function runBaseBatch(int $siteId): array {
-        return $this->metrics->runSiteStorageAnalysisBatch($siteId);
+    public function runBaseBatch(int $siteId, string $assignmentMode = 'batch'): array {
+        return $this->metrics->runSiteStorageAnalysisBatch($siteId, false, $assignmentMode);
     }
 
-    public function runOrphanBatch(int $siteId): array {
-        return $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId);
+    public function runOrphanBatch(int $siteId, string $assignmentMode = 'batch'): array {
+        return $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId, false, $assignmentMode);
     }
 
     public function runMediaMetadataBatch(int $siteId, bool $restart): array {

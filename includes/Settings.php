@@ -1271,6 +1271,17 @@ class Settings {
             'storage_analysis_batch_media_threshold',
             'storage_analysis_batch_runtime_threshold_seconds',
             'storage_analysis_timeout_minutes',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Shared storage-analysis batches', 'rrze-multisite-manager'), [
+            'storage_analysis_shared_attachment_index_batch_size',
+            'storage_analysis_shared_index_write_batch_size',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Individual storage-analysis tasks', 'rrze-multisite-manager'), [
+            'storage_analysis_individual_attachment_index_batch_size',
+            'storage_analysis_individual_index_write_batch_size',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Storage-analysis capacity and display', 'rrze-multisite-manager'), [
+            'storage_analysis_max_concurrent_runs',
             'storage_analysis_orphan_files_limit',
             'storage_analysis_browser_max_megabytes',
         ]);
