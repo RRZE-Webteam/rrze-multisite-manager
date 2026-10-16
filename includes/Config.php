@@ -42,6 +42,7 @@ class Config {
                 'monitoring_hook' => 'rrze_msm_check_site_availability',
                 'storage_analysis_hook' => 'rrze_msm_run_site_storage_analysis',
                 'storage_analysis_batch_hook' => 'rrze_msm_run_site_storage_analysis_batch',
+                'storage_analysis_medium_batch_hook' => 'rrze_msm_run_site_storage_analysis_medium_batch',
                 'shortcode_block_analysis_hook' => 'rrze_msm_run_shortcode_block_analysis_site',
                 'shortcode_block_analysis_batch_hook' => 'rrze_msm_run_shortcode_block_analysis_batch',
                 'shortcode_block_analysis_timeout_minutes' => 60,
@@ -176,30 +177,82 @@ class Config {
                         'max' => 1048576,
                     ],
                     [
-                        'name' => 'storage_analysis_frequency',
-                        'label' => __('Storage analysis cycle per website', 'rrze-multisite-manager'),
-                        'desc' => __('How often the scheduled storage analysis is run for each website.', 'rrze-multisite-manager'),
+                        'name' => 'storage_analysis_small_batch_frequency',
+                        'label' => __('Small storage-analysis batch cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the central small storage-analysis batch is run.', 'rrze-multisite-manager'),
                         'type' => 'select',
                         'default' => 'twiceweekly',
                         'choices' => $schedulerFrequencyChoices,
                     ],
                     [
-                        'name' => 'storage_analysis_batch_media_threshold',
-                        'label' => __('Media threshold for shared storage analysis', 'rrze-multisite-manager'),
-                        'desc' => __('Websites with fewer media attachments than this value are initially assigned to the shared batch. Websites at or above it receive an individual task.', 'rrze-multisite-manager'),
+                        'name' => 'storage_analysis_medium_batch_frequency',
+                        'label' => __('Medium storage-analysis batch cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the central medium storage-analysis batch is run.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'twiceweekly',
+                        'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
+                        'name' => 'storage_analysis_individual_frequency',
+                        'label' => __('Individual storage-analysis cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often individually scheduled storage analyses are run.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'twiceweekly',
+                        'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
+                        'name' => 'storage_analysis_small_batch_media_threshold',
+                        'label' => __('Media threshold for small storage-analysis batches', 'rrze-multisite-manager'),
+                        'desc' => __('Websites at or below this number of media attachments are assigned to the small shared batch, unless their last successful active runtime exceeds its threshold.', 'rrze-multisite-manager'),
                         'type' => 'number',
-                        'default' => 100,
+                        'default' => 250,
                         'min' => 1,
                         'max' => 1000000,
                     ],
                     [
-                        'name' => 'storage_analysis_batch_runtime_threshold_seconds',
-                        'label' => __('Runtime threshold for shared storage analysis in seconds', 'rrze-multisite-manager'),
-                        'desc' => __('After a successful complete run, websites below this runtime are assigned to the shared batch; websites at or above it receive an individual task.', 'rrze-multisite-manager'),
+                        'name' => 'storage_analysis_medium_batch_media_threshold',
+                        'label' => __('Media threshold for medium storage-analysis batches', 'rrze-multisite-manager'),
+                        'desc' => __('Websites above the small-batch threshold and at or below this value are assigned to the medium shared batch, unless their last successful active runtime exceeds its threshold.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 1500,
+                        'min' => 1,
+                        'max' => 1000000,
+                    ],
+                    [
+                        'name' => 'storage_analysis_small_batch_runtime_threshold_seconds',
+                        'label' => __('Active runtime threshold for small storage-analysis batches in seconds', 'rrze-multisite-manager'),
+                        'desc' => __('A website above this active runtime is moved from the small to the medium shared batch after a successful complete run.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 5,
                         'min' => 1,
                         'max' => 3600,
+                    ],
+                    [
+                        'name' => 'storage_analysis_medium_batch_runtime_threshold_seconds',
+                        'label' => __('Active runtime threshold for medium storage-analysis batches in seconds', 'rrze-multisite-manager'),
+                        'desc' => __('A website above this active runtime is moved from the medium shared batch to an individual task after a successful complete run.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 120,
+                        'min' => 1,
+                        'max' => 3600,
+                    ],
+                    [
+                        'name' => 'storage_analysis_medium_attachment_index_batch_size',
+                        'label' => __('Media attachments per index step in medium storage analyses', 'rrze-multisite-manager'),
+                        'desc' => __('Allowed values: 10 to 50. Use the default of 35 for medium shared batches; larger values increase memory and database work per step.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 35,
+                        'min' => 10,
+                        'max' => 50,
+                    ],
+                    [
+                        'name' => 'storage_analysis_medium_index_write_batch_size',
+                        'label' => __('Index segments written per step in medium storage analyses', 'rrze-multisite-manager'),
+                        'desc' => __('Allowed values: 8 to 24. Use the default of 20 for medium shared batches; larger values increase database work per step.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 20,
+                        'min' => 8,
+                        'max' => 24,
                     ],
                     [
                         'name' => 'storage_analysis_shared_attachment_index_batch_size',
@@ -255,13 +308,31 @@ class Config {
                         'choices' => $schedulerFrequencyChoices,
                     ],
                     [
-                        'name' => 'storage_analysis_timeout_minutes',
-                        'label' => __('Maximum storage analysis runtime in minutes', 'rrze-multisite-manager'),
-                        'desc' => __('Limits the active processing time across short scheduled steps. Waiting for Cron or analysis capacity does not count towards this limit.', 'rrze-multisite-manager'),
+                        'name' => 'storage_analysis_small_batch_timeout_minutes',
+                        'label' => __('Maximum active runtime for small storage-analysis batches in minutes', 'rrze-multisite-manager'),
+                        'desc' => __('Limits active processing time across short scheduled steps for each individual website in the small batch, not for the entire batch. Waiting for Cron or analysis capacity does not count.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 60,
                         'min' => 1,
-                        'max' => 1440,
+                        'max' => 240,
+                    ],
+                    [
+                        'name' => 'storage_analysis_medium_batch_timeout_minutes',
+                        'label' => __('Maximum active runtime for medium storage-analysis batches in minutes', 'rrze-multisite-manager'),
+                        'desc' => __('Limits active processing time across short scheduled steps for each individual website in the medium batch, not for the entire batch. Waiting for Cron or analysis capacity does not count.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 180,
+                        'min' => 1,
+                        'max' => 480,
+                    ],
+                    [
+                        'name' => 'storage_analysis_individual_timeout_minutes',
+                        'label' => __('Maximum active runtime for individual storage analyses in minutes', 'rrze-multisite-manager'),
+                        'desc' => __('Limits active processing time across short scheduled steps for individual websites. Waiting for Cron or analysis capacity does not count. Values up to twelve hours are allowed.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 360,
+                        'min' => 1,
+                        'max' => 720,
                     ],
                     [
                         'name' => 'storage_analysis_orphan_files_limit',
@@ -408,6 +479,10 @@ class Config {
         return (string)($this->config['constants']['storage_analysis_batch_hook'] ?? 'rrze_msm_run_site_storage_analysis_batch');
     }
 
+    public function getStorageAnalysisMediumBatchHook(): string {
+        return (string)($this->config['constants']['storage_analysis_medium_batch_hook'] ?? 'rrze_msm_run_site_storage_analysis_medium_batch');
+    }
+
     public function getStorageAnalysisOrphanFilesLimit(): int {
         $options = get_site_option($this->getOptionName(), []);
         $limit = is_array($options) ? (int)($options['monitoring_storage_analysis_orphan_files_limit'] ?? 250) : 250;
@@ -415,42 +490,70 @@ class Config {
         return max(10, min(5000, $limit));
     }
 
-    public function getStorageAnalysisBatchMediaThreshold(): int {
+    public function getStorageAnalysisSmallBatchMediaThreshold(): int {
         $options = get_site_option($this->getOptionName(), []);
-        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_batch_media_threshold'] ?? 100) : 100;
+        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_small_batch_media_threshold'] ?? 250) : 250;
 
         return max(1, min(1000000, $threshold));
     }
 
-    public function getStorageAnalysisBatchRuntimeThresholdSeconds(): int {
+    public function getStorageAnalysisMediumBatchMediaThreshold(): int {
         $options = get_site_option($this->getOptionName(), []);
-        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_batch_runtime_threshold_seconds'] ?? 5) : 5;
+        $smallThreshold = $this->getStorageAnalysisSmallBatchMediaThreshold();
+        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_medium_batch_media_threshold'] ?? 1500) : 1500;
+
+        return max($smallThreshold, min(1000000, $threshold));
+    }
+
+    public function getStorageAnalysisSmallBatchRuntimeThresholdSeconds(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_small_batch_runtime_threshold_seconds'] ?? 5) : 5;
 
         return max(1, min(3600, $threshold));
+    }
+
+    public function getStorageAnalysisMediumBatchRuntimeThresholdSeconds(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $smallThreshold = $this->getStorageAnalysisSmallBatchRuntimeThresholdSeconds();
+        $threshold = is_array($options) ? (int)($options['monitoring_storage_analysis_medium_batch_runtime_threshold_seconds'] ?? 120) : 120;
+
+        return max($smallThreshold, min(3600, $threshold));
+    }
+
+    /** @deprecated Use getStorageAnalysisSmallBatchMediaThreshold(). */
+    public function getStorageAnalysisBatchMediaThreshold(): int {
+        return $this->getStorageAnalysisSmallBatchMediaThreshold();
+    }
+
+    /** @deprecated Use getStorageAnalysisSmallBatchRuntimeThresholdSeconds(). */
+    public function getStorageAnalysisBatchRuntimeThresholdSeconds(): int {
+        return $this->getStorageAnalysisSmallBatchRuntimeThresholdSeconds();
     }
 
     public function getStorageAnalysisAttachmentIndexBatchSize(string $assignmentMode): int {
         $options = get_site_option($this->getOptionName(), []);
         $isIndividual = $assignmentMode === 'site';
+        $isMedium = $assignmentMode === 'medium-batch';
         $option = $isIndividual
             ? 'monitoring_storage_analysis_individual_attachment_index_batch_size'
-            : 'monitoring_storage_analysis_shared_attachment_index_batch_size';
-        $default = $isIndividual ? 50 : 25;
+            : ($isMedium ? 'monitoring_storage_analysis_medium_attachment_index_batch_size' : 'monitoring_storage_analysis_shared_attachment_index_batch_size');
+        $default = $isIndividual ? 50 : ($isMedium ? 35 : 25);
         $size = is_array($options) ? (int)($options[$option] ?? $default) : $default;
 
-        return $isIndividual ? max(25, min(100, $size)) : max(5, min(25, $size));
+        return $isIndividual ? max(25, min(100, $size)) : ($isMedium ? max(10, min(50, $size)) : max(5, min(25, $size)));
     }
 
     public function getStorageAnalysisIndexWriteBatchSize(string $assignmentMode): int {
         $options = get_site_option($this->getOptionName(), []);
         $isIndividual = $assignmentMode === 'site';
+        $isMedium = $assignmentMode === 'medium-batch';
         $option = $isIndividual
             ? 'monitoring_storage_analysis_individual_index_write_batch_size'
-            : 'monitoring_storage_analysis_shared_index_write_batch_size';
-        $default = $isIndividual ? 24 : 16;
+            : ($isMedium ? 'monitoring_storage_analysis_medium_index_write_batch_size' : 'monitoring_storage_analysis_shared_index_write_batch_size');
+        $default = $isIndividual ? 24 : ($isMedium ? 20 : 16);
         $size = is_array($options) ? (int)($options[$option] ?? $default) : $default;
 
-        return $isIndividual ? max(8, min(32, $size)) : max(4, min(16, $size));
+        return $isIndividual ? max(8, min(32, $size)) : ($isMedium ? max(8, min(24, $size)) : max(4, min(16, $size)));
     }
 
     public function getStorageAnalysisMaxConcurrentRuns(): int {
@@ -495,9 +598,15 @@ class Config {
         return max(1, min(50, (int)($this->config['constants']['storage_analysis_content_usage_matches_limit'] ?? 10)));
     }
 
-    public function getStorageAnalysisTimeoutSeconds(): int {
+    public function getStorageAnalysisTimeoutSeconds(string $assignmentMode = 'site'): int {
         $options = get_site_option($this->getOptionName(), []);
-        $default = (int)($this->config['constants']['storage_analysis_timeout_minutes'] ?? 60);
+        $isSmall = $assignmentMode === 'small-batch';
+        $isMedium = $assignmentMode === 'medium-batch';
+        $option = $isSmall
+            ? 'monitoring_storage_analysis_small_batch_timeout_minutes'
+            : ($isMedium ? 'monitoring_storage_analysis_medium_batch_timeout_minutes' : 'monitoring_storage_analysis_individual_timeout_minutes');
+        $default = $isSmall ? 60 : ($isMedium ? 180 : 360);
+        $maximum = $isSmall ? 240 : ($isMedium ? 480 : 720);
 
         if (!is_array($options)) {
             return max(MINUTE_IN_SECONDS, $default * MINUTE_IN_SECONDS);
@@ -505,7 +614,7 @@ class Config {
 
         return max(
             MINUTE_IN_SECONDS,
-            min(1440 * MINUTE_IN_SECONDS, (int)($options['monitoring_storage_analysis_timeout_minutes'] ?? $default) * MINUTE_IN_SECONDS)
+            min($maximum * MINUTE_IN_SECONDS, (int)($options[$option] ?? ($options['monitoring_storage_analysis_timeout_minutes'] ?? $default)) * MINUTE_IN_SECONDS)
         );
     }
 

@@ -30,9 +30,12 @@ class StorageAnalysisSchedulerService {
     protected const SCHEDULE_INITIALIZATION_STATE_OPTION = 'rrze_msm_storage_analysis_schedule_initialization_state';
     protected const SCHEDULE_INITIALIZATION_LOCK_OPTION = 'rrze_msm_storage_analysis_schedule_initialization_lock';
     protected const BATCH_SITE_IDS_OPTION = 'rrze_msm_storage_analysis_batch_site_ids';
+    protected const MEDIUM_BATCH_SITE_IDS_OPTION = 'rrze_msm_storage_analysis_medium_batch_site_ids';
     protected const ASSIGNMENTS_OPTION = 'rrze_msm_storage_analysis_assignments';
     protected const BATCH_LAST_SITE_ID_OPTION = 'rrze_msm_storage_analysis_batch_last_site_id';
+    protected const MEDIUM_BATCH_LAST_SITE_ID_OPTION = 'rrze_msm_storage_analysis_medium_batch_last_site_id';
     protected const BATCH_LOCK_OPTION = 'rrze_msm_storage_analysis_batch_lock';
+    protected const MEDIUM_BATCH_LOCK_OPTION = 'rrze_msm_storage_analysis_medium_batch_lock';
     protected const REMOVED_SITE_IDS_OPTION = 'rrze_msm_storage_analysis_removed_site_ids';
     protected const FREQUENCY_RESCHEDULE_HOOK = 'rrze_msm_reschedule_storage_analysis_frequency';
     protected const TASK_REMOVAL_HOOK = 'rrze_msm_remove_storage_analysis_tasks';
@@ -41,6 +44,7 @@ class StorageAnalysisSchedulerService {
     protected const MIGRATION_STATE_OPTION = 'rrze_msm_storage_analysis_migration_state';
     protected const MIGRATION_LOCK_OPTION = 'rrze_msm_storage_analysis_migration_lock';
     protected const BATCH_CONTINUATION_ARGS = ['rrze_msm_storage_analysis_batch' => true];
+    protected const MEDIUM_BATCH_CONTINUATION_ARGS = ['rrze_msm_storage_analysis_medium_batch' => true];
     protected const LOCK_OPTION_PREFIX = 'rrze_msm_storage_analysis_lock_';
     protected const NETWORK_RUN_SLOTS_OPTION = 'rrze_msm_storage_analysis_run_slots';
     protected const NETWORK_RUN_SLOTS_LOCK_OPTION = 'rrze_msm_storage_analysis_run_slots_lock';
@@ -67,6 +71,7 @@ class StorageAnalysisSchedulerService {
     public function onLoaded(): void {
         add_action($this->config->getStorageAnalysisHook(), [$this, 'runScheduledAnalysis'], 10, 2);
         add_action($this->config->getStorageAnalysisBatchHook(), [$this, 'runBatchScheduledAnalysis'], 10, 2);
+        add_action($this->config->getStorageAnalysisMediumBatchHook(), [$this, 'runMediumBatchScheduledAnalysis'], 10, 2);
         add_action(self::CONTINUATION_HOOK, [$this, 'runAnalysisContinuation']);
         add_action(self::FREQUENCY_RESCHEDULE_HOOK, [$this, 'runFrequencyRescheduleBatch']);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
@@ -186,7 +191,7 @@ class StorageAnalysisSchedulerService {
         return (bool)$this->inBatchCronContext(function (): bool {
             $hook = $this->config->getStorageAnalysisBatchHook();
             wp_clear_scheduled_hook($hook);
-            $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey(), $hook);
+            $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey('small-batch'), $hook);
             if ($scheduled) {
                 LoggingService::info($this->config, 'RRZE-MSM: Shared storage-analysis batch started early.', ['cron_site_id' => $this->getBatchCronSiteId(), 'batch_site_count' => count($this->getBatchSiteIds())]);
             }
@@ -208,10 +213,15 @@ class StorageAnalysisSchedulerService {
         if (empty($state)) {
             $state = ['phase' => 'remove', 'offset' => 0, 'total' => (int)get_sites(['count' => true]), 'scheduled' => 0];
             update_site_option(self::MIGRATION_LOCK_OPTION, 1);
-            $this->inBatchCronContext(fn(): bool => wp_clear_scheduled_hook($this->config->getStorageAnalysisBatchHook()));
+            $this->inBatchCronContext(function (): void {
+                wp_clear_scheduled_hook($this->config->getStorageAnalysisBatchHook());
+                wp_clear_scheduled_hook($this->config->getStorageAnalysisMediumBatchHook());
+            });
             delete_site_option(self::BATCH_SITE_IDS_OPTION);
+            delete_site_option(self::MEDIUM_BATCH_SITE_IDS_OPTION);
             delete_site_option(self::ASSIGNMENTS_OPTION);
             delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
+            delete_site_option(self::MEDIUM_BATCH_LAST_SITE_ID_OPTION);
             LoggingService::info($this->config, 'RRZE-MSM: Storage-analysis schedule migration started.', ['phase' => 'remove', 'total_sites' => $state['total'], 'batch_size' => $batchSize]);
         }
 
@@ -258,19 +268,19 @@ class StorageAnalysisSchedulerService {
             && empty($status['last_was_aborted'])
             && (array_key_exists('last_duration_precise_seconds', $status) || array_key_exists('last_duration_seconds', $status));
         $mode = $hasCompletedRun
-            ? $this->getCompletedRunAssignmentMode((float)($status['last_duration_precise_seconds'] ?? $status['last_duration_seconds']))
+            ? $this->getCompletedRunAssignmentMode((float)($status['last_duration_precise_seconds'] ?? $status['last_duration_seconds']), $this->getSiteAttachmentCount($siteId))
             : $this->getInitialAssignmentMode($siteId);
 
-        if ($mode === 'batch') {
-            $siteIds = $this->getBatchSiteIds();
+        if ($this->isBatchAssignmentMode($mode)) {
+            $siteIds = $this->getBatchSiteIds($mode);
             $siteIds[] = $siteId;
-            update_site_option(self::BATCH_SITE_IDS_OPTION, array_values(array_unique(array_map('absint', $siteIds))));
-            if ($this->scheduleBatchRecurringAt(time() + MINUTE_IN_SECONDS)) {
-                $this->setSiteAssignment($siteId, 'batch');
-                $this->logSiteInfo('Speicherplatzanalyse-Migration: Sammelbatch zugeordnet', $siteId, 'batch', ['used_completed_runtime' => $hasCompletedRun]);
+            $this->updateBatchSiteIds($mode, $siteIds);
+            if ($this->scheduleBatchRecurringAt(time() + MINUTE_IN_SECONDS, $mode)) {
+                $this->setSiteAssignment($siteId, $mode);
+                $this->logSiteInfo('Speicherplatzanalyse-Migration: Sammelbatch zugeordnet', $siteId, $mode, ['used_completed_runtime' => $hasCompletedRun]);
                 return true;
             }
-            $this->removeBatchSite($siteId);
+            $this->removeBatchSite($siteId, $mode);
             return false;
         }
 
@@ -289,23 +299,43 @@ class StorageAnalysisSchedulerService {
             return 'site';
         }
 
+        return $this->getAssignmentModeForValues($this->getSiteAttachmentCount($siteId), null);
+    }
+
+    protected function getSiteAttachmentCount(int $siteId): int {
         switch_to_blog($siteId);
 
         try {
             $counts = wp_count_posts('attachment');
-            $mediaCount = is_object($counts) ? (int)($counts->inherit ?? 0) : 0;
+            return is_object($counts) ? (int)($counts->inherit ?? 0) : 0;
         } finally {
             restore_current_blog();
         }
-
-        return $mediaCount < $this->config->getStorageAnalysisBatchMediaThreshold() ? 'batch' : 'site';
     }
 
     /**
      * Call only after a successful complete run with its precise elapsed time.
      */
-    public function getCompletedRunAssignmentMode(float $durationSeconds): string {
-        return $durationSeconds < $this->config->getStorageAnalysisBatchRuntimeThresholdSeconds() ? 'batch' : 'site';
+    public function getCompletedRunAssignmentMode(float $durationSeconds, ?int $mediaCount = null): string {
+        return $this->getAssignmentModeForValues($mediaCount ?? 0, $durationSeconds);
+    }
+
+    /** @return 'small-batch'|'medium-batch'|'site' */
+    protected function getAssignmentModeForValues(int $mediaCount, ?float $durationSeconds): string {
+        $smallMedia = $this->config->getStorageAnalysisSmallBatchMediaThreshold();
+        $mediumMedia = $this->config->getStorageAnalysisMediumBatchMediaThreshold();
+        $smallRuntime = $this->config->getStorageAnalysisSmallBatchRuntimeThresholdSeconds();
+        $mediumRuntime = $this->config->getStorageAnalysisMediumBatchRuntimeThresholdSeconds();
+
+        if ($mediaCount > $mediumMedia || ($durationSeconds !== null && $durationSeconds > $mediumRuntime)) {
+            return 'site';
+        }
+
+        if ($mediaCount > $smallMedia || ($durationSeconds !== null && $durationSeconds > $smallRuntime)) {
+            return 'medium-batch';
+        }
+
+        return 'small-batch';
     }
 
     public function syncRecurringSchedules(): void {
@@ -558,7 +588,8 @@ class StorageAnalysisSchedulerService {
                 $siteId <= 0
                 || (
                     $this->getNextRecurringScheduledTimestamp($siteId) <= 0
-                    && !in_array($siteId, $this->getBatchSiteIds(), true)
+                    && !in_array($siteId, $this->getBatchSiteIds('small-batch'), true)
+                    && !in_array($siteId, $this->getBatchSiteIds('medium-batch'), true)
                     && !isset($assignments[$siteId])
                 )
             ) {
@@ -731,7 +762,7 @@ class StorageAnalysisSchedulerService {
                         continue;
                     }
 
-                    foreach ([$config->getStorageAnalysisHook(), $config->getStorageAnalysisBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK, self::TASK_REMOVAL_HOOK, self::CONTINUATION_HOOK, StorageAnalysisResourceService::MAINTENANCE_HOOK] as $hook) {
+                    foreach ([$config->getStorageAnalysisHook(), $config->getStorageAnalysisBatchHook(), $config->getStorageAnalysisMediumBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK, self::TASK_REMOVAL_HOOK, self::CONTINUATION_HOOK, StorageAnalysisResourceService::MAINTENANCE_HOOK] as $hook) {
                         if (empty($events[$hook])) {
                             continue;
                         }
@@ -762,9 +793,12 @@ class StorageAnalysisSchedulerService {
         delete_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION);
         delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         delete_site_option(self::BATCH_SITE_IDS_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_SITE_IDS_OPTION);
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_LAST_SITE_ID_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_LOCK_OPTION);
         delete_site_option(self::CONTINUATION_QUEUE_OPTION);
         delete_site_option(self::NETWORK_RUN_SLOTS_OPTION);
         delete_site_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
@@ -827,9 +861,12 @@ class StorageAnalysisSchedulerService {
         delete_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION);
         delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         delete_site_option(self::BATCH_SITE_IDS_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_SITE_IDS_OPTION);
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_LAST_SITE_ID_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_LOCK_OPTION);
         delete_site_option(self::CONTINUATION_QUEUE_OPTION);
         delete_site_option(self::MIGRATION_STATE_OPTION);
         delete_site_option(self::MIGRATION_LOCK_OPTION);
@@ -841,7 +878,7 @@ class StorageAnalysisSchedulerService {
         $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
-            foreach ([$this->config->getStorageAnalysisHook(), $this->config->getStorageAnalysisBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK, self::CONTINUATION_HOOK, StorageAnalysisResourceService::MAINTENANCE_HOOK] as $hook) {
+            foreach ([$this->config->getStorageAnalysisHook(), $this->config->getStorageAnalysisBatchHook(), $this->config->getStorageAnalysisMediumBatchHook(), self::FREQUENCY_RESCHEDULE_HOOK, self::CONTINUATION_HOOK, StorageAnalysisResourceService::MAINTENANCE_HOOK] as $hook) {
                 if (empty($events[$hook])) {
                     continue;
                 }
@@ -871,13 +908,13 @@ class StorageAnalysisSchedulerService {
 
         $mode = $this->getSiteAssignmentMode($siteId);
 
-        if ($mode === 'batch') {
+        if ($this->isBatchAssignmentMode($mode)) {
             // A failed website can be retried without restarting the shared pass.
             $scheduleStatus = $this->getStatus($siteId);
             if (empty($scheduleStatus['last_was_aborted']) && empty($scheduleStatus['last_error'])) {
                 return false;
             }
-            $scheduled = $this->scheduleTargetedBatchSite($siteId, time() + 5);
+            $scheduled = $this->scheduleTargetedBatchSite($siteId, time() + 5, $mode);
         } else {
             $this->unscheduleSite($siteId);
             $scheduled = $mode === 'site'
@@ -896,9 +933,9 @@ class StorageAnalysisSchedulerService {
         return true;
     }
 
-    protected function scheduleTargetedBatchSite(int $siteId, int $timestamp): bool {
-        return (bool)$this->inBatchCronContext(function () use ($siteId, $timestamp): bool {
-            $hook = $this->config->getStorageAnalysisBatchHook();
+    protected function scheduleTargetedBatchSite(int $siteId, int $timestamp, string $mode = 'small-batch'): bool {
+        return (bool)$this->inBatchCronContext(function () use ($siteId, $timestamp, $mode): bool {
+            $hook = $this->getBatchHook($mode);
             $args = [$siteId, true];
             $existingTimestamp = (int)wp_next_scheduled($hook, $args);
 
@@ -975,7 +1012,7 @@ class StorageAnalysisSchedulerService {
             return;
         }
 
-        $isBatchSite = $this->getSiteAssignmentMode($siteId) === 'batch';
+        $isBatchSite = $this->isBatchAssignmentMode($this->getSiteAssignmentMode($siteId));
 
         if ($fromBatch !== $isBatchSite) {
             if (!$fromBatch && $isBatchSite) {
@@ -993,7 +1030,7 @@ class StorageAnalysisSchedulerService {
         if (!$this->acquireSiteLock($siteId)) {
             $this->recordRunWait($siteId, __('Another storage analysis request is already running for this website.', 'rrze-multisite-manager'));
             if ($fromBatch) {
-                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS);
+                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $this->getSiteAssignmentMode($siteId));
             } else {
                 $this->scheduleIndividualRetry($siteId);
             }
@@ -1005,7 +1042,7 @@ class StorageAnalysisSchedulerService {
             $this->recordRunWait($siteId, __('All storage analysis execution slots are occupied.', 'rrze-multisite-manager'));
 
             if ($fromBatch) {
-                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS);
+                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $this->getSiteAssignmentMode($siteId));
             } else {
                 $this->scheduleIndividualRetry($siteId);
             }
@@ -1024,7 +1061,7 @@ class StorageAnalysisSchedulerService {
         } catch (StorageAnalysisBusyException $exception) {
             $this->recordRunWait($siteId, $exception->getMessage());
             if ($fromBatch) {
-                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS);
+                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $this->getSiteAssignmentMode($siteId));
             } else {
                 $this->scheduleIndividualRetry($siteId);
             }
@@ -1099,7 +1136,7 @@ class StorageAnalysisSchedulerService {
             $this->runScheduledAnalysis(
                 $siteId,
                 self::SCHEDULED_PHASE,
-                $this->getSiteAssignmentMode($siteId) === 'batch'
+                $this->isBatchAssignmentMode($this->getSiteAssignmentMode($siteId))
             );
             $status = get_blog_option($siteId, self::OPTION_STATUS, []);
             $keepQueued = !empty($status['is_running']) && (string)($status['run_id'] ?? '') === $runId;
@@ -1108,9 +1145,12 @@ class StorageAnalysisSchedulerService {
                 $this->removeAnalysisContinuation($siteId, $runId);
             }
             $this->scheduleContinuationQueueEvent();
-            if ((int)get_site_option(self::BATCH_LAST_SITE_ID_OPTION, 0) > 0
-                && empty(get_site_option(self::CONTINUATION_QUEUE_OPTION, []))) {
-                $this->scheduleBatchContinuation(time() + 1);
+            if (empty(get_site_option(self::CONTINUATION_QUEUE_OPTION, []))) {
+                foreach (['small-batch', 'medium-batch'] as $mode) {
+                    if ((int)get_site_option($this->getBatchLastSiteOptionName($mode), 0) > 0) {
+                        $this->scheduleBatchContinuation(time() + 1, $mode);
+                    }
+                }
             }
         }
     }
@@ -1149,10 +1189,11 @@ class StorageAnalysisSchedulerService {
         }
         if (!$this->acquireNetworkRunSlotsLock()) {
             // A brief queue-lock collision must not discard a website's saved progress.
-            if ($this->getSiteAssignmentMode($siteId) === 'batch') {
-                $scheduled = (bool)$this->inBatchCronContext(function () use ($siteId): bool {
+            $assignmentMode = $this->getSiteAssignmentMode($siteId);
+            if ($this->isBatchAssignmentMode($assignmentMode)) {
+                $scheduled = (bool)$this->inBatchCronContext(function () use ($siteId, $assignmentMode): bool {
                     $args = [$siteId, true];
-                    $hook = $this->config->getStorageAnalysisBatchHook();
+                    $hook = $this->getBatchHook($assignmentMode);
                     return (bool)wp_next_scheduled($hook, $args) || (bool)wp_schedule_single_event(time() + MINUTE_IN_SECONDS, $hook, $args);
                 });
 
@@ -1231,29 +1272,38 @@ class StorageAnalysisSchedulerService {
      * starts each pass; single events continue it in short intervals.
      */
     public function runBatchScheduledAnalysis(...$args): void {
+        $this->runScheduledBatchAnalysisForMode('small-batch', $args);
+    }
+
+    public function runMediumBatchScheduledAnalysis(...$args): void {
+        $this->runScheduledBatchAnalysisForMode('medium-batch', $args);
+    }
+
+    /** @param array<int, mixed> $args */
+    protected function runScheduledBatchAnalysisForMode(string $batchMode, array $args): void {
         if (MetricsService::isFullDataCleanupInProgress() || $this->isScheduleMigrationInProgress() || $this->isTaskRemovalInProgress()) {
             return;
         }
 
         if (get_current_blog_id() !== $this->getBatchCronSiteId()) {
             // A batch event must never run from a subsite's Cron table.
-            wp_clear_scheduled_hook($this->config->getStorageAnalysisBatchHook());
+            wp_clear_scheduled_hook($this->getBatchHook($batchMode));
             return;
         }
 
-        $hook = $this->config->getStorageAnalysisBatchHook();
+        $hook = $this->getBatchHook($batchMode);
 
         if ((int)wp_next_scheduled($hook) <= 0) {
             // A removed recurring task must not be revived by a stale continuation.
             return;
         }
 
-        $lockToken = $this->acquireBatchLock();
+        $lockToken = $this->acquireBatchLock($batchMode);
 
         if ($lockToken === '') {
             foreach ($args as $arg) {
                 if (is_int($arg) && $arg > 0) {
-                    $this->scheduleTargetedBatchSite($arg, time() + MINUTE_IN_SECONDS);
+                    $this->scheduleTargetedBatchSite($arg, time() + MINUTE_IN_SECONDS, $batchMode);
                     break;
                 }
             }
@@ -1270,15 +1320,15 @@ class StorageAnalysisSchedulerService {
         );
 
         try {
-            $siteIds = $this->getBatchSiteIds();
+            $siteIds = $this->getBatchSiteIds($batchMode);
 
             if (empty($siteIds)) {
-                delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
+                delete_site_option($this->getBatchLastSiteOptionName($batchMode));
                 wp_clear_scheduled_hook($hook);
                 return;
             }
 
-            $lastSiteId = max(0, (int)get_site_option(self::BATCH_LAST_SITE_ID_OPTION, 0));
+            $lastSiteId = max(0, (int)get_site_option($this->getBatchLastSiteOptionName($batchMode), 0));
             $isContinuation = in_array(true, $args, true);
             $requestedSiteId = 0;
 
@@ -1297,7 +1347,7 @@ class StorageAnalysisSchedulerService {
             if (!$isTargetedSiteRun && !empty(get_site_option(self::CONTINUATION_QUEUE_OPTION, []))) {
                 $this->scheduleContinuationQueueEvent();
                 if ($lastSiteId === 0) {
-                    $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS);
+                    $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $batchMode);
                 }
                 return;
             }
@@ -1306,14 +1356,14 @@ class StorageAnalysisSchedulerService {
                 return;
             }
 
-            if (!$isContinuation && (int)wp_next_scheduled($hook, self::BATCH_CONTINUATION_ARGS) > 0) {
+            if (!$isContinuation && (int)wp_next_scheduled($hook, $this->getBatchContinuationArgs($batchMode)) > 0) {
                 return;
             }
 
             $siteId = $isTargetedSiteRun ? $requestedSiteId : $this->getNextBatchSiteId($siteIds, $lastSiteId);
 
             if ($siteId <= 0) {
-                delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
+                delete_site_option($this->getBatchLastSiteOptionName($batchMode));
 
                 if ($isContinuation) {
                     return;
@@ -1325,7 +1375,7 @@ class StorageAnalysisSchedulerService {
             $processedSiteId = $siteId;
 
             if ($this->isSiteEligible($siteId)) {
-                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch verarbeitet Site', $siteId, 'batch', ['continuation' => $isContinuation, 'batch_site_count' => count($siteIds)]);
+                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch verarbeitet Site', $siteId, $batchMode, ['continuation' => $isContinuation, 'batch_site_count' => count($siteIds)]);
                 try {
                     $this->runScheduledAnalysis($siteId, self::SCHEDULED_PHASE, true);
                 } catch (\Throwable $exception) {
@@ -1335,26 +1385,26 @@ class StorageAnalysisSchedulerService {
                 $this->deactivateIneligibleSite($siteId);
             }
 
-            $siteIds = $this->getBatchSiteIds();
+            $siteIds = $this->getBatchSiteIds($batchMode);
 
             if ($isTargetedSiteRun) {
                 return;
             }
 
-            update_site_option(self::BATCH_LAST_SITE_ID_OPTION, $siteId);
+            update_site_option($this->getBatchLastSiteOptionName($batchMode), $siteId);
 
             if (!empty(get_site_option(self::CONTINUATION_QUEUE_OPTION, []))) {
                 return;
             }
 
             if ($this->getNextBatchSiteId($siteIds, $siteId) <= 0) {
-                delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
+                delete_site_option($this->getBatchLastSiteOptionName($batchMode));
                 return;
             }
 
-            $this->scheduleBatchContinuation(time() + 1);
+            $this->scheduleBatchContinuation(time() + 1, $batchMode);
         } finally {
-            $this->releaseBatchLock($lockToken);
+            $this->releaseBatchLock($lockToken, $batchMode);
             $context = [
                 'cron_site_id' => $this->getBatchCronSiteId(),
                 'continuation' => $isContinuation,
@@ -1362,16 +1412,41 @@ class StorageAnalysisSchedulerService {
             ];
 
             if ($processedSiteId > 0) {
-                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch beendet', $processedSiteId, 'batch', $context);
+                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch beendet', $processedSiteId, $batchMode, $context);
             } else {
                 LoggingService::info($this->config, 'RRZE-MSM: Speicherplatzanalyse-Sammelbatch beendet.', $context);
             }
         }
     }
 
+    protected function isBatchAssignmentMode(string $mode): bool {
+        return in_array($mode, ['batch', 'small-batch', 'medium-batch'], true);
+    }
+
+    protected function getBatchOptionName(string $mode): string {
+        return $mode === 'medium-batch' ? self::MEDIUM_BATCH_SITE_IDS_OPTION : self::BATCH_SITE_IDS_OPTION;
+    }
+
+    protected function getBatchLastSiteOptionName(string $mode): string {
+        return $mode === 'medium-batch' ? self::MEDIUM_BATCH_LAST_SITE_ID_OPTION : self::BATCH_LAST_SITE_ID_OPTION;
+    }
+
+    protected function getBatchLockOptionName(string $mode): string {
+        return $mode === 'medium-batch' ? self::MEDIUM_BATCH_LOCK_OPTION : self::BATCH_LOCK_OPTION;
+    }
+
+    protected function getBatchHook(string $mode): string {
+        return $mode === 'medium-batch' ? $this->config->getStorageAnalysisMediumBatchHook() : $this->config->getStorageAnalysisBatchHook();
+    }
+
+    /** @return array<string, bool> */
+    protected function getBatchContinuationArgs(string $mode): array {
+        return $mode === 'medium-batch' ? self::MEDIUM_BATCH_CONTINUATION_ARGS : self::BATCH_CONTINUATION_ARGS;
+    }
+
     /** @return array<int, int> */
-    protected function getBatchSiteIds(): array {
-        $storedSiteIds = get_site_option(self::BATCH_SITE_IDS_OPTION, []);
+    protected function getBatchSiteIds(string $mode = 'small-batch'): array {
+        $storedSiteIds = get_site_option($this->getBatchOptionName($mode), []);
         $siteIds = is_array($storedSiteIds) ? array_filter(array_map('absint', $storedSiteIds)) : [];
         $siteIds = array_values(array_unique($siteIds));
         sort($siteIds, SORT_NUMERIC);
@@ -1379,17 +1454,26 @@ class StorageAnalysisSchedulerService {
         return $siteIds;
     }
 
-    /** @return 'batch'|'site'|'unassigned' */
+    /** @param array<int, int> $siteIds */
+    protected function updateBatchSiteIds(string $mode, array $siteIds): void {
+        update_site_option($this->getBatchOptionName($mode), array_values(array_unique(array_filter(array_map('absint', $siteIds)))));
+    }
+
+    /** @return 'small-batch'|'medium-batch'|'site'|'unassigned' */
     public function getSiteAssignmentMode(int $siteId): string {
         if ($siteId <= 0) {
             return 'unassigned';
         }
 
-        if (in_array($siteId, $this->getBatchSiteIds(), true)) {
-            $batchTimestamp = (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getStorageAnalysisBatchHook()));
+        foreach (['small-batch', 'medium-batch'] as $mode) {
+            if (!in_array($siteId, $this->getBatchSiteIds($mode), true)) {
+                continue;
+            }
+
+            $batchTimestamp = (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($mode)));
 
             if ($batchTimestamp > 0) {
-                return 'batch';
+                return $mode;
             }
         }
 
@@ -1399,7 +1483,7 @@ class StorageAnalysisSchedulerService {
     /**
      * Writes a site-specific information log entry in one consistent form.
      *
-     * @param 'batch'|'site'|'unassigned' $assignmentMode
+     * @param 'small-batch'|'medium-batch'|'site'|'unassigned' $assignmentMode
      * @param array<string, mixed>         $context
      */
     protected function logSiteInfo(string $label, int $siteId, string $assignmentMode = 'unassigned', array $context = []): void {
@@ -1407,7 +1491,7 @@ class StorageAnalysisSchedulerService {
             $assignmentMode = $this->getSiteAssignmentMode($siteId);
         }
 
-        $assignment = $assignmentMode === 'batch' ? 'Batch' : 'Single';
+        $assignment = $assignmentMode === 'small-batch' ? 'Small batch' : ($assignmentMode === 'medium-batch' ? 'Medium batch' : 'Single');
         $context = array_merge($context, [
             'site_id' => $siteId,
             'assignment' => $assignment,
@@ -1430,7 +1514,7 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function setSiteAssignment(int $siteId, string $mode): void {
-        if ($siteId <= 0 || !in_array($mode, ['batch', 'site'], true)) {
+        if ($siteId <= 0 || !in_array($mode, ['small-batch', 'medium-batch', 'site'], true)) {
             return;
         }
 
@@ -1451,21 +1535,27 @@ class StorageAnalysisSchedulerService {
         update_site_option(self::ASSIGNMENTS_OPTION, $assignments);
     }
 
-    protected function removeBatchSite(int $siteId): void {
-        $siteIds = $this->getBatchSiteIds();
+    protected function removeBatchSite(int $siteId, ?string $onlyMode = null): void {
+        foreach ($onlyMode !== null ? [$onlyMode] : ['small-batch', 'medium-batch'] as $mode) {
+            $this->removeBatchSiteFromMode($siteId, $mode);
+        }
+    }
+
+    protected function removeBatchSiteFromMode(int $siteId, string $mode): void {
+        $siteIds = $this->getBatchSiteIds($mode);
 
         if (!in_array($siteId, $siteIds, true)) {
             return;
         }
 
         $siteIds = array_values(array_diff($siteIds, [$siteId]));
-        update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
+        $this->updateBatchSiteIds($mode, $siteIds);
 
         if (empty($siteIds)) {
-            $this->inBatchCronContext(function (): void {
-                wp_clear_scheduled_hook($this->config->getStorageAnalysisBatchHook());
+            $this->inBatchCronContext(function () use ($mode): void {
+                wp_clear_scheduled_hook($this->getBatchHook($mode));
             });
-            delete_site_option(self::BATCH_LAST_SITE_ID_OPTION);
+            delete_site_option($this->getBatchLastSiteOptionName($mode));
         }
     }
 
@@ -1500,19 +1590,19 @@ class StorageAnalysisSchedulerService {
         }
     }
 
-    protected function scheduleBatchRecurringAt(int $timestamp): bool {
-        if (empty($this->getBatchSiteIds())) {
+    protected function scheduleBatchRecurringAt(int $timestamp, string $mode = 'small-batch'): bool {
+        if (empty($this->getBatchSiteIds($mode))) {
             return false;
         }
 
-        return (bool)$this->inBatchCronContext(function () use ($timestamp): bool {
-            $hook = $this->config->getStorageAnalysisBatchHook();
+        return (bool)$this->inBatchCronContext(function () use ($timestamp, $mode): bool {
+            $hook = $this->getBatchHook($mode);
 
             if ((int)wp_next_scheduled($hook) > 0) {
                 return true;
             }
 
-            $scheduled = (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $hook);
+            $scheduled = (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey($mode), $hook);
 
             if ($scheduled) {
                 LoggingService::info(
@@ -1521,8 +1611,9 @@ class StorageAnalysisSchedulerService {
                     [
                         'cron_site_id' => $this->getBatchCronSiteId(),
                         'next_run_timestamp' => $timestamp,
-                        'schedule' => $this->getScheduleKey(),
-                        'batch_site_count' => count($this->getBatchSiteIds()),
+                        'schedule' => $this->getScheduleKey($mode),
+                        'batch_mode' => $mode,
+                        'batch_site_count' => count($this->getBatchSiteIds($mode)),
                     ]
                 );
             }
@@ -1531,38 +1622,41 @@ class StorageAnalysisSchedulerService {
         });
     }
 
-    protected function scheduleBatchContinuation(int $timestamp): void {
+    protected function scheduleBatchContinuation(int $timestamp, string $mode = 'small-batch'): void {
         if ($this->isTaskRemovalInProgress()) {
             return;
         }
 
-        $this->inBatchCronContext(function () use ($timestamp): void {
-            $hook = $this->config->getStorageAnalysisBatchHook();
+        $this->inBatchCronContext(function () use ($timestamp, $mode): void {
+            $hook = $this->getBatchHook($mode);
+            $args = $this->getBatchContinuationArgs($mode);
 
-            if ((int)wp_next_scheduled($hook) > 0 && (int)wp_next_scheduled($hook, self::BATCH_CONTINUATION_ARGS) <= 0) {
-                wp_schedule_single_event($timestamp, $hook, self::BATCH_CONTINUATION_ARGS);
+            if ((int)wp_next_scheduled($hook) > 0 && (int)wp_next_scheduled($hook, $args) <= 0) {
+                wp_schedule_single_event($timestamp, $hook, $args);
             }
         });
     }
 
-    protected function acquireBatchLock(): string {
-        $existing = get_site_option(self::BATCH_LOCK_OPTION, []);
+    protected function acquireBatchLock(string $mode = 'small-batch'): string {
+        $option = $this->getBatchLockOptionName($mode);
+        $existing = get_site_option($option, []);
         $startedAt = is_array($existing) ? (int)($existing['started_at'] ?? 0) : (int)$existing;
 
         if ($startedAt > 0 && (time() - $startedAt) > self::REQUEST_LOCK_TTL) {
-            delete_site_option(self::BATCH_LOCK_OPTION);
+            delete_site_option($option);
         }
 
         $token = wp_generate_uuid4();
 
-        return add_site_option(self::BATCH_LOCK_OPTION, ['started_at' => time(), 'token' => $token]) ? $token : '';
+        return add_site_option($option, ['started_at' => time(), 'token' => $token]) ? $token : '';
     }
 
-    protected function releaseBatchLock(string $token): void {
-        $existing = get_site_option(self::BATCH_LOCK_OPTION, []);
+    protected function releaseBatchLock(string $token, string $mode = 'small-batch'): void {
+        $option = $this->getBatchLockOptionName($mode);
+        $existing = get_site_option($option, []);
 
         if (is_array($existing) && ($existing['token'] ?? '') === $token) {
-            delete_site_option(self::BATCH_LOCK_OPTION);
+            delete_site_option($option);
         }
     }
 
@@ -1574,6 +1668,7 @@ class StorageAnalysisSchedulerService {
         $started = hrtime(true);
         $deadline = $this->getAnalysisRequestDeadline();
         $phase = (string)($status['run_phase'] ?? self::BASE_PHASE);
+        $assignmentMode = $this->getSiteAssignmentMode($siteId);
 
         if (empty($status['is_running']) || empty($status['run_id'])) {
             $this->storageAnalysis->clearProcessStates($siteId);
@@ -1593,7 +1688,7 @@ class StorageAnalysisSchedulerService {
             'phase' => $phase,
         ]);
         $startedAt = (int)strtotime((string)$status['last_started_at'] . ' UTC');
-        if ((float)($status['active_duration_seconds'] ?? 0) >= $this->getTimeoutSeconds() || ($startedAt > 0 && time() - $startedAt >= 7 * DAY_IN_SECONDS)) {
+        if ((float)($status['active_duration_seconds'] ?? 0) >= $this->getTimeoutSeconds($assignmentMode) || ($startedAt > 0 && time() - $startedAt >= 7 * DAY_IN_SECONDS)) {
             $this->abortSingleProcessAnalysis($siteId, $phase, __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
             return;
         }
@@ -1613,9 +1708,8 @@ class StorageAnalysisSchedulerService {
                 throw new \RuntimeException(__('Not enough PHP memory is available to start another analysis step.', 'rrze-multisite-manager'));
             }
             $batchesProcessed = 0;
-            $assignmentMode = $this->getSiteAssignmentMode($siteId);
             for ($batch = 0; $batch < self::MAX_BATCHES_PER_REQUEST && ($batch === 0 || microtime(true) < $deadline); $batch++) {
-                if ((float)($status['active_duration_seconds'] ?? 0) + (hrtime(true) - $started) / 1000000000 >= $this->getTimeoutSeconds()) {
+                if ((float)($status['active_duration_seconds'] ?? 0) + (hrtime(true) - $started) / 1000000000 >= $this->getTimeoutSeconds($assignmentMode)) {
                     $this->abortSingleProcessAnalysis($siteId, $phase, __('The storage analysis was aborted because it exceeded the configured runtime limit.', 'rrze-multisite-manager'));
                     return;
                 }
@@ -1776,7 +1870,7 @@ class StorageAnalysisSchedulerService {
                 'site_id' => $siteId,
                 'phase' => $phase,
                 'duration_seconds' => $duration,
-                'timeout_seconds' => $this->getTimeoutSeconds(),
+                'timeout_seconds' => $this->getTimeoutSeconds($this->getSiteAssignmentMode($siteId)),
                 'progress' => $progressContext,
             ]
         );
@@ -1888,8 +1982,8 @@ class StorageAnalysisSchedulerService {
         $isEligible = $this->isSiteEligible($siteId);
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
         $nextRunTimestamp = $isEligible ? (int)($scheduleStatus['next_recurring_run_timestamp'] ?? 0) : 0;
-        if ($isEligible && $assignmentMode === 'batch' && empty($scheduleStatus['is_running'])) {
-            $targetedTimestamp = (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getStorageAnalysisBatchHook(), [$siteId, true]));
+        if ($isEligible && $this->isBatchAssignmentMode($assignmentMode) && empty($scheduleStatus['is_running'])) {
+            $targetedTimestamp = (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($assignmentMode), [$siteId, true]));
             if ($targetedTimestamp > 0) {
                 $nextRunTimestamp = $nextRunTimestamp > 0 ? min($nextRunTimestamp, $targetedTimestamp) : $targetedTimestamp;
             }
@@ -1934,7 +2028,7 @@ class StorageAnalysisSchedulerService {
             'is_eligible' => $isEligible,
             'schedule_mode' => $assignmentMode,
             'is_due' => $isDue,
-            'cycle' => $isEligible ? $this->getScheduleLabel() : '',
+            'cycle' => $isEligible ? $this->getScheduleLabel($assignmentMode) : '',
             'last_started_at' => (string)($scheduleStatus['last_started_at'] ?? ''),
             'last_run' => (string)($scheduleStatus['last_completed_at'] ?? ''),
             // Show the actual pending continuation while a run is active.
@@ -1945,7 +2039,7 @@ class StorageAnalysisSchedulerService {
             'last_attempt_at' => (string)($scheduleStatus['last_attempt_at'] ?? ''),
             'phases' => is_array($scheduleStatus['phases'] ?? null) ? $scheduleStatus['phases'] : [],
             'base_progress' => is_array($analysisStatus['base'] ?? null) ? $analysisStatus['base'] : [],
-            'can_start_now' => $isEligible && $assignmentMode !== 'batch' && !$isDue && !$this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
+            'can_start_now' => $isEligible && !$this->isBatchAssignmentMode($assignmentMode) && !$isDue && !$this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
         ];
     }
 
@@ -1990,25 +2084,27 @@ class StorageAnalysisSchedulerService {
         $this->removeBatchSite($siteId);
         $this->removeSiteAssignment($siteId);
 
-        if ($this->getInitialAssignmentMode($siteId) === 'batch') {
-            $hadBatchSchedule = (bool)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getStorageAnalysisBatchHook()));
-            $siteIds = $this->getBatchSiteIds();
+        $mode = $this->getInitialAssignmentMode($siteId);
+        if ($this->isBatchAssignmentMode($mode)) {
+            $hadBatchSchedule = (bool)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($mode)));
+            $siteIds = $this->getBatchSiteIds($mode);
             $siteIds[] = $siteId;
-            update_site_option(self::BATCH_SITE_IDS_OPTION, array_values(array_unique($siteIds)));
+            $this->updateBatchSiteIds($mode, $siteIds);
 
-            if (!$this->scheduleBatchRecurringAt($timestamp)) {
-                $this->removeBatchSite($siteId);
+            if (!$this->scheduleBatchRecurringAt($timestamp, $mode)) {
+                $this->removeBatchSite($siteId, $mode);
                 return false;
             }
 
-            $this->setSiteAssignment($siteId, 'batch');
+            $this->setSiteAssignment($siteId, $mode);
             $this->clearRecurringScheduleCache();
-            $this->logSiteInfo('Speicherplatzanalyse dem Sammelbatch zugeordnet', $siteId, 'batch', [
+            $this->logSiteInfo('Speicherplatzanalyse dem Sammelbatch zugeordnet', $siteId, $mode, [
                 'next_run_timestamp' => $timestamp,
-                'media_threshold' => $this->config->getStorageAnalysisBatchMediaThreshold(),
+                'small_media_threshold' => $this->config->getStorageAnalysisSmallBatchMediaThreshold(),
+                'medium_media_threshold' => $this->config->getStorageAnalysisMediumBatchMediaThreshold(),
             ]);
             if ($hadBatchSchedule) {
-                $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS);
+                $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $mode);
             }
             return true;
         }
@@ -2020,7 +2116,7 @@ class StorageAnalysisSchedulerService {
         $scheduled = (bool)$this->inSiteCronContext($siteId, function () use ($siteId, $timestamp): bool {
             return (bool)wp_schedule_event(
                 max(time(), $timestamp),
-                $this->getScheduleKey(),
+                $this->getScheduleKey('site'),
                 $this->config->getStorageAnalysisHook(),
                 [$siteId, self::SCHEDULED_PHASE]
             );
@@ -2107,10 +2203,11 @@ class StorageAnalysisSchedulerService {
             return 0;
         }
 
-        if (in_array($siteId, $this->getBatchSiteIds(), true)) {
-            $batchTimestamp = (int)$this->inBatchCronContext(function (): int {
-                return (int)wp_next_scheduled($this->config->getStorageAnalysisBatchHook());
-            });
+        foreach (['small-batch', 'medium-batch'] as $mode) {
+            if (!in_array($siteId, $this->getBatchSiteIds($mode), true)) {
+                continue;
+            }
+            $batchTimestamp = (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($mode)));
 
             if ($batchTimestamp > 0) {
                 return $batchTimestamp;
@@ -2145,14 +2242,16 @@ class StorageAnalysisSchedulerService {
         $assignments = get_site_option(self::ASSIGNMENTS_OPTION, []);
 
         foreach ((array)$assignments as $siteId => $mode) {
-            if (absint($siteId) > 0 && in_array($mode, ['batch', 'site'], true)) {
+            if (absint($siteId) > 0 && in_array($mode, ['small-batch', 'medium-batch', 'site'], true)) {
                 $siteIds[absint($siteId)] = true;
             }
         }
 
-        if ((int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getStorageAnalysisBatchHook())) > 0) {
-            foreach ($this->getBatchSiteIds() as $siteId) {
-                $siteIds[$siteId] = true;
+        foreach (['small-batch', 'medium-batch'] as $mode) {
+            if ((int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($mode))) > 0) {
+                foreach ($this->getBatchSiteIds($mode) as $siteId) {
+                    $siteIds[$siteId] = true;
+                }
             }
         }
 
@@ -2195,9 +2294,12 @@ class StorageAnalysisSchedulerService {
         $this->recurringScheduledSiteIds = $siteIds;
     }
 
-    protected function getScheduleKey(): string {
+    protected function getScheduleKey(string $assignmentMode = 'site'): string {
         $options = get_site_option($this->config->getOptionName(), []);
-        $frequency = is_array($options) ? (string)($options['monitoring_storage_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
+        $option = $assignmentMode === 'small-batch'
+            ? 'monitoring_storage_analysis_small_batch_frequency'
+            : ($assignmentMode === 'medium-batch' ? 'monitoring_storage_analysis_medium_batch_frequency' : 'monitoring_storage_analysis_individual_frequency');
+        $frequency = is_array($options) ? (string)($options[$option] ?? ($options['monitoring_storage_analysis_frequency'] ?? 'twiceweekly')) : 'twiceweekly';
 
         return $this->config->getStorageAnalysisScheduleKey($frequency);
     }
@@ -2217,18 +2319,21 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function getScheduleSignature(): string {
-        return $this->getScheduleKey() . ':resumable-v4';
+        return implode(':', [$this->getScheduleKey('small-batch'), $this->getScheduleKey('medium-batch'), $this->getScheduleKey('site'), 'resumable-v5']);
     }
 
-    protected function getScheduleLabel(): string {
+    protected function getScheduleLabel(string $assignmentMode = 'site'): string {
         $options = get_site_option($this->config->getOptionName(), []);
-        $frequency = is_array($options) ? (string)($options['monitoring_storage_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
+        $option = $assignmentMode === 'small-batch'
+            ? 'monitoring_storage_analysis_small_batch_frequency'
+            : ($assignmentMode === 'medium-batch' ? 'monitoring_storage_analysis_medium_batch_frequency' : 'monitoring_storage_analysis_individual_frequency');
+        $frequency = is_array($options) ? (string)($options[$option] ?? ($options['monitoring_storage_analysis_frequency'] ?? 'twiceweekly')) : 'twiceweekly';
 
         return $this->config->getSchedulerFrequencyLabel($frequency);
     }
 
-    protected function getTimeoutSeconds(): int {
-        return $this->config->getStorageAnalysisTimeoutSeconds();
+    protected function getTimeoutSeconds(string $assignmentMode = 'site'): int {
+        return $this->config->getStorageAnalysisTimeoutSeconds($assignmentMode);
     }
 
     protected function isAnalysisRunning(array $status): bool {
@@ -2482,7 +2587,7 @@ class StorageAnalysisSchedulerService {
             return true;
         }
 
-        if ($runId !== '' && $startedTimestamp > 0 && (float)($stored['active_duration_seconds'] ?? 0) < $this->getTimeoutSeconds()
+        if ($runId !== '' && $startedTimestamp > 0 && (float)($stored['active_duration_seconds'] ?? 0) < $this->getTimeoutSeconds($this->getSiteAssignmentMode($siteId))
             && time() - $startedTimestamp < 7 * DAY_IN_SECONDS
             && !$this->isTaskRemovalInProgress() && !$this->isSiteSchedulingRemoved($siteId)
             && $this->getSiteAssignmentMode($siteId) !== 'unassigned'
@@ -2776,12 +2881,15 @@ class StorageAnalysisSchedulerService {
         }
 
         $currentMode = $this->getSiteAssignmentMode($siteId);
-        $targetMode = $this->getCompletedRunAssignmentMode($durationSeconds);
+        $mediaCount = $this->getSiteAttachmentCount($siteId);
+        $targetMode = $this->getCompletedRunAssignmentMode($durationSeconds, $mediaCount);
 
         if ($currentMode === $targetMode) {
             $this->logSiteInfo('Speicherplatzanalyse-Zuordnung beibehalten', $siteId, $currentMode, [
                 'duration_seconds' => $durationSeconds,
-                'runtime_threshold_seconds' => $this->config->getStorageAnalysisBatchRuntimeThresholdSeconds(),
+                'media_count' => $mediaCount,
+                'small_runtime_threshold_seconds' => $this->config->getStorageAnalysisSmallBatchRuntimeThresholdSeconds(),
+                'medium_runtime_threshold_seconds' => $this->config->getStorageAnalysisMediumBatchRuntimeThresholdSeconds(),
             ]);
             return;
         }
@@ -2791,20 +2899,22 @@ class StorageAnalysisSchedulerService {
         $nextRunTimestamp = $this->getNextRecurringScheduledTimestamp($siteId);
         $nextRunTimestamp = max(time(), $nextRunTimestamp);
 
-        if ($targetMode === 'batch') {
-            if ($this->scheduleBatchRecurringAt($nextRunTimestamp)) {
+        if ($this->isBatchAssignmentMode($targetMode)) {
+            if ($this->scheduleBatchRecurringAt($nextRunTimestamp, $targetMode)) {
                 $this->unscheduleSiteEvents($siteId);
-                $siteIds = $this->getBatchSiteIds();
+                $siteIds = $this->getBatchSiteIds($targetMode);
                 $siteIds[] = $siteId;
                 $siteIds = array_values(array_unique(array_map('absint', $siteIds)));
                 sort($siteIds, SORT_NUMERIC);
-                update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
-                $this->setSiteAssignment($siteId, 'batch');
+                $this->updateBatchSiteIds($targetMode, $siteIds);
+                $this->setSiteAssignment($siteId, $targetMode);
                 $this->clearRecurringScheduleCache();
-                $this->logSiteInfo('Speicherplatzanalyse-Zuordnung zu Sammelbatch geändert', $siteId, 'batch', [
+                $this->logSiteInfo('Speicherplatzanalyse-Zuordnung zu Sammelbatch geändert', $siteId, $targetMode, [
                     'previous_assignment' => $currentMode,
+                    'media_count' => $mediaCount,
                     'duration_seconds' => $durationSeconds,
-                    'runtime_threshold_seconds' => $this->config->getStorageAnalysisBatchRuntimeThresholdSeconds(),
+                    'small_runtime_threshold_seconds' => $this->config->getStorageAnalysisSmallBatchRuntimeThresholdSeconds(),
+                    'medium_runtime_threshold_seconds' => $this->config->getStorageAnalysisMediumBatchRuntimeThresholdSeconds(),
                     'next_run_timestamp' => $nextRunTimestamp,
                 ]);
                 return;
@@ -2813,8 +2923,9 @@ class StorageAnalysisSchedulerService {
             $this->removeBatchSite($siteId);
             $this->logSiteInfo('Speicherplatzanalyse-Zuordnung zu Einzelauftrag geändert', $siteId, 'site', [
                 'previous_assignment' => $currentMode,
+                'media_count' => $mediaCount,
                 'duration_seconds' => $durationSeconds,
-                'runtime_threshold_seconds' => $this->config->getStorageAnalysisBatchRuntimeThresholdSeconds(),
+                'medium_runtime_threshold_seconds' => $this->config->getStorageAnalysisMediumBatchRuntimeThresholdSeconds(),
                 'next_run_timestamp' => $nextRunTimestamp,
             ]);
             return;

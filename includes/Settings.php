@@ -166,6 +166,20 @@ class Settings {
             $options['monitoring_monitoring_frequency'] = $this->getCycleFrequencyFromHours((int)($storedOptions['monitoring_monitoring_interval_hours'] ?? 6));
         }
 
+        if (is_array($storedOptions) && !array_key_exists('monitoring_storage_analysis_small_batch_frequency', $storedOptions)) {
+            $frequency = (string)($storedOptions['monitoring_storage_analysis_frequency'] ?? 'twiceweekly');
+            $options['monitoring_storage_analysis_small_batch_frequency'] = $frequency;
+            $options['monitoring_storage_analysis_medium_batch_frequency'] = $frequency;
+            $options['monitoring_storage_analysis_individual_frequency'] = $frequency;
+        }
+
+        if (is_array($storedOptions) && !array_key_exists('monitoring_storage_analysis_individual_timeout_minutes', $storedOptions)) {
+            $timeout = (int)($storedOptions['monitoring_storage_analysis_timeout_minutes'] ?? 360);
+            $options['monitoring_storage_analysis_small_batch_timeout_minutes'] = $timeout;
+            $options['monitoring_storage_analysis_medium_batch_timeout_minutes'] = $timeout;
+            $options['monitoring_storage_analysis_individual_timeout_minutes'] = $timeout;
+        }
+
         return $this->normalizeOptions($options);
     }
 
@@ -208,7 +222,9 @@ class Settings {
 
         $monitoringFrequencyChanged = (string)($previousOptions['monitoring_monitoring_frequency'] ?? '') !== (string)($options['monitoring_monitoring_frequency'] ?? '');
         $metricsFrequencyChanged = (string)($previousOptions['monitoring_metrics_frequency'] ?? '') !== (string)($options['monitoring_metrics_frequency'] ?? '');
-        $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_frequency'] ?? '');
+        $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_small_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_small_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_storage_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_medium_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_storage_analysis_individual_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_individual_frequency'] ?? '');
         $shortcodeAnalysisFrequencyChanged = (string)($previousOptions['monitoring_shortcode_block_analysis_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? '');
 
         update_site_option($this->optionName, $options);
@@ -1142,6 +1158,13 @@ class Settings {
             }
         }
 
+        $smallMediaKey = 'monitoring_storage_analysis_small_batch_media_threshold';
+        $mediumMediaKey = 'monitoring_storage_analysis_medium_batch_media_threshold';
+        $smallRuntimeKey = 'monitoring_storage_analysis_small_batch_runtime_threshold_seconds';
+        $mediumRuntimeKey = 'monitoring_storage_analysis_medium_batch_runtime_threshold_seconds';
+        $options[$mediumMediaKey] = max((int)$options[$smallMediaKey], (int)$options[$mediumMediaKey]);
+        $options[$mediumRuntimeKey] = max((int)$options[$smallRuntimeKey], (int)$options[$mediumRuntimeKey]);
+
         return $options;
     }
 
@@ -1267,16 +1290,26 @@ class Settings {
             'http_failure_threshold',
         ]);
         $this->renderMonitoringFieldGroup(__('Storage analyses', 'rrze-multisite-manager'), [
-            'storage_analysis_frequency',
-            'storage_analysis_batch_media_threshold',
-            'storage_analysis_batch_runtime_threshold_seconds',
-            'storage_analysis_timeout_minutes',
         ]);
-        $this->renderMonitoringFieldGroup(__('Shared storage-analysis batches', 'rrze-multisite-manager'), [
+        $this->renderMonitoringFieldGroup(__('Small storage-analysis batches', 'rrze-multisite-manager'), [
+            'storage_analysis_small_batch_frequency',
+            'storage_analysis_small_batch_media_threshold',
+            'storage_analysis_small_batch_runtime_threshold_seconds',
+            'storage_analysis_small_batch_timeout_minutes',
             'storage_analysis_shared_attachment_index_batch_size',
             'storage_analysis_shared_index_write_batch_size',
         ]);
+        $this->renderMonitoringFieldGroup(__('Medium storage-analysis batches', 'rrze-multisite-manager'), [
+            'storage_analysis_medium_batch_frequency',
+            'storage_analysis_medium_batch_media_threshold',
+            'storage_analysis_medium_batch_runtime_threshold_seconds',
+            'storage_analysis_medium_batch_timeout_minutes',
+            'storage_analysis_medium_attachment_index_batch_size',
+            'storage_analysis_medium_index_write_batch_size',
+        ]);
         $this->renderMonitoringFieldGroup(__('Individual storage-analysis tasks', 'rrze-multisite-manager'), [
+            'storage_analysis_individual_frequency',
+            'storage_analysis_individual_timeout_minutes',
             'storage_analysis_individual_attachment_index_batch_size',
             'storage_analysis_individual_index_write_batch_size',
         ]);
@@ -1798,7 +1831,8 @@ class Settings {
             echo '<th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th>';
             echo '<td class="rrze-msm-monitoring-site-url">';
             echo '<div class="rrze-msm-monitoring-site-identity"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
-            $cronSiteId = ($process['schedule_mode'] ?? '') === 'batch'
+            $scheduleMode = (string)($process['schedule_mode'] ?? '');
+            $cronSiteId = in_array($scheduleMode, ['small-batch', 'medium-batch'], true)
                 ? (int)get_main_site_id(get_current_network_id())
                 : $siteId;
             $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteStorageAnalysisPageUrl($siteId), __('Storage Analysis', 'rrze-multisite-manager'), $cronSiteId);
@@ -1809,7 +1843,9 @@ class Settings {
                 echo '<br><span>' . esc_html((string)$process['last_error']) . '</span>';
             }
             echo '</td>';
-            $assignment = ($process['schedule_mode'] ?? '') === 'batch' ? __('Shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager');
+            $assignment = $scheduleMode === 'small-batch'
+                ? __('Small shared batch', 'rrze-multisite-manager')
+                : ($scheduleMode === 'medium-batch' ? __('Medium shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager'));
             echo '<td>' . esc_html($assignment) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base', true, (array)($process['base_progress'] ?? []));
@@ -1834,7 +1870,7 @@ class Settings {
                 echo '&mdash;';
             } elseif (!empty($process['is_running'])) {
                 echo esc_html__('Running', 'rrze-multisite-manager');
-            } elseif (($process['schedule_mode'] ?? '') === 'batch') {
+            } elseif (in_array($scheduleMode, ['small-batch', 'medium-batch'], true)) {
                 if (!empty($process['last_was_aborted']) || $statusKey === 'error') {
                     echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_site_storage_analysis')) . '">';
                     echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
