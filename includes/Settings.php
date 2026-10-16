@@ -1994,7 +1994,11 @@ class Settings {
                 $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteShortcodeBlockAnalysisPageUrl($siteId), __('Shortcodes and Blocks', 'rrze-multisite-manager'), $cronSiteId);
                 echo '</div>';
                 echo '</td>';
-                echo '<td>' . $this->renderScheduledJobStatusHtml($process) . '</td>';
+                echo '<td>' . $this->renderScheduledJobStatusHtml($process);
+                if (!empty($process['last_error'])) {
+                    echo '<br><span>' . esc_html((string)$process['last_error']) . '</span>';
+                }
+                echo '</td>';
                 $assignmentMode = (string)($process['assignment_mode'] ?? 'unassigned');
                 $assignmentLabel = $assignmentMode === 'batch'
                     ? __('Shared batch', 'rrze-multisite-manager')

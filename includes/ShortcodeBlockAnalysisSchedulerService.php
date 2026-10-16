@@ -421,10 +421,10 @@ class ShortcodeBlockAnalysisSchedulerService {
                 ]
             );
         } finally {
-            $this->recordCompletedRunDuration($siteId, microtime(true) - $runStartedAt);
-            $this->releaseLock($siteId);
+            $this->recordRunDuration($siteId, microtime(true) - $runStartedAt);
 
             if ($this->isTaskRemovalInProgress()) {
+                $this->releaseLock($siteId);
                 $this->deactivateSite($siteId);
                 return;
             }
@@ -436,6 +436,11 @@ class ShortcodeBlockAnalysisSchedulerService {
             } elseif (!$failed) {
                 $this->scheduleIndividualContinuation($siteId);
             }
+
+            // The continuation must exist before the lock is released. The
+            // Monitoring page can otherwise mistake the brief handover between
+            // two bounded Cron requests for an interrupted analysis.
+            $this->releaseLock($siteId);
         }
     }
 
@@ -744,6 +749,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             'cycle' => $isActive ? $this->getScheduleLabel() : '',
             'processed_posts' => (int)($status['processed_posts'] ?? 0),
             'total_posts' => (int)($status['total_posts'] ?? 0),
+            'last_error' => (string)($status['last_error'] ?? ''),
             'phases' => $this->getProcessPhases($status, $lastFinishedAt),
         ];
     }
@@ -789,7 +795,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function getProcessPhases(array $status, string $lastFinishedAt): array {
         $phases = is_array($status['phases'] ?? null) ? $status['phases'] : $this->getDefaultPhaseStatuses();
 
-        if ($lastFinishedAt === '') {
+        if ($lastFinishedAt === '' || (string)($status['status'] ?? '') !== 'complete') {
             return $phases;
         }
 
@@ -1071,6 +1077,8 @@ class ShortcodeBlockAnalysisSchedulerService {
                     : $this->runBlockBatch($state, $deadline);
                 $processedBatches++;
                 $this->markProgress($siteId, $phase, $state);
+                $state['updated_at'] = current_time('mysql', true);
+                $this->saveAnalysisState($siteId, $state);
 
                 if (!$completed) {
                     continue;
@@ -1180,6 +1188,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             'total_posts' => $total,
             'shortcodes' => [],
             'blocks' => [],
+            'updated_at' => current_time('mysql', true),
         ];
     }
 
@@ -1689,20 +1698,23 @@ class ShortcodeBlockAnalysisSchedulerService {
             'phase' => self::SHORTCODE_PHASE,
             'processed_posts' => 0,
             'total_posts' => (int)($state['total_posts'] ?? 0),
+            'active_runtime_seconds' => 0.0,
             'phases' => $this->getScheduledPhaseStatuses(),
             'schedule_mode' => (string)($previousStatus['schedule_mode'] ?? 'site'),
         ]);
         $this->logSiteInfo('Shortcode- und Blockanalyse gestartet', $siteId, 'unassigned', ['site_url' => get_home_url($siteId, '/')]);
     }
 
-    protected function recordCompletedRunDuration(int $siteId, float $duration): void {
+    protected function recordRunDuration(int $siteId, float $duration): void {
         $status = $this->getStatus($siteId);
 
-        if (($status['status'] ?? '') !== 'complete') {
+        if (!in_array((string)($status['status'] ?? ''), ['running', 'complete', 'error'], true)) {
             return;
         }
 
-        $status['last_runtime_seconds'] = round(max(0, $duration), 3);
+        $status['last_slice_runtime_seconds'] = round(max(0, $duration), 3);
+        $status['active_runtime_seconds'] = round(max(0, (float)($status['active_runtime_seconds'] ?? 0)) + max(0, $duration), 3);
+        $status['last_runtime_seconds'] = $status['active_runtime_seconds'];
         update_blog_option($siteId, self::STATUS_OPTION, $status);
     }
 
@@ -1731,6 +1743,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         $status['phase'] = $phase;
         $status['processed_posts'] = $processed;
         $status['total_posts'] = (int)($state['total_posts'] ?? 0);
+        $status['last_progress_at'] = current_time('mysql', true);
         $status['phases'] = is_array($status['phases'] ?? null) ? $status['phases'] : $this->getScheduledPhaseStatuses();
         $status['phases'][$phase] = array_merge(
             (array)($status['phases'][$phase] ?? []),
@@ -1917,7 +1930,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function getLockTtl(): int {
-        return $this->config->getShortcodeBlockAnalysisTimeoutSeconds() + MINUTE_IN_SECONDS;
+        return max(5 * MINUTE_IN_SECONDS, self::REQUEST_BUDGET_SECONDS + MINUTE_IN_SECONDS);
     }
 
     protected function unschedule(int $siteId): void {
@@ -2364,16 +2377,64 @@ class ShortcodeBlockAnalysisSchedulerService {
             return false;
         }
 
-        $this->markFailed(
-            $siteId,
-            __('The shortcode and block analysis was interrupted before it could finish.', 'rrze-multisite-manager')
+        if ($this->isAnalysisTimedOut($siteId)) {
+            $this->markTimedOut($siteId);
+            return true;
+        }
+
+        if ($this->hasPendingContinuation($siteId)) {
+            return false;
+        }
+
+        // A completed request always persists its checkpoint before releasing
+        // the lock. If the follow-up event was removed or lost afterwards, the
+        // analysis can safely continue from that checkpoint. Treating this as
+        // a terminal error stranded large sites although no analysed data was
+        // lost.
+        if ($this->scheduleContinuationForRunningAnalysis($siteId)) {
+            do_action(
+                'rrze.log.warning',
+                'RRZE-MSM: Missing shortcode and block analysis continuation was rescheduled.',
+                [
+                    'site_id' => $siteId,
+                    'site_url' => get_home_url($siteId, '/'),
+                    'assignment_mode' => $this->getSiteAssignmentMode($siteId),
+                ]
+            );
+
+            return false;
+        }
+
+        $state = $this->getAnalysisState($siteId);
+        $phase = (string)($status['phase'] ?? self::SHORTCODE_PHASE);
+        $processed = (int)($status['processed_posts'] ?? 0);
+        $total = (int)($status['total_posts'] ?? 0);
+        $message = sprintf(
+            /* translators: 1: analysis phase, 2: processed posts, 3: total posts. */
+            __('The analysis was interrupted in the %1$s phase after %2$d of %3$d posts. The last saved checkpoint is included in the error log.', 'rrze-multisite-manager'),
+            $phase,
+            $processed,
+            $total
         );
+
+        $this->markFailed($siteId, $message);
         do_action(
             'rrze.log.error',
             'RRZE-MSM: Shortcode and block analysis interrupted unexpectedly',
             [
                 'site_id' => $siteId,
                 'site_url' => get_home_url($siteId, '/'),
+                'phase' => $phase,
+                'processed_posts' => $processed,
+                'total_posts' => $total,
+                'last_started_at' => (string)($status['last_started_at'] ?? ''),
+                'last_progress_at' => (string)($status['last_progress_at'] ?? ''),
+                'active_runtime_seconds' => (float)($status['active_runtime_seconds'] ?? 0),
+                'checkpoint_updated_at' => (string)($state['updated_at'] ?? ''),
+                'checkpoint_phase' => (string)($state['phase'] ?? ''),
+                'checkpoint_shortcode_last_post_id' => (int)($state['shortcode_last_post_id'] ?? 0),
+                'checkpoint_block_last_post_id' => (int)($state['block_last_post_id'] ?? 0),
+                'assignment_mode' => $this->getSiteAssignmentMode($siteId),
             ]
         );
 
@@ -2384,10 +2445,52 @@ class ShortcodeBlockAnalysisSchedulerService {
         $status = $this->getStatus($siteId);
         $startedAt = (string)($status['last_started_at'] ?? '');
         $startedTimestamp = $startedAt !== '' ? (int)strtotime($startedAt . ' UTC') : 0;
+        $activeRuntime = (float)($status['active_runtime_seconds'] ?? 0);
+
+        // Older in-progress states have no accumulated active duration yet.
+        // Preserve their former wall-clock timeout behaviour once, while new
+        // resumable runs exclude time spent waiting for external Cron.
+        if (!array_key_exists('active_runtime_seconds', $status) && $startedTimestamp > 0) {
+            $activeRuntime = max(0, time() - $startedTimestamp);
+        }
 
         return (string)($status['status'] ?? '') === 'running'
-            && $startedTimestamp > 0
-            && (time() - $startedTimestamp) >= $this->config->getShortcodeBlockAnalysisTimeoutSeconds();
+            && $activeRuntime >= $this->config->getShortcodeBlockAnalysisTimeoutSeconds();
+    }
+
+    protected function hasPendingContinuation(int $siteId): bool {
+        if ($this->getSiteAssignmentMode($siteId) === 'batch') {
+            return (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled(
+                $this->config->getShortcodeBlockAnalysisBatchHook(),
+                self::BATCH_CONTINUATION_ARGS
+            )) > 0;
+        }
+
+        return (bool)$this->inSiteCronContext($siteId, function () use ($siteId): bool {
+            $cron = _get_cron_array();
+
+            foreach ([$this->getHook(), $this->config->getLegacyShortcodeBlockAnalysisHook()] as $hook) {
+                foreach ((array)$cron as $events) {
+                    foreach ((array)($events[$hook] ?? []) as $event) {
+                        if (!empty($event['schedule']) || (array)($event['args'] ?? []) !== [$siteId]) {
+                            continue;
+                        }
+
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+    }
+
+    protected function scheduleContinuationForRunningAnalysis(int $siteId): bool {
+        if ($this->getSiteAssignmentMode($siteId) === 'batch') {
+            return $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS);
+        }
+
+        return $this->scheduleIndividualContinuation($siteId);
     }
 
     protected function acquireLock(int $siteId): bool {
@@ -2444,26 +2547,28 @@ class ShortcodeBlockAnalysisSchedulerService {
         });
     }
 
-    protected function scheduleBatchContinuation(int $timestamp): void {
+    protected function scheduleBatchContinuation(int $timestamp): bool {
         if ($this->isTaskRemovalInProgress()) {
-            return;
+            return false;
         }
 
-        $this->inBatchCronContext(function () use ($timestamp): void {
+        return (bool)$this->inBatchCronContext(function () use ($timestamp): bool {
             $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
 
             if ((int)wp_next_scheduled($hook, self::BATCH_CONTINUATION_ARGS) <= 0) {
-                wp_schedule_single_event($timestamp, $hook, self::BATCH_CONTINUATION_ARGS);
+                return (bool)wp_schedule_single_event($timestamp, $hook, self::BATCH_CONTINUATION_ARGS);
             }
+
+            return true;
         });
     }
 
-    protected function scheduleIndividualContinuation(int $siteId): void {
+    protected function scheduleIndividualContinuation(int $siteId): bool {
         if ($siteId <= 0 || $this->isTaskRemovalInProgress()) {
-            return;
+            return false;
         }
 
-        $this->inSiteCronContext($siteId, function () use ($siteId): void {
+        return (bool)$this->inSiteCronContext($siteId, function () use ($siteId): bool {
             $hook = $this->getHook();
             $cron = _get_cron_array();
 
@@ -2473,11 +2578,11 @@ class ShortcodeBlockAnalysisSchedulerService {
                         continue;
                     }
 
-                    return;
+                    return true;
                 }
             }
 
-            wp_schedule_single_event(time() + self::CONTINUATION_DELAY_SECONDS, $hook, [$siteId]);
+            return (bool)wp_schedule_single_event(time() + self::CONTINUATION_DELAY_SECONDS, $hook, [$siteId]);
         });
     }
 

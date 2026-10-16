@@ -26,6 +26,8 @@ Displays scheduled individual tasks and collective batches for storage analyses.
 
 This corresponds to the Storage analyses tab for shortcode/block analysis: scheduled tasks, collective batches, status, start actions, and bulk actions are centrally managed.
 
+While an analysis is being continued, a released request lock together with a queued one-time continuation is an expected handover state. Monitoring must not report this as an interruption. If no lock and no continuation remain, the scheduler recreates the continuation from the saved checkpoint and records a warning. A final error is only shown if this recovery cannot schedule a new continuation; then the row shows the failed phase, its last checkpoint progress and the diagnostic message, while the error log records the corresponding site, phase, post counters and checkpoint cursors.
+
 ### Tools
 
 Contains maintenance actions, such as removing obsolete local central Cron entries and cleaning up data. Extensive cleanups run as admin-AJAX batches. A cancellation leaves no permanent lock; stale run state is handled after expiry.

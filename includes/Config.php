@@ -239,7 +239,7 @@ class Config {
                     [
                         'name' => 'shortcode_block_analysis_timeout_minutes',
                         'label' => __('Maximum shortcode and block analysis runtime in minutes', 'rrze-multisite-manager'),
-                        'desc' => __('A shortcode and block analysis runs in one scheduled process and is aborted when this runtime limit is reached.', 'rrze-multisite-manager'),
+                        'desc' => __('This limit applies to active PHP processing across resumable shortcode and block analysis steps. Waiting for the next Cron request does not count.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 60,
                         'min' => 1,
