@@ -1206,9 +1206,10 @@ class Dashboard {
 
         check_admin_referer('rrze_msm_request_shortcode_block_analysis_' . $siteId);
         $requested = $this->shortcodeBlockAnalysisScheduler->requestAnalysis($siteId);
+        $requestState = $requested ? '1' : $this->shortcodeBlockAnalysisScheduler->getRequestAnalysisFailureState($siteId);
         $redirectTo = $redirectTo !== '' ? $redirectTo : $this->getShortcodeBlockAnalysisRedirectUrl($siteId);
 
-        wp_safe_redirect(add_query_arg('shortcode-block-analysis-requested', $requested ? '1' : 'running', $redirectTo));
+        wp_safe_redirect(add_query_arg('shortcode-block-analysis-requested', $requestState, $redirectTo));
         exit;
     }
 

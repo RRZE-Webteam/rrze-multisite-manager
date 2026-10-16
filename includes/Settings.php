@@ -1590,8 +1590,17 @@ class Settings {
             echo '</div>';
         }
 
-        if (!empty($_GET['shortcode-block-analysis-requested'])) {
+        $shortcodeBlockAnalysisRequested = isset($_GET['shortcode-block-analysis-requested'])
+            ? sanitize_key((string)wp_unslash($_GET['shortcode-block-analysis-requested']))
+            : '';
+        if ($shortcodeBlockAnalysisRequested === '1') {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The shortcode and block analysis has been scheduled and will start shortly.', 'rrze-multisite-manager') . '</p></div>';
+        } elseif ($shortcodeBlockAnalysisRequested === 'running') {
+            echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('The shortcode and block analysis is already running.', 'rrze-multisite-manager') . '</p></div>';
+        } elseif ($shortcodeBlockAnalysisRequested === 'inactive') {
+            echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('The shortcode and block analysis cannot be scheduled for this inactive website.', 'rrze-multisite-manager') . '</p></div>';
+        } elseif ($shortcodeBlockAnalysisRequested === 'failed') {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('The shortcode and block analysis task could not be scheduled. Please check the error log.', 'rrze-multisite-manager') . '</p></div>';
         }
 
         if (isset($_GET['shortcode-block-schedules-initialized'])) {
