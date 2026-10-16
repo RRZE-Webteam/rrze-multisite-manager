@@ -12,6 +12,12 @@ The plugin's technical keys follow three conventions:
 
 Global plugin configuration is stored as the network option `rrze-multisite-manager`. Hook names and scheduling keys are centrally defined in `includes/Config.php`. Any change to these names always requires a migration or cleanup strategy for existing Cron entries.
 
+## Cron operation
+
+The plugin registers WordPress Cron events; it does not require visitor traffic to execute them. The production setup uses an external Cron service to trigger due WordPress events. Its cadence must be short enough for the intended continuation delays. A due timestamp is therefore the earliest execution time, not a guarantee that PHP starts at that exact second.
+
+Do not delete or recreate individual continuation, composition, or watchdog events merely because a site batch already shows 100 percent. The Monitoring page distinguishes the collection phase from the following composition phase and displays the next composition-related event. Manual actions should be limited to an explicit reset after a reported final failure or to the documented task-removal tools.
+
 ## Central dashboard metrics
 
 | Element | Name |
@@ -33,7 +39,11 @@ Detail-cache maintenance runs hourly on the central network site through `rrze_m
 
 `MetricsImplementationService` creates the record, `DashboardMetricsBatchService` processes the site loop, and `DashboardMetricsRefreshService` manages cache, batch state, intermediate states, and locks. Each batch writes only its bounded intermediate state. Once all batches finish, the composition hook merges all intermediate states, publishes the complete cache record, and removes intermediate states.
 
-The master batch state records the run ID, offsets, phase, composition attempt count, and any composition error; it does not contain the growing aggregate. The `composing` phase prevents another metrics run from starting. The composition watchdog runs after the lock TTL, reschedules a composition that no longer holds a valid lock, and marks the run failed after three attempts. A failed composition stays visible as stale state and requires a reset; reset removes all intermediate states, locks, and scheduled composition events.
+![Dashboard metrics scheduler flow](dashboard-metrics-scheduler-flow.svg)
+
+The master batch state records the run ID, offsets, phase, composition attempt count, and any composition error; it does not contain the growing aggregate. The `composing` phase prevents another metrics run from starting. The composition event is scheduled after at least five seconds; the watchdog is scheduled after the 900-second lock TTL, reschedules a composition that no longer holds a valid lock, and marks the run failed after three attempts. Successful and finally failed runs remove their own composition and watchdog events. A failed composition stays visible as stale state and requires a reset; reset removes all intermediate states, locks, and scheduled composition events.
+
+After a completed run, transient batch progress is intentionally reset. The Monitoring progress is derived from the published cache in that state and therefore displays the completed `site_count / site_count` rather than `0 / site_count`.
 
 The cache has its own data-version number. It is checked when read and schedules a new bounded run after a version change. Old transient cache versions with the prefix `rrze_multisite_manager_dashboard_metrics_v1_` through `_v6_` are cleaned up only for compatibility.
 
@@ -77,6 +87,8 @@ The following site-meta keys are written per site: `rrze_msm_operational_status`
 | Collective-batch lock | `rrze_msm_storage_analysis_batch_lock` |
 | Network-wide execution slots | `rrze_msm_storage_analysis_run_slots` |
 | Lock for slot/queue updates | Non-autoloaded main-site option `rrze_msm_storage_analysis_run_slots_lock`; token and 60-second lease |
+
+![Storage analysis scheduler flow](storage-analysis-scheduler-flow.svg)
 
 Assignment and progress data are network options, including `rrze_msm_storage_analysis_assignments`, `rrze_msm_storage_analysis_batch_site_ids`, `rrze_msm_storage_analysis_batch_last_site_id`, `rrze_msm_storage_analysis_schedule_initialization_state`, and `rrze_msm_storage_analysis_frequency_reschedule_state`. The persistent result is a non-autoloaded site option in `rrze_msm_site_storage_analysis_result`; summary metadata is in `rrze_msm_site_storage_analysis_result_meta`. Both storage and media-metadata results have a hard serialized 2-MiB cap; summary metadata has a 16-KiB cap. All variable lists and strings are compacted before serialization, failures are reported and legacy oversized values are replaced through size-gated SQL reads.
 

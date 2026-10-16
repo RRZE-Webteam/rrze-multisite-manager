@@ -2401,7 +2401,7 @@ class Settings {
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['started_at'] ?? ''))) . '</td>';
                 echo '<td>' . esc_html($finishedAt === '' ? '-' : $this->formatProcessTimestamp($finishedAt)) . '</td>';
                 echo '<td>' . esc_html($this->formatProcessDurationInMinutes((int)($process['last_duration_seconds'] ?? 0), $finishedAt !== '')) . '</td>';
-                echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
+                echo '<td>' . $this->renderProcessNextRunHtml($process) . '</td>';
                 echo '<td>' . $this->renderProcessActionsHtml($process, $this->getMonitoringPageUrl()) . '</td>';
                 echo '</tr>';
             }
@@ -2788,6 +2788,10 @@ class Settings {
     }
 
     protected function getProcessStatusLabel(array $process): string {
+        if (!empty($process['run_state']['is_composing'])) {
+            return __('Composition pending', 'rrze-multisite-manager');
+        }
+
         if (!empty($process['is_running'])) {
             return __('Running', 'rrze-multisite-manager');
         }
@@ -2873,13 +2877,16 @@ class Settings {
     protected function renderProcessStatusHtml(array $process): string {
         $label = $this->getProcessStatusLabel($process);
         $warning = $this->getProcessWarningLabel($process);
+        $statusMessage = (string)($process['status_message'] ?? '');
         $className = 'rrze-msm-badge rrze-msm-badge-neutral';
         $html = '';
 
         if ($warning !== '') {
             $className = 'rrze-msm-badge rrze-msm-badge-danger';
-        } else {
+        } elseif ($statusMessage === '') {
             return '<div class="rrze-msm-process-status">' . $this->renderScheduledJobStatusHtml($process) . '</div>';
+        } else {
+            $className = 'rrze-msm-badge rrze-msm-badge-info';
         }
 
         $html .= '<div class="rrze-msm-process-status">';
@@ -2887,8 +2894,26 @@ class Settings {
 
         if ($warning !== '') {
             $html .= '<div class="rrze-msm-process-warning">' . esc_html($warning) . '</div>';
+        } elseif ($statusMessage !== '') {
+            $html .= '<div class="rrze-msm-process-meta">' . esc_html($statusMessage) . '</div>';
         }
 
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderProcessNextRunHtml(array $process): string {
+        $timestamp = (int)($process['next_run_timestamp'] ?? 0);
+        $nextStepLabel = (string)($process['next_step_label'] ?? '');
+
+        if ($nextStepLabel === '') {
+            return esc_html($this->formatScheduledTimestamp($timestamp));
+        }
+
+        $html = '<div class="rrze-msm-process-next-run">';
+        $html .= '<div class="rrze-msm-process-meta">' . esc_html($nextStepLabel) . '</div>';
+        $html .= '<div>' . esc_html($this->formatScheduledTimestamp($timestamp)) . '</div>';
         $html .= '</div>';
 
         return $html;
@@ -2997,6 +3022,7 @@ class Settings {
 
     protected function getProcessWarningLabel(array $process): string {
         $isRunning = !empty($process['is_running']);
+        $isComposing = !empty($process['run_state']['is_composing']);
         $currentDurationSeconds = (int)($process['current_duration_seconds'] ?? 0);
         $nextRunTimestamp = (int)($process['next_run_timestamp'] ?? 0);
         $lastRun = (string)($process['last_run'] ?? '');
@@ -3006,7 +3032,7 @@ class Settings {
             return __('Dashboard metrics could not be assembled. Reset and restart the process.', 'rrze-multisite-manager');
         }
 
-        if ($isRunning && $currentDurationSeconds > $thresholdSeconds) {
+        if ($isRunning && !$isComposing && $currentDurationSeconds > $thresholdSeconds) {
             return __('Run is taking unusually long', 'rrze-multisite-manager');
         }
 
@@ -3014,7 +3040,7 @@ class Settings {
             return __('Next run is overdue', 'rrze-multisite-manager');
         }
 
-        if ($lastRun === '' && empty($process['run_state']['has_data'])) {
+        if (!$isRunning && $lastRun === '' && empty($process['run_state']['has_data'])) {
             return __('No completed process data is available yet', 'rrze-multisite-manager');
         }
 

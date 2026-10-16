@@ -44,6 +44,8 @@ body.rrze-msm-mode-dark {
     --rrze-msm-info: var(--rrze-msm-status-info-bg);
     --rrze-msm-info-text: var(--rrze-msm-status-info-text);
     --rrze-msm-info-soft: color-mix(in srgb, var(--rrze-msm-status-info-bg) 18%, #fff 82%);
+    --rrze-msm-default-theme: #5b21b6;
+    --rrze-msm-default-theme-text: #fff;
     --rrze-msm-neutral: var(--rrze-msm-status-blocked-bg);
     --rrze-msm-neutral-text: var(--rrze-msm-status-blocked-text);
     --rrze-msm-neutral-soft: color-mix(in srgb, var(--rrze-msm-status-blocked-bg) 18%, #fff 82%);

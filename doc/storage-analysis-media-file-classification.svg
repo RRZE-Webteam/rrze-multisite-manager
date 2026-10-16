@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="820" viewBox="0 0 1000 820" role="img" aria-labelledby="title desc">
+  <title id="title">Classification of media-library files</title>
+  <desc id="desc">Media-library attachment IDs are compared with the usage index. An existing original file with no indexed usage is an unused media-library file candidate.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/></marker>
+    <style>
+      .box { fill:#f4f8fb; stroke:#52606d; stroke-width:2; rx:10; }
+      .index { fill:#edf2ff; stroke:#3b5bdb; stroke-width:2; rx:10; }
+      .decision { fill:#f7f2ff; stroke:#7048e8; stroke-width:2; rx:10; }
+      .good { fill:#e7f5ef; stroke:#16803c; stroke-width:2; rx:10; }
+      .candidate { fill:#fff4e5; stroke:#b45309; stroke-width:2; rx:10; }
+      .review { fill:#fff0f1; stroke:#c92a2a; stroke-width:2; rx:10; }
+      .line { fill:none; stroke:#52606d; stroke-width:2.5; marker-end:url(#arrow); }
+      .label { font:600 17px Arial,sans-serif; fill:#1f2933; text-anchor:middle; dominant-baseline:middle; }
+      .small { font:600 14px Arial,sans-serif; fill:#334e68; text-anchor:middle; }
+      .note { font:600 14px Arial,sans-serif; fill:#52606d; text-anchor:middle; }
+      .heading { font:700 22px Arial,sans-serif; fill:#243b53; text-anchor:middle; }
+    </style>
+  </defs>
+  <rect width="1000" height="820" fill="#fff"/>
+  <text x="500" y="40" class="heading" font-size="27">Media-library file: classification as unused</text>
+  <rect x="80" y="75" width="390" height="70" class="index"/>
+  <text x="275" y="101" class="label">Attachment-path index</text>
+  <text x="275" y="124" class="small">Attachment IDs, originals and variants</text>
+  <rect x="530" y="75" width="390" height="70" class="index"/>
+  <text x="725" y="101" class="label">Usage index</text>
+  <text x="725" y="124" class="small">References mapped back to attachment IDs</text>
+  <text x="500" y="177" class="note">The usage index is built once from paginated content, post meta and supported widget/theme options.</text>
+  <rect x="220" y="210" width="560" height="62" class="box"/>
+  <text x="500" y="235" class="label">Read attachment records in bounded descending-ID pages</text>
+  <text x="500" y="257" class="small">Only the original attached file is counted as a media-library file.</text>
+  <path d="M500 272 V310" class="line"/>
+  <rect x="220" y="310" width="560" height="62" class="decision"/>
+  <text x="500" y="335" class="label">Does the usage index contain this attachment ID?</text>
+  <text x="500" y="357" class="small">A path hit marks the corresponding attachment as used.</text>
+  <path d="M395 372 V425 H270" class="line"/>
+  <text x="380" y="407" class="note">yes</text>
+  <rect x="130" y="425" width="280" height="72" class="good"/>
+  <text x="270" y="451" class="label">Used media-library file</text>
+  <text x="270" y="474" class="small">Not included in unused results</text>
+  <path d="M605 372 V425 H730" class="line"/>
+  <text x="620" y="407" class="note">no</text>
+  <rect x="590" y="425" width="280" height="72" class="decision"/>
+  <text x="730" y="451" class="label">Does the original file exist</text>
+  <text x="730" y="474" class="small">and remain readable?</text>
+  <path d="M625 497 V550 H270" class="line"/>
+  <text x="610" y="532" class="note">no</text>
+  <rect x="130" y="550" width="280" height="72" class="box"/>
+  <text x="270" y="576" class="label">Not counted as unused</text>
+  <text x="270" y="599" class="small">No deletable original file exists</text>
+  <path d="M835 497 V550 H730" class="line"/>
+  <text x="850" y="532" class="note">yes</text>
+  <rect x="590" y="550" width="280" height="72" class="candidate"/>
+  <text x="730" y="576" class="label">Unused media-library file</text>
+  <text x="730" y="599" class="small">No detected indexed usage</text>
+  <rect x="100" y="675" width="800" height="84" class="review"/>
+  <text x="500" y="706" class="label">Manual review before deletion is mandatory.</text>
+  <text x="500" y="731" class="small">Registered image variants use the same attachment mapping and are not counted again as original files.</text>
+  <text x="500" y="790" class="note">A missing indexed reference is an indicator, never proof that no other source uses the file.</text>
+</svg>

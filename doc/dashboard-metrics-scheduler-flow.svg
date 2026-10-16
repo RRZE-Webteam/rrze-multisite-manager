@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">Dashboard metrics scheduler flow</title>
+  <desc id="desc">A recurring metrics event collects bounded site batches. After collection, a composition task publishes the cache while a watchdog can reschedule an interrupted composition.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/></marker>
+    <style>
+      .box { fill: #f4f8fb; stroke: #52606d; stroke-width: 2; rx: 10; }
+      .phase { fill: #e7f5ef; stroke: #16803c; stroke-width: 2; rx: 10; }
+      .warning { fill: #fff4e5; stroke: #b45309; stroke-width: 2; rx: 10; }
+      .decision { fill: #edf2ff; stroke: #3b5bdb; stroke-width: 2; }
+      .line { fill: none; stroke: #52606d; stroke-width: 2.5; marker-end: url(#arrow); }
+      .label { font: 600 18px Arial, sans-serif; fill: #1f2933; text-anchor: middle; dominant-baseline: middle; }
+      .small { font: 600 15px Arial, sans-serif; fill: #334e68; text-anchor: middle; }
+      .note { font: 600 14px Arial, sans-serif; fill: #52606d; }
+    </style>
+  </defs>
+  <rect width="1200" height="700" fill="#fff"/>
+  <text x="600" y="40" class="label" font-size="26">Dashboard metrics: collection and composition</text>
+  <rect x="60" y="85" width="220" height="65" class="box"/><text x="170" y="117" class="label">Recurring metrics event</text>
+  <path d="M280 117 H335" class="line"/>
+  <polygon points="405,72 475,117 405,162 335,117" class="decision"/><text x="405" y="111" class="small">Active run or</text><text x="405" y="130" class="small">composition?</text>
+  <path d="M475 117 H535" class="line"/><text x="492" y="104" class="note">no</text>
+  <rect x="535" y="85" width="205" height="65" class="phase"/><text x="637" y="109" class="label">Create run ID</text><text x="637" y="131" class="label">and collecting state</text>
+  <path d="M405 162 V220 H160" class="line"/><text x="355" y="207" class="note">yes</text>
+  <rect x="45" y="220" width="230" height="62" class="warning"/><text x="160" y="244" class="label">Keep saved state;</text><text x="160" y="266" class="label">do not run in parallel</text>
+  <path d="M637 150 V205" class="line"/>
+  <rect x="530" y="205" width="215" height="62" class="box"/><text x="637" y="229" class="label">Collect one bounded</text><text x="637" y="251" class="label">site batch</text>
+  <path d="M637 267 V322" class="line"/>
+  <rect x="530" y="322" width="215" height="62" class="box"/><text x="637" y="346" class="label">Persist one bounded</text><text x="637" y="368" class="label">partial result</text>
+  <path d="M745 353 H800" class="line"/>
+  <polygon points="875,308 950,353 875,398 800,353" class="decision"/><text x="875" y="347" class="small">All sites</text><text x="875" y="366" class="small">collected?</text>
+  <path d="M875 398 V455 H637 V385" class="line"/><text x="888" y="430" class="note">no: batch continuation</text>
+  <path d="M950 353 H1015" class="line"/><text x="967" y="340" class="note">yes</text>
+  <rect x="1015" y="322" width="150" height="62" class="phase"/><text x="1090" y="346" class="label">Set phase</text><text x="1090" y="368" class="label">composing</text>
+  <path d="M1090 384 V438" class="line"/>
+  <rect x="995" y="438" width="190" height="62" class="phase"/><text x="1090" y="462" class="label">Composition task:</text><text x="1090" y="484" class="label">merge and publish</text>
+  <path d="M995 469 H815" class="line"/>
+  <rect x="585" y="438" width="230" height="62" class="box"/><text x="700" y="462" class="label">Remove partial state and</text><text x="700" y="484" class="label">one-time Cron events</text>
+  <path d="M1090 500 V550" class="line"/>
+  <rect x="955" y="550" width="270" height="62" class="warning"/><text x="1090" y="574" class="label">Watchdog after 900 seconds:</text><text x="1090" y="596" class="label">requeue if no valid lock</text>
+  <path d="M955 581 H875 V398" class="line"/>
+  <text x="724" y="670" class="note">Composition starts no earlier than 5 seconds after collection; an external Cron service determines the actual execution time.</text>
+</svg>

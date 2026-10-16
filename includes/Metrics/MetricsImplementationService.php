@@ -652,7 +652,7 @@ class MetricsImplementationService {
                 $this->scheduleDashboardRefresh();
             }
 
-            return (array)($cached['data'] ?? []);
+            return $this->hydrateDashboardThemeRuntimeState((array)($cached['data'] ?? []));
         }
 
         $this->scheduleDashboardRefresh(5, true);
@@ -668,13 +668,13 @@ class MetricsImplementationService {
 
         if (!$force && $this->isDashboardRefreshLocked()) {
             if ($this->hasCompleteDashboardCache($cached)) {
-                return (array)($cached['data'] ?? []);
+                return $this->hydrateDashboardThemeRuntimeState((array)($cached['data'] ?? []));
             }
         }
 
         if (!$this->acquireDashboardRefreshLock()) {
             if ($this->hasCompleteDashboardCache($cached)) {
-                return (array)($cached['data'] ?? []);
+                return $this->hydrateDashboardThemeRuntimeState((array)($cached['data'] ?? []));
             }
         }
 
@@ -696,7 +696,7 @@ class MetricsImplementationService {
         );
         $this->releaseDashboardRefreshLock();
 
-        return $data;
+        return $this->hydrateDashboardThemeRuntimeState($data);
     }
 
     public function clearCache(): void {
@@ -1031,6 +1031,7 @@ class MetricsImplementationService {
             }
 
             $this->finalizeDashboardRefreshBatchState($state);
+            $this->clearDashboardCompositionEvents($runId);
             $this->dashboardRefresh->resetBatchState();
             $this->scheduleDashboardRefresh(60, false);
             LoggingService::info(
@@ -1053,9 +1054,7 @@ class MetricsImplementationService {
             $runState['composition_error'] = $exception->getMessage();
 
             if ((int)($runState['composition_attempts'] ?? 0) >= self::DASHBOARD_COMPOSITION_MAX_ATTEMPTS) {
-                $runState['phase'] = 'failed';
-                $runState['composition_failed_at'] = time();
-                $this->dashboardRefresh->saveBatchState($runState);
+                $this->markDashboardCompositionFailed($runState);
                 return;
             }
 
@@ -1132,6 +1131,7 @@ class MetricsImplementationService {
         }
 
         $this->dashboardRefresh->saveBatchState($runState);
+        $this->clearDashboardCompositionEvents((string)($runState['run_id'] ?? ''));
     }
 
     public function invalidateCaches(...$args): void {
@@ -1240,7 +1240,7 @@ class MetricsImplementationService {
         }
 
         return (string)$this->inCentralNetworkCronContext(function (): string {
-            if ($this->isDashboardRefreshInProgress()) {
+            if ($this->isDashboardRefreshInProgress() || $this->isDashboardRefreshLocked()) {
                 return 'running';
             }
 
@@ -1429,6 +1429,15 @@ class MetricsImplementationService {
         $batchOffset = $batchProgress['offset'];
         $batchTotal = $batchProgress['total'];
         $batchState = $this->getDashboardRefreshBatchState();
+        $batchPhase = (string)($batchState['phase'] ?? '');
+        $isComposing = $batchPhase === 'composing';
+        $compositionRunId = (string)($batchState['run_id'] ?? '');
+        $nextCompositionRunTimestamp = $isComposing
+            ? $this->getNextDashboardCompositionEventTimestamp(self::DASHBOARD_COMPOSE_HOOK, $compositionRunId)
+            : 0;
+        $nextCompositionWatchdogTimestamp = $isComposing
+            ? $this->getNextDashboardCompositionEventTimestamp(self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK, $compositionRunId)
+            : 0;
         $startedAtTimestamp = (int)($batchState['started_at'] ?? 0);
         $isExecuting = $this->isDashboardRefreshLocked();
         $isRunning = $this->isDashboardRefreshInProgress();
@@ -1440,16 +1449,26 @@ class MetricsImplementationService {
         $progressPercent = ($batchTotal > 0 && $checkedSites > 0)
             ? (int)round(($checkedSites / $batchTotal) * 100)
             : 0;
-        $nextProgressRunTimestamp = $isRunning && $batchTotal > $checkedSites && $nextBatchRunTimestamp > 0
-            ? $nextBatchRunTimestamp
-            : $nextRunTimestamp;
-        $hasFailedComposition = (string)($batchState['phase'] ?? '') === 'failed';
+        $nextProgressRunTimestamp = $isComposing
+            ? ($nextCompositionRunTimestamp ?: $nextCompositionWatchdogTimestamp ?: $nextRunTimestamp)
+            : ($isRunning && $batchTotal > $checkedSites && $nextBatchRunTimestamp > 0
+                ? $nextBatchRunTimestamp
+                : $nextRunTimestamp);
+        $hasFailedComposition = $batchPhase === 'failed';
         $isStale = $hasFailedComposition || $this->isDashboardRefreshStale($isExecuting, $batchTotal, $checkedSites, $nextProgressRunTimestamp, $currentDurationSeconds);
 
         if ($batchTotal > 0) {
             $siteCount = $batchTotal;
         } elseif ($hasData) {
             $siteCount = count((array)($cached['data']['site_overview'] ?? []));
+
+            // Completed runs reset their transient batch state. Keep their
+            // progress visible as complete instead of rendering 0 / n.
+            if (!$isRunning) {
+                $checkedSites = $siteCount;
+                $remainingSites = 0;
+                $progressPercent = 100;
+            }
         }
 
         return [
@@ -1462,6 +1481,8 @@ class MetricsImplementationService {
             'last_finished_at_timestamp' => (int)($cached['generated_at'] ?? 0),
             'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
             'next_batch_run_timestamp' => $nextBatchRunTimestamp ? (int)$nextBatchRunTimestamp : 0,
+            'next_composition_run_timestamp' => $nextCompositionRunTimestamp,
+            'next_composition_watchdog_timestamp' => $nextCompositionWatchdogTimestamp,
             'last_site_count' => $siteCount,
             'batch_offset' => $batchOffset,
             'batch_total' => $batchTotal,
@@ -1472,12 +1493,23 @@ class MetricsImplementationService {
             'current_duration_seconds' => $currentDurationSeconds,
             'last_duration_seconds' => (int)($cached['duration_seconds'] ?? 0),
             'is_stale' => $isStale,
+            'is_composing' => $isComposing,
             'composition_error' => (string)($batchState['composition_error'] ?? ''),
         ];
     }
 
     public function getProcessesOverview(): array {
         $status = $this->getDashboardDataStatus();
+        $isComposing = !empty($status['is_composing']);
+        $nextCompositionRunTimestamp = (int)($status['next_composition_run_timestamp'] ?? 0);
+        $nextCompositionWatchdogTimestamp = (int)($status['next_composition_watchdog_timestamp'] ?? 0);
+        $nextStepLabel = '';
+
+        if ($isComposing) {
+            $nextStepLabel = $nextCompositionRunTimestamp > 0
+                ? __('Compose dashboard metrics', 'rrze-multisite-manager')
+                : __('Check dashboard metrics composition', 'rrze-multisite-manager');
+        }
 
         return [
             [
@@ -1494,7 +1526,9 @@ class MetricsImplementationService {
                     ? ''
                     : ((int)($status['last_finished_at_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_finished_at_timestamp']) : ''),
                 'last_site_count' => (int)$status['last_site_count'],
-                'next_run_timestamp' => (int)($status['next_run_timestamp'] ?? 0),
+                'next_run_timestamp' => $isComposing
+                    ? ($nextCompositionRunTimestamp ?: $nextCompositionWatchdogTimestamp)
+                    : (int)($status['next_run_timestamp'] ?? 0),
                 'is_running' => !empty($status['is_running']),
                 'schedule_action_state' => $this->getDashboardScheduleActionState(),
                 'batch_offset' => (int)($status['batch_offset'] ?? 0),
@@ -1505,11 +1539,16 @@ class MetricsImplementationService {
                 'batch_size' => $this->config->getMonitoringBatchSize(),
                 'current_duration_seconds' => (int)($status['current_duration_seconds'] ?? 0),
                 'last_duration_seconds' => !empty($status['is_running']) ? 0 : (int)($status['last_duration_seconds'] ?? 0),
+                'status_message' => $isComposing
+                    ? __('All individual sites have been processed. Dashboard metrics will be composed next.', 'rrze-multisite-manager')
+                    : '',
+                'next_step_label' => $nextStepLabel,
                 'run_state' => [
                     'has_data' => !empty($status['has_data']),
                     'needs_refresh' => !empty($status['needs_refresh']),
                     'is_dirty' => !empty($status['is_dirty']),
                     'has_composition_error' => (string)($status['composition_error'] ?? '') !== '',
+                    'is_composing' => $isComposing,
                 ],
             ],
         ];
@@ -9550,6 +9589,13 @@ class MetricsImplementationService {
         $status = [];
         $tag = '';
 
+        if (!empty($theme['is_default_theme'])) {
+            $status[] = [
+                'label' => __('Configured default theme', 'rrze-multisite-manager'),
+                'accent' => 'default-theme',
+            ];
+        }
+
         if (!empty($theme['network_enabled'])) {
             $status[] = [
                 'label' => __('Network-enabled', 'rrze-multisite-manager'),
@@ -10056,6 +10102,26 @@ class MetricsImplementationService {
         return $removed;
     }
 
+    /** Removes one-time composition events that belong to a completed run. */
+    protected function clearDashboardCompositionEvents(string $runId): void {
+        if ($runId === '') {
+            return;
+        }
+
+        if (!$this->isCentralNetworkCronSite()) {
+            $this->inCentralNetworkCronContext(
+                function () use ($runId): void {
+                    $this->clearDashboardCompositionEvents($runId);
+                }
+            );
+            return;
+        }
+
+        foreach ([self::DASHBOARD_COMPOSE_HOOK, self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK] as $hook) {
+            wp_clear_scheduled_hook($hook, [$runId]);
+        }
+    }
+
     protected function isCentralNetworkCronSite(): bool {
         return $this->multisiteContext->isCentralSite();
     }
@@ -10210,6 +10276,21 @@ class MetricsImplementationService {
         $event = $this->getNextDashboardBatchRefreshEvent();
 
         return (int)($event['timestamp'] ?? 0);
+    }
+
+    /** Returns the next composition or composition-watchdog event for a run. */
+    protected function getNextDashboardCompositionEventTimestamp(string $hook, string $runId): int {
+        if ($runId === '') {
+            return 0;
+        }
+
+        if (!$this->isCentralNetworkCronSite()) {
+            return (int)$this->inCentralNetworkCronContext(
+                fn(): int => $this->getNextDashboardCompositionEventTimestamp($hook, $runId)
+            );
+        }
+
+        return (int)wp_next_scheduled($hook, [$runId]);
     }
 
     protected function getMetricsRefreshIntervalHours(): int {
