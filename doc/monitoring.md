@@ -16,7 +16,7 @@ Displays dashboard metrics and site availability monitoring. Both processes can 
 
 Availability checks use DNS and HTTP checks. HTTP timeouts and the request time budget are bounded. DNS calls are no longer started when fewer than five seconds remain in the batch budget; [Runtime state and scheduler](runtime-state.md#server-operation-dns-timeouts) describes the unavoidable server-side resolver configuration.
 
-Dashboard metric batches keep only bounded partial results until a separate composition task publishes the completed cache record. The composition task has an expiring lock and watchdog. A failed composition is shown as a stale process state and must be reset before a new run can start.
+Dashboard metric batches keep only bounded partial results until a separate composition task publishes the completed cache record. Once the site loop is at 100 percent, the row changes to **Composition pending** and states that all individual sites are complete; the next-run column names the composition or its watchdog check. The composition task has an expiring lock and watchdog. A failed composition is shown as a stale process state and must be reset before a new run can start. Completed cache data displays complete progress even though the transient batch offset has already been cleared.
 
 ### Storage analyses
 
@@ -38,7 +38,7 @@ For collective batches, links to WP Crontrol always point to the main network si
 
 `Settings::renderMonitoringPage()` is exclusively a control and status interface. The actual runners are `MetricsImplementationService`, `MonitoringService`, `StorageAnalysisSchedulerService`, and `ShortcodeBlockAnalysisSchedulerService`.
 
-All recurring network processes are registered in the Cron context of the main site. Individual storage and shortcode/block analysis tasks, however, run in the Cron table of their respective site. Collective batches verify their execution context and move or remove central events incorrectly registered on a subsite.
+All recurring network processes are registered in the Cron context of the main site. Individual storage and shortcode/block analysis tasks, however, run in the Cron table of their respective site. Collective batches verify their execution context and move or remove central events incorrectly registered on a subsite. In production, an external Cron service executes due WordPress events; the configured service cadence determines how closely a due event follows its scheduled timestamp.
 
 [Runtime state and scheduler](runtime-state.md) completely lists the Cron hooks, schedule keys, continuation arguments, network options, locks, and TTLs. The page itself starts no hidden full scan while rendering.
 

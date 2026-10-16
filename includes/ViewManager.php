@@ -31,9 +31,9 @@ class ViewManager {
                     continue;
                 }
 
-                $views[$slug]['widgets'] = $this->mergeSystemWidgets(
-                    $this->sanitizeWidgets($view['widgets'] ?? $defaults[$slug]['widgets'], $availableWidgetIds),
-                    $this->sanitizeWidgets($defaults[$slug]['widgets'], $availableWidgetIds)
+                $views[$slug]['widgets'] = $this->sanitizeWidgets(
+                    $view['widgets'] ?? $defaults[$slug]['widgets'],
+                    $availableWidgetIds
                 );
                 continue;
             }
@@ -69,6 +69,7 @@ class ViewManager {
         $slug = '';
         $view = [];
         $submittedView = [];
+        $submittedWidgets = [];
 
         if (!is_array($submittedViews)) {
             $submittedViews = [];
@@ -81,13 +82,17 @@ class ViewManager {
                 continue;
             }
 
+            $submittedWidgets = !empty($submittedView['widgets_present']) || array_key_exists('widgets', $submittedView)
+                ? ($submittedView['widgets'] ?? [])
+                : $view['widgets'];
+
             $storedViews[$slug] = [
                 'label' => !empty($view['system'])
                     ? (string)$view['label']
                     : $this->sanitizeViewLabel((string)($submittedView['label'] ?? (string)$view['label'])),
                 'widgets' => $slug === 'all_widgets'
                     ? $availableWidgetIds
-                    : $this->sanitizeWidgets($submittedView['widgets'] ?? $view['widgets'], $availableWidgetIds),
+                    : $this->sanitizeWidgets($submittedWidgets, $availableWidgetIds),
                 'system' => !empty($view['system']),
             ];
         }
@@ -199,19 +204,6 @@ class ViewManager {
     protected function sanitizeViewLabel(string $label): string {
         $label = sanitize_text_field($label);
         return $label === '' ? __('New view', 'rrze-multisite-manager') : $label;
-    }
-
-    protected function mergeSystemWidgets(array $storedWidgets, array $defaultWidgets): array {
-        $widgets = $storedWidgets;
-        $widgetId = '';
-
-        foreach ($defaultWidgets as $widgetId) {
-            if (!in_array($widgetId, $widgets, true)) {
-                $widgets[] = $widgetId;
-            }
-        }
-
-        return $widgets;
     }
 
     protected function generateUniqueSlug(string $label, array $views): string {

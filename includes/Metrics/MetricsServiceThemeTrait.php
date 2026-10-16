@@ -26,11 +26,13 @@ trait MetricsServiceThemeTrait {
             return [];
         }
 
+        $themeItem = $this->hydrateThemeRuntimeState($themeItem);
+
         $cacheKey = $this->getThemeDetailsCacheKey($stylesheet, $includeSourceAnalysis);
         $cached = get_site_transient($cacheKey);
 
         if (is_array($cached) && !empty($cached)) {
-            return $cached;
+            return $this->hydrateThemeRuntimeState($cached);
         }
 
         $supplementary = $this->getThemeSupplementaryData($stylesheet);
@@ -89,6 +91,7 @@ trait MetricsServiceThemeTrait {
         $siteCounts = (array)($themeSiteAggregate['counts'] ?? []);
         $siteUsageMap = (array)($themeSiteAggregate['usage_map'] ?? []);
         $siteUsageTruncated = (array)($themeSiteAggregate['truncated'] ?? []);
+        $defaultThemeStylesheet = $this->getWordPressDefaultThemeStylesheet();
         $results = [];
         $stylesheet = '';
         $theme = null;
@@ -112,6 +115,7 @@ trait MetricsServiceThemeTrait {
                 'description' => wp_strip_all_tags($description),
                 'site_count' => (int)($siteCounts[$stylesheet] ?? 0),
                 'network_enabled' => isset($allowedThemes[$stylesheet]),
+                'is_default_theme' => $stylesheet === $defaultThemeStylesheet,
                 'active_sites' => (array)($siteUsageMap[$stylesheet] ?? []),
                 'active_sites_truncated' => !empty($siteUsageTruncated[$stylesheet]),
                 'author' => (string)$theme->get('Author'),
@@ -146,5 +150,55 @@ trait MetricsServiceThemeTrait {
                 [self::class, 'isUnusedTheme']
             )
         );
+    }
+
+    /** Adds theme state that must not depend on a cached metrics run. */
+    protected function hydrateDashboardThemeRuntimeState(array $dashboardData): array {
+        $defaultThemeStylesheet = $this->getWordPressDefaultThemeStylesheet();
+
+        foreach ((array)($dashboardData['themes'] ?? []) as $index => $theme) {
+            if (!is_array($theme)) {
+                continue;
+            }
+
+            $dashboardData['themes'][$index] = $this->hydrateThemeRuntimeState($theme, $defaultThemeStylesheet);
+        }
+
+        return $dashboardData;
+    }
+
+    /** Adds the live WordPress default-theme marker and its status badge. */
+    protected function hydrateThemeRuntimeState(array $theme, ?string $defaultThemeStylesheet = null): array {
+        $defaultThemeStylesheet = $defaultThemeStylesheet ?? $this->getWordPressDefaultThemeStylesheet();
+        $theme['is_default_theme'] = $defaultThemeStylesheet !== ''
+            && (string)($theme['stylesheet'] ?? '') === $defaultThemeStylesheet;
+        $theme['status'] = $this->getThemeStatus($theme);
+
+        return $theme;
+    }
+
+    /** Returns the installed default theme configured in RRZE Settings or WordPress. */
+    protected function getWordPressDefaultThemeStylesheet(): string {
+        $settings = get_site_option('rrze_settings', []);
+        $generalSettings = is_array($settings)
+            ? ($settings['general'] ?? [])
+            : (is_object($settings) ? ($settings->general ?? []) : []);
+        $configuredTheme = is_array($generalSettings)
+            ? (string)($generalSettings['default_theme'] ?? '')
+            : (is_object($generalSettings) ? (string)($generalSettings->default_theme ?? '') : '');
+
+        if ($configuredTheme === '' && defined('WP_DEFAULT_THEME')) {
+            $configuredTheme = (string)constant('WP_DEFAULT_THEME');
+        }
+
+        if ($configuredTheme === '' || preg_match('/^[A-Za-z0-9._-]+$/', $configuredTheme) !== 1) {
+            return '';
+        }
+
+        $theme = wp_get_theme($configuredTheme);
+
+        return $theme instanceof \WP_Theme && $theme->exists()
+            ? (string)$theme->get_stylesheet()
+            : '';
     }
 }

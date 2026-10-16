@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="850" viewBox="0 0 1000 850" role="img" aria-labelledby="title desc">
+  <title id="title">Classification of upload-only files</title>
+  <desc id="desc">An upload file is compared to the attachment-path index. Files without an attachment entry are candidate orphan files and are enriched with matches from the usage index.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/></marker>
+    <style>
+      .box { fill:#f4f8fb; stroke:#52606d; stroke-width:2; rx:10; }
+      .index { fill:#edf2ff; stroke:#3b5bdb; stroke-width:2; rx:10; }
+      .decision { fill:#f7f2ff; stroke:#7048e8; stroke-width:2; rx:10; }
+      .good { fill:#e7f5ef; stroke:#16803c; stroke-width:2; rx:10; }
+      .candidate { fill:#fff4e5; stroke:#b45309; stroke-width:2; rx:10; }
+      .review { fill:#fff0f1; stroke:#c92a2a; stroke-width:2; rx:10; }
+      .line { fill:none; stroke:#52606d; stroke-width:2.5; marker-end:url(#arrow); }
+      .label { font:600 17px Arial,sans-serif; fill:#1f2933; text-anchor:middle; dominant-baseline:middle; }
+      .small { font:600 14px Arial,sans-serif; fill:#334e68; text-anchor:middle; }
+      .note { font:600 14px Arial,sans-serif; fill:#52606d; text-anchor:middle; }
+      .heading { font:700 22px Arial,sans-serif; fill:#243b53; text-anchor:middle; }
+    </style>
+  </defs>
+  <rect width="1000" height="850" fill="#fff"/>
+  <text x="500" y="40" class="heading" font-size="27">Upload file: classification as potentially orphaned</text>
+  <rect x="80" y="75" width="390" height="70" class="index"/>
+  <text x="275" y="101" class="label">Attachment-path index</text>
+  <text x="275" y="124" class="small">_wp_attached_file and registered variants</text>
+  <rect x="530" y="75" width="390" height="70" class="index"/>
+  <text x="725" y="101" class="label">Usage index</text>
+  <text x="725" y="124" class="small">Content, post meta, supported options</text>
+  <text x="500" y="177" class="note">Both indexes are built once in resumable batches; the file check performs only bounded lookups.</text>
+  <rect x="220" y="210" width="560" height="62" class="box"/>
+  <text x="500" y="235" class="label">Scan one readable, local file in the uploads directory</text>
+  <text x="500" y="257" class="small">Normalize its relative path before lookup.</text>
+  <path d="M500 272 V310" class="line"/>
+  <rect x="220" y="310" width="560" height="62" class="decision"/>
+  <text x="500" y="335" class="label">Is this path present in the attachment-path index?</text>
+  <text x="500" y="357" class="small">Original files and registered image variants are known paths.</text>
+  <path d="M395 372 V425 H270" class="line"/>
+  <text x="380" y="407" class="note">yes</text>
+  <rect x="130" y="425" width="280" height="72" class="good"/>
+  <text x="270" y="451" class="label">Registered upload file</text>
+  <text x="270" y="474" class="small">Not an upload-only candidate</text>
+  <path d="M605 372 V425 H730" class="line"/>
+  <text x="620" y="407" class="note">no</text>
+  <rect x="590" y="425" width="280" height="72" class="candidate"/>
+  <text x="730" y="451" class="label">Upload-only candidate</text>
+  <text x="730" y="474" class="small">No media-library attachment record</text>
+  <path d="M730 497 V540 H500" class="line"/>
+  <rect x="220" y="540" width="560" height="62" class="decision"/>
+  <text x="500" y="565" class="label">Does the usage index contain a reference?</text>
+  <text x="500" y="587" class="small">Stored match details are capped to the configured candidate limit.</text>
+  <path d="M395 602 V655 H270" class="line"/>
+  <text x="380" y="637" class="note">yes</text>
+  <rect x="130" y="655" width="280" height="72" class="good"/>
+  <text x="270" y="681" class="label">Reference found</text>
+  <text x="270" y="704" class="small">Show the inspected source details</text>
+  <path d="M605 602 V655 H730" class="line"/>
+  <text x="620" y="637" class="note">no</text>
+  <rect x="590" y="655" width="280" height="72" class="candidate"/>
+  <text x="730" y="681" class="label">No indexed match</text>
+  <text x="730" y="704" class="small">Remain a candidate for review</text>
+  <rect x="100" y="765" width="800" height="60" class="review"/>
+  <text x="500" y="790" class="label">A missing match is not a deletion proof.</text>
+  <text x="500" y="812" class="small">Uninspected sources, plugins and skipped oversized values can still reference the file.</text>
+</svg>

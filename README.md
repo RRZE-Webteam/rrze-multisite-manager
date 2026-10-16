@@ -38,4 +38,4 @@ Die öffentliche Dokumentation und Endanwender-Hinweise liegen unter:
 
 ## Entwicklerdokumentation
 
-Die technische Dokumentation zu Menü-Seiten, Klassen, Caches, Cron-Hooks, Optionen, Transients, Cookies und AJAX-Aktionen liegt in [doc/README.md](doc/README.md). Allgemeine Entwicklungs-, Build-, Test- und Übersetzungshinweise stehen in [doc/development.md](doc/development.md). Die zentrale Referenz für Laufzeitdaten und Scheduler ist [doc/runtime-state.md](doc/runtime-state.md).
+Die technische Dokumentation zu Menü-Seiten, Klassen, Caches, Cron-Hooks, Optionen, Transients, Cookies und AJAX-Aktionen liegt in [doc/README.md](doc/README.md). Allgemeine Entwicklungs-, Build-, Test- und Übersetzungshinweise stehen in [doc/development.md](doc/development.md). Die zentrale Referenz für Laufzeitdaten und Scheduler ist [doc/runtime-state.md](doc/runtime-state.md). Für den Betrieb mit dem externen Cron-Service sowie den zweiphasigen Dashboard-Metriklauf sind dort auch Ablaufdarstellungen hinterlegt.

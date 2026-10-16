@@ -72,7 +72,9 @@ class SummaryWidget extends Widgets {
                 ],
                 [
                     'label' => __('Storage usage', 'rrze-multisite-manager'),
-                    'value' => (string)($summary['total_storage_used_label'] ?? ''),
+                    'value' => isset($summary['total_storage_used_bytes'])
+                        ? size_format(max(0, (int)$summary['total_storage_used_bytes']))
+                        : (string)($summary['total_storage_used_label'] ?? ''),
                     'detail' => !empty($summary['has_unlimited_storage_site'])
                         ? __('at least one site is unlimited', 'rrze-multisite-manager')
                         : sprintf(

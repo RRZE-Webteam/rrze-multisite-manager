@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
+  <title id="title">Storage analysis phases</title>
+  <desc id="desc">The analysis builds a bounded attachment and file base, inspects bounded reference sources, compares candidates, then stores capped results and clears temporary state.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/></marker>
+    <style>
+      .box { fill: #f4f8fb; stroke: #52606d; stroke-width: 2; rx: 10; }
+      .phase { fill: #e7f5ef; stroke: #16803c; stroke-width: 2; rx: 10; }
+      .result { fill: #edf2ff; stroke: #3b5bdb; stroke-width: 2; rx: 10; }
+      .line { fill: none; stroke: #52606d; stroke-width: 2.5; marker-end: url(#arrow); }
+      .label { font: 600 17px Arial, sans-serif; fill: #1f2933; text-anchor: middle; dominant-baseline: middle; }
+      .note { font: 600 14px Arial, sans-serif; fill: #52606d; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect width="1200" height="500" fill="#fff"/>
+  <text x="600" y="40" class="label" font-size="26">Storage analysis: data collection and result phases</text>
+  <rect x="40" y="95" width="145" height="60" class="phase"/><text x="112" y="120" class="label">Start or</text><text x="112" y="141" class="label">resume run</text>
+  <path d="M185 125 H215" class="line"/>
+  <rect x="215" y="95" width="180" height="60" class="box"/><text x="305" y="120" class="label">Page attachment IDs;</text><text x="305" y="141" class="label">write index segments</text>
+  <path d="M395 125 H425" class="line"/>
+  <rect x="425" y="95" width="180" height="60" class="box"/><text x="515" y="120" class="label">Walk uploads and</text><text x="515" y="141" class="label">collect statistics</text>
+  <path d="M605 125 H635" class="line"/>
+  <rect x="635" y="95" width="160" height="60" class="phase"/><text x="715" y="120" class="label">Finalize compact</text><text x="715" y="141" class="label">base summary</text>
+  <path d="M795 125 H825" class="line"/>
+  <rect x="825" y="95" width="160" height="60" class="phase"/><text x="905" y="120" class="label">Inspect bounded</text><text x="905" y="141" class="label">reference sources</text>
+  <path d="M985 125 H1015" class="line"/>
+  <rect x="1015" y="95" width="145" height="60" class="box"/><text x="1087" y="120" class="label">Compare media</text><text x="1087" y="141" class="label">and candidates</text>
+  <path d="M1087 155 V225" class="line"/>
+  <rect x="960" y="225" width="200" height="60" class="result"/><text x="1060" y="250" class="label">Persist capped results</text><text x="1060" y="271" class="label">and summary</text>
+  <path d="M960 255 H790" class="line"/>
+  <rect x="575" y="225" width="215" height="60" class="result"/><text x="682" y="250" class="label">Clear temporary state,</text><text x="682" y="271" class="label">reservation and index</text>
+  <path d="M515 155 V350" class="line"/>
+  <rect x="360" y="350" width="310" height="65" class="box"/><text x="515" y="375" class="label">At a slice limit: persist cursors,</text><text x="515" y="397" class="label">then resume through Cron</text>
+  <path d="M360 382 H112 V155" class="line"/>
+  <text x="600" y="465" class="note">Every phase is paginated and capped. The worker keeps only compact state; it never loads the complete media library or reference corpus at once.</text>
+</svg>

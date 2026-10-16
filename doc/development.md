@@ -62,4 +62,4 @@ PO files can then be maintained, for example, with Loco Translate and compiled t
 
 ## Documentation maintenance
 
-For new or renamed menu pages, create or update a file in `doc/` and link it from [doc/README.md](README.md). Document new persistent options, meta keys, transients, Cron hooks, locks, and AJAX endpoints additionally in [Runtime state and scheduler](runtime-state.md).
+For new or renamed menu pages, create or update a file in `doc/` and link it from [doc/README.md](README.md). Document new persistent options, meta keys, transients, Cron hooks, locks, and AJAX endpoints additionally in [Runtime state and scheduler](runtime-state.md). When a background workflow or its state transitions change, update the matching Mermaid flow diagram there or in [Storage analysis](storage-analysis.md) as well.

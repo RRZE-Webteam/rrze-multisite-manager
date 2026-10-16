@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Storage analysis scheduler flow</title>
+  <desc id="desc">A requested storage analysis first obtains capacity, reserves its continuation, processes bounded slices and persists state until it can write its capped result.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/></marker>
+    <style>
+      .box { fill: #f4f8fb; stroke: #52606d; stroke-width: 2; rx: 10; }
+      .success { fill: #e7f5ef; stroke: #16803c; stroke-width: 2; rx: 10; }
+      .wait { fill: #fff4e5; stroke: #b45309; stroke-width: 2; rx: 10; }
+      .decision { fill: #edf2ff; stroke: #3b5bdb; stroke-width: 2; }
+      .line { fill: none; stroke: #52606d; stroke-width: 2.5; marker-end: url(#arrow); }
+      .label { font: 600 18px Arial, sans-serif; fill: #1f2933; text-anchor: middle; dominant-baseline: middle; }
+      .small { font: 600 15px Arial, sans-serif; fill: #334e68; text-anchor: middle; }
+      .note { font: 600 14px Arial, sans-serif; fill: #52606d; }
+    </style>
+  </defs>
+  <rect width="1200" height="560" fill="#fff"/>
+  <text x="600" y="40" class="label" font-size="26">Storage analysis: scheduler and bounded slices</text>
+  <rect x="55" y="85" width="230" height="62" class="box"/><text x="170" y="109" class="label">Scheduled or manually</text><text x="170" y="131" class="label">requested analysis</text>
+  <path d="M285 116 H340" class="line"/>
+  <polygon points="430,68 520,116 430,164 340,116" class="decision"/><text x="430" y="110" class="small">Capacity and</text><text x="430" y="129" class="small">site lock available?</text>
+  <path d="M520 116 H575" class="line"/><text x="538" y="103" class="note">yes</text>
+  <rect x="575" y="85" width="225" height="62" class="success"/><text x="687" y="109" class="label">Reserve next continuation</text><text x="687" y="131" class="label">before processing</text>
+  <path d="M800 116 H855" class="line"/>
+  <rect x="855" y="85" width="190" height="62" class="box"/><text x="950" y="109" class="label">Run one bounded</text><text x="950" y="131" class="label">analysis slice</text>
+  <path d="M950 147 V205" class="line"/>
+  <polygon points="950,205 1040,255 950,305 860,255" class="decision"/><text x="950" y="249" class="small">Time, memory or</text><text x="950" y="268" class="small">step limit reached?</text>
+  <path d="M860 255 H755" class="line"/><text x="815" y="242" class="note">yes</text>
+  <rect x="520" y="224" width="235" height="62" class="box"/><text x="637" y="248" class="label">Persist compact state and</text><text x="637" y="270" class="label">queue continuation</text>
+  <path d="M520 255 H430 V164" class="line"/>
+  <path d="M950 305 V365" class="line"/><text x="965" y="335" class="note">no</text>
+  <polygon points="950,365 1040,415 950,465 860,415" class="decision"/><text x="950" y="409" class="small">Current phase</text><text x="950" y="428" class="small">complete?</text>
+  <path d="M860 415 H805 V147" class="line"/><text x="818" y="402" class="note">no</text>
+  <path d="M1040 415 H1080" class="line"/><text x="1048" y="402" class="note">yes</text>
+  <rect x="1080" y="384" width="105" height="62" class="success"/><text x="1132" y="408" class="label">Write capped</text><text x="1132" y="430" class="label">result; clear</text>
+  <path d="M430 164 V220 H170" class="line"/><text x="370" y="207" class="note">no</text>
+  <rect x="55" y="220" width="230" height="62" class="wait"/><text x="170" y="244" class="label">Persist wait reason and</text><text x="170" y="266" class="label">schedule retry event</text>
+  <path d="M170 282 V335 H430 V164" class="line"/>
+  <text x="600" y="530" class="note">A waiting individual retry normally starts after about one minute; nominal continuation delays are subject to the external Cron cadence.</text>
+</svg>

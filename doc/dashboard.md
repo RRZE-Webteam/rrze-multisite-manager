@@ -13,7 +13,7 @@ Editor usage follows RRZE Settings. If the Block Editor is configured as the net
 ## Usage
 
 * Widgets can be moved within a view. Their order is stored per user and view in the browser.
-* Super admins manage views and their visible widgets under **Settings > Views**.
+* Super admins manage views and their visible widgets under **Settings > Views**. System-view names stay fixed, but their widget selection is stored exactly as saved; only **All widgets** is intentionally immutable.
 * Table widgets sort and paginate only their currently visible entries in the browser.
 * The page displays the time of the latest metrics run and the progress of a running refresh.
 
@@ -21,7 +21,7 @@ Editor usage follows RRZE Settings. If the Block Editor is configured as the net
 
 Dashboard metrics are calculated centrally on the network's main site in the background. A run processes sites in batches. Each batch writes an independent, bounded intermediate result; a separate composition task merges all intermediate results and writes one complete record to the network cache only after every batch has completed. The intermediate results are then removed. The previous complete record remains visible while a refresh is running.
 
-The composition task has its own expiring lock and watchdog. A new metrics run is held back while composition is pending. If composition repeatedly fails, the run is marked as failed and is visible in Monitoring, where it can be reset. This prevents a crashed final task from leaving a permanent lock or allowing overlapping runs.
+The composition task has its own expiring lock and watchdog. A new metrics run is held back while collection or composition is pending. The Monitoring row reports the separate composition phase after all sites reach 100 percent and names its next Cron step, so this expected interval is not mistaken for a stalled site loop. Successful and finally failed runs remove their own one-time composition/watchdog events. If composition repeatedly fails, the run is marked as failed and is visible in Monitoring, where it can be reset. This prevents a crashed final task from leaving a permanent lock or allowing overlapping runs.
 
 When the calculation logic changes, the cache detects its version change and schedules a new batch calculation. This avoids an expensive synchronous run in an admin request.
 

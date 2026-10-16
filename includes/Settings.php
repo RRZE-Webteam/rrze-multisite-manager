@@ -1784,19 +1784,27 @@ class Settings {
             $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteStorageAnalysisPageUrl($siteId), __('Storage Analysis', 'rrze-multisite-manager'), $cronSiteId);
             echo '</div>';
             echo '</td>';
-            echo '<td>' . $this->renderScheduledJobStatusHtml($process) . '</td>';
+            echo '<td>' . $this->renderScheduledJobStatusHtml($process);
+            if (!empty($process['last_error'])) {
+                echo '<br><span>' . esc_html((string)$process['last_error']) . '</span>';
+            }
+            echo '</td>';
             $assignment = ($process['schedule_mode'] ?? '') === 'batch' ? __('Shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager');
             echo '<td>' . esc_html($assignment) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
-            echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base', true);
+            echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base', true, (array)($process['base_progress'] ?? []));
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'orphan', true);
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'metadata', true);
             $durationSeconds = (int)($process['last_duration_seconds'] ?? 0);
-            $durationLabel = !empty($process['last_was_aborted'])
-                ? __('Aborted', 'rrze-multisite-manager')
-                : ($lastRun !== '' && $durationSeconds <= 0
-                    ? __('<1 sec.', 'rrze-multisite-manager')
-                    : $this->formatProcessDuration($durationSeconds));
+            if (!empty($process['is_running'])) {
+                $durationLabel = __('-', 'rrze-multisite-manager');
+            } elseif (!empty($process['last_was_aborted'])) {
+                $durationLabel = __('Aborted', 'rrze-multisite-manager');
+            } elseif ($lastRun !== '' && $durationSeconds <= 0) {
+                $durationLabel = __('<1 sec.', 'rrze-multisite-manager');
+            } else {
+                $durationLabel = $this->formatProcessDuration($durationSeconds);
+            }
             echo '<td>' . esc_html($durationLabel) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp($lastRun)) . '</td>';
             echo '<td>' . esc_html(!empty($process['is_due']) ? __('Waiting for cron', 'rrze-multisite-manager') : $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
@@ -1807,7 +1815,15 @@ class Settings {
             } elseif (!empty($process['is_running'])) {
                 echo esc_html__('Running', 'rrze-multisite-manager');
             } elseif (($process['schedule_mode'] ?? '') === 'batch') {
-                echo '&mdash;';
+                if (!empty($process['last_was_aborted']) || $statusKey === 'error') {
+                    echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_site_storage_analysis')) . '">';
+                    echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
+                    wp_nonce_field('rrze_multisite_manager_start_site_storage_analysis_' . $siteId);
+                    echo '<button type="submit" class="button button-secondary">' . esc_html__('Restart this website', 'rrze-multisite-manager') . '</button>';
+                    echo '</form>';
+                } else {
+                    echo '&mdash;';
+                }
             } else {
                 $hasSuccessfulRun = $statusKey === 'ok'
                     && (int)($process['next_run_timestamp'] ?? 0) > time();
@@ -2385,7 +2401,7 @@ class Settings {
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['started_at'] ?? ''))) . '</td>';
                 echo '<td>' . esc_html($finishedAt === '' ? '-' : $this->formatProcessTimestamp($finishedAt)) . '</td>';
                 echo '<td>' . esc_html($this->formatProcessDurationInMinutes((int)($process['last_duration_seconds'] ?? 0), $finishedAt !== '')) . '</td>';
-                echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
+                echo '<td>' . $this->renderProcessNextRunHtml($process) . '</td>';
                 echo '<td>' . $this->renderProcessActionsHtml($process, $this->getMonitoringPageUrl()) . '</td>';
                 echo '</tr>';
             }
@@ -2558,6 +2574,7 @@ class Settings {
             }
 
             echo '<div class="rrze-msm-widget-selector">';
+            echo '<input type="hidden" name="views[' . esc_attr((string)$view['slug']) . '][widgets_present]" value="1">';
 
             foreach ($widgetOptions as $widgetOption) {
                 echo '<label class="rrze-msm-widget-check">';
@@ -2614,7 +2631,7 @@ class Settings {
         return $options;
     }
 
-    protected function renderAnalysisPhaseCell(array $phases, string $phaseKey, bool $timeOnly = false): string {
+    protected function renderAnalysisPhaseCell(array $phases, string $phaseKey, bool $timeOnly = false, array $progress = []): string {
         $phase = is_array($phases[$phaseKey] ?? null) ? $phases[$phaseKey] : [];
         $state = (string)($phase['status'] ?? 'idle');
         $iconClass = 'dashicons-minus';
@@ -2635,7 +2652,17 @@ class Settings {
             $iconLabel = __('Scheduled', 'rrze-multisite-manager');
         }
 
-        return '<td class="rrze-msm-phase-timestamp"><span class="dashicons ' . esc_attr($iconClass) . ' ' . esc_attr($iconStateClass) . '" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html($iconLabel) . '</span> ' . esc_html($this->formatMonitoringTimestamp((string)($phase['started_at'] ?? ''), $timeOnly)) . '</td>';
+        $html = '<td class="rrze-msm-phase-timestamp"><span class="dashicons ' . esc_attr($iconClass) . ' ' . esc_attr($iconStateClass) . '" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html($iconLabel) . '</span> ' . esc_html($this->formatMonitoringTimestamp((string)($phase['started_at'] ?? ''), $timeOnly));
+        if ($phaseKey === 'base' && $state === 'running' && empty($progress['attachment_index_complete']) && (int)($progress['attachment_index_last_id'] ?? 0) > 0) {
+            $html .= '<br><small>' . esc_html(sprintf(
+                /* translators: 1: last indexed attachment ID, 2: number of index segments awaiting storage. */
+                __('Attachment ID %1$s; %2$s index segments pending', 'rrze-multisite-manager'),
+                number_format_i18n((int)$progress['attachment_index_last_id']),
+                number_format_i18n((int)($progress['pending_index_buckets'] ?? 0))
+            )) . '</small>';
+        }
+
+        return $html . '</td>';
     }
 
     protected function formatMonitoringTimestamp(string $timestamp, bool $timeOnly = false): string {
@@ -2762,8 +2789,20 @@ class Settings {
     }
 
     protected function getProcessStatusLabel(array $process): string {
+        if (!empty($process['run_state']['is_composing'])) {
+            return __('Composition pending', 'rrze-multisite-manager');
+        }
+
         if (!empty($process['is_running'])) {
             return __('Running', 'rrze-multisite-manager');
+        }
+
+        if (($process['status_key'] ?? '') === 'error') {
+            return __('Error', 'rrze-multisite-manager');
+        }
+
+        if (($process['status_key'] ?? '') === 'aborted') {
+            return __('Aborted', 'rrze-multisite-manager');
         }
 
         if ((int)($process['next_run_timestamp'] ?? 0) <= 0) {
@@ -2781,6 +2820,8 @@ class Settings {
 
         if (!empty($process['is_running'])) {
             $className = 'rrze-msm-badge rrze-msm-badge-info';
+        } elseif (in_array((string)($process['status_key'] ?? ''), ['error', 'aborted'], true)) {
+            $className = 'rrze-msm-badge rrze-msm-badge-danger';
         } elseif ((int)($process['next_run_timestamp'] ?? 0) > 0) {
             $className = $this->hasPreviousProcessResult($process)
                 ? 'rrze-msm-badge rrze-msm-badge-positive'
@@ -2837,13 +2878,16 @@ class Settings {
     protected function renderProcessStatusHtml(array $process): string {
         $label = $this->getProcessStatusLabel($process);
         $warning = $this->getProcessWarningLabel($process);
+        $statusMessage = (string)($process['status_message'] ?? '');
         $className = 'rrze-msm-badge rrze-msm-badge-neutral';
         $html = '';
 
         if ($warning !== '') {
             $className = 'rrze-msm-badge rrze-msm-badge-danger';
-        } else {
+        } elseif ($statusMessage === '') {
             return '<div class="rrze-msm-process-status">' . $this->renderScheduledJobStatusHtml($process) . '</div>';
+        } else {
+            $className = 'rrze-msm-badge rrze-msm-badge-info';
         }
 
         $html .= '<div class="rrze-msm-process-status">';
@@ -2851,8 +2895,26 @@ class Settings {
 
         if ($warning !== '') {
             $html .= '<div class="rrze-msm-process-warning">' . esc_html($warning) . '</div>';
+        } elseif ($statusMessage !== '') {
+            $html .= '<div class="rrze-msm-process-meta">' . esc_html($statusMessage) . '</div>';
         }
 
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderProcessNextRunHtml(array $process): string {
+        $timestamp = (int)($process['next_run_timestamp'] ?? 0);
+        $nextStepLabel = (string)($process['next_step_label'] ?? '');
+
+        if ($nextStepLabel === '') {
+            return esc_html($this->formatScheduledTimestamp($timestamp));
+        }
+
+        $html = '<div class="rrze-msm-process-next-run">';
+        $html .= '<div class="rrze-msm-process-meta">' . esc_html($nextStepLabel) . '</div>';
+        $html .= '<div>' . esc_html($this->formatScheduledTimestamp($timestamp)) . '</div>';
         $html .= '</div>';
 
         return $html;
@@ -2961,6 +3023,7 @@ class Settings {
 
     protected function getProcessWarningLabel(array $process): string {
         $isRunning = !empty($process['is_running']);
+        $isComposing = !empty($process['run_state']['is_composing']);
         $currentDurationSeconds = (int)($process['current_duration_seconds'] ?? 0);
         $nextRunTimestamp = (int)($process['next_run_timestamp'] ?? 0);
         $lastRun = (string)($process['last_run'] ?? '');
@@ -2970,7 +3033,7 @@ class Settings {
             return __('Dashboard metrics could not be assembled. Reset and restart the process.', 'rrze-multisite-manager');
         }
 
-        if ($isRunning && $currentDurationSeconds > $thresholdSeconds) {
+        if ($isRunning && !$isComposing && $currentDurationSeconds > $thresholdSeconds) {
             return __('Run is taking unusually long', 'rrze-multisite-manager');
         }
 
@@ -2978,7 +3041,7 @@ class Settings {
             return __('Next run is overdue', 'rrze-multisite-manager');
         }
 
-        if ($lastRun === '' && empty($process['run_state']['has_data'])) {
+        if (!$isRunning && $lastRun === '' && empty($process['run_state']['has_data'])) {
             return __('No completed process data is available yet', 'rrze-multisite-manager');
         }
 

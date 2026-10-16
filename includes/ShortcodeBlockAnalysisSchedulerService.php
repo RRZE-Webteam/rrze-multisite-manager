@@ -1233,7 +1233,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
 
             $metaLocation = $location;
-            $metaLocation['meta_key'] = (string)($metaRow->meta_key ?? '');
+            $metaLocation['metadata_key'] = (string)($metaRow->metadata_key ?? '');
             $this->collectShortcodesFromValue((string)($metaRow->meta_value ?? ''), $metaLocation, $state['shortcodes']);
         }
 
@@ -1244,10 +1244,10 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function getPostMetaValuesForShortcodeAnalysis(int $postId): array {
         global $wpdb;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded scan avoids loading an entire post-meta cache for one analysis step.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- A bounded scan by indexed post ID avoids loading an entire post-meta cache for one analysis step.
         return (array)$wpdb->get_results(
             $wpdb->prepare(
-                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND OCTET_LENGTH(meta_value) <= %d ORDER BY meta_id ASC LIMIT %d",
+                "SELECT meta_key AS metadata_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND OCTET_LENGTH(meta_value) <= %d ORDER BY meta_id ASC LIMIT %d",
                 $postId,
                 self::ANALYSIS_VALUE_MAX_BYTES,
                 self::META_VALUES_PER_POST_LIMIT

@@ -1332,6 +1332,7 @@ class Dashboard {
         $allPlugins = is_array($pluginUsage['plugins'] ?? null) ? $pluginUsage['plugins'] : [];
         $missingPlugins = is_array($pluginUsage['missing_plugins'] ?? null) ? $pluginUsage['missing_plugins'] : [];
         $widget = new PluginUsageWidget($this->plugin, $this->config);
+        $allPlugins = $widget->hydrateRuntimeState($allPlugins);
         $networkPlugins = array_values(
             array_filter(
                 $allPlugins,
@@ -3285,6 +3286,7 @@ class Dashboard {
         $html = '<div class="rrze-msm-site-actions">';
         $networkThemesUrl = network_admin_url('themes.php');
         $siteCount = (int)($themeDetails['site_count'] ?? 0);
+        $isDefaultTheme = !empty($themeDetails['is_default_theme']);
 
         $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="' . esc_url($networkThemesUrl) . '" title="' . esc_attr__('Open network theme management', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Open network theme management', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Open network theme management', 'rrze-multisite-manager') . '</span></a>';
 
@@ -3293,13 +3295,13 @@ class Dashboard {
             return $html;
         }
 
-        if (!empty($themeDetails['network_enabled'])) {
+        if (!empty($themeDetails['network_enabled']) && !$isDefaultTheme) {
             $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-warning rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkDisableUrl($stylesheet)) . '" title="' . esc_attr__('Disable network-wide', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Disable network-wide', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Disable network-wide', 'rrze-multisite-manager') . '</span></a>';
-        } else {
+        } elseif (empty($themeDetails['network_enabled'])) {
             $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-positive rrze-msm-site-action-text" href="' . esc_url($this->getThemeNetworkEnableUrl($stylesheet)) . '" title="' . esc_attr__('Enable network-wide', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Enable network-wide', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Enable network-wide', 'rrze-multisite-manager') . '</span></a>';
         }
 
-        if (empty($themeDetails['network_enabled']) && $siteCount === 0) {
+        if (!$isDefaultTheme && empty($themeDetails['network_enabled']) && $siteCount === 0) {
             $html .= '<a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="' . esc_url($this->getThemeDeleteUrl($stylesheet)) . '" title="' . esc_attr__('Delete theme', 'rrze-multisite-manager') . '" aria-label="' . esc_attr__('Delete theme', 'rrze-multisite-manager') . '"><span class="rrze-msm-site-action-label">' . esc_html__('Delete theme', 'rrze-multisite-manager') . '</span></a>';
         }
 
