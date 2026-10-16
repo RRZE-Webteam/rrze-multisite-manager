@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-10-16T14:46:50+00:00\n"
+"POT-Creation-Date: 2026-10-16T14:50:11+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -2727,13 +2727,17 @@ msgstr "Die Shortcode- und Blockanalyse läuft für diese Website bereits."
 msgid ""
 "The shortcode and block analysis cannot be scheduled for this inactive "
 "website."
-msgstr "Die Shortcode- und Blockanalyse kann für diese inaktive Website nicht geplant werden."
+msgstr ""
+"Die Shortcode- und Blockanalyse kann für diese inaktive Website nicht "
+"geplant werden."
 
 #: includes/Settings.php:1603 templates/shortcode-block-analysis-page.php:239
 msgid ""
 "The shortcode and block analysis task could not be scheduled. Please check "
 "the error log."
-msgstr "Der Auftrag für die Shortcode- und Blockanalyse konnte nicht geplant werden. Bitte prüfen Sie das Fehlerprotokoll."
+msgstr ""
+"Der Auftrag für die Shortcode- und Blockanalyse konnte nicht geplant werden. "
+"Bitte prüfen Sie das Fehlerprotokoll."
 
 #. translators: 1: processed websites, 2: total websites, 3: created tasks.
 #: includes/Settings.php:1613
@@ -3699,7 +3703,7 @@ msgstr ""
 "konfigurierte Laufzeitgrenze überschritten hat."
 
 #. translators: 1: analysis phase, 2: processed posts, 3: total posts.
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:2442
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:2448
 msgid ""
 "The analysis was interrupted in the %1$s phase after %2$d of %3$d posts. The "
 "last saved checkpoint is included in the error log."
