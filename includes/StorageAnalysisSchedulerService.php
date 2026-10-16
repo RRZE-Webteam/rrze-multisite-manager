@@ -1110,7 +1110,7 @@ class StorageAnalysisSchedulerService {
             $this->scheduleContinuationQueueEvent();
             if ((int)get_site_option(self::BATCH_LAST_SITE_ID_OPTION, 0) > 0
                 && empty(get_site_option(self::CONTINUATION_QUEUE_OPTION, []))) {
-                $this->scheduleBatchContinuation(time() + 5);
+                $this->scheduleBatchContinuation(time() + 1);
             }
         }
     }
@@ -1181,7 +1181,7 @@ class StorageAnalysisSchedulerService {
         return $this->scheduleContinuationQueueEvent();
     }
 
-    protected function scheduleContinuationQueueEvent(int $delaySeconds = 5): bool {
+    protected function scheduleContinuationQueueEvent(int $delaySeconds = 1): bool {
         return (bool)$this->inBatchCronContext(function () use ($delaySeconds): bool {
             if (empty(get_site_option(self::CONTINUATION_QUEUE_OPTION, []))) {
                 return true;
@@ -1352,7 +1352,7 @@ class StorageAnalysisSchedulerService {
                 return;
             }
 
-            $this->scheduleBatchContinuation(time() + 5);
+            $this->scheduleBatchContinuation(time() + 1);
         } finally {
             $this->releaseBatchLock($lockToken);
             $context = [

@@ -470,6 +470,15 @@ td.rrze-msm-plugin-col-active-sites {
     vertical-align: middle;
 }
 
+.rrze-msm-plugin-overview-table .row-actions .dashicons {
+    width: 14px;
+    height: 14px;
+    margin-right: 2px;
+    font-size: 14px;
+    line-height: 1;
+    vertical-align: text-bottom;
+}
+
 .rrze-msm-network-audit-enabled {
     color: var(--rrze-msm-status-active-bg) !important;
 }

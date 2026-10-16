@@ -255,30 +255,32 @@ class PluginUsageWidget extends Widgets {
 
             $pluginCheckUrl = $this->getPluginCheckTestUrl($pluginFile);
 
-            echo '<div class="row-actions"><span class="details"><a href="' . esc_url($this->getPluginDetailsPageUrl($pluginFile)) . '">' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
+            echo '<div class="row-actions"><span class="details"><a href="' . esc_url($this->getPluginDetailsPageUrl($pluginFile)) . '"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> ' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
 
             if (!empty($plugin['settings_url'])) {
-                echo ' | <span class="settings"><a href="' . esc_url((string)$plugin['settings_url']) . '">' . esc_html__('Settings', 'rrze-multisite-manager') . '</a></span>';
+                echo ' | <span class="settings"><a href="' . esc_url((string)$plugin['settings_url']) . '"><span class="dashicons dashicons-admin-generic" aria-hidden="true"></span> ' . esc_html__('Settings', 'rrze-multisite-manager') . '</a></span>';
             }
 
             if ($networkAuditState['action_url'] !== '') {
-                echo ' | <span class="rrze-network-audit-toggle"><a href="' . esc_url($networkAuditState['action_url']) . '">' . esc_html($networkAuditState['action_label']) . '</a></span>';
+                $networkAuditIcon = !empty($networkAuditState['enabled']) ? 'dashicons-hidden' : 'dashicons-visibility';
+                echo ' | <span class="rrze-network-audit-toggle"><a href="' . esc_url($networkAuditState['action_url']) . '"><span class="dashicons ' . esc_attr($networkAuditIcon) . '" aria-hidden="true"></span> ' . esc_html($networkAuditState['action_label']) . '</a></span>';
             }
 
             if ($canUseNetworkAdminFeatures && $networkActive) {
-                echo ' | <span class="deactivate"><a href="' . esc_url($this->getNetworkPluginDeactivateUrl($pluginFile)) . '">' . esc_html__('Deactivate network-wide', 'rrze-multisite-manager') . '</a></span>';
+                echo ' | <span class="deactivate"><a href="' . esc_url($this->getNetworkPluginDeactivateUrl($pluginFile)) . '"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span> ' . esc_html__('Deactivate network-wide', 'rrze-multisite-manager') . '</a></span>';
             } elseif ($canUseNetworkAdminFeatures && $pluginFile !== '') {
-                echo ' | <span class="activate"><a href="' . esc_url($this->getNetworkPluginActivateUrl($pluginFile)) . '">' . esc_html__('Activate network-wide', 'rrze-multisite-manager') . '</a></span>';
+                echo ' | <span class="activate"><a href="' . esc_url($this->getNetworkPluginActivateUrl($pluginFile)) . '"><span class="dashicons dashicons-yes-alt" aria-hidden="true"></span> ' . esc_html__('Activate network-wide', 'rrze-multisite-manager') . '</a></span>';
             }
 
             if ($canUseNetworkAdminFeatures && $pluginFile !== '') {
                 $autoUpdateAction = $autoUpdateEnabled ? 'disable-auto-update' : 'enable-auto-update';
                 $autoUpdateLabel = $autoUpdateEnabled ? __('Disable auto-updates', 'rrze-multisite-manager') : __('Enable auto-updates', 'rrze-multisite-manager');
-                echo ' | <span class="auto-update"><a href="' . esc_url($this->getPluginAutoUpdateUrl($pluginFile, $autoUpdateAction)) . '">' . esc_html($autoUpdateLabel) . '</a></span>';
+                $autoUpdateIcon = $autoUpdateEnabled ? 'dashicons-controls-pause' : 'dashicons-update';
+                echo ' | <span class="auto-update"><a href="' . esc_url($this->getPluginAutoUpdateUrl($pluginFile, $autoUpdateAction)) . '"><span class="dashicons ' . esc_attr($autoUpdateIcon) . '" aria-hidden="true"></span> ' . esc_html($autoUpdateLabel) . '</a></span>';
             }
 
             if ($pluginCheckUrl !== '') {
-                echo ' | <span class="plugin-check"><a href="' . esc_url($pluginCheckUrl) . '">' . esc_html__('Start PCP test', 'rrze-multisite-manager') . '</a></span>';
+                echo ' | <span class="plugin-check"><a href="' . esc_url($pluginCheckUrl) . '"><span class="dashicons dashicons-shield" aria-hidden="true"></span> ' . esc_html__('Start PCP test', 'rrze-multisite-manager') . '</a></span>';
             }
 
             echo '</div></td>';

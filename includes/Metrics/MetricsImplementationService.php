@@ -62,7 +62,10 @@ class MetricsImplementationService {
     protected const STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE = 25;
     protected const STORAGE_ANALYSIS_INDEX_WRITE_BATCH_SIZE = 16;
-    protected const STORAGE_ANALYSIS_INDEX_CACHE_BUCKETS = 4;
+    // Hash-bucket lookups are effectively random during a filesystem walk.
+    // Keeping 32 segments avoids a database read for nearly every file while
+    // retaining a strict 4 MiB serialized upper bound.
+    protected const STORAGE_ANALYSIS_INDEX_CACHE_BUCKETS = 32;
     protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
     protected const STORAGE_MEDIA_METADATA_BATCH_SIZE = 50;
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
@@ -5647,17 +5650,18 @@ class MetricsImplementationService {
             )
         );
 
-        $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
-
         // The persistent result already records completion. Keeping an additional completed
         // transient only produces an unnecessary value/timeout pair in the network table.
+        // Keep the bounded index until the following orphan phase. Rebuilding it
+        // would scan every attachment and write every temporary segment twice.
         delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
         delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
     }
 
     protected function initializeCurrentSiteStorageAnalysisOrphanState(array $analysis): array {
         $siteId = get_current_blog_id();
-        $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
+        // The base phase leaves its bounded attachment index in place for this
+        // phase. It is released only after orphan analysis has completed.
         $this->storageResources->acquire($siteId);
         $candidates = is_array($analysis['largest_orphan_files'] ?? null) ? array_values((array)$analysis['largest_orphan_files']) : [];
 
@@ -5681,6 +5685,7 @@ class MetricsImplementationService {
             'orphan_reference_index' => true,
             'attachment_usage_stage' => 'posts',
             'attachment_usage_post_cursor' => 0,
+            'attachment_usage_meta_post_cursor' => 0,
             'attachment_usage_meta_cursor' => 0,
             'attachment_usage_matches' => [],
             'media_usage_index' => true,
@@ -5793,6 +5798,7 @@ class MetricsImplementationService {
             $state['orphan_reference_index'] = true;
             $state['attachment_usage_stage'] = 'posts';
             $state['attachment_usage_post_cursor'] = 0;
+            $state['attachment_usage_meta_post_cursor'] = 0;
             $state['attachment_usage_meta_cursor'] = 0;
             $state['attachment_usage_matches'] = [];
             $state['current_index'] = 0;
@@ -5815,6 +5821,7 @@ class MetricsImplementationService {
                 $state['orphan_reference_index'],
                 $state['attachment_usage_stage'],
                 $state['attachment_usage_post_cursor'],
+                $state['attachment_usage_meta_post_cursor'],
                 $state['attachment_usage_meta_cursor'],
                 $state['attachment_usage_matches']
             );
@@ -5975,7 +5982,10 @@ class MetricsImplementationService {
                 $stage = 'meta';
             }
         } elseif ($stage === 'meta') {
-            $rows = $this->getCurrentSiteAttachmentUsageMetaRows((int)($state['attachment_usage_meta_cursor'] ?? 0));
+            $rows = $this->getCurrentSiteAttachmentUsageMetaRows(
+                (int)($state['attachment_usage_meta_post_cursor'] ?? 0),
+                (int)($state['attachment_usage_meta_cursor'] ?? 0)
+            );
 
             foreach ($rows as $row) {
                 $metaId = (int)($row->meta_id ?? 0);
@@ -6001,6 +6011,7 @@ class MetricsImplementationService {
                     $usageMatches,
                     $state
                 );
+                $state['attachment_usage_meta_post_cursor'] = $postId;
                 $state['attachment_usage_meta_cursor'] = $metaId;
             }
 
@@ -6085,7 +6096,7 @@ class MetricsImplementationService {
 
             $matches = $this->getCurrentSiteAttachmentUsageMatches($usageMatches, $this->getCurrentSiteOrphanUsageKey($candidate, (int)$position, false));
             $candidate['content_usage_count'] = count($matches);
-            /* translators: %d: number of content matches for a media file. */
+            /* translators: %d: number of content usage matches. */
             $candidate['content_usage_label'] = sprintf(_n('%d matches', '%d matches', count($matches), 'rrze-multisite-manager'), count($matches));
 
             if (!empty($matches)) {
@@ -6103,7 +6114,7 @@ class MetricsImplementationService {
 
             $matches = $this->getCurrentSiteAttachmentUsageMatches($usageMatches, $this->getCurrentSiteOrphanUsageKey($candidate, (int)$position, true));
             $candidate['content_usage_count'] = count($matches);
-            /* translators: %d: number of content matches for an unregistered image-size variant. */
+            /* translators: %d: number of content usage matches. */
             $candidate['content_usage_label'] = sprintf(_n('%d matches', '%d matches', count($matches), 'rrze-multisite-manager'), count($matches));
 
             if (!empty($matches)) {
@@ -6171,7 +6182,7 @@ class MetricsImplementationService {
     /**
      * @return array<int, object>
      */
-    protected function getCurrentSiteAttachmentUsageMetaRows(int $lastMetaId): array {
+    protected function getCurrentSiteAttachmentUsageMetaRows(int $lastPostId, int $lastMetaId = 0): array {
         global $wpdb;
 
         $postTypes = $this->getCurrentSiteFileUsagePostTypes();
@@ -6182,18 +6193,18 @@ class MetricsImplementationService {
 
         $placeholders = implode(', ', array_fill(0, count($postTypes), '%s'));
         $query = "SELECT pm.meta_id, pm.meta_key, pm.meta_value, p.ID, p.post_type, p.post_title
-            FROM {$wpdb->postmeta} pm
-            INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-            WHERE pm.meta_id > %d
-            AND p.post_type IN ({$placeholders})
+            FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID
+            WHERE p.post_type IN ({$placeholders})
             AND p.post_status NOT IN ('auto-draft', 'trash')
+            AND (p.ID > %d OR (p.ID = %d AND pm.meta_id > %d))
             AND OCTET_LENGTH(pm.meta_value) <= %d
-            ORDER BY pm.meta_id ASC
+            ORDER BY p.ID ASC, pm.meta_id ASC
             LIMIT %d";
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Internally generated placeholders are bound via $wpdb->prepare().
         return (array)$wpdb->get_results(
-            $wpdb->prepare($query, ...array_merge([$lastMetaId], array_values($postTypes), [self::STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES, self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
+            $wpdb->prepare($query, ...array_merge(array_values($postTypes), [$lastPostId, $lastPostId, $lastMetaId, self::STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES, self::STORAGE_MEDIA_METADATA_BATCH_SIZE]))
         );
     }
 
@@ -6388,6 +6399,9 @@ class MetricsImplementationService {
         $matchLabel = (string)($location['match_label'] ?? '');
 
         if (!isset($usageMatches[$attachmentId][$locationKey])) {
+            if (count((array)($usageMatches[$attachmentId] ?? [])) >= $this->config->getStorageAnalysisContentUsageMatchesLimit()) {
+                return;
+            }
             $usageMatches[$attachmentId][$locationKey] = [
                 'post_id' => $postId,
                 'post_type' => (string)($location['post_type'] ?? ''),

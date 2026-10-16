@@ -210,7 +210,8 @@ final class ReferenceRows {
     public string $postmeta = 'postmeta';
     public array $queries = [];
     public function prepare(string $query, ...$args): string {
-        check(array_slice($args, 1, 4) === ['post', 'page', 'event', 'wp_template'], 'Reference scan must include public content and templates while excluding attachments.');
+        $postTypes = str_contains($query, 'FROM posts p') ? array_slice($args, 0, 4) : array_slice($args, 1, 4);
+        check($postTypes === ['post', 'page', 'event', 'wp_template'], 'Reference scan must include public content and templates while excluding attachments.');
         return vsprintf($query, $args);
     }
     public function get_results(string $query): array {
@@ -555,7 +556,7 @@ try {
     $payload = $metrics->payload(['attachment_stats' => $state['attachment_stats'], 'referenced_file_count' => 253, 'total_bytes' => 760]);
     check($payload['attachment_stats']['attachment_count'] === 251, 'Final payload did not use the accumulated summary.');
     check($payload['difference_bytes'] === null, 'Missing comparison must remain unknown.');
-    foreach ($wpdb->rows as $row) { $metrics->entry($state, $row->attached_file); check($metrics->cacheSize() <= 4, 'Index segment cache grew beyond four buckets.'); }
+    foreach ($wpdb->rows as $row) { $metrics->entry($state, $row->attached_file); check($metrics->cacheSize() <= 32, 'Index segment cache grew beyond 32 buckets.'); }
     check((bool)array_filter($GLOBALS['test_cache_deletions'], static fn($entry) => str_contains($entry[0], ':_site_transient_rrze_msm_site_storage_attachment_index_bucket_')), 'Database-backed segments stayed in the WordPress runtime cache.');
     $GLOBALS['test_external_cache'] = true;
     $deletedBefore = count($GLOBALS['test_cache_deletions']);
@@ -585,9 +586,10 @@ try {
     $pipeline->finish($state);
     check($pipeline->saved['total_files'] === 253 && $pipeline->saved['actual_bytes'] === 760, 'Full scan produced incorrect totals.');
     check($pipeline->saved['attachment_stats']['media_types']['images']['bytes'] === 760, 'Finalization lost paginated statistics.');
-    check($pipeline->cacheSize() === 0, 'Finalization did not clear index segments.');
+    check($pipeline->cacheSize() <= 32, 'Base finalization retained more than the bounded index cache for orphan analysis.');
     $debug = $metrics->getSiteStorageAttachmentDebug(1, 7);
     check($debug['attachment_id'] === 7 && $debug['in_attachment_index'], 'Single-ID debug did not produce its local metadata.');
+    (new RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService())->clearSite(1);
 
     $states = new RRZE\MultisiteManager\Metrics\StorageAnalysisStateService();
     check($states->getBaseStateKey(1, 10) === $states->getBaseStateKey(1, 11), 'Detail cache invalidation must not lose an active storage run.');
