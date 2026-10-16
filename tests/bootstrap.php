@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+if (!defined('ABSPATH')) {
+    if (PHP_SAPI !== 'cli') {
+        exit;
+    }
+}
+
 $wpTestsDir = getenv('WP_TESTS_DIR');
 
 if (!is_string($wpTestsDir) || $wpTestsDir === '') {

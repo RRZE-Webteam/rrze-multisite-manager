@@ -25,6 +25,7 @@ class MetricsService {
      */
     public function __call(string $method, array $arguments): mixed {
         if (!method_exists($this->implementation, $method)) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The exception is handled as data and escaped at its eventual output point.
             throw new \BadMethodCallException(sprintf('Unknown metrics method: %s', $method));
         }
 

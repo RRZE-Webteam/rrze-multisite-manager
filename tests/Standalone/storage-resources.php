@@ -5,6 +5,12 @@
  */
 declare(strict_types=1);
 
+if (!defined('ABSPATH')) {
+    if (PHP_SAPI !== 'cli') {
+        exit;
+    }
+}
+
 if (defined('ABSPATH')) {
     throw new RuntimeException('Run this test in a separate PHP process, outside WordPress.');
 }
@@ -42,6 +48,7 @@ $GLOBALS['test_forbidden_reads'] = [];
 $GLOBALS['test_forbidden_option_reads'] = [];
 function __($message, $domain = '') { return $message; }
 function _n($one, $many, $count, $domain = '') { return $count === 1 ? $one : $many; }
+function esc_html($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UTF-8'); }
 function wp_normalize_path($path) { return str_replace('\\', '/', $path); }
 function trailingslashit($path) { return rtrim($path, '/\\') . '/'; }
 function untrailingslashit($path) { return rtrim($path, '/\\'); }
@@ -120,6 +127,7 @@ function is_serialized($value) { return is_string($value) && preg_match('/^[abis
 
 function check(bool $condition, string $message): void {
     if (!$condition) {
+        // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The standalone test reports its failure to the CLI, not to a browser.
         throw new RuntimeException($message);
     }
 }

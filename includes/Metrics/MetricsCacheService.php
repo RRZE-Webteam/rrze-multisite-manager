@@ -113,7 +113,7 @@ class MetricsCacheService {
 
         $parameters[] = max(1, min(250, $limit));
         $sql = "SELECT meta_id, meta_key FROM {$wpdb->sitemeta} WHERE site_id = %d AND (" . implode(' OR ', $conditions) . ') ORDER BY meta_id ASC LIMIT %d';
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Bounded maintenance restricted to obsolete keys from this service.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The SQL structure is assembled exclusively from literals; values are escaped by wpdb::prepare().
         $rows = (array)$wpdb->get_results($wpdb->prepare($sql, ...$parameters));
         $ids = [];
         $timeoutKeys = [];

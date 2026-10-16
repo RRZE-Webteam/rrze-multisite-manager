@@ -56,16 +56,18 @@ class StorageAnalysisResourceService {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
                     throw new StorageAnalysisBusyException(__('Storage analysis capacity is occupied. The analysis will be retried.', 'rrze-multisite-manager'));
                 }
-                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                $occupiedSiteIdsLabel = esc_html(implode(', ', array_map('absint', $occupiedSiteIds)));
                 throw new StorageAnalysisBusyException(sprintf(
-                    /* translators: %s: comma-separated IDs of websites holding temporary storage-analysis reservations. */
-                    _n(
-                        'Storage analysis capacity is reserved by website ID %s. The analysis will be retried.',
-                        'Storage analysis capacity is reserved by website IDs %s. The analysis will be retried.',
-                        count($occupiedSiteIds),
-                        'rrze-multisite-manager'
+                    esc_html(
+                        /* translators: %s: comma-separated IDs of websites holding temporary storage-analysis reservations. */
+                        _n(
+                            'Storage analysis capacity is reserved by website ID %s. The analysis will be retried.',
+                            'Storage analysis capacity is reserved by website IDs %s. The analysis will be retried.',
+                            count($occupiedSiteIds),
+                            'rrze-multisite-manager'
+                        )
                     ),
-                    implode(', ', $occupiedSiteIds)
+                    esc_html($occupiedSiteIdsLabel)
                 ));
             }
             $this->writeSlot($available, ['site_id' => $siteId, 'expires_at' => time() + DAY_IN_SECONDS, 'buckets' => []]);

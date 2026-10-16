@@ -5154,6 +5154,7 @@ class MetricsImplementationService {
 
         $this->storageResources->acquire(get_current_blog_id());
         $lastAttachmentId = max(0, (int)($state['attachment_index_last_id'] ?? 0));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded, paginated attachment index cannot use the unbounded post and post-meta object caches.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT p.ID, p.post_mime_type,
@@ -6084,6 +6085,7 @@ class MetricsImplementationService {
 
             $matches = $this->getCurrentSiteAttachmentUsageMatches($usageMatches, $this->getCurrentSiteOrphanUsageKey($candidate, (int)$position, false));
             $candidate['content_usage_count'] = count($matches);
+            /* translators: %d: number of content matches for a media file. */
             $candidate['content_usage_label'] = sprintf(_n('%d matches', '%d matches', count($matches), 'rrze-multisite-manager'), count($matches));
 
             if (!empty($matches)) {
@@ -6101,6 +6103,7 @@ class MetricsImplementationService {
 
             $matches = $this->getCurrentSiteAttachmentUsageMatches($usageMatches, $this->getCurrentSiteOrphanUsageKey($candidate, (int)$position, true));
             $candidate['content_usage_count'] = count($matches);
+            /* translators: %d: number of content matches for an unregistered image-size variant. */
             $candidate['content_usage_label'] = sprintf(_n('%d matches', '%d matches', count($matches), 'rrze-multisite-manager'), count($matches));
 
             if (!empty($matches)) {
@@ -6417,6 +6420,7 @@ class MetricsImplementationService {
     protected function processCurrentSiteUnusedAttachmentsBatch(array &$state): void {
         global $wpdb;
 
+        $siteId = get_current_blog_id();
         $cursor = max(1, (int)($state['media_attachment_cursor'] ?? PHP_INT_MAX));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Attachment usage is scanned in bounded cursor pages; complete source data must not enter the object cache.
         $rows = (array)$wpdb->get_results($wpdb->prepare(
