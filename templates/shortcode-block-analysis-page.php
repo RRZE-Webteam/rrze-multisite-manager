@@ -238,6 +238,12 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                 <?php } elseif ($requested === 'failed') { ?>
                     <div class="notice notice-error inline"><p><?php echo esc_html__('The shortcode and block analysis task could not be scheduled. Please check the error log.', 'rrze-multisite-manager'); ?></p></div>
                 <?php } ?>
+                <?php if (!empty($is_local_page) && !is_super_admin() && ($analysis_assignment_mode ?? 'unassigned') === 'unassigned') { ?>
+                    <div class="notice notice-info inline"><p><?php
+                    /* translators: %s: network administrator email address. */
+                    echo esc_html(sprintf(__('No shortcode and block analysis is currently configured for this website. To request one, please email %s.', 'rrze-multisite-manager'), (string)$network_administrator_email));
+                    ?></p></div>
+                <?php } ?>
                 <ul>
                     <li>
                         <?php

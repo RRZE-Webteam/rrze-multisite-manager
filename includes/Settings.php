@@ -23,7 +23,9 @@ use RRZE\MultisiteManager\Widgets\ProblemSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
 use RRZE\MultisiteManager\Widgets\SiteOverviewWidget;
+use RRZE\MultisiteManager\Widgets\ShortcodeBlockMonitoringWidget;
 use RRZE\MultisiteManager\Widgets\StatusWidget;
+use RRZE\MultisiteManager\Widgets\StorageAnalysisMonitoringWidget;
 use RRZE\MultisiteManager\Widgets\SummaryWidget;
 use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
@@ -1911,11 +1913,11 @@ class Settings {
         echo '</div>';
         }
         echo '</section>';
-        $this->renderUnscheduledStorageMonitoringTable($unassignedPage, $perPage, $unassignedSearch);
+        $this->renderUnscheduledStorageMonitoringTable($scheduler, $unassignedPage, $perPage, $unassignedSearch);
     }
 
     /** @param array{processes: array<int, array<string, mixed>>, total: int} $processPage */
-    protected function renderUnscheduledStorageMonitoringTable(array $processPage, int $perPage, string $search): void {
+    protected function renderUnscheduledStorageMonitoringTable(StorageAnalysisSchedulerService $scheduler, array $processPage, int $perPage, string $search): void {
         $processes = $processPage['processes'] ?? [];
         $totalItems = (int)($processPage['total'] ?? 0);
         $currentPage = $this->getMonitoringTablePage('storage_unassigned_monitoring_page');
@@ -1946,13 +1948,21 @@ class Settings {
             echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all"></th>';
             echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Expected execution', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
             echo '</tr></thead><tbody>';
 
             foreach ($processes as $process) {
                 $siteId = (int)($process['site_id'] ?? 0);
+                $expectedAssignment = $scheduler->getInitialAssignmentMode($siteId);
+                $expectedAssignmentLabel = $expectedAssignment === 'small-batch'
+                    ? __('Small shared batch', 'rrze-multisite-manager')
+                    : ($expectedAssignment === 'medium-batch'
+                        ? __('Medium shared batch', 'rrze-multisite-manager')
+                        : __('Individual schedule', 'rrze-multisite-manager'));
                 echo '<tr><th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th><td class="rrze-msm-monitoring-site-url"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span></td>';
                 echo '<td><span class="rrze-msm-badge rrze-msm-badge-neutral">' . esc_html__('Not scheduled', 'rrze-multisite-manager') . '</span></td>';
+                echo '<td>' . esc_html($expectedAssignmentLabel) . '</td>';
                 echo '<td class="rrze-msm-col-actions"><form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_site_storage_analysis')) . '">';
                 echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
                 wp_nonce_field('rrze_multisite_manager_start_site_storage_analysis_' . $siteId);
@@ -1962,7 +1972,7 @@ class Settings {
 
             echo '</tbody><tfoot><tr>';
             echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all-bottom">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all-bottom"></th>';
-            echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Expected execution', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
             echo '</tr></tfoot></table>';
             echo '<div class="tablenav bottom">';
             $this->renderSelectedSiteBulkActions($selectionFormId, 'bottom');
@@ -2659,6 +2669,16 @@ class Settings {
             'status' => new StatusWidget($this->plugin, $this->config),
             'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
+            'storage_analysis_monitoring' => new StorageAnalysisMonitoringWidget(
+                $this->plugin,
+                $this->config,
+                new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config)
+            ),
+            'shortcode_block_monitoring' => new ShortcodeBlockMonitoringWidget(
+                $this->plugin,
+                $this->config,
+                new ShortcodeBlockAnalysisSchedulerService($this->config)
+            ),
             'new_monitoring_alerts' => new NewMonitoringAlertsWidget($this->plugin, $this->config),
             'problem_sites' => new ProblemSitesWidget($this->plugin, $this->config),
             'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),

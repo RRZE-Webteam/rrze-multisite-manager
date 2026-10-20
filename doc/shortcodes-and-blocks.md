@@ -14,7 +14,7 @@ Tabs separate shortcodes and blocks. An analysis can be requested for an individ
 
 ## Scheduling and scale
 
-Tasks are managed under **Monitoring > Shortcodes and blocks**. Small sites can be assigned to collective batches; larger sites receive their own scheduled task. The analysis is resumable, time-bounded, and stores only result data, not fully rendered content. Its runtime limit counts active PHP processing across slices, not time spent waiting for the external Cron service. Each completed slice persists a checkpoint before handing off to its continuation. If a queued continuation is unexpectedly missing, the scheduler restores it from that checkpoint and continues the analysis; no result data is discarded.
+Tasks are managed under **Monitoring > Shortcodes and blocks**. Small sites can be assigned to collective batches; larger sites receive their own scheduled task. The analysis is resumable, time-bounded, and stores only result data, not fully rendered content. Its runtime limit counts active PHP processing across slices, not time spent waiting for the external Cron service. Each completed slice persists a checkpoint before handing off to its continuation. If an individual task loses its continuation, the scheduler restores it from that checkpoint. If a collective-batch task loses its continuation, or makes no progress for two hours, it is ended, its checkpoint is deleted, and it starts again from the beginning with the next regular collective batch.
 
 ## Implementation and persistence
 

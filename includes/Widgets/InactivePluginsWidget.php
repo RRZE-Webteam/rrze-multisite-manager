@@ -27,9 +27,12 @@ class InactivePluginsWidget extends Widgets {
 
     protected function getTemplateData(array $dashboardData): array {
         $pluginUsage = is_array($dashboardData['plugin_usage'] ?? null) ? $dashboardData['plugin_usage'] : [];
+        $items = is_array($pluginUsage['inactive_plugins'] ?? null) ? $pluginUsage['inactive_plugins'] : [];
 
         return [
-            'items' => $pluginUsage['inactive_plugins'] ?? [],
+            'items' => empty($items)
+                ? []
+                : (new PluginUsageWidget($this->plugin, $this->config))->hydrateRuntimeState($items),
         ];
     }
 }

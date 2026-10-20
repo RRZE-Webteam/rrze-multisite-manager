@@ -35,6 +35,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const MAX_BATCHES_PER_REQUEST = 5;
     protected const REQUEST_BUDGET_SECONDS = 20;
     protected const CONTINUATION_DELAY_SECONDS = 5;
+    protected const BATCH_RUN_STALE_AFTER_SECONDS = 2 * HOUR_IN_SECONDS;
     protected const META_VALUES_PER_POST_LIMIT = 100;
     protected const ANALYSIS_VALUE_MAX_BYTES = 262144;
     protected const RESULT_MAX_BYTES = 1048576;
@@ -574,6 +575,35 @@ class ShortcodeBlockAnalysisSchedulerService {
         $assignments = $this->getSiteAssignments();
 
         return $assignments[$siteId] ?? 'unassigned';
+    }
+
+    /**
+     * Returns the planning distribution for active websites without loading
+     * any shortcode or block analysis results.
+     *
+     * @return array{batch: int, site: int, unassigned: int}
+     */
+    public function getActiveSiteAssignmentCounts(): array {
+        $counts = [
+            'batch' => 0,
+            'site' => 0,
+            'unassigned' => 0,
+        ];
+        $assignments = $this->getSiteAssignments();
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'archived' => 0,
+            'spam' => 0,
+            'deleted' => 0,
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $mode = $assignments[absint($siteId)] ?? 'unassigned';
+            $counts[$mode]++;
+        }
+
+        return $counts;
     }
 
     /**
@@ -2421,8 +2451,18 @@ class ShortcodeBlockAnalysisSchedulerService {
             return true;
         }
 
+        $assignmentMode = $this->getSiteAssignmentMode($siteId);
+
+        if ($assignmentMode === 'batch' && $this->isBatchAnalysisStale($status)) {
+            return $this->abortInterruptedBatchAnalysis($siteId, $status);
+        }
+
         if ($this->hasPendingContinuation($siteId)) {
             return false;
+        }
+
+        if ($assignmentMode === 'batch') {
+            return $this->abortInterruptedBatchAnalysis($siteId, $status);
         }
 
         // A completed request always persists its checkpoint before releasing
@@ -2474,6 +2514,72 @@ class ShortcodeBlockAnalysisSchedulerService {
                 'checkpoint_shortcode_last_post_id' => (int)($state['shortcode_last_post_id'] ?? 0),
                 'checkpoint_block_last_post_id' => (int)($state['block_last_post_id'] ?? 0),
                 'assignment_mode' => $this->getSiteAssignmentMode($siteId),
+            ]
+        );
+
+        return true;
+    }
+
+    /**
+     * A shared continuation can process other websites for a while. It must
+     * not keep a website that has stopped making progress indefinitely marked
+     * as running.
+     *
+     * @param array<string, mixed> $status
+     */
+    protected function isBatchAnalysisStale(array $status): bool {
+        $latestTimestamp = 0;
+
+        foreach (['last_progress_at', 'last_started_at'] as $key) {
+            $value = (string)($status[$key] ?? '');
+
+            if ($value !== '') {
+                $latestTimestamp = max($latestTimestamp, (int)strtotime($value . ' UTC'));
+            }
+        }
+
+        $phase = (string)($status['phase'] ?? '');
+        $phaseStatus = is_array($status['phases'][$phase] ?? null) ? $status['phases'][$phase] : [];
+        $phaseStartedAt = (string)($phaseStatus['started_at'] ?? '');
+
+        if ($phaseStartedAt !== '') {
+            $latestTimestamp = max($latestTimestamp, (int)strtotime($phaseStartedAt . ' UTC'));
+        }
+
+        return $latestTimestamp > 0 && (time() - $latestTimestamp) >= self::BATCH_RUN_STALE_AFTER_SECONDS;
+    }
+
+    /**
+     * Shared-batch jobs are intentionally restarted from the beginning after
+     * a lost continuation. Their sites are small enough for the collective
+     * batch, and retaining a stale checkpoint would keep the row running
+     * until the next cycle while making recovery dependent on another batch.
+     *
+     * @param array<string, mixed> $status
+     */
+    protected function abortInterruptedBatchAnalysis(int $siteId, array $status): bool {
+        $phase = (string)($status['phase'] ?? self::SHORTCODE_PHASE);
+        $processed = (int)($status['processed_posts'] ?? 0);
+        $total = (int)($status['total_posts'] ?? 0);
+        $message = sprintf(
+            /* translators: 1: analysis phase, 2: processed posts, 3: total posts. */
+            __('The shared-batch analysis was stopped in the %1$s phase after %2$d of %3$d posts because its continuation was missing. It will restart from the beginning with the next scheduled shared batch.', 'rrze-multisite-manager'),
+            $phase,
+            $processed,
+            $total
+        );
+
+        $this->markFailed($siteId, $message);
+        do_action(
+            'rrze.log.error',
+            'RRZE-MSM: Shortcode and block shared-batch analysis stopped after a missing continuation',
+            [
+                'site_id' => $siteId,
+                'site_url' => get_home_url($siteId, '/'),
+                'phase' => $phase,
+                'processed_posts' => $processed,
+                'total_posts' => $total,
+                'assignment_mode' => 'batch',
             ]
         );
 

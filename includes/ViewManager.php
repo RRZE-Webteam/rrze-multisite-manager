@@ -6,6 +6,8 @@ defined('ABSPATH') || exit;
 
 class ViewManager {
     protected const OPTION_KEY = 'rrze_multisite_manager_dashboard_views';
+    protected const MONITORING_WIDGET_DEFAULTS_VERSION_OPTION = 'rrze_multisite_manager_monitoring_widget_defaults_version';
+    protected const MONITORING_WIDGET_DEFAULTS_VERSION = 2;
 
     public function getViews(array $availableWidgetIds): array {
         $defaults = $this->getDefaultViews($availableWidgetIds);
@@ -17,6 +19,8 @@ class ViewManager {
         if (!is_array($storedViews)) {
             return $defaults;
         }
+
+        $storedViews = $this->addMonitoringWidgetsToStoredWebsitesView($storedViews, $availableWidgetIds);
 
         foreach ($storedViews as $slug => $view) {
             $slug = sanitize_key((string)$slug);
@@ -47,6 +51,47 @@ class ViewManager {
         }
 
         return $views;
+    }
+
+    /**
+     * Adds newly introduced monitoring widgets once to the persisted Websites
+     * system view. Existing widget choices remain untouched afterwards.
+     *
+     * @param array<string, mixed> $storedViews
+     * @param array<int, string>   $availableWidgetIds
+     * @return array<string, mixed>
+     */
+    protected function addMonitoringWidgetsToStoredWebsitesView(array $storedViews, array $availableWidgetIds): array {
+        if ((int)get_site_option(self::MONITORING_WIDGET_DEFAULTS_VERSION_OPTION, 0) >= self::MONITORING_WIDGET_DEFAULTS_VERSION) {
+            return $storedViews;
+        }
+
+        $widgetIds = ['storage_analysis_monitoring', 'shortcode_block_monitoring'];
+        $websitesView = $storedViews['websites'] ?? null;
+        $changed = false;
+
+        if (is_array($websitesView) && is_array($websitesView['widgets'] ?? null)) {
+            $widgets = $this->sanitizeWidgets($websitesView['widgets'], $availableWidgetIds);
+
+            foreach ($widgetIds as $widgetId) {
+                if (in_array($widgetId, $availableWidgetIds, true) && !in_array($widgetId, $widgets, true)) {
+                    $widgets[] = $widgetId;
+                    $changed = true;
+                }
+            }
+
+            if ($changed) {
+                $storedViews['websites']['widgets'] = $widgets;
+            }
+        }
+
+        if ($changed) {
+            update_site_option(self::OPTION_KEY, $storedViews);
+        }
+
+        update_site_option(self::MONITORING_WIDGET_DEFAULTS_VERSION_OPTION, self::MONITORING_WIDGET_DEFAULTS_VERSION);
+
+        return $storedViews;
     }
 
     public function getCurrentView(array $views, string $fallback = 'default'): array {
@@ -124,6 +169,8 @@ class ViewManager {
                     'status',
                     'operational_status',
                     'network_storage_usage',
+                    'storage_analysis_monitoring',
+                    'shortcode_block_monitoring',
                     'new_monitoring_alerts',
                     'problem_sites',
                     'theme_usage',

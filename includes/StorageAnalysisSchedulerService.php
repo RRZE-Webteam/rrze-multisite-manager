@@ -1481,6 +1481,55 @@ class StorageAnalysisSchedulerService {
     }
 
     /**
+     * Returns the planning distribution for active websites without loading
+     * per-site analysis state or inspecting attachments.
+     *
+     * @return array{small-batch: int, medium-batch: int, site: int, unassigned: int}
+     */
+    public function getActiveSiteAssignmentCounts(): array {
+        $counts = [
+            'small-batch' => 0,
+            'medium-batch' => 0,
+            'site' => 0,
+            'unassigned' => 0,
+        ];
+        $assignments = get_site_option(self::ASSIGNMENTS_OPTION, []);
+        $assignments = is_array($assignments) ? $assignments : [];
+        $assignmentBySiteId = [];
+
+        foreach (['small-batch', 'medium-batch'] as $mode) {
+            foreach ($this->getBatchSiteIds($mode) as $siteId) {
+                $assignmentBySiteId[$siteId] = $mode;
+            }
+        }
+
+        foreach ($assignments as $siteId => $mode) {
+            $siteId = absint($siteId);
+
+            if ($siteId <= 0 || isset($assignmentBySiteId[$siteId]) || !in_array($mode, ['small-batch', 'medium-batch', 'site'], true)) {
+                continue;
+            }
+
+            $assignmentBySiteId[$siteId] = $mode;
+        }
+
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'archived' => 0,
+            'spam' => 0,
+            'deleted' => 0,
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $mode = $assignmentBySiteId[absint($siteId)] ?? 'unassigned';
+            $counts[$mode]++;
+        }
+
+        return $counts;
+    }
+
+    /**
      * Writes a site-specific information log entry in one consistent form.
      *
      * @param 'small-batch'|'medium-batch'|'site'|'unassigned' $assignmentMode
