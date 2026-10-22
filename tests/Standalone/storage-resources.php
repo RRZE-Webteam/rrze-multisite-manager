@@ -380,7 +380,7 @@ final class ReinitializeScheduler extends SliceScheduler {
         return 0;
     }
 
-    protected function scheduleRecurringAnalysis(int $siteId): bool {
+    protected function scheduleRecurringAnalysis(int $siteId, bool $prioritizeFirstRun = false): bool {
         return wp_schedule_single_event(time() + MINUTE_IN_SECONDS, 'test_shared_storage_batch', [$siteId]);
     }
 }

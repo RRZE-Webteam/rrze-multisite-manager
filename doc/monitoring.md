@@ -20,7 +20,7 @@ Dashboard metric batches keep only bounded partial results until a separate comp
 
 ### Storage analyses
 
-Displays scheduled individual tasks and collective batches for storage analyses. Sites without scheduling are shown as a separate table only when such sites exist. Bulk actions can create or remove scheduled analyses for selected sites.
+Displays scheduled individual tasks and collective batches for storage analyses. Sites without scheduling are shown as a separate table only when such sites exist. Bulk actions can create or remove scheduled analyses for selected sites. Storage scheduling follows the WordPress site status only; a DNS, HTTP, or operational-monitoring value does not exclude an otherwise active site because the analysis works against its local database and uploads directory.
 
 ### Shortcodes and blocks
 

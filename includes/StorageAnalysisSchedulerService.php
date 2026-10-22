@@ -48,9 +48,6 @@ class StorageAnalysisSchedulerService {
     protected const LOCK_OPTION_PREFIX = 'rrze_msm_storage_analysis_lock_';
     protected const NETWORK_RUN_SLOTS_OPTION = 'rrze_msm_storage_analysis_run_slots';
     protected const NETWORK_RUN_SLOTS_LOCK_OPTION = 'rrze_msm_storage_analysis_run_slots_lock';
-    protected const META_OPERATIONAL_STATUS = 'rrze_msm_operational_status';
-    protected const META_DNS_STATUS = 'rrze_msm_dns_status';
-    protected const META_HTTP_STATUS = 'rrze_msm_http_status';
 
     protected StorageAnalysisService $storageAnalysis;
     protected Config $config;
@@ -567,7 +564,7 @@ class StorageAnalysisSchedulerService {
                 continue;
             }
 
-            if ($this->scheduleRecurringAnalysis($siteId)) {
+            if ($this->scheduleRecurringAnalysis($siteId, true)) {
                 $this->allowSiteScheduling($siteId);
                 $this->resetRunStatusForScheduledRestart($siteId);
                 $initialized++;
@@ -686,34 +683,17 @@ class StorageAnalysisSchedulerService {
 
     public function isSiteEligible(int $siteId): bool {
         $site = $siteId > 0 ? get_site($siteId) : null;
-        $isActive = false;
-        $operationalStatus = '';
-        $dnsStatus = '';
-        $httpStatus = '';
 
         if (!$site instanceof \WP_Site) {
             return false;
         }
 
-        $isActive = (int)$site->archived === 0 && (int)$site->spam === 0 && (int)$site->deleted === 0;
-
-        if (!$isActive) {
-            return false;
-        }
-
-        $operationalStatus = (string)get_site_meta($siteId, self::META_OPERATIONAL_STATUS, true);
-        $dnsStatus = (string)get_site_meta($siteId, self::META_DNS_STATUS, true);
-        $httpStatus = (string)get_site_meta($siteId, self::META_HTTP_STATUS, true);
-
-        if (in_array($operationalStatus, ['provisioning', 'retired', 'dns_missing', 'unreachable'], true)) {
-            return false;
-        }
-
-        if (!in_array($dnsStatus, ['', 'ok', 'unknown'], true)) {
-            return false;
-        }
-
-        return in_array($httpStatus, ['', 'ok', 'unknown', 'pending'], true);
+        // Storage analysis reads the local database and uploads directory. It
+        // must therefore follow the WordPress site state, not a potentially
+        // stale DNS or HTTP monitoring result.
+        return (int)$site->archived === 0
+            && (int)$site->spam === 0
+            && (int)$site->deleted === 0;
     }
 
     public function deactivateIneligibleSite(int $siteId): bool {
@@ -919,7 +899,7 @@ class StorageAnalysisSchedulerService {
             $this->unscheduleSite($siteId);
             $scheduled = $mode === 'site'
                 ? $this->scheduleIndividualAnalysisAt($siteId, time())
-                : $this->scheduleRecurringAnalysisAt($siteId, time());
+                : $this->scheduleRecurringAnalysisAt($siteId, time(), true);
         }
 
         if (!$scheduled) {
@@ -2110,6 +2090,10 @@ class StorageAnalysisSchedulerService {
             return false;
         }
 
+        // An interrupted analysis may have left its status as running even
+        // though the recurring task was removed. Recover it before deciding
+        // whether this explicit setup operation may schedule the website.
+        $this->recoverInterruptedRun($siteId);
         $status = $this->getStatus($siteId);
 
         // The setup action applies to every eligible website without a current
@@ -2119,12 +2103,12 @@ class StorageAnalysisSchedulerService {
             && empty($status['is_running']);
     }
 
-    protected function scheduleRecurringAnalysis(int $siteId): bool {
+    protected function scheduleRecurringAnalysis(int $siteId, bool $prioritizeFirstRun = false): bool {
         $delay = MINUTE_IN_SECONDS + ($siteId % (5 * MINUTE_IN_SECONDS));
-        return $this->scheduleRecurringAnalysisAt($siteId, time() + $delay);
+        return $this->scheduleRecurringAnalysisAt($siteId, time() + $delay, $prioritizeFirstRun);
     }
 
-    protected function scheduleRecurringAnalysisAt(int $siteId, int $timestamp): bool {
+    protected function scheduleRecurringAnalysisAt(int $siteId, int $timestamp, bool $prioritizeFirstRun = false): bool {
         if (!$this->isSiteEligible($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
             return false;
         }
@@ -2152,7 +2136,17 @@ class StorageAnalysisSchedulerService {
                 'small_media_threshold' => $this->config->getStorageAnalysisSmallBatchMediaThreshold(),
                 'medium_media_threshold' => $this->config->getStorageAnalysisMediumBatchMediaThreshold(),
             ]);
-            if ($hadBatchSchedule) {
+            if ($prioritizeFirstRun) {
+                if (!$this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $mode)) {
+                    // Keep the site in the recurring batch even if the
+                    // additional targeted event could not be created.
+                    $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $mode);
+                    LoggingService::error($this->config, 'RRZE-MSM: Prompt storage-analysis batch run could not be scheduled.', [
+                        'site_id' => $siteId,
+                        'assignment_mode' => $mode,
+                    ]);
+                }
+            } elseif ($hadBatchSchedule) {
                 $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $mode);
             }
             return true;
