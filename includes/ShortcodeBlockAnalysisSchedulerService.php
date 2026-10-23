@@ -32,9 +32,12 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const SMALL_SITE_MAX_POSTS = 100;
     protected const FAST_RUN_MAX_SECONDS = 3;
     protected const BATCH_SIZE = 20;
-    protected const MAX_BATCHES_PER_REQUEST = 5;
-    protected const REQUEST_BUDGET_SECONDS = 20;
+    protected const BATCH_MAX_BATCHES_PER_REQUEST = 10;
+    protected const INDIVIDUAL_MAX_BATCHES_PER_REQUEST = 20;
+    protected const BATCH_REQUEST_BUDGET_SECONDS = 20;
+    protected const INDIVIDUAL_REQUEST_BUDGET_SECONDS = 60;
     protected const CONTINUATION_DELAY_SECONDS = 5;
+    protected const BATCH_RUN_STALE_AFTER_SECONDS = 2 * HOUR_IN_SECONDS;
     protected const META_VALUES_PER_POST_LIMIT = 100;
     protected const ANALYSIS_VALUE_MAX_BYTES = 262144;
     protected const RESULT_MAX_BYTES = 1048576;
@@ -362,7 +365,9 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         if ($assignment === 'unassigned') {
-            return $this->scheduleRecurringAnalysisAt($siteId, time());
+            $this->allowSiteScheduling($siteId);
+
+            return $this->scheduleRecurringAnalysisAt($siteId, time(), true);
         }
 
         $this->unschedule($siteId);
@@ -577,6 +582,35 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     /**
+     * Returns the planning distribution for active websites without loading
+     * any shortcode or block analysis results.
+     *
+     * @return array{batch: int, site: int, unassigned: int}
+     */
+    public function getActiveSiteAssignmentCounts(): array {
+        $counts = [
+            'batch' => 0,
+            'site' => 0,
+            'unassigned' => 0,
+        ];
+        $assignments = $this->getSiteAssignments();
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'archived' => 0,
+            'spam' => 0,
+            'deleted' => 0,
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $mode = $assignments[absint($siteId)] ?? 'unassigned';
+            $counts[$mode]++;
+        }
+
+        return $counts;
+    }
+
+    /**
      * Writes a site-specific information log entry in one consistent form.
      *
      * @param 'batch'|'site'|'unassigned' $assignmentMode
@@ -734,7 +768,12 @@ class ShortcodeBlockAnalysisSchedulerService {
         $status = $this->getStatus($siteId);
         $isActive = $this->isSiteActive($siteId);
         $isRunning = $this->isRunning($siteId);
-        $lastFinishedAt = (string)($result['generated_at'] ?? '');
+        // A newly scheduled analysis intentionally hides the timestamps from
+        // the preceding run, even though its result remains available until
+        // the new run replaces it.
+        $lastFinishedAt = (string)($status['status'] ?? '') === 'complete'
+            ? (string)($result['generated_at'] ?? '')
+            : '';
 
         // Older completed runs may not yet have stored a separate result.
         if ($lastFinishedAt === '' && (string)($status['status'] ?? '') === 'complete' && empty($status['last_error'])) {
@@ -841,7 +880,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             $siteId = (int)$siteId;
 
             if ($this->isSiteUnscheduled($siteId)) {
-                if ($this->scheduleRecurringAnalysis($siteId)) {
+                if ($this->scheduleRecurringAnalysis($siteId, true)) {
                     $initialized++;
                 }
             }
@@ -941,7 +980,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             foreach ($siteIds as $siteId) {
                 $siteId = (int)$siteId;
 
-                if ($this->isSiteUnscheduled($siteId) && $this->scheduleRecurringAnalysis($siteId)) {
+                if ($this->isSiteUnscheduled($siteId) && $this->scheduleRecurringAnalysis($siteId, true)) {
                     $initialized++;
                 }
             }
@@ -1006,7 +1045,7 @@ class ShortcodeBlockAnalysisSchedulerService {
                 continue;
             }
 
-            if ($this->scheduleRecurringAnalysis($siteId)) {
+            if ($this->scheduleRecurringAnalysis($siteId, true)) {
                 $initialized++;
             }
         }
@@ -1043,7 +1082,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
 
             $this->unschedule($siteId);
-            $this->scheduleRecurringAnalysis($siteId);
+            $this->scheduleRecurringAnalysis($siteId, true);
             $scheduled++;
         }
 
@@ -1056,8 +1095,17 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function runAnalysis(int $siteId): bool {
         $state = $this->getAnalysisState($siteId);
         $processedBatches = 0;
-        $deadline = microtime(true) + self::REQUEST_BUDGET_SECONDS;
+        $assignmentMode = $this->getSiteAssignmentMode($siteId);
+        $requestBudgetSeconds = $assignmentMode === 'batch'
+            ? self::BATCH_REQUEST_BUDGET_SECONDS
+            : self::INDIVIDUAL_REQUEST_BUDGET_SECONDS;
+        $maxBatchesPerRequest = $assignmentMode === 'batch'
+            ? self::BATCH_MAX_BATCHES_PER_REQUEST
+            : self::INDIVIDUAL_MAX_BATCHES_PER_REQUEST;
+        $deadline = microtime(true) + $requestBudgetSeconds;
         $completed = false;
+
+        $this->extendRuntimeLimit((int)ceil($deadline));
 
         if (empty($state) || (int)($state['site_id'] ?? 0) !== $siteId) {
             $state = $this->createState($siteId);
@@ -1067,7 +1115,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         switch_to_blog($siteId);
 
         try {
-            while ($processedBatches < self::MAX_BATCHES_PER_REQUEST && microtime(true) < $deadline) {
+            while ($processedBatches < $maxBatchesPerRequest && microtime(true) < $deadline) {
                 if ($this->isTaskRemovalInProgress()) {
                     return false;
                 }
@@ -1942,7 +1990,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function getLockTtl(): int {
-        return max(5 * MINUTE_IN_SECONDS, self::REQUEST_BUDGET_SECONDS + MINUTE_IN_SECONDS);
+        return max(5 * MINUTE_IN_SECONDS, self::INDIVIDUAL_REQUEST_BUDGET_SECONDS + MINUTE_IN_SECONDS);
     }
 
     protected function unschedule(int $siteId): void {
@@ -1987,12 +2035,16 @@ class ShortcodeBlockAnalysisSchedulerService {
         // A newly active site must not recreate a removed recurring event.
     }
 
-    protected function scheduleRecurringAnalysis(int $siteId): bool {
+    protected function scheduleRecurringAnalysis(int $siteId, bool $resetPreviousRun = false): bool {
+        if ($resetPreviousRun) {
+            $this->allowSiteScheduling($siteId);
+        }
+
         $delay = MINUTE_IN_SECONDS + ($siteId % (5 * MINUTE_IN_SECONDS));
-        return $this->scheduleRecurringAnalysisAt($siteId, time() + $delay);
+        return $this->scheduleRecurringAnalysisAt($siteId, time() + $delay, $resetPreviousRun);
     }
 
-    protected function scheduleRecurringAnalysisAt(int $siteId, int $timestamp): bool {
+    protected function scheduleRecurringAnalysisAt(int $siteId, int $timestamp, bool $resetPreviousRun = false): bool {
         if (!$this->isSiteActive($siteId) || $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
             return false;
         }
@@ -2026,6 +2078,15 @@ class ShortcodeBlockAnalysisSchedulerService {
             $status = $this->getStatus($siteId);
             $status['schedule_mode'] = 'batch';
             update_blog_option($siteId, self::STATUS_OPTION, $status);
+
+            // The recurring shared batch may be days away. Explicitly adding
+            // a site must not make its first analysis wait for that cycle.
+            if ($resetPreviousRun && !$this->scheduleBatchAnalysisSoon()) {
+                LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block shared-batch task could not be scheduled promptly.', [
+                    'site_id' => $siteId,
+                    'site_url' => get_home_url($siteId, '/'),
+                ]);
+            }
         }
 
         $this->clearRecurringScheduleCache();
@@ -2042,7 +2103,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             return false;
         }
 
-        $this->markScheduled($siteId);
+        $this->markScheduled($siteId, $resetPreviousRun);
 
         return true;
     }
@@ -2073,6 +2134,25 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
 
             return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $hook);
+        });
+    }
+
+    /**
+     * Adds one prompt pass without changing the established recurring cycle.
+     */
+    protected function scheduleBatchAnalysisSoon(): bool {
+        return (bool)$this->inBatchCronContext(function (): bool {
+            $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
+            $nextRun = (int)wp_next_scheduled($hook);
+
+            if ($nextRun > 0 && $nextRun <= time() + (10 * MINUTE_IN_SECONDS)) {
+                return true;
+            }
+
+            return (bool)wp_schedule_single_event(
+                time() + MINUTE_IN_SECONDS,
+                $hook
+            );
         });
     }
 
@@ -2359,22 +2439,35 @@ class ShortcodeBlockAnalysisSchedulerService {
         return $this->config->getSchedulerFrequencyLabel($frequency);
     }
 
-    protected function markScheduled(int $siteId): void {
+    protected function markScheduled(int $siteId, bool $resetPreviousRun = false): void {
         $status = $this->getStatus($siteId);
         $hasCompletedResult = !empty($this->getResult($siteId)['generated_at']);
+
+        if ($resetPreviousRun) {
+            unset(
+                $status['last_started_at'],
+                $status['last_finished_at'],
+                $status['last_runtime_seconds'],
+                $status['last_slice_runtime_seconds'],
+                $status['active_runtime_seconds'],
+                $status['last_progress_at']
+            );
+        }
+
         $status = array_merge(
             $status,
             [
-                'status' => $hasCompletedResult ? 'complete' : 'scheduled',
+                'status' => !$resetPreviousRun && $hasCompletedResult ? 'complete' : 'scheduled',
                 'last_error' => '',
-                'phase' => $hasCompletedResult ? 'complete' : self::SHORTCODE_PHASE,
-                'processed_posts' => $hasCompletedResult ? (int)($status['processed_posts'] ?? 0) : 0,
-                'total_posts' => $hasCompletedResult ? (int)($status['total_posts'] ?? 0) : 0,
+                'phase' => !$resetPreviousRun && $hasCompletedResult ? 'complete' : self::SHORTCODE_PHASE,
+                'processed_posts' => !$resetPreviousRun && $hasCompletedResult ? (int)($status['processed_posts'] ?? 0) : 0,
+                'total_posts' => !$resetPreviousRun && $hasCompletedResult ? (int)($status['total_posts'] ?? 0) : 0,
             ]
         );
 
-        // Keep the previous successful phase timestamps visible until a new run starts.
-        if (!$hasCompletedResult || !is_array($status['phases'] ?? null)) {
+        // A normal frequency change preserves the last successful run. An
+        // explicit re-enrollment starts with a clean monitoring state.
+        if ($resetPreviousRun || !$hasCompletedResult || !is_array($status['phases'] ?? null)) {
             $status['phases'] = $this->getScheduledPhaseStatuses();
         }
 
@@ -2421,8 +2514,18 @@ class ShortcodeBlockAnalysisSchedulerService {
             return true;
         }
 
+        $assignmentMode = $this->getSiteAssignmentMode($siteId);
+
+        if ($assignmentMode === 'batch' && $this->isBatchAnalysisStale($status)) {
+            return $this->abortInterruptedBatchAnalysis($siteId, $status);
+        }
+
         if ($this->hasPendingContinuation($siteId)) {
             return false;
+        }
+
+        if ($assignmentMode === 'batch') {
+            return $this->abortInterruptedBatchAnalysis($siteId, $status);
         }
 
         // A completed request always persists its checkpoint before releasing
@@ -2474,6 +2577,72 @@ class ShortcodeBlockAnalysisSchedulerService {
                 'checkpoint_shortcode_last_post_id' => (int)($state['shortcode_last_post_id'] ?? 0),
                 'checkpoint_block_last_post_id' => (int)($state['block_last_post_id'] ?? 0),
                 'assignment_mode' => $this->getSiteAssignmentMode($siteId),
+            ]
+        );
+
+        return true;
+    }
+
+    /**
+     * A shared continuation can process other websites for a while. It must
+     * not keep a website that has stopped making progress indefinitely marked
+     * as running.
+     *
+     * @param array<string, mixed> $status
+     */
+    protected function isBatchAnalysisStale(array $status): bool {
+        $latestTimestamp = 0;
+
+        foreach (['last_progress_at', 'last_started_at'] as $key) {
+            $value = (string)($status[$key] ?? '');
+
+            if ($value !== '') {
+                $latestTimestamp = max($latestTimestamp, (int)strtotime($value . ' UTC'));
+            }
+        }
+
+        $phase = (string)($status['phase'] ?? '');
+        $phaseStatus = is_array($status['phases'][$phase] ?? null) ? $status['phases'][$phase] : [];
+        $phaseStartedAt = (string)($phaseStatus['started_at'] ?? '');
+
+        if ($phaseStartedAt !== '') {
+            $latestTimestamp = max($latestTimestamp, (int)strtotime($phaseStartedAt . ' UTC'));
+        }
+
+        return $latestTimestamp > 0 && (time() - $latestTimestamp) >= self::BATCH_RUN_STALE_AFTER_SECONDS;
+    }
+
+    /**
+     * Shared-batch jobs are intentionally restarted from the beginning after
+     * a lost continuation. Their sites are small enough for the collective
+     * batch, and retaining a stale checkpoint would keep the row running
+     * until the next cycle while making recovery dependent on another batch.
+     *
+     * @param array<string, mixed> $status
+     */
+    protected function abortInterruptedBatchAnalysis(int $siteId, array $status): bool {
+        $phase = (string)($status['phase'] ?? self::SHORTCODE_PHASE);
+        $processed = (int)($status['processed_posts'] ?? 0);
+        $total = (int)($status['total_posts'] ?? 0);
+        $message = sprintf(
+            /* translators: 1: analysis phase, 2: processed posts, 3: total posts. */
+            __('The shared-batch analysis was stopped in the %1$s phase after %2$d of %3$d posts because its continuation was missing. It will restart from the beginning with the next scheduled shared batch.', 'rrze-multisite-manager'),
+            $phase,
+            $processed,
+            $total
+        );
+
+        $this->markFailed($siteId, $message);
+        do_action(
+            'rrze.log.error',
+            'RRZE-MSM: Shortcode and block shared-batch analysis stopped after a missing continuation',
+            [
+                'site_id' => $siteId,
+                'site_url' => get_home_url($siteId, '/'),
+                'phase' => $phase,
+                'processed_posts' => $processed,
+                'total_posts' => $total,
+                'assignment_mode' => 'batch',
             ]
         );
 

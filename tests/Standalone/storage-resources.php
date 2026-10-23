@@ -330,7 +330,7 @@ final class SliceAnalysis extends RRZE\MultisiteManager\Metrics\StorageAnalysisS
     public function clearProcessStates(int $siteId): void { $this->clears++; }
     public function getProgressContext(int $siteId, string $phase): array { return []; }
     public function getProcessStatus(int $siteId): array { return []; }
-    public function runBaseBatch(int $siteId): array {
+    public function runBaseBatch(int $siteId, string $assignmentMode = 'batch'): array {
         if ($this->batchDelayMicroseconds > 0) { usleep($this->batchDelayMicroseconds); }
         if ($this->busy) { throw new RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException('Simulated occupied worker'); }
         if ($this->assertReserved) {
@@ -341,7 +341,7 @@ final class SliceAnalysis extends RRZE\MultisiteManager\Metrics\StorageAnalysisS
         if ($this->fail) { throw new RuntimeException('Simulated failure'); }
         return ['success' => true, 'status' => ['base' => ['status' => ++$this->calls['base'] >= $this->baseBatchesUntilComplete ? 'complete' : 'running']]];
     }
-    public function runOrphanBatch(int $siteId): array { return ['success' => true, 'status' => ['orphan' => ['status' => ++$this->calls['orphan'] >= 3 ? 'complete' : 'running']]]; }
+    public function runOrphanBatch(int $siteId, string $assignmentMode = 'batch'): array { return ['success' => true, 'status' => ['orphan' => ['status' => ++$this->calls['orphan'] >= 3 ? 'complete' : 'running']]]; }
     public function runMediaMetadataBatch(int $siteId, bool $restart): array {
         $this->metadataRestarts[] = $restart;
         return ['success' => true, 'analysis' => ['status' => ++$this->calls['metadata'] >= 2 ? 'complete' : 'running']];
@@ -380,7 +380,7 @@ final class ReinitializeScheduler extends SliceScheduler {
         return 0;
     }
 
-    protected function scheduleRecurringAnalysis(int $siteId): bool {
+    protected function scheduleRecurringAnalysis(int $siteId, bool $prioritizeFirstRun = false): bool {
         return wp_schedule_single_event(time() + MINUTE_IN_SECONDS, 'test_shared_storage_batch', [$siteId]);
     }
 }

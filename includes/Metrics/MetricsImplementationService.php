@@ -4887,7 +4887,7 @@ class MetricsImplementationService {
         return [];
     }
 
-    public function runSiteStorageAnalysisBatch(int $siteId, bool $restart = false): array {
+    public function runSiteStorageAnalysisBatch(int $siteId, bool $restart = false, string $assignmentMode = 'batch'): array {
         $status = [];
 
         if ($siteId <= 0) {
@@ -4901,7 +4901,7 @@ class MetricsImplementationService {
         switch_to_blog($siteId);
 
         try {
-            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageAnalysisBatch($siteId, $restart));
+            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageAnalysisBatch($siteId, $restart, $assignmentMode));
             if (empty($status['success'])) {
                 $this->storageResources->clearSite($siteId);
             }
@@ -4917,7 +4917,7 @@ class MetricsImplementationService {
         return $status;
     }
 
-    public function runSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false): array {
+    public function runSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false, string $assignmentMode = 'batch'): array {
         $status = [];
 
         if ($siteId <= 0) {
@@ -4931,7 +4931,7 @@ class MetricsImplementationService {
         switch_to_blog($siteId);
 
         try {
-            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageOrphanAnalysisBatch($siteId, $restart));
+            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageOrphanAnalysisBatch($siteId, $restart, $assignmentMode));
             if (empty($status['success'])) {
                 $this->storageResources->clearSite($siteId);
             }
@@ -5075,7 +5075,7 @@ class MetricsImplementationService {
         ];
     }
 
-    protected function runCurrentSiteStorageAnalysisBatch(int $siteId, bool $restart = false): array {
+    protected function runCurrentSiteStorageAnalysisBatch(int $siteId, bool $restart = false, string $assignmentMode = 'batch'): array {
         $this->storageResources->acquire($siteId);
         return $this->storageAnalysisBatch->runBase(
             $siteId,
@@ -5084,7 +5084,7 @@ class MetricsImplementationService {
             $this->getSiteStorageAnalysisOrphanStateKey($siteId),
             max(7 * DAY_IN_SECONDS, $this->config->getStorageAnalysisTimeoutSeconds()),
             fn(): array => $this->getSiteStorageAnalysisProcessStatus($siteId),
-            fn(): array => $this->initializeCurrentSiteStorageAnalysisBaseState($siteId),
+            fn(): array => $this->initializeCurrentSiteStorageAnalysisBaseState($siteId, $assignmentMode),
             fn(array $state): array => $this->processCurrentSiteStorageAnalysisBaseState($state),
             function (array $state) use ($siteId): void {
                 $this->finalizeCurrentSiteStorageAnalysisBaseState($siteId, $state);
@@ -5092,7 +5092,7 @@ class MetricsImplementationService {
         );
     }
 
-    protected function runCurrentSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false): array {
+    protected function runCurrentSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false, string $assignmentMode = 'batch'): array {
         $analysis = $this->getCachedSiteStorageAnalysis($siteId);
         if (!empty($analysis)) {
             $this->storageResources->acquire($siteId);
@@ -5104,7 +5104,7 @@ class MetricsImplementationService {
             $this->getSiteStorageAnalysisOrphanStateKey($siteId),
             max(7 * DAY_IN_SECONDS, $this->config->getStorageAnalysisTimeoutSeconds()),
             fn(): array => $this->getSiteStorageAnalysisProcessStatus($siteId),
-            fn(array $storedAnalysis): array => $this->initializeCurrentSiteStorageAnalysisOrphanState($storedAnalysis),
+            fn(array $storedAnalysis): array => $this->initializeCurrentSiteStorageAnalysisOrphanState($storedAnalysis, $assignmentMode),
             fn(array $state): array => $this->processCurrentSiteStorageAnalysisOrphanState($state),
             static fn(array $state): bool => (empty($state['media_usage_index']) || ($state['media_usage_stage'] ?? '') === 'complete')
                 && (int)($state['current_index'] ?? 0) >= (int)($state['total'] ?? 0)
@@ -5115,7 +5115,7 @@ class MetricsImplementationService {
         );
     }
 
-    protected function initializeCurrentSiteStorageAnalysisBaseState(int $siteId): array {
+    protected function initializeCurrentSiteStorageAnalysisBaseState(int $siteId, string $assignmentMode = 'batch'): array {
         $uploadDir = wp_get_upload_dir();
         $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
         $baseUrl = is_array($uploadDir) && !empty($uploadDir['baseurl']) ? (string)$uploadDir['baseurl'] : '';
@@ -5155,6 +5155,8 @@ class MetricsImplementationService {
             'attachment_index_complete' => false,
             'attachment_index_source_complete' => false,
             'pending_index_buckets' => [],
+            'attachment_index_batch_size' => $this->config->getStorageAnalysisAttachmentIndexBatchSize($assignmentMode),
+            'index_write_batch_size' => $this->config->getStorageAnalysisIndexWriteBatchSize($assignmentMode),
             'attachment_stats_bucket' => 0,
             'attachment_stats_offset' => 0,
             'attachment_stats_complete' => false,
@@ -5196,6 +5198,9 @@ class MetricsImplementationService {
 
         $this->storageResources->acquire(get_current_blog_id());
         $lastAttachmentId = max(0, (int)($state['attachment_index_last_id'] ?? 0));
+        // Existing active states retain the former conservative limit until
+        // they finish. New states persist their selected profile at startup.
+        $attachmentBatchSize = max(5, min(100, (int)($state['attachment_index_batch_size'] ?? self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE)));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded, paginated attachment index cannot use the unbounded post and post-meta object caches.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
@@ -5212,7 +5217,7 @@ class MetricsImplementationService {
                 ORDER BY p.ID ASC
                 LIMIT %d",
                 $lastAttachmentId,
-                self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE
+                $attachmentBatchSize
             )
         );
         $bucketEntries = [];
@@ -5272,7 +5277,7 @@ class MetricsImplementationService {
             throw new \RuntimeException(__('The pending media index exceeded its working-state budget.', 'rrze-multisite-manager'));
         }
         $state['attachment_index_last_id'] = $lastAttachmentId;
-        $state['attachment_index_source_complete'] = count($rows) < self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE;
+        $state['attachment_index_source_complete'] = count($rows) < $attachmentBatchSize;
         $state['pending_index_buckets'] = $bucketEntries;
 
         return $this->saveCurrentSiteStorageIndexBuckets($state);
@@ -5282,9 +5287,10 @@ class MetricsImplementationService {
     protected function saveCurrentSiteStorageIndexBuckets(array $state): array {
         $siteId = get_current_blog_id();
         $storedBuckets = [];
+        $indexWriteBatchSize = max(4, min(32, (int)($state['index_write_batch_size'] ?? self::STORAGE_ANALYSIS_INDEX_WRITE_BATCH_SIZE)));
 
         foreach ((array)$state['pending_index_buckets'] as $bucket => $entries) {
-            if (count($storedBuckets) >= self::STORAGE_ANALYSIS_INDEX_WRITE_BATCH_SIZE) {
+            if (count($storedBuckets) >= $indexWriteBatchSize) {
                 break;
             }
             $bucket = (string)$bucket;
@@ -5697,7 +5703,7 @@ class MetricsImplementationService {
         delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
     }
 
-    protected function initializeCurrentSiteStorageAnalysisOrphanState(array $analysis): array {
+    protected function initializeCurrentSiteStorageAnalysisOrphanState(array $analysis, string $assignmentMode = 'batch'): array {
         $siteId = get_current_blog_id();
         // The base phase leaves its bounded attachment index in place for this
         // phase. It is released only after orphan analysis has completed.
@@ -5733,6 +5739,8 @@ class MetricsImplementationService {
             'attachment_index_complete' => false,
             'attachment_index_source_complete' => false,
             'pending_index_buckets' => [],
+            'attachment_index_batch_size' => $this->config->getStorageAnalysisAttachmentIndexBatchSize($assignmentMode),
+            'index_write_batch_size' => $this->config->getStorageAnalysisIndexWriteBatchSize($assignmentMode),
             'attachment_stats' => [
                 'attachment_count' => 0,
                 'media_types' => $this->getEmptyStorageAttachmentMediaTypes(),

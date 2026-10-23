@@ -23,7 +23,9 @@ use RRZE\MultisiteManager\Widgets\ProblemSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentSitesWidget;
 use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
 use RRZE\MultisiteManager\Widgets\SiteOverviewWidget;
+use RRZE\MultisiteManager\Widgets\ShortcodeBlockMonitoringWidget;
 use RRZE\MultisiteManager\Widgets\StatusWidget;
+use RRZE\MultisiteManager\Widgets\StorageAnalysisMonitoringWidget;
 use RRZE\MultisiteManager\Widgets\SummaryWidget;
 use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
@@ -166,6 +168,20 @@ class Settings {
             $options['monitoring_monitoring_frequency'] = $this->getCycleFrequencyFromHours((int)($storedOptions['monitoring_monitoring_interval_hours'] ?? 6));
         }
 
+        if (is_array($storedOptions) && !array_key_exists('monitoring_storage_analysis_small_batch_frequency', $storedOptions)) {
+            $frequency = (string)($storedOptions['monitoring_storage_analysis_frequency'] ?? 'twiceweekly');
+            $options['monitoring_storage_analysis_small_batch_frequency'] = $frequency;
+            $options['monitoring_storage_analysis_medium_batch_frequency'] = $frequency;
+            $options['monitoring_storage_analysis_individual_frequency'] = $frequency;
+        }
+
+        if (is_array($storedOptions) && !array_key_exists('monitoring_storage_analysis_individual_timeout_minutes', $storedOptions)) {
+            $timeout = (int)($storedOptions['monitoring_storage_analysis_timeout_minutes'] ?? 360);
+            $options['monitoring_storage_analysis_small_batch_timeout_minutes'] = $timeout;
+            $options['monitoring_storage_analysis_medium_batch_timeout_minutes'] = $timeout;
+            $options['monitoring_storage_analysis_individual_timeout_minutes'] = $timeout;
+        }
+
         return $this->normalizeOptions($options);
     }
 
@@ -208,7 +224,9 @@ class Settings {
 
         $monitoringFrequencyChanged = (string)($previousOptions['monitoring_monitoring_frequency'] ?? '') !== (string)($options['monitoring_monitoring_frequency'] ?? '');
         $metricsFrequencyChanged = (string)($previousOptions['monitoring_metrics_frequency'] ?? '') !== (string)($options['monitoring_metrics_frequency'] ?? '');
-        $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_frequency'] ?? '');
+        $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_small_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_small_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_storage_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_medium_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_storage_analysis_individual_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_individual_frequency'] ?? '');
         $shortcodeAnalysisFrequencyChanged = (string)($previousOptions['monitoring_shortcode_block_analysis_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? '');
 
         update_site_option($this->optionName, $options);
@@ -1142,6 +1160,13 @@ class Settings {
             }
         }
 
+        $smallMediaKey = 'monitoring_storage_analysis_small_batch_media_threshold';
+        $mediumMediaKey = 'monitoring_storage_analysis_medium_batch_media_threshold';
+        $smallRuntimeKey = 'monitoring_storage_analysis_small_batch_runtime_threshold_seconds';
+        $mediumRuntimeKey = 'monitoring_storage_analysis_medium_batch_runtime_threshold_seconds';
+        $options[$mediumMediaKey] = max((int)$options[$smallMediaKey], (int)$options[$mediumMediaKey]);
+        $options[$mediumRuntimeKey] = max((int)$options[$smallRuntimeKey], (int)$options[$mediumRuntimeKey]);
+
         return $options;
     }
 
@@ -1267,10 +1292,31 @@ class Settings {
             'http_failure_threshold',
         ]);
         $this->renderMonitoringFieldGroup(__('Storage analyses', 'rrze-multisite-manager'), [
-            'storage_analysis_frequency',
-            'storage_analysis_batch_media_threshold',
-            'storage_analysis_batch_runtime_threshold_seconds',
-            'storage_analysis_timeout_minutes',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Small storage-analysis batches', 'rrze-multisite-manager'), [
+            'storage_analysis_small_batch_frequency',
+            'storage_analysis_small_batch_media_threshold',
+            'storage_analysis_small_batch_runtime_threshold_seconds',
+            'storage_analysis_small_batch_timeout_minutes',
+            'storage_analysis_shared_attachment_index_batch_size',
+            'storage_analysis_shared_index_write_batch_size',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Medium storage-analysis batches', 'rrze-multisite-manager'), [
+            'storage_analysis_medium_batch_frequency',
+            'storage_analysis_medium_batch_media_threshold',
+            'storage_analysis_medium_batch_runtime_threshold_seconds',
+            'storage_analysis_medium_batch_timeout_minutes',
+            'storage_analysis_medium_attachment_index_batch_size',
+            'storage_analysis_medium_index_write_batch_size',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Individual storage-analysis tasks', 'rrze-multisite-manager'), [
+            'storage_analysis_individual_frequency',
+            'storage_analysis_individual_timeout_minutes',
+            'storage_analysis_individual_attachment_index_batch_size',
+            'storage_analysis_individual_index_write_batch_size',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Storage-analysis capacity and display', 'rrze-multisite-manager'), [
+            'storage_analysis_max_concurrent_runs',
             'storage_analysis_orphan_files_limit',
             'storage_analysis_browser_max_megabytes',
         ]);
@@ -1787,7 +1833,8 @@ class Settings {
             echo '<th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th>';
             echo '<td class="rrze-msm-monitoring-site-url">';
             echo '<div class="rrze-msm-monitoring-site-identity"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
-            $cronSiteId = ($process['schedule_mode'] ?? '') === 'batch'
+            $scheduleMode = (string)($process['schedule_mode'] ?? '');
+            $cronSiteId = in_array($scheduleMode, ['small-batch', 'medium-batch'], true)
                 ? (int)get_main_site_id(get_current_network_id())
                 : $siteId;
             $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteStorageAnalysisPageUrl($siteId), __('Storage Analysis', 'rrze-multisite-manager'), $cronSiteId);
@@ -1798,7 +1845,9 @@ class Settings {
                 echo '<br><span>' . esc_html((string)$process['last_error']) . '</span>';
             }
             echo '</td>';
-            $assignment = ($process['schedule_mode'] ?? '') === 'batch' ? __('Shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager');
+            $assignment = $scheduleMode === 'small-batch'
+                ? __('Small shared batch', 'rrze-multisite-manager')
+                : ($scheduleMode === 'medium-batch' ? __('Medium shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager'));
             echo '<td>' . esc_html($assignment) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base', true, (array)($process['base_progress'] ?? []));
@@ -1823,7 +1872,7 @@ class Settings {
                 echo '&mdash;';
             } elseif (!empty($process['is_running'])) {
                 echo esc_html__('Running', 'rrze-multisite-manager');
-            } elseif (($process['schedule_mode'] ?? '') === 'batch') {
+            } elseif (in_array($scheduleMode, ['small-batch', 'medium-batch'], true)) {
                 if (!empty($process['last_was_aborted']) || $statusKey === 'error') {
                     echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_site_storage_analysis')) . '">';
                     echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
@@ -1864,11 +1913,11 @@ class Settings {
         echo '</div>';
         }
         echo '</section>';
-        $this->renderUnscheduledStorageMonitoringTable($unassignedPage, $perPage, $unassignedSearch);
+        $this->renderUnscheduledStorageMonitoringTable($scheduler, $unassignedPage, $perPage, $unassignedSearch);
     }
 
     /** @param array{processes: array<int, array<string, mixed>>, total: int} $processPage */
-    protected function renderUnscheduledStorageMonitoringTable(array $processPage, int $perPage, string $search): void {
+    protected function renderUnscheduledStorageMonitoringTable(StorageAnalysisSchedulerService $scheduler, array $processPage, int $perPage, string $search): void {
         $processes = $processPage['processes'] ?? [];
         $totalItems = (int)($processPage['total'] ?? 0);
         $currentPage = $this->getMonitoringTablePage('storage_unassigned_monitoring_page');
@@ -1899,13 +1948,21 @@ class Settings {
             echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all"></th>';
             echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th>';
             echo '<th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Expected execution', 'rrze-multisite-manager') . '</th>';
             echo '<th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
             echo '</tr></thead><tbody>';
 
             foreach ($processes as $process) {
                 $siteId = (int)($process['site_id'] ?? 0);
+                $expectedAssignment = $scheduler->getInitialAssignmentMode($siteId);
+                $expectedAssignmentLabel = $expectedAssignment === 'small-batch'
+                    ? __('Small shared batch', 'rrze-multisite-manager')
+                    : ($expectedAssignment === 'medium-batch'
+                        ? __('Medium shared batch', 'rrze-multisite-manager')
+                        : __('Individual schedule', 'rrze-multisite-manager'));
                 echo '<tr><th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th><td class="rrze-msm-monitoring-site-url"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span></td>';
                 echo '<td><span class="rrze-msm-badge rrze-msm-badge-neutral">' . esc_html__('Not scheduled', 'rrze-multisite-manager') . '</span></td>';
+                echo '<td>' . esc_html($expectedAssignmentLabel) . '</td>';
                 echo '<td class="rrze-msm-col-actions"><form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_site_storage_analysis')) . '">';
                 echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
                 wp_nonce_field('rrze_multisite_manager_start_site_storage_analysis_' . $siteId);
@@ -1915,7 +1972,7 @@ class Settings {
 
             echo '</tbody><tfoot><tr>';
             echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all-bottom">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all-bottom"></th>';
-            echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
+            echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Expected execution', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
             echo '</tr></tfoot></table>';
             echo '<div class="tablenav bottom">';
             $this->renderSelectedSiteBulkActions($selectionFormId, 'bottom');
@@ -2612,6 +2669,16 @@ class Settings {
             'status' => new StatusWidget($this->plugin, $this->config),
             'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
+            'storage_analysis_monitoring' => new StorageAnalysisMonitoringWidget(
+                $this->plugin,
+                $this->config,
+                new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config)
+            ),
+            'shortcode_block_monitoring' => new ShortcodeBlockMonitoringWidget(
+                $this->plugin,
+                $this->config,
+                new ShortcodeBlockAnalysisSchedulerService($this->config)
+            ),
             'new_monitoring_alerts' => new NewMonitoringAlertsWidget($this->plugin, $this->config),
             'problem_sites' => new ProblemSitesWidget($this->plugin, $this->config),
             'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),

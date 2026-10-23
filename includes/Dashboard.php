@@ -23,6 +23,8 @@ use RRZE\MultisiteManager\Widgets\RecentlyUpdatedSitesWidget;
 use RRZE\MultisiteManager\Widgets\SiteOverviewWidget;
 use RRZE\MultisiteManager\Widgets\StatusWidget;
 use RRZE\MultisiteManager\Widgets\SummaryWidget;
+use RRZE\MultisiteManager\Widgets\ShortcodeBlockMonitoringWidget;
+use RRZE\MultisiteManager\Widgets\StorageAnalysisMonitoringWidget;
 use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
 use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
@@ -134,7 +136,7 @@ class Dashboard {
 
         if (!is_network_admin() && current_user_can('manage_options')) {
             if (current_user_can('upload_files')) {
-                $this->pageHooks[] = add_media_page(
+                $this->pageHooks[] = add_management_page(
                     __('Storage Analysis', 'rrze-multisite-manager'),
                     __('Storage Analysis', 'rrze-multisite-manager'),
                     'manage_options',
@@ -1132,8 +1134,10 @@ class Dashboard {
                 'storage_analysis_ready' => !empty($storageAnalysis) && empty($storageAnalysis['error']),
                 'storage_analysis_scheduled_only' => $storageAnalysisScheduledOnly,
                 'storage_analysis_tasks_allowed' => $storageAnalysisTasksAllowed,
+                'storage_analysis_is_configured' => $siteId > 0 && $this->storageAnalysisScheduler->getSiteAssignmentMode($siteId) !== 'unassigned',
                 'storage_analysis_browser_limit_megabytes' => $storageAnalysisBrowserLimitMegabytes,
                 'storage_analysis_scheduler_status' => $storageAnalysisSchedulerStatus,
+                'network_administrator_email' => $this->getNetworkAdministratorEmail(),
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
                 'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
@@ -1181,6 +1185,7 @@ class Dashboard {
                 'can_request_analysis' => $this->currentUserCanRequestSiteAnalysis(),
                 'plugin_details_base_url' => $this->getPluginDetailsUrl(),
                 'can_view_plugin_details' => is_super_admin(),
+                'network_administrator_email' => $this->getNetworkAdministratorEmail(),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
@@ -2690,6 +2695,16 @@ class Dashboard {
             && in_array('websupport', (array)$user->roles, true);
     }
 
+    protected function getNetworkAdministratorEmail(): string {
+        $email = sanitize_email((string)get_network_option(get_current_network_id(), 'admin_email', ''));
+
+        if ($email !== '') {
+            return $email;
+        }
+
+        return sanitize_email((string)get_site_option('admin_email', ''));
+    }
+
     protected function getSuperAdminOnlySiteOptions(): array {
         $visibilitySettings = $this->config->getVisibilitySettings();
         $optionNames = $visibilitySettings['superadmin_only_site_options'] ?? [];
@@ -3082,6 +3097,8 @@ class Dashboard {
             'status' => new StatusWidget($this->plugin, $this->config),
             'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
+            'storage_analysis_monitoring' => new StorageAnalysisMonitoringWidget($this->plugin, $this->config, $this->storageAnalysisScheduler),
+            'shortcode_block_monitoring' => new ShortcodeBlockMonitoringWidget($this->plugin, $this->config, $this->shortcodeBlockAnalysisScheduler),
             'new_monitoring_alerts' => new NewMonitoringAlertsWidget($this->plugin, $this->config),
             'problem_sites' => new ProblemSitesWidget($this->plugin, $this->config),
             'theme_usage' => new ThemeUsageWidget($this->plugin, $this->config),

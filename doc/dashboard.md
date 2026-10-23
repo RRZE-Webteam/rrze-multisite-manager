@@ -29,4 +29,6 @@ When the calculation logic changes, the cache detects its version change and sch
 
 The entry point is `Dashboard::renderDashboardPage()`. Data comes from `MetricsService::getDashboardData()`; the facade delegates to `MetricsImplementationService`. Widget implementations are in `includes/Widgets/`, and templates are in `templates/widgets/`.
 
+The **Websites** view enables the widgets **Monitoring storage analyses** and **Monitoring shortcodes and blocks** by default. They read only the persisted scheduler assignments and one list of active sites. They do not start a metrics run, inspect media files, or load per-site analysis results. The charts therefore distinguish planned small and medium storage batches, individual schedules, and unplanned sites; shortcode and block analysis distinguishes shared batches, individual schedules, and unplanned sites.
+
 [Runtime state and scheduler](runtime-state.md#central-dashboard-metrics) lists dashboard persistence, Cron hooks, batches, and locks. The individual widget order is additionally stored as user meta `rrze_msm_widget_orders`; network view definitions are stored in the network option `rrze_multisite_manager_dashboard_views`.
