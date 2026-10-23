@@ -1320,6 +1320,9 @@ class Settings {
             'storage_analysis_orphan_files_limit',
             'storage_analysis_browser_max_megabytes',
         ]);
+        $this->renderMonitoringFieldGroup(__('Local administrator access', 'rrze-multisite-manager'), [
+            'show_local_analysis_request_notice',
+        ]);
         $this->renderMonitoringFieldGroup(__('Shortcodes and Blocks', 'rrze-multisite-manager'), [
             'shortcode_block_analysis_frequency',
             'shortcode_block_analysis_timeout_minutes',
@@ -1639,7 +1642,9 @@ class Settings {
         $shortcodeBlockAnalysisRequested = isset($_GET['shortcode-block-analysis-requested'])
             ? sanitize_key((string)wp_unslash($_GET['shortcode-block-analysis-requested']))
             : '';
-        if ($shortcodeBlockAnalysisRequested === '1') {
+        if ($shortcodeBlockAnalysisRequested === 'individual-restart') {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The failed shared analysis has been restarted as an individual task.', 'rrze-multisite-manager') . '</p></div>';
+        } elseif ($shortcodeBlockAnalysisRequested === '1') {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The shortcode and block analysis has been scheduled and will start shortly.', 'rrze-multisite-manager') . '</p></div>';
         } elseif ($shortcodeBlockAnalysisRequested === 'running') {
             echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('The shortcode and block analysis is already running.', 'rrze-multisite-manager') . '</p></div>';
@@ -2096,6 +2101,14 @@ class Settings {
                     echo '<input type="hidden" name="redirect_to" value="' . esc_url($monitoringUrl) . '">';
                     wp_nonce_field('rrze_msm_request_shortcode_block_analysis_' . $siteId);
                     echo '<button type="submit" class="button button-secondary">' . esc_html($hasSuccessfulRun ? __('Start now', 'rrze-multisite-manager') : __('Start', 'rrze-multisite-manager')) . '</button>';
+                    echo '</form>';
+                } elseif ($assignmentMode === 'batch' && ($statusKey === 'error' || !empty($process['last_error']))) {
+                    echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_request_shortcode_block_analysis')) . '">';
+                    echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
+                    echo '<input type="hidden" name="redirect_to" value="' . esc_url($monitoringUrl) . '">';
+                    echo '<input type="hidden" name="restart_as_individual" value="1">';
+                    wp_nonce_field('rrze_msm_request_shortcode_block_analysis_' . $siteId);
+                    echo '<button type="submit" class="button button-secondary">' . esc_html__('Restart as individual task', 'rrze-multisite-manager') . '</button>';
                     echo '</form>';
                 } else {
                     echo '&mdash;';

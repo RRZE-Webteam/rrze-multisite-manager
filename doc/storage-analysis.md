@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Storage analysis examines the uploads directory and media library of one site. It is available in Multisite Manager and, with local permission, under **Media > Storage analysis** on the respective site.
+Storage analysis examines the uploads directory and media library of one site. It is available in Multisite Manager and, with local permission, under **Tools > Storage analysis** on the respective site. Local administrators see this entry when the website has a planned or saved storage analysis. The setting **Show analysis request notice to local administrators** can additionally expose the page for websites without an analysis and displays the network administrator contact; it is disabled by default.
 
 ## Areas
 

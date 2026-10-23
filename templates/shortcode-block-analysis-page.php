@@ -231,6 +231,8 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                 </header>
                 <?php if ($requested === '1') { ?>
                     <div class="notice notice-success inline"><p><?php echo esc_html__('The shortcode and block analysis has been scheduled.', 'rrze-multisite-manager'); ?></p></div>
+                <?php } elseif ($requested === 'individual-restart') { ?>
+                    <div class="notice notice-success inline"><p><?php echo esc_html__('The failed shared analysis has been restarted as an individual task.', 'rrze-multisite-manager'); ?></p></div>
                 <?php } elseif ($requested === 'running') { ?>
                     <div class="notice notice-info inline"><p><?php echo esc_html__('The shortcode and block analysis is already running.', 'rrze-multisite-manager'); ?></p></div>
                 <?php } elseif ($requested === 'inactive') { ?>
@@ -238,7 +240,7 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                 <?php } elseif ($requested === 'failed') { ?>
                     <div class="notice notice-error inline"><p><?php echo esc_html__('The shortcode and block analysis task could not be scheduled. Please check the error log.', 'rrze-multisite-manager'); ?></p></div>
                 <?php } ?>
-                <?php if (!empty($is_local_page) && !is_super_admin() && ($analysis_assignment_mode ?? 'unassigned') === 'unassigned') { ?>
+                <?php if (!empty($is_local_page) && !is_super_admin() && !empty($show_analysis_request_notice) && empty($analysis_is_configured)) { ?>
                     <div class="notice notice-info inline"><p><?php
                     /* translators: %s: network administrator email address. */
                     echo esc_html(sprintf(__('No shortcode and block analysis is currently configured for this website. To request one, please email %s.', 'rrze-multisite-manager'), (string)$network_administrator_email));

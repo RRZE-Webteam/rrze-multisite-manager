@@ -72,7 +72,7 @@ defined('ABSPATH') || exit;
                 $unregisteredImageSizeVariantResultsByPath[(string)$unregisteredImageSizeVariantResult['path']] = $unregisteredImageSizeVariantResult;
             }
             ?>
-            <?php if (!empty($site_storage_analysis_is_site_context) && !is_super_admin() && empty($storage_analysis_is_configured)) { ?>
+            <?php if (!empty($site_storage_analysis_is_site_context) && !is_super_admin() && !empty($show_analysis_request_notice) && empty($storage_analysis_is_configured)) { ?>
                 <div class="notice notice-info inline"><p><?php
                 /* translators: %s: network administrator email address. */
                 echo esc_html(sprintf(__('No storage analysis is currently configured for this website. To request one, please email %s.', 'rrze-multisite-manager'), (string)$network_administrator_email));

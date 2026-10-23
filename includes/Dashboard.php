@@ -134,8 +134,11 @@ class Dashboard {
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
         $settingsSlug = $this->settings->getSettingsSlug();
 
-        if (!is_network_admin() && current_user_can('manage_options')) {
-            if (current_user_can('upload_files')) {
+        if (!is_network_admin() && !is_super_admin() && current_user_can('manage_options')) {
+            $showRequestNotice = $this->config->shouldShowLocalAnalysisRequestNotice();
+            $currentSiteId = get_current_blog_id();
+
+            if (current_user_can('upload_files') && ($showRequestNotice || $this->hasLocalStorageAnalysis($currentSiteId))) {
                 $this->pageHooks[] = add_management_page(
                     __('Storage Analysis', 'rrze-multisite-manager'),
                     __('Storage Analysis', 'rrze-multisite-manager'),
@@ -145,13 +148,15 @@ class Dashboard {
                 );
             }
 
-            $this->pageHooks[] = add_management_page(
-                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
-                __('Shortcodes and Blocks', 'rrze-multisite-manager'),
-                'manage_options',
-                $shortcodeBlockAnalysisToolsSlug,
-                [$this, 'renderShortcodeBlockAnalysisPage']
-            );
+            if ($showRequestNotice || $this->hasLocalShortcodeBlockAnalysis($currentSiteId)) {
+                $this->pageHooks[] = add_management_page(
+                    __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                    __('Shortcodes and Blocks', 'rrze-multisite-manager'),
+                    'manage_options',
+                    $shortcodeBlockAnalysisToolsSlug,
+                    [$this, 'renderShortcodeBlockAnalysisPage']
+                );
+            }
         }
 
         if (is_network_admin() || !$this->currentUserCanAccessManager()) {
@@ -1094,6 +1099,10 @@ class Dashboard {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
         }
 
+        if ($isSiteMediaContext && !is_super_admin() && !$this->config->shouldShowLocalAnalysisRequestNotice() && !$this->hasLocalStorageAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
         $storageAnalysis = $siteId > 0 ? $this->metrics->getCachedSiteStorageAnalysis($siteId) : [];
         $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId, true) : [];
@@ -1134,7 +1143,8 @@ class Dashboard {
                 'storage_analysis_ready' => !empty($storageAnalysis) && empty($storageAnalysis['error']),
                 'storage_analysis_scheduled_only' => $storageAnalysisScheduledOnly,
                 'storage_analysis_tasks_allowed' => $storageAnalysisTasksAllowed,
-                'storage_analysis_is_configured' => $siteId > 0 && $this->storageAnalysisScheduler->getSiteAssignmentMode($siteId) !== 'unassigned',
+                'storage_analysis_is_configured' => $this->hasLocalStorageAnalysis($siteId),
+                'show_analysis_request_notice' => $this->config->shouldShowLocalAnalysisRequestNotice(),
                 'storage_analysis_browser_limit_megabytes' => $storageAnalysisBrowserLimitMegabytes,
                 'storage_analysis_scheduler_status' => $storageAnalysisSchedulerStatus,
                 'network_administrator_email' => $this->getNetworkAdministratorEmail(),
@@ -1165,6 +1175,10 @@ class Dashboard {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
         }
 
+        if ($isLocalPage && !is_super_admin() && !$this->config->shouldShowLocalAnalysisRequestNotice() && !$this->hasLocalShortcodeBlockAnalysis($siteId)) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
         if (!in_array($tab, ['shortcodes', 'blocks'], true)) {
             $tab = 'shortcodes';
         }
@@ -1177,6 +1191,8 @@ class Dashboard {
                 'analysis_status' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getStatus($siteId) : [],
                 'analysis_result' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getResult($siteId) : [],
                 'analysis_assignment_mode' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getSiteAssignmentMode($siteId) : 'unassigned',
+                'analysis_is_configured' => $this->hasLocalShortcodeBlockAnalysis($siteId),
+                'show_analysis_request_notice' => $this->config->shouldShowLocalAnalysisRequestNotice(),
                 'analysis_next_run_timestamp' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getNextScheduledRunTimestamp($siteId) : 0,
                 'analysis_tab' => $tab,
                 'is_local_page' => $isLocalPage,
@@ -1200,6 +1216,7 @@ class Dashboard {
     public function requestShortcodeBlockAnalysis(): void {
         $siteId = isset($_POST['site_id']) ? absint(wp_unslash($_POST['site_id'])) : 0;
         $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+        $restartAsIndividual = is_super_admin() && !empty($_POST['restart_as_individual']);
 
         if (!$this->currentUserCanAccessShortcodeBlockAnalysis($siteId)) {
             wp_die(esc_html__('You are not allowed to perform this action.', 'rrze-multisite-manager'));
@@ -1210,8 +1227,12 @@ class Dashboard {
         }
 
         check_admin_referer('rrze_msm_request_shortcode_block_analysis_' . $siteId);
-        $requested = $this->shortcodeBlockAnalysisScheduler->requestAnalysis($siteId);
-        $requestState = $requested ? '1' : $this->shortcodeBlockAnalysisScheduler->getRequestAnalysisFailureState($siteId);
+        $requested = $restartAsIndividual
+            ? $this->shortcodeBlockAnalysisScheduler->restartFailedBatchAnalysisAsIndividual($siteId)
+            : $this->shortcodeBlockAnalysisScheduler->requestAnalysis($siteId);
+        $requestState = $requested
+            ? ($restartAsIndividual ? 'individual-restart' : '1')
+            : $this->shortcodeBlockAnalysisScheduler->getRequestAnalysisFailureState($siteId);
         $redirectTo = $redirectTo !== '' ? $redirectTo : $this->getShortcodeBlockAnalysisRedirectUrl($siteId);
 
         wp_safe_redirect(add_query_arg('shortcode-block-analysis-requested', $requestState, $redirectTo));
@@ -2646,6 +2667,24 @@ class Dashboard {
 
     protected function currentUserCanAccessManager(): bool {
         return current_user_can((string)($this->config->getMenuSettings()['capability'] ?? 'rrze_multisite_manager_access'));
+    }
+
+    protected function hasLocalStorageAnalysis(int $siteId): bool {
+        if ($siteId <= 0) {
+            return false;
+        }
+
+        return $this->storageAnalysisScheduler->getSiteAssignmentMode($siteId) !== 'unassigned'
+            || !empty($this->metrics->getCachedSiteStorageAnalysis($siteId));
+    }
+
+    protected function hasLocalShortcodeBlockAnalysis(int $siteId): bool {
+        if ($siteId <= 0) {
+            return false;
+        }
+
+        return $this->shortcodeBlockAnalysisScheduler->getSiteAssignmentMode($siteId) !== 'unassigned'
+            || !empty($this->shortcodeBlockAnalysisScheduler->getResult($siteId));
     }
 
     protected function currentUserCanAccessSiteStorageAnalysis(int $siteId): bool {

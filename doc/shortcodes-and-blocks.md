@@ -6,7 +6,7 @@ The page determines which shortcodes and blocks occur in a site's content. In ad
 
 ## Access
 
-Super admins access the network-wide page in Multisite Manager. Local administrators have a restricted page under **Tools > Shortcodes and blocks** on their site when they meet the requirements.
+Super admins access the network-wide page in Multisite Manager. Local administrators have a restricted page under **Tools > Shortcodes and blocks** when the website has a planned or saved analysis and they meet the requirements. The setting **Show analysis request notice to local administrators** can additionally expose the page for websites without an analysis and displays the network administrator contact; it is disabled by default.
 
 ## Usage
 
@@ -15,6 +15,8 @@ Tabs separate shortcodes and blocks. An analysis can be requested for an individ
 ## Scheduling and scale
 
 Tasks are managed under **Monitoring > Shortcodes and blocks**. Small sites can be assigned to collective batches; larger sites receive their own scheduled task. The analysis is resumable, time-bounded, and stores only result data, not fully rendered content. Its runtime limit counts active PHP processing across slices, not time spent waiting for the external Cron service. Each completed slice persists a checkpoint before handing off to its continuation. If an individual task loses its continuation, the scheduler restores it from that checkpoint. If a collective-batch task loses its continuation, or makes no progress for two hours, it is ended, its checkpoint is deleted, and it starts again from the beginning with the next regular collective batch.
+
+For an aborted or failed website in a collective batch, its monitoring row offers **Restart as individual task**. This removes only that website from the collective batch, clears its interrupted state, and schedules an individual task immediately. The remaining collective batch is not restarted or otherwise changed.
 
 When a site that was removed from the analysis is explicitly added again, the scheduler immediately creates its next recurring appointment and resets the monitoring status. If the site joins a collective batch whose regular appointment is still days away, the scheduler additionally creates a prompt one-off batch pass without shifting the regular cycle. Start, phase, runtime, and end values from the earlier run are not shown as the state of the new assignment. The previous result remains stored until the newly scheduled analysis replaces it.
 

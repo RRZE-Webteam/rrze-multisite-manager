@@ -10,7 +10,7 @@ The plugin's technical keys follow three conventions:
 | `rrze_msm_run_` / `rrze_msm_refresh_` | Executing or continuing Cron hooks |
 | `rrze_multisite_manager_` | Dashboard cache and admin-post and network-admin actions |
 
-Global plugin configuration is stored as the network option `rrze-multisite-manager`. Hook names and scheduling keys are centrally defined in `includes/Config.php`. Any change to these names always requires a migration or cleanup strategy for existing Cron entries.
+Global plugin configuration is stored as the network option `rrze-multisite-manager`. Its boolean `monitoring_show_local_analysis_request_notice` controls whether local administrators without a planned or saved storage or shortcode-and-block analysis see the corresponding request page under **Tools**; it defaults to disabled. Hook names and scheduling keys are centrally defined in `includes/Config.php`. Any change to these names always requires a migration or cleanup strategy for existing Cron entries.
 
 ## Cron operation
 
