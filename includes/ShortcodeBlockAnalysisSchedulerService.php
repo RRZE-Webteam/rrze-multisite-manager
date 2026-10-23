@@ -375,6 +375,43 @@ class ShortcodeBlockAnalysisSchedulerService {
         return $this->scheduleRecurringAnalysisAt($siteId, time());
     }
 
+    /**
+     * Retries one failed shared-batch analysis without restarting the other
+     * websites in that batch.
+     */
+    public function restartFailedBatchAnalysisAsIndividual(int $siteId): bool {
+        if (!$this->isSiteActive($siteId)) {
+            return false;
+        }
+
+        $this->recoverInterruptedAnalysis($siteId);
+        $status = $this->getStatus($siteId);
+
+        if ($this->isRunning($siteId)
+            || $this->getSiteAssignmentMode($siteId) !== 'batch'
+            || empty($status['last_error'])
+        ) {
+            return false;
+        }
+
+        $this->unschedule($siteId);
+        $this->deleteAnalysisState($siteId);
+
+        if (!$this->scheduleIndividualAnalysisAt($siteId, time())) {
+            return false;
+        }
+
+        $this->allowSiteScheduling($siteId);
+        $this->markScheduled($siteId, true);
+
+        LoggingService::info($this->config, 'RRZE-MSM: Failed shared shortcode and block analysis restarted as an individual task.', [
+            'site_id' => $siteId,
+            'site_url' => get_home_url($siteId, '/'),
+        ]);
+
+        return true;
+    }
+
     public function deactivateSite(int $siteId): void {
         $this->unschedule($siteId);
         $status = $this->getStatus($siteId);

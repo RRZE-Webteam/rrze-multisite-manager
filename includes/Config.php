@@ -308,6 +308,13 @@ class Config {
                         'choices' => $schedulerFrequencyChoices,
                     ],
                     [
+                        'name' => 'show_local_analysis_request_notice',
+                        'label' => __('Show analysis request notice to local administrators', 'rrze-multisite-manager'),
+                        'desc' => __('When a website has neither a saved result nor a planned storage or shortcode-and-block analysis, show local administrators a request notice under Tools. When disabled, the relevant Tools page is hidden instead.', 'rrze-multisite-manager'),
+                        'type' => 'checkbox',
+                        'default' => false,
+                    ],
+                    [
                         'name' => 'storage_analysis_small_batch_timeout_minutes',
                         'label' => __('Maximum active runtime for small storage-analysis batches in minutes', 'rrze-multisite-manager'),
                         'desc' => __('Limits active processing time across short scheduled steps for each individual website in the small batch, not for the entire batch. Waiting for Cron or analysis capacity does not count.', 'rrze-multisite-manager'),
@@ -421,6 +428,12 @@ class Config {
 
     public function getOptionName(): string {
         return $this->config['option_name'];
+    }
+
+    public function shouldShowLocalAnalysisRequestNotice(): bool {
+        $options = get_site_option($this->getOptionName(), []);
+
+        return is_array($options) && !empty($options['monitoring_show_local_analysis_request_notice']);
     }
 
     public function getConstants(): array {
