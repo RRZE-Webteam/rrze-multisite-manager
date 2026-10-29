@@ -3,11 +3,7 @@
 defined('ABSPATH') || exit;
 
 $analysisTab = $analysis_tab === 'blocks' ? 'blocks' : 'shortcodes';
-$filter = isset($_GET['analysis_filter']) ? sanitize_text_field((string)wp_unslash($_GET['analysis_filter'])) : '';
-$filterTerms = array_values(array_unique(array_filter(array_map(
-    static fn(string $term): string => strtolower(trim($term)),
-    explode(',', $filter)
-), static fn(string $term): bool => $term !== '')));
+$filter = isset($_GET['analysis_filter']) ? sanitize_text_field(wp_unslash(substr((string)$_GET['analysis_filter'], 0, 1024))) : '';
 $entries = is_array($analysis_result[$analysisTab] ?? null) ? $analysis_result[$analysisTab] : [];
 $entryNameKey = $analysisTab === 'blocks' ? 'block' : 'shortcode';
 $baseArgs = ['site_id' => (int)$site_id, 'analysis_tab' => $analysisTab];
@@ -23,32 +19,12 @@ $sortOrder = isset($_GET['analysis_order']) ? sanitize_key((string)wp_unslash($_
 $sortOrder = $sortOrder === 'desc' ? 'desc' : 'asc';
 $analysisGeneratedAt = (string)($analysis_result['generated_at'] ?? '');
 $analysisNextRunTimestamp = (int)$analysis_next_run_timestamp;
-$getDistinctEntryCount = static function (array $items, string $key): int {
-    $names = [];
-
-    foreach ($items as $item) {
-        if (!is_array($item) || empty($item[$key])) {
-            continue;
-        }
-
-        $names[strtolower((string)$item[$key])] = true;
-    }
-
-    return count($names);
-};
-$foundShortcodeCount = $getDistinctEntryCount((array)($analysis_result['shortcodes'] ?? []), 'shortcode');
-$foundBlockCount = $getDistinctEntryCount((array)($analysis_result['blocks'] ?? []), 'block');
-$unregisteredShortcodes = [];
-
-foreach ((array)($analysis_result['shortcodes'] ?? []) as $shortcode) {
-    if (!is_array($shortcode) || !empty($shortcode['registered']) || empty($shortcode['shortcode'])) {
-        continue;
-    }
-
-    $unregisteredShortcodes[strtolower((string)$shortcode['shortcode'])] = true;
-}
-
-$unregisteredShortcodeCount = count($unregisteredShortcodes);
+$foundShortcodeCount = (int)($analysis_result['shortcodes_distinct'] ?? 0);
+$foundBlockCount = (int)($analysis_result['blocks_distinct'] ?? 0);
+$unregisteredShortcodeCount = (int)($analysis_result['unregistered_shortcodes'] ?? 0);
+$analysisTruncated = !empty($analysis_result[$analysisTab . '_truncated']);
+$omittedSourceCount = (int)($analysis_result[$analysisTab . '_omitted_count'] ?? 0);
+$omittedSources = array_values(array_filter((array)($analysis_result[$analysisTab . '_omitted_sources'] ?? []), 'is_array'));
 $analysedPostCount = max(
     (int)($analysis_status['total_posts'] ?? 0),
     (int)($analysis_status['processed_posts'] ?? 0),
@@ -57,13 +33,6 @@ $analysedPostCount = max(
     (int)($analysis_result['total_posts'] ?? 0),
     (int)($analysis_result['processed_posts'] ?? 0)
 );
-$getEntrySortValue = static function (array $entry, string $column): string {
-    if ($column === 'registered') {
-        return !empty($entry['registered']) ? '1' : '0';
-    }
-
-    return (string)($entry[$column] ?? '');
-};
 $getSortUrl = static function (string $column) use ($analysis_base_url, $site_id, $analysisTab, $filter, $sortBy, $sortOrder): string {
     $nextOrder = $column === $sortBy && $sortOrder === 'asc' ? 'desc' : 'asc';
     $args = [
@@ -105,24 +74,6 @@ $renderLocation = static function (array $location): string {
 
     return $html . '</li>';
 };
-
-if (!empty($filterTerms)) {
-    $entries = array_values(array_filter($entries, static function ($entry) use ($entryNameKey, $filterTerms) {
-        if (!is_array($entry)) {
-            return false;
-        }
-
-        $entryName = strtolower((string)($entry[$entryNameKey] ?? ''));
-
-        foreach ($filterTerms as $filterTerm) {
-            if (str_contains($entryName, $filterTerm)) {
-                return true;
-            }
-        }
-
-        return false;
-    }));
-}
 
 $groupedEntries = [];
 
@@ -173,8 +124,8 @@ foreach ($entries as $entry) {
         ];
     }
 
-    if (!empty($entry['meta_key'])) {
-        $groupedEntries[$groupKey]['locations'][$locationKey]['meta_keys'][(string)$entry['meta_key']] = (string)$entry['meta_key'];
+    if (!empty($entry['metadata_key'])) {
+        $groupedEntries[$groupKey]['locations'][$locationKey]['meta_keys'][(string)$entry['metadata_key']] = (string)$entry['metadata_key'];
     }
 }
 
@@ -193,17 +144,6 @@ $columnCount = $analysisTab === 'shortcodes'
     ? 5
     : 3 + (int)$showBlockOrigin + (int)$showBlockDescription;
 
-usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy, $sortOrder) {
-    $left = is_array($left) ? $left : [];
-    $right = is_array($right) ? $right : [];
-    $comparison = strnatcasecmp($getEntrySortValue($left, $sortBy), $getEntrySortValue($right, $sortBy));
-
-    if ($comparison === 0) {
-        $comparison = strnatcasecmp((string)($left['location_sort'] ?? ''), (string)($right['location_sort'] ?? ''));
-    }
-
-    return $sortOrder === 'desc' ? -$comparison : $comparison;
-});
 ?>
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
     <div class="rrze-msm-page-shell">
@@ -316,6 +256,90 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                     <input id="rrze-msm-analysis-filter" type="search" name="analysis_filter" value="<?php echo esc_attr($filter); ?>">
                     <button type="submit" class="button button-secondary"><?php echo esc_html__('Filter', 'rrze-multisite-manager'); ?></button>
                 </form>
+                <?php if ($analysisTruncated) { ?>
+                    <div class="notice notice-warning inline">
+                        <p><?php echo esc_html__('The analysis reached a data limit. Some findings or oversized input values were omitted or shortened; these results are incomplete.', 'rrze-multisite-manager'); ?></p>
+                        <?php if ($omittedSourceCount > 0) { ?>
+                            <p><?php echo esc_html(sprintf(
+                                /* translators: %d: number of data-limit events. */
+                                _n('%d data-limit event was recorded.', '%d data-limit events were recorded.', $omittedSourceCount, 'rrze-multisite-manager'),
+                                $omittedSourceCount
+                            )); ?></p>
+                        <?php } else { ?>
+                            <p><?php echo esc_html__('This result was generated before detailed data-limit diagnostics were available. Run the analysis again to identify the affected source.', 'rrze-multisite-manager'); ?></p>
+                        <?php } ?>
+                        <?php if (!empty($omittedSources)) { ?>
+                            <ul>
+                                <?php foreach ($omittedSources as $source) { ?>
+                                    <?php $postId = (int)($source['post_id'] ?? 0); ?>
+                                    <?php $postTitle = (string)($source['post_title'] ?? ''); ?>
+                                    <?php $metadataKey = (string)($source['metadata_key'] ?? ''); ?>
+                                    <?php $field = (string)($source['field'] ?? ''); ?>
+                                    <?php
+                                    $postTitleLabel = $postTitle !== '' ? $postTitle : __('without title', 'rrze-multisite-manager');
+                                    $postTitleLink = $postId > 0
+                                        ? '<a href="' . esc_url(get_admin_url((int)$site_id, 'post.php?post=' . $postId . '&action=edit')) . '">' . esc_html($postTitleLabel) . '</a>'
+                                        : esc_html($postTitleLabel);
+                                    ?>
+                                    <li>
+                                        <?php if (($source['reason'] ?? '') === 'post_meta_too_large') { ?>
+                                            <?php echo wp_kses_post(sprintf(
+                                                /* translators: 1: post ID, 2: post title, 3: meta key. */
+                                                __('Post #%1$d (%2$s), meta field %3$s: value exceeds the 256 KiB input limit.', 'rrze-multisite-manager'),
+                                                $postId,
+                                                $postTitleLink,
+                                                esc_html($metadataKey)
+                                            )); ?>
+                                        <?php } elseif (($source['reason'] ?? '') === 'finding_count_limit') { ?>
+                                            <?php echo wp_kses_post(sprintf(
+                                                /* translators: 1: post ID, 2: post title. */
+                                                __('Further findings were omitted after the configured result limit was reached at post #%1$d (%2$s).', 'rrze-multisite-manager'),
+                                                $postId,
+                                                $postTitleLink
+                                            )); ?>
+                                        <?php } elseif (($source['reason'] ?? '') === 'finding_bytes_limit') { ?>
+                                            <?php echo wp_kses_post(sprintf(
+                                                /* translators: 1: post ID, 2: post title. */
+                                                __('A finding was omitted because the result-size limit was reached at post #%1$d (%2$s).', 'rrze-multisite-manager'),
+                                                $postId,
+                                                $postTitleLink
+                                            )); ?>
+                                        <?php } elseif (($source['reason'] ?? '') === 'finding_value_shortened') { ?>
+                                            <?php echo wp_kses_post(sprintf(
+                                                /* translators: 1: post ID, 2: post title, 3: finding field. */
+                                                __('The %3$s field was shortened for the finding at post #%1$d (%2$s).', 'rrze-multisite-manager'),
+                                                $postId,
+                                                $postTitleLink,
+                                                esc_html($field)
+                                            )); ?>
+                                        <?php } else { ?>
+                                            <?php echo wp_kses_post(sprintf(
+                                                /* translators: 1: post ID, 2: post title. */
+                                                __('Post #%1$d (%2$s): content exceeds the 256 KiB input limit.', 'rrze-multisite-manager'),
+                                                $postId,
+                                                $postTitleLink
+                                            )); ?>
+                                        <?php } ?>
+                                    </li>
+                                <?php } ?>
+                            </ul>
+                        <?php } ?>
+                    </div>
+                <?php } ?>
+                <?php if (isset($analysis_list_table) && $analysis_list_table instanceof \WP_List_Table) { ?>
+                    <?php $analysis_list_table->display(); ?>
+                <?php } else { ?>
+                <nav class="tablenav" aria-label="<?php echo esc_attr__('Analysis result pages', 'rrze-multisite-manager'); ?>">
+                    <?php $resultPage = max(1, (int)($analysis_result['page'] ?? 1)); ?>
+                    <?php $pageArgs = $baseArgs + ['analysis_filter' => $filter, 'analysis_sort' => $sortBy, 'analysis_order' => $sortOrder]; ?>
+                    <?php if ($resultPage > 1) { ?>
+                        <a class="button" href="<?php echo esc_url(add_query_arg($pageArgs + ['analysis_page' => $resultPage - 1], $analysis_base_url)); ?>"><?php echo esc_html__('Previous page', 'rrze-multisite-manager'); ?></a>
+                    <?php } ?>
+                    <span><?php echo esc_html(sprintf(/* translators: %d: result page number. */ __('Page %d — up to 50 findings per page; locations are grouped within this page.', 'rrze-multisite-manager'), $resultPage)); ?></span>
+                    <?php if (!empty($analysis_result['has_more'])) { ?>
+                        <a class="button" href="<?php echo esc_url(add_query_arg($pageArgs + ['analysis_page' => $resultPage + 1], $analysis_base_url)); ?>"><?php echo esc_html__('Next page', 'rrze-multisite-manager'); ?></a>
+                    <?php } ?>
+                </nav>
                 <table class="widefat striped rrze-msm-table rrze-msm-shortcode-analysis-table">
                     <thead><tr>
                         <?php echo $renderSortHeader($entryNameKey, $analysisTab === 'blocks' ? _x('Block', 'Block editor content', 'rrze-multisite-manager') : __('Shortcode', 'rrze-multisite-manager')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Header helper escapes URL and label. ?>
@@ -394,6 +418,7 @@ usort($entries, static function ($left, $right) use ($getEntrySortValue, $sortBy
                         <?php } } ?>
                     </tbody>
                 </table>
+                <?php } ?>
             </section>
         <?php } ?>
     </div>

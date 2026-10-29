@@ -594,6 +594,7 @@ class StorageAnalysisSchedulerService {
             }
 
             $this->unscheduleSite($siteId);
+            (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->removeSiteAnalysis($siteId, 'storage');
             $this->markSiteSchedulingRemoved($siteId);
             $removed++;
         }
@@ -870,7 +871,10 @@ class StorageAnalysisSchedulerService {
             }
         }
 
-        return $removed > 0 && _set_cron_array($cron) ? $removed : 0;
+        $saved = $removed > 0 && _set_cron_array($cron);
+        (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->removeSiteAnalysis(get_current_blog_id(), 'storage');
+
+        return $saved ? $removed : 0;
     }
 
     public function startAnalysisNow(int $siteId): bool {
@@ -1037,6 +1041,7 @@ class StorageAnalysisSchedulerService {
                 return;
             }
 
+            \RRZE\MultisiteManager\Analysis\AnalysisLifecycle::prepareSite($siteId);
             $this->runSingleProcessAnalysis($siteId);
         } catch (StorageAnalysisBusyException $exception) {
             $this->recordRunWait($siteId, $exception->getMessage());
@@ -1045,6 +1050,9 @@ class StorageAnalysisSchedulerService {
             } else {
                 $this->scheduleIndividualRetry($siteId);
             }
+        } catch (\Throwable $exception) {
+            $this->markRunFailed($siteId, $exception->getMessage());
+            $this->logStorageAnalysisError($siteId, $phase, $exception->getMessage());
         } finally {
             $this->releaseNetworkRunSlot($siteId);
             $this->releaseSiteLock($siteId);
@@ -2011,6 +2019,13 @@ class StorageAnalysisSchedulerService {
         $isEligible = $this->isSiteEligible($siteId);
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
         $nextRunTimestamp = $isEligible ? (int)($scheduleStatus['next_recurring_run_timestamp'] ?? 0) : 0;
+        $isWaitingForCurrentBatch = false;
+
+        if ($isEligible && $this->isBatchAssignmentMode($assignmentMode) && empty($scheduleStatus['is_running'])) {
+            $lastBatchSiteId = max(0, (int)get_site_option($this->getBatchLastSiteOptionName($assignmentMode), 0));
+            $isWaitingForCurrentBatch = $lastBatchSiteId > 0 && $siteId > $lastBatchSiteId;
+        }
+
         if ($isEligible && $this->isBatchAssignmentMode($assignmentMode) && empty($scheduleStatus['is_running'])) {
             $targetedTimestamp = (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($assignmentMode), [$siteId, true]));
             if ($targetedTimestamp > 0) {
@@ -2057,6 +2072,7 @@ class StorageAnalysisSchedulerService {
             'is_eligible' => $isEligible,
             'schedule_mode' => $assignmentMode,
             'is_due' => $isDue,
+            'is_waiting_for_current_batch' => $isWaitingForCurrentBatch,
             'cycle' => $isEligible ? $this->getScheduleLabel($assignmentMode) : '',
             'last_started_at' => (string)($scheduleStatus['last_started_at'] ?? ''),
             'last_run' => (string)($scheduleStatus['last_completed_at'] ?? ''),

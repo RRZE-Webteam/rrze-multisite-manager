@@ -1183,13 +1183,34 @@ class Dashboard {
             $tab = 'shortcodes';
         }
 
+        $resultPage = max(1, min(100000, absint($_GET['paged'] ?? $_GET['analysis_page'] ?? 1)));
+        $resultFilter = sanitize_text_field(wp_unslash(substr((string)($_GET['analysis_filter'] ?? ''), 0, 1024)));
+        $resultSort = sanitize_key((string)($_GET['orderby'] ?? $_GET['analysis_sort'] ?? 'name'));
+        $resultOrder = sanitize_key((string)($_GET['order'] ?? $_GET['analysis_order'] ?? 'asc'));
+        $analysisResult = $siteId > 0
+            ? $this->shortcodeBlockAnalysisScheduler->getResultPage($siteId, $tab, $resultPage, $resultFilter, $resultSort, $resultOrder)
+            : [];
+        if (!class_exists('\WP_List_Table')) {
+            require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
+        }
+        $analysisListTable = new ContentAnalysisListTable(
+            $tab,
+            (array)($analysisResult[$tab] ?? []),
+            (int)($analysisResult['total'] ?? 0),
+            (int)($analysisResult['per_page'] ?? 50),
+            is_super_admin(),
+            $this->getPluginDetailsUrl()
+        );
+        $analysisListTable->prepare_items();
+
         echo $this->template->render(
             'shortcode-block-analysis-page',
             [
                 'site_id' => $siteId,
                 'site_summary' => $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [],
                 'analysis_status' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getStatus($siteId) : [],
-                'analysis_result' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getResult($siteId) : [],
+                'analysis_result' => $analysisResult,
+                'analysis_list_table' => $analysisListTable,
                 'analysis_assignment_mode' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getSiteAssignmentMode($siteId) : 'unassigned',
                 'analysis_is_configured' => $this->hasLocalShortcodeBlockAnalysis($siteId),
                 'show_analysis_request_notice' => $this->config->shouldShowLocalAnalysisRequestNotice(),

@@ -5,7 +5,7 @@ namespace RRZE\MultisiteManager\Metrics;
 defined('ABSPATH') || exit;
 
 /**
- * Owns stable transient-key construction for storage-analysis process state.
+ * Owns stable adapter-key construction for durable storage-analysis process state.
  */
 class StorageAnalysisStateService {
     public function getAnalysisCacheKey(int $siteId, int $cacheVersion): string {

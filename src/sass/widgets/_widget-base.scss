@@ -123,6 +123,19 @@
     word-break: break-word;
 }
 
+// WP_List_Table normally uses table-layout: fixed, which ignores a column's
+// minimum width. This result table needs the raw-shortcode column to retain
+// enough room for readable variants.
+.wp-list-table.shortcodes {
+    table-layout: auto;
+}
+
+.wp-list-table.shortcodes .column-raw_shortcodes {
+    width: 40ch;
+    min-width: 40ch;
+    overflow-wrap: anywhere;
+}
+
 .rrze-msm-shortcode-unregistered {
     color: var(--rrze-msm-status-delete-bg);
 }

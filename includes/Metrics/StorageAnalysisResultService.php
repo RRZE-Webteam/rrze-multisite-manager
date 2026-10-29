@@ -34,6 +34,7 @@ class StorageAnalysisResultService {
     public function saveCurrentResult(array $result): void {
         $this->updateCurrentOption(self::RESULT_OPTION, $result);
         $this->saveCurrentMeta($this->buildMeta($result));
+        \RRZE\MultisiteManager\Analysis\AnalysisLifecycle::completed(get_current_blog_id(), 'storage');
     }
 
     public function getMeta(int $siteId): array {
@@ -106,6 +107,9 @@ class StorageAnalysisResultService {
     }
 
     private function readBoundedOption(string $option): array {
+        if ((int)get_blog_option(get_current_blog_id(), 'rrze_msm_analysis_storage_version', 0) !== \RRZE\MultisiteManager\Analysis\AnalysisStore::DATA_VERSION) {
+            return [];
+        }
         $row = $this->getBoundedRow($option);
         if (!$row) {
             return [];

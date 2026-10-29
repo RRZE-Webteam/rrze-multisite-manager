@@ -22,6 +22,15 @@ class Main {
     }
 
     public function onLoaded(): void {
+        $analysisLifecycle = new Analysis\AnalysisLifecycle();
+        try {
+            $analysisLifecycle->register();
+        } catch (\Throwable $error) {
+            add_action('admin_notices', [$analysisLifecycle, 'unavailableNotice']);
+            add_action('network_admin_notices', [$analysisLifecycle, 'unavailableNotice']);
+            do_action('rrze.log.error', 'RRZE-MSM: Analysis storage initialization failed', ['message' => $error->getMessage()]);
+            return;
+        }
         $settings = new Settings($this->plugin);
         $settings->onLoaded();
         $this->settings = $settings;

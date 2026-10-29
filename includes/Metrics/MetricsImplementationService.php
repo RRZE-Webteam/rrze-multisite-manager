@@ -104,7 +104,6 @@ class MetricsImplementationService {
     protected array $currentSiteAttachmentUsagePathIndexCache = [];
     protected array $currentSiteStorageAnalysisAttachmentIndexCache = [];
     protected array $currentSiteStorageAnalysisAttachmentIndexBucketCache = [];
-    protected int $storageIndexRuntimeCacheReads = 0;
     protected ?array $themeSiteAggregate = null;
     protected ?int $dashboardSiteCount = null;
 
@@ -427,7 +426,7 @@ class MetricsImplementationService {
     }
 
     /**
-     * Starts a destructive, batched cleanup of obsolete metrics, MSM transients and storage-analysis data.
+     * Starts a destructive, batched cleanup of central analysis data, metrics and MSM transients.
      *
      * @return array<string, mixed>
      */
@@ -488,6 +487,7 @@ class MetricsImplementationService {
             $state['status'] = 'running';
             $state['updated_at'] = current_time('mysql', true);
             $state['message'] = __('Cleanup is running.', 'rrze-multisite-manager');
+            $centralRemaining = (new \RRZE\MultisiteManager\Analysis\AnalysisLifecycle())->purgeNetworkBatch();
             $transientResult = $this->deleteFullDataCleanupTransientBatch();
             $state['deleted_transient_values'] = (int)($state['deleted_transient_values'] ?? 0) + $transientResult['values'];
             $state['deleted_transient_timeouts'] = (int)($state['deleted_transient_timeouts'] ?? 0) + $transientResult['timeouts'];
@@ -506,11 +506,11 @@ class MetricsImplementationService {
 
             $state['site_offset'] = max(0, (int)($state['site_offset'] ?? 0)) + count($siteIds);
 
-            if (count($siteIds) < self::FULL_DATA_CLEANUP_BATCH_SIZE && !$transientResult['has_more']) {
+            if (count($siteIds) < self::FULL_DATA_CLEANUP_BATCH_SIZE && !$transientResult['has_more'] && !$centralRemaining) {
                 $this->clearDashboardDataCaches();
                 $state['status'] = 'complete';
                 $state['finished_at'] = current_time('mysql', true);
-                $state['message'] = __('Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden.', 'rrze-multisite-manager');
+                $state['message'] = __('Cleanup completed. Storage, shortcode and block analyses, and dashboard metrics can now be started manually again.', 'rrze-multisite-manager');
                 update_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, $state);
                 return;
             }
@@ -571,7 +571,7 @@ class MetricsImplementationService {
         $deleted = 0;
         $optionNames = array_merge(
             $this->storageAnalysisResults->getPersistentOptionNames(),
-            ['rrze_msm_storage_analysis_scheduler_status']
+            ['rrze_msm_storage_analysis_scheduler_status', 'rrze_msm_shortcode_block_analysis_status', 'rrze_msm_analysis_reanalysis']
         );
 
         foreach ($optionNames as $optionName) {
@@ -4776,25 +4776,12 @@ class MetricsImplementationService {
 
     public function getCachedSiteStorageAnalysis(int $siteId): array {
         $cached = [];
-        $legacyCached = [];
 
         if ($siteId <= 0) {
             return [];
         }
 
         $cached = $this->storageAnalysisResults->getResult($siteId);
-
-        if (!is_array($cached) || empty($cached)) {
-            $legacyCached = get_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
-
-            if (is_array($legacyCached) && !empty($legacyCached)) {
-                $cached = $this->normalizeSiteStorageAnalysis($legacyCached);
-                switch_to_blog($siteId);
-                $this->saveCurrentSiteStorageAnalysisResult($cached);
-                restore_current_blog();
-                delete_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
-            }
-        }
 
         if (!is_array($cached) || empty($cached)) {
             return [];
@@ -4808,8 +4795,8 @@ class MetricsImplementationService {
 
     public function getSiteStorageAnalysisProcessStatus(int $siteId, bool $loadResult = false): array {
         $resultMeta = $this->getSiteStorageAnalysisResultMeta($siteId);
-        $baseState = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
-        $orphanState = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        $baseState = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisBaseStateKey($siteId));
+        $orphanState = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisOrphanStateKey($siteId));
 
         if ($loadResult) {
             $this->getCachedSiteStorageAnalysis($siteId);
@@ -4859,13 +4846,13 @@ class MetricsImplementationService {
         }
 
         if ($phase === 'orphan') {
-            $state = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+            $state = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisOrphanStateKey($siteId));
 
             return is_array($state) ? $this->buildSiteStorageOrphanProgressContext($state) : [];
         }
 
         if ($phase === 'base') {
-            $state = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+            $state = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisBaseStateKey($siteId));
 
             if (!is_array($state)) {
                 return [];
@@ -5308,7 +5295,6 @@ class MetricsImplementationService {
                     $bucket = (string)$bucket;
                     $key = $this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket);
                     StorageAnalysisResourceService::saveState($key, $stored, 7 * DAY_IN_SECONDS);
-                    $this->releaseStorageIndexRuntimeCache($key);
                     unset($state['pending_index_buckets'][$bucket], $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$siteId . ':' . $bucket]);
                 }
             });
@@ -5352,26 +5338,11 @@ class MetricsImplementationService {
     }
 
     protected function readStorageIndexBucket(string $key): array {
-        $stored = get_site_transient($key);
+        $stored = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($key);
         if (preg_match('/_resumable_v2_(\d+)_([a-f0-9]{2})$/', $key, $parts)) {
             $this->storageResources->assertBucketPresent((int)$parts[1], $parts[2], is_array($stored));
         }
-        $this->releaseStorageIndexRuntimeCache($key);
         return is_array($stored) ? $stored : [];
-    }
-
-    /** Do not leave a second, unlimited segment cache inside WordPress's runtime cache. */
-    protected function releaseStorageIndexRuntimeCache(string $key): void {
-        if (!wp_using_ext_object_cache()) {
-            // Only the in-process copies are removed; the transient remains in sitemeta.
-            $network = get_current_network_id();
-            wp_cache_delete($network . ':_site_transient_' . $key, 'site-options');
-            wp_cache_delete($network . ':_site_transient_timeout_' . $key, 'site-options');
-        } elseif (++$this->storageIndexRuntimeCacheReads >= 8 && wp_cache_supports('flush_runtime')) {
-            // Never flush persistent cache data or use a fallback to wp_cache_flush().
-            wp_cache_flush_runtime();
-            $this->storageIndexRuntimeCacheReads = 0;
-        }
     }
 
     /** Adds file roles used by the paginated summary, without storing a second path index. */
@@ -5695,12 +5666,11 @@ class MetricsImplementationService {
             )
         );
 
-        // The persistent result already records completion. Keeping an additional completed
-        // transient only produces an unnecessary value/timeout pair in the network table.
+        // The persistent result records completion; retire the temporary checkpoints.
         // Keep the bounded index until the following orphan phase. Rebuilding it
         // would scan every attachment and write every temporary segment twice.
-        delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
-        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($this->getSiteStorageAnalysisBaseStateKey($siteId));
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($this->getSiteStorageAnalysisOrphanStateKey($siteId));
     }
 
     protected function initializeCurrentSiteStorageAnalysisOrphanState(array $analysis, string $assignmentMode = 'batch'): array {
@@ -6094,6 +6064,8 @@ class MetricsImplementationService {
             $stage = 'complete';
         }
 
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->saveUsage(get_current_blog_id(), (array)($state['used_attachment_ids'] ?? []));
+        $state['used_attachment_ids'] = [];
         $state['attachment_usage_matches'] = $usageMatches;
         $state['attachment_usage_stage'] = $stage;
         $state['message'] = $stage === 'complete'
@@ -6509,7 +6481,7 @@ class MetricsImplementationService {
                 throw new \RuntimeException(__('Attachment metadata exceeded the analysis input limit. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
             }
             $path = $this->normalizeRelativeUploadPath((string)($row->attached_file ?? ''));
-            if ($path === '' || !empty($state['used_attachment_ids'][$id])) {
+            if ($path === '' || (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->isUsed($siteId, $id)) {
                 continue;
             }
             $absolutePath = $this->getCurrentSiteStorageAbsolutePathFromRelative($state, $path);
@@ -6563,7 +6535,7 @@ class MetricsImplementationService {
         $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
 
         // The completed orphan status is part of the persistent analysis result.
-        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($this->getSiteStorageAnalysisOrphanStateKey($siteId));
         $this->storageResources->release($siteId);
     }
 

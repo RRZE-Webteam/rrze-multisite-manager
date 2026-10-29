@@ -10,8 +10,6 @@ defined('ABSPATH') || exit;
 class ShortcodeBlockAnalysisSchedulerService {
     protected const HOOK_FALLBACK = 'rrze_msm_run_shortcode_block_analysis';
     protected const STATUS_OPTION = 'rrze_msm_shortcode_block_analysis_status';
-    protected const RESULT_OPTION = 'rrze_msm_shortcode_block_analysis_result';
-    protected const STATE_OPTION = 'rrze_msm_shortcode_block_analysis_state';
     protected const LOCK_OPTION_PREFIX = 'rrze_msm_shortcode_block_analysis_lock_';
     protected const SCHEDULE_SIGNATURE_OPTION = 'rrze_msm_shortcode_block_analysis_schedule_signature';
     protected const GLOBAL_INITIALIZATION_OPTION = 'rrze_msm_shortcode_block_analysis_global_initialization';
@@ -31,16 +29,22 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const BATCH_CONTINUATION_ARGS = ['rrze_msm_shortcode_block_batch' => true];
     protected const SMALL_SITE_MAX_POSTS = 100;
     protected const FAST_RUN_MAX_SECONDS = 3;
-    protected const BATCH_SIZE = 20;
-    protected const BATCH_MAX_BATCHES_PER_REQUEST = 10;
+    // A database checkpoint is written after every slice. The request and
+    // finding-byte budgets below remain the hard limits for large websites.
+    protected const BATCH_SIZE = 50;
+    protected const BATCH_MAX_BATCHES_PER_REQUEST = 12;
     protected const INDIVIDUAL_MAX_BATCHES_PER_REQUEST = 20;
     protected const BATCH_REQUEST_BUDGET_SECONDS = 20;
     protected const INDIVIDUAL_REQUEST_BUDGET_SECONDS = 60;
     protected const CONTINUATION_DELAY_SECONDS = 5;
     protected const BATCH_RUN_STALE_AFTER_SECONDS = 2 * HOUR_IN_SECONDS;
-    protected const META_VALUES_PER_POST_LIMIT = 100;
+    protected const META_VALUES_PER_POST_LIMIT = 10;
     protected const ANALYSIS_VALUE_MAX_BYTES = 262144;
     protected const RESULT_MAX_BYTES = 1048576;
+    protected const OMITTED_SOURCE_LIMIT = 10;
+    protected array $findingTotals = [];
+    protected int $pendingFindingBytes = 0;
+    protected array $pendingFindingKeys = [];
     protected const SHORTCODE_PHASE = 'shortcodes';
     protected const BLOCK_PHASE = 'blocks';
 
@@ -339,7 +343,10 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
         }
 
-        return $removed > 0 && _set_cron_array($cron) ? $removed : 0;
+        $saved = $removed > 0 && _set_cron_array($cron);
+        (new Analysis\AnalysisStore())->removeSiteAnalysis(get_current_blog_id(), 'content');
+
+        return $saved ? $removed : 0;
     }
 
     public function requestAnalysis(int $siteId): bool {
@@ -585,9 +592,17 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function getResult(int $siteId): array {
-        $result = get_blog_option($siteId, self::RESULT_OPTION, []);
+        return (new Analysis\AnalysisStore())->summary($siteId);
+    }
 
-        return is_array($result) ? $result : [];
+    public function getResultPage(int $siteId, string $kind, int $page, string $filter, string $sort = 'name', string $order = 'asc'): array {
+        $store = new Analysis\AnalysisStore();
+        $summary = $store->summary($siteId);
+        if (!$summary) {
+            return [];
+        }
+        $rows = $store->groupedFindings($siteId, $summary['run_id'], $kind, $page, $filter, $sort, $order);
+        return $summary + [$kind => $rows['entries'], 'total' => $rows['total'], 'page' => $rows['page'], 'per_page' => $rows['per_page']];
     }
 
     public function getNextScheduledRunTimestamp(int $siteId): int {
@@ -1100,6 +1115,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
 
             $this->unschedule($siteId);
+            (new Analysis\AnalysisStore())->removeSiteAnalysis($siteId, 'content');
             $this->markSiteSchedulingRemoved($siteId);
             $removed++;
         }
@@ -1130,6 +1146,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function runAnalysis(int $siteId): bool {
+        Analysis\AnalysisLifecycle::prepareSite($siteId);
         $state = $this->getAnalysisState($siteId);
         $processedBatches = 0;
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
@@ -1149,6 +1166,9 @@ class ShortcodeBlockAnalysisSchedulerService {
             $this->markStarted($siteId, $state);
         }
 
+        $this->findingTotals = $state;
+        $this->pendingFindingBytes = 0;
+        $this->pendingFindingKeys = [];
         switch_to_blog($siteId);
 
         try {
@@ -1173,9 +1193,9 @@ class ShortcodeBlockAnalysisSchedulerService {
                     ? $this->runShortcodeBatch($state, $deadline)
                     : $this->runBlockBatch($state, $deadline);
                 $processedBatches++;
-                $this->markProgress($siteId, $phase, $state);
                 $state['updated_at'] = current_time('mysql', true);
                 $this->saveAnalysisState($siteId, $state);
+                $this->markProgress($siteId, $phase, $state);
 
                 if (!$completed) {
                     continue;
@@ -1190,6 +1210,7 @@ class ShortcodeBlockAnalysisSchedulerService {
 
                 $state['phase'] = self::BLOCK_PHASE;
                 $state['phase_started'] = false;
+                $completed = false;
             }
         } finally {
             restore_current_blog();
@@ -1222,7 +1243,11 @@ class ShortcodeBlockAnalysisSchedulerService {
         );
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Keyset pagination keeps long analyses bounded and avoids expensive SQL offsets.
-        return array_map('absint', (array)$wpdb->get_col($sql));
+        $ids = $wpdb->get_col($sql);
+        if ($wpdb->last_error) {
+            Analysis\AnalysisStorageException::raise('source-post-ids', get_current_blog_id());
+        }
+        return array_map('absint', (array)$ids);
     }
 
     protected function runShortcodeBatch(array &$state, float $deadline): bool {
@@ -1230,7 +1255,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         $processed = 0;
 
         foreach ($postIds as $postId) {
-            if (microtime(true) >= $deadline) {
+            if (microtime(true) >= $deadline || $this->pendingFindingBytes >= 131072) {
                 break;
             }
 
@@ -1250,7 +1275,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         $processed = 0;
 
         foreach ($postIds as $postId) {
-            if (microtime(true) >= $deadline) {
+            if (microtime(true) >= $deadline || $this->pendingFindingBytes >= 131072) {
                 break;
             }
 
@@ -1276,6 +1301,7 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         return [
             'site_id' => $siteId,
+            'run_id' => (new Analysis\AnalysisStore())->ensureRun($siteId, 'content', 'content')->run_id,
             'phase' => self::SHORTCODE_PHASE,
             'phase_started' => false,
             'shortcode_last_post_id' => 0,
@@ -1290,21 +1316,115 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function getAnalysisState(int $siteId): array {
-        $state = $this->inSiteCronContext($siteId, fn(): mixed => get_transient(self::STATE_OPTION));
-
-        return is_array($state) ? $state : [];
+        return (new Analysis\ContentAnalysisStore())->load($siteId);
     }
 
-    protected function saveAnalysisState(int $siteId, array $state): void {
-        $this->inSiteCronContext($siteId, fn(): bool => set_transient(self::STATE_OPTION, $state, DAY_IN_SECONDS));
+    protected function saveAnalysisState(int $siteId, array &$state): void {
+        foreach ($this->findingTotals as $key => $value) {
+            if (preg_match('/^(shortcode|block)_(bytes|count|truncated|unregistered|omitted_count|omitted_sources)$/', (string)$key)) {
+                $state[$key] = $value;
+            }
+        }
+        (new Analysis\ContentAnalysisStore())->save($siteId, $state);
+        $state['shortcodes'] = [];
+        $state['blocks'] = [];
+        $this->pendingFindingBytes = 0;
+        $this->pendingFindingKeys = [];
     }
 
     protected function deleteAnalysisState(int $siteId): void {
-        $this->inSiteCronContext($siteId, fn(): bool => delete_transient(self::STATE_OPTION));
+        (new Analysis\ContentAnalysisStore())->discard($siteId);
+    }
+
+    /** Bound each row and each phase before it can enter a persisted checkpoint. */
+    protected function appendFinding(string $kind, array $entry, array &$entries): void {
+        $prefix = $kind === 'blocks' ? 'block_' : 'shortcode_';
+        if ((int)($this->findingTotals[$prefix . 'count'] ?? 0) >= $this->config->getShortcodeBlockResultEntryLimit()) {
+            $this->recordOmittedSource($kind, 'finding_count_limit', (int)($entry['post_id'] ?? 0), (string)($entry['post_title'] ?? ''));
+            return;
+        }
+        // Preserve identities separately; shortening display text must not merge two findings.
+        $entry['identity_hash'] = hash('sha256', serialize([(int)($entry['post_id'] ?? 0), (string)($entry['metadata_id'] ?? $entry['metadata_key'] ?? ''), (string)($entry['raw_shortcode'] ?? $entry['block'] ?? ''), (int)($entry['occurrence'] ?? 0)]));
+        if (isset($this->pendingFindingKeys[$kind . ':' . $entry['identity_hash']])) {
+            return;
+        }
+        foreach ($entry as $key => $value) {
+            if (is_string($value) && strlen($value) > ($key === 'raw_shortcode' ? 4096 : 1024)) {
+                $entry[$key] = wp_check_invalid_utf8(substr($value, 0, $key === 'raw_shortcode' ? 4096 : 1024), true);
+                if ($key === 'post_url' || $key === 'provider_plugin_file') {
+                    $entry[$key] = '';
+                }
+                $this->recordOmittedSource(
+                    $kind,
+                    'finding_value_shortened',
+                    (int)($entry['post_id'] ?? 0),
+                    (string)($entry['post_title'] ?? ''),
+                    '',
+                    (string)$key
+                );
+            }
+        }
+        $bytes = strlen(serialize($entry));
+        if ($bytes > Analysis\AnalysisStore::FINDING_BYTES || $this->pendingFindingBytes + $bytes > 262144
+            || (int)($this->findingTotals[$prefix . 'bytes'] ?? 0) + $bytes > self::RESULT_MAX_BYTES) {
+            $this->recordOmittedSource($kind, 'finding_bytes_limit', (int)($entry['post_id'] ?? 0), (string)($entry['post_title'] ?? ''));
+            return;
+        }
+        $this->pendingFindingKeys[$kind . ':' . $entry['identity_hash']] = true;
+        $entries[] = $entry;
+        $this->pendingFindingBytes += $bytes;
+        $this->findingTotals[$prefix . 'bytes'] = (int)($this->findingTotals[$prefix . 'bytes'] ?? 0) + $bytes;
+        $this->findingTotals[$prefix . 'count'] = (int)($this->findingTotals[$prefix . 'count'] ?? 0) + 1;
+    }
+
+    /** Records a bounded explanation for content deliberately excluded by the input cap. */
+    protected function recordOmittedSource(string $kind, string $reason, int $postId, string $postTitle = '', string $metadataKey = '', string $field = ''): void {
+        $prefix = $kind === 'blocks' ? 'block_' : 'shortcode_';
+        $this->findingTotals[$prefix . 'truncated'] = true;
+        $this->findingTotals[$prefix . 'omitted_count'] = (int)($this->findingTotals[$prefix . 'omitted_count'] ?? 0) + 1;
+        $sources = (array)($this->findingTotals[$prefix . 'omitted_sources'] ?? []);
+
+        if (count($sources) >= self::OMITTED_SOURCE_LIMIT) {
+            return;
+        }
+
+        $sources[] = [
+            'reason' => $reason,
+            'post_id' => $postId,
+            'post_title' => substr($postTitle, 0, 512),
+            'metadata_key' => substr($metadataKey, 0, 512),
+            'field' => substr($field, 0, 128),
+        ];
+        $this->findingTotals[$prefix . 'omitted_sources'] = $sources;
+    }
+
+    protected function getBoundedAnalysisPost(int $postId): ?\WP_Post {
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT ID, post_type, post_status, LEFT(post_title, 512) AS post_title, post_name, post_parent, post_date, post_author,
+            CASE WHEN OCTET_LENGTH(post_content) > %d THEN 1 ELSE 0 END AS content_exceeds_limit,
+            CASE WHEN OCTET_LENGTH(post_content) <= %d THEN post_content ELSE '' END AS post_content
+            FROM {$wpdb->posts} WHERE ID = %d",
+            self::ANALYSIS_VALUE_MAX_BYTES,
+            self::ANALYSIS_VALUE_MAX_BYTES,
+            $postId
+        ));
+        if ($wpdb->last_error) {
+            Analysis\AnalysisStorageException::raise('source-post-read', get_current_blog_id());
+        }
+        if (!$row) {
+            return null;
+        }
+        if (!empty($row->content_exceeds_limit)) {
+            $this->recordOmittedSource('shortcodes', 'post_content_too_large', (int)$row->ID, (string)$row->post_title);
+            $this->recordOmittedSource('blocks', 'post_content_too_large', (int)$row->ID, (string)$row->post_title);
+            return null;
+        }
+        return new \WP_Post($row);
     }
 
     protected function analysePostShortcodes(int $postId, array &$state, float $deadline): bool {
-        $post = get_post($postId);
+        $post = $this->getBoundedAnalysisPost($postId);
 
         if (!$post instanceof \WP_Post) {
             return true;
@@ -1312,9 +1432,9 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         $location = [
             'post_id' => $postId,
-            'post_title' => get_the_title($postId),
+            'post_title' => (string)$post->post_title,
             'post_type' => $post->post_type,
-            'post_url' => get_permalink($postId),
+            'post_url' => get_permalink($post),
         ];
         $content = (string)$post->post_content;
 
@@ -1322,47 +1442,69 @@ class ShortcodeBlockAnalysisSchedulerService {
             return true;
         }
 
-        $this->collectShortcodes($content, $location, $state['shortcodes']);
-
-        // Unregistered tags are only meaningful when authors deliberately used a Shortcode block.
-        foreach ($this->flattenBlocks(parse_blocks($content)) as $block) {
-            if ((string)($block['blockName'] ?? '') !== 'core/shortcode') {
-                continue;
+        if ((int)($state['shortcode_active_post'] ?? 0) !== $postId) {
+            $state['shortcode_active_post'] = $postId;
+            $state['shortcode_meta_cursor'] = 0;
+            $this->collectShortcodes($content, $location, $state['shortcodes']);
+            // Unregistered tags are meaningful only inside an explicit Shortcode block.
+            foreach ($this->flattenBlocks(parse_blocks($content)) as $block) {
+                if ((string)($block['blockName'] ?? '') === 'core/shortcode') {
+                    $this->collectShortcodes((string)($block['innerHTML'] ?? ''), $location, $state['shortcodes'], true);
+                }
             }
-
-            $this->collectShortcodes((string)($block['innerHTML'] ?? ''), $location, $state['shortcodes'], true);
         }
-
-        foreach ($this->getPostMetaValuesForShortcodeAnalysis($postId) as $metaRow) {
-            if (microtime(true) >= $deadline) {
+        do {
+            if (microtime(true) >= $deadline || $this->pendingFindingBytes >= 131072) {
                 return false;
             }
-
-            $metaLocation = $location;
-            $metaLocation['metadata_key'] = (string)($metaRow->metadata_key ?? '');
-            $this->collectShortcodesFromValue((string)($metaRow->meta_value ?? ''), $metaLocation, $state['shortcodes']);
-        }
-
+            $rows = $this->getPostMetaValuesForShortcodeAnalysis($postId, (int)$state['shortcode_meta_cursor']);
+            foreach ($rows as $metaRow) {
+                if (microtime(true) >= $deadline || $this->pendingFindingBytes >= 131072) {
+                    return false;
+                }
+                $metaLocation = $location;
+                $metaLocation['metadata_id'] = (int)$metaRow->meta_id;
+                $metaLocation['metadata_key'] = (string)($metaRow->metadata_key ?? '');
+                if (!empty($metaRow->value_exceeds_limit)) {
+                    $this->recordOmittedSource(
+                        'shortcodes',
+                        'post_meta_too_large',
+                        $postId,
+                        (string)$post->post_title,
+                        (string)($metaRow->metadata_key ?? '')
+                    );
+                } else {
+                    $this->collectShortcodesFromValue((string)$metaRow->meta_value, $metaLocation, $state['shortcodes']);
+                }
+                $state['shortcode_meta_cursor'] = (int)$metaRow->meta_id;
+            }
+        } while (count($rows) === self::META_VALUES_PER_POST_LIMIT);
+        unset($state['shortcode_active_post'], $state['shortcode_meta_cursor']);
         return true;
     }
 
     /** @return array<int, object> */
-    protected function getPostMetaValuesForShortcodeAnalysis(int $postId): array {
+    protected function getPostMetaValuesForShortcodeAnalysis(int $postId, int $cursor = 0): array {
         global $wpdb;
-
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- A bounded scan by indexed post ID avoids loading an entire post-meta cache for one analysis step.
-        return (array)$wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT meta_key AS metadata_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND OCTET_LENGTH(meta_value) <= %d ORDER BY meta_id ASC LIMIT %d",
-                $postId,
-                self::ANALYSIS_VALUE_MAX_BYTES,
-                self::META_VALUES_PER_POST_LIMIT
-            )
-        );
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT meta_id, LEFT(meta_key, 512) AS metadata_key,
+            CASE WHEN OCTET_LENGTH(meta_value) > %d THEN 1 ELSE 0 END AS value_exceeds_limit,
+            CASE WHEN OCTET_LENGTH(meta_value) <= %d THEN meta_value ELSE '' END AS meta_value
+            FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_id > %d ORDER BY meta_id ASC LIMIT %d",
+            self::ANALYSIS_VALUE_MAX_BYTES,
+            self::ANALYSIS_VALUE_MAX_BYTES,
+            $postId,
+            $cursor,
+            self::META_VALUES_PER_POST_LIMIT
+        ));
+        if ($wpdb->last_error) {
+            Analysis\AnalysisStorageException::raise('source-postmeta-read', get_current_blog_id());
+        }
+        return (array)$rows;
     }
 
     protected function analysePostBlocks(int $postId, array &$state): void {
-        $post = get_post($postId);
+        $post = $this->getBoundedAnalysisPost($postId);
 
         if (!$post instanceof \WP_Post) {
             return;
@@ -1370,9 +1512,9 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         $location = [
             'post_id' => $postId,
-            'post_title' => get_the_title($postId),
+            'post_title' => (string)$post->post_title,
             'post_type' => $post->post_type,
-            'post_url' => get_permalink($postId),
+            'post_url' => get_permalink($post),
         ];
         $content = (string)$post->post_content;
 
@@ -1409,9 +1551,6 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function collectShortcodes(string $content, array $location, array &$shortcodes, bool $allowUnregistered = false): void {
-        if (count($shortcodes) >= $this->config->getShortcodeBlockResultEntryLimit()) {
-            return;
-        }
 
         if ($content === '' || !preg_match_all('/(?<!\\[)\\[(?!\\[)([A-Za-z][A-Za-z0-9_-]*)(?=\\s|\\])(?:\\s[^\\]]*)?\\]/', $content, $matches)) {
             return;
@@ -1434,9 +1573,6 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         foreach ($matchesByRawShortcode as $match) {
-            if (count($shortcodes) >= $this->config->getShortcodeBlockResultEntryLimit()) {
-                return;
-            }
 
             $tag = (string)$match['tag'];
             $registration = $this->getShortcodeRegistration($tag);
@@ -1446,7 +1582,7 @@ class ShortcodeBlockAnalysisSchedulerService {
                 continue;
             }
 
-            $shortcodes[] = array_merge(
+            $this->appendFinding('shortcodes', array_merge(
                 [
                     'shortcode' => $tag,
                     'raw_shortcode' => (string)$match['raw_shortcode'],
@@ -1455,15 +1591,12 @@ class ShortcodeBlockAnalysisSchedulerService {
                     'provider_plugin_file' => (string)($registration['plugin_file'] ?? ''),
                 ],
                 $location
-            );
+            ), $shortcodes);
         }
     }
 
     protected function collectBlocks(string $content, array $location, array &$blocks): void {
-        foreach ($this->flattenBlocks(parse_blocks($content)) as $block) {
-            if (count($blocks) >= $this->config->getShortcodeBlockResultEntryLimit()) {
-                return;
-            }
+        foreach ($this->flattenBlocks(parse_blocks($content)) as $occurrence => $block) {
 
             $blockName = (string)($block['blockName'] ?? '');
 
@@ -1471,7 +1604,7 @@ class ShortcodeBlockAnalysisSchedulerService {
                 continue;
             }
 
-            $blocks[] = array_merge(['block' => $blockName], $this->getBlockDetails($blockName), $location);
+            $this->appendFinding('blocks', array_merge(['block' => $blockName, 'occurrence' => $occurrence], $this->getBlockDetails($blockName), $location), $blocks);
         }
     }
 
@@ -1871,15 +2004,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function finish(int $siteId, array $state): void {
-        $result = [
-            'generated_at' => current_time('mysql', true),
-            'processed_posts' => (int)($state['block_processed_posts'] ?? 0),
-            'total_posts' => (int)($state['total_posts'] ?? 0),
-            'shortcodes' => array_values((array)($state['shortcodes'] ?? [])),
-            'blocks' => array_values((array)($state['blocks'] ?? [])),
-        ];
-        $result = $this->limitResultSize($result);
-        $this->saveResult($siteId, $result);
+        $result = (new Analysis\ContentAnalysisStore())->finish($siteId, $state);
         $status = $this->getStatus($siteId);
         $status = array_merge($status, [
             'status' => 'complete',
@@ -1893,63 +2018,9 @@ class ShortcodeBlockAnalysisSchedulerService {
         update_blog_option($siteId, self::STATUS_OPTION, $status);
         $this->logSiteInfo('Shortcode- und Blockanalyse beendet', $siteId, 'unassigned', [
             'site_url' => get_home_url($siteId, '/'),
-            'shortcodes' => count($result['shortcodes']),
-            'blocks' => count($result['blocks']),
+            'shortcodes' => (int)$result['shortcodes_count'],
+            'blocks' => (int)$result['blocks_count'],
         ]);
-    }
-
-    protected function limitResultSize(array $result): array {
-        $truncated = false;
-
-        while (strlen(serialize($result)) > self::RESULT_MAX_BYTES) {
-            if (!empty($result['blocks'])) {
-                array_pop($result['blocks']);
-            } elseif (!empty($result['shortcodes'])) {
-                array_pop($result['shortcodes']);
-            } else {
-                break;
-            }
-
-            $truncated = true;
-
-        }
-
-        if ($truncated) {
-            $result['truncated'] = true;
-
-            while (strlen(serialize($result)) > self::RESULT_MAX_BYTES) {
-                if (!empty($result['blocks'])) {
-                    array_pop($result['blocks']);
-                } elseif (!empty($result['shortcodes'])) {
-                    array_pop($result['shortcodes']);
-                } else {
-                    break;
-                }
-            }
-        }
-
-        return $result;
-    }
-
-    protected function saveResult(int $siteId, array $result): void {
-        $currentSiteId = get_current_blog_id();
-        $switched = $currentSiteId !== $siteId;
-
-        if ($switched) {
-            switch_to_blog($siteId);
-        }
-
-        try {
-            if (get_option(self::RESULT_OPTION, null) === null) {
-                add_option(self::RESULT_OPTION, $result, '', false);
-            } else {
-                update_option(self::RESULT_OPTION, $result, false);
-            }
-        } finally {
-            if ($switched) {
-                restore_current_blog();
-            }
-        }
     }
 
     protected function markFailed(int $siteId, string $message): void {
@@ -2553,31 +2624,28 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
 
-        if ($assignmentMode === 'batch' && $this->isBatchAnalysisStale($status)) {
-            return $this->abortInterruptedBatchAnalysis($siteId, $status);
-        }
-
         if ($this->hasPendingContinuation($siteId)) {
             return false;
-        }
-
-        if ($assignmentMode === 'batch') {
-            return $this->abortInterruptedBatchAnalysis($siteId, $status);
         }
 
         // A completed request always persists its checkpoint before releasing
         // the lock. If the follow-up event was removed or lost afterwards, the
         // analysis can safely continue from that checkpoint. Treating this as
         // a terminal error stranded large sites although no analysed data was
-        // lost.
+        // lost. This applies to shared-batch jobs as well: their checkpoint is
+        // stored independently from the central batch Cron event.
         if ($this->scheduleContinuationForRunningAnalysis($siteId)) {
             do_action(
                 'rrze.log.warning',
-                'RRZE-MSM: Missing shortcode and block analysis continuation was rescheduled.',
+                'RRZE-MSM: Missing shortcode and block analysis continuation was rescheduled from its saved checkpoint.',
                 [
                     'site_id' => $siteId,
                     'site_url' => get_home_url($siteId, '/'),
-                    'assignment_mode' => $this->getSiteAssignmentMode($siteId),
+                    'assignment_mode' => $assignmentMode,
+                    'phase' => (string)($status['phase'] ?? self::SHORTCODE_PHASE),
+                    'processed_posts' => (int)($status['processed_posts'] ?? 0),
+                    'total_posts' => (int)($status['total_posts'] ?? 0),
+                    'was_stale' => $assignmentMode === 'batch' && $this->isBatchAnalysisStale($status),
                 ]
             );
 
@@ -2647,43 +2715,6 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         return $latestTimestamp > 0 && (time() - $latestTimestamp) >= self::BATCH_RUN_STALE_AFTER_SECONDS;
-    }
-
-    /**
-     * Shared-batch jobs are intentionally restarted from the beginning after
-     * a lost continuation. Their sites are small enough for the collective
-     * batch, and retaining a stale checkpoint would keep the row running
-     * until the next cycle while making recovery dependent on another batch.
-     *
-     * @param array<string, mixed> $status
-     */
-    protected function abortInterruptedBatchAnalysis(int $siteId, array $status): bool {
-        $phase = (string)($status['phase'] ?? self::SHORTCODE_PHASE);
-        $processed = (int)($status['processed_posts'] ?? 0);
-        $total = (int)($status['total_posts'] ?? 0);
-        $message = sprintf(
-            /* translators: 1: analysis phase, 2: processed posts, 3: total posts. */
-            __('The shared-batch analysis was stopped in the %1$s phase after %2$d of %3$d posts because its continuation was missing. It will restart from the beginning with the next scheduled shared batch.', 'rrze-multisite-manager'),
-            $phase,
-            $processed,
-            $total
-        );
-
-        $this->markFailed($siteId, $message);
-        do_action(
-            'rrze.log.error',
-            'RRZE-MSM: Shortcode and block shared-batch analysis stopped after a missing continuation',
-            [
-                'site_id' => $siteId,
-                'site_url' => get_home_url($siteId, '/'),
-                'phase' => $phase,
-                'processed_posts' => $processed,
-                'total_posts' => $total,
-                'assignment_mode' => 'batch',
-            ]
-        );
-
-        return true;
     }
 
     protected function isAnalysisTimedOut(int $siteId): bool {

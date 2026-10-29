@@ -30,6 +30,10 @@ class MediaMetadataAnalysisService {
             return [];
         }
 
+        $running = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->checkpoint($siteId, 'storage_metadata');
+        if ($running) {
+            return $running;
+        }
         // Legacy transient payloads have no trustworthy byte limit; start fresh instead of loading them.
         return $this->results->getMediaMetadataResult($siteId);
     }
@@ -42,6 +46,7 @@ class MediaMetadataAnalysisService {
             ];
         }
 
+        \RRZE\MultisiteManager\Analysis\AnalysisLifecycle::prepareSite($siteId);
         switch_to_blog($siteId);
 
         try {
@@ -56,7 +61,15 @@ class MediaMetadataAnalysisService {
                     $state = $this->processState($state);
                 }
 
-                return $this->results->saveCurrentMediaMetadataResult($state);
+                $store = new \RRZE\MultisiteManager\Analysis\AnalysisStore();
+                if (($state['status'] ?? '') === 'complete') {
+                    $state = $this->results->saveCurrentMediaMetadataResult($state);
+                    $store->retire($siteId, 'storage_metadata');
+                } else {
+                    $state = \RRZE\MultisiteManager\Support\BoundedArray::compact($state, $store::CHECKPOINT_BYTES);
+                    $store->saveCheckpoint($siteId, 'storage_metadata', 'storage_metadata', $state);
+                }
+                return $state;
             });
         } finally {
             restore_current_blog();

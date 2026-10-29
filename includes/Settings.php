@@ -1870,7 +1870,15 @@ class Settings {
             }
             echo '<td>' . esc_html($durationLabel) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp($lastRun)) . '</td>';
-            echo '<td>' . esc_html(!empty($process['is_due']) ? __('Waiting for cron', 'rrze-multisite-manager') : $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
+            if (!empty($process['is_waiting_for_current_batch'])) {
+                echo '<td><strong>' . esc_html__('Current shared batch', 'rrze-multisite-manager') . '</strong><br><span class="description">' . esc_html__('Waiting for the preceding websites.', 'rrze-multisite-manager') . '</span><br><span class="description">' . esc_html(sprintf(
+                    /* translators: %s: date and time of the next regular scheduled run. */
+                    __('Next regular cycle: %s', 'rrze-multisite-manager'),
+                    $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))
+                )) . '</span></td>';
+            } else {
+                echo '<td>' . esc_html(!empty($process['is_due']) ? __('Waiting for cron', 'rrze-multisite-manager') : $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
+            }
             echo '<td class="rrze-msm-col-actions">';
 
             if ($statusKey === 'inactive' || empty($process['is_eligible'])) {
@@ -2248,8 +2256,8 @@ class Settings {
             ? __('Remove all storage-analysis tasks', 'rrze-multisite-manager')
             : __('Remove all shortcode and block analysis tasks', 'rrze-multisite-manager');
         $warning = $isStorage
-            ? __('All scheduled storage-analysis tasks for every website will be removed. Stored analysis results will not be deleted.', 'rrze-multisite-manager')
-            : __('All scheduled shortcode and block analysis tasks for every website will be removed. Stored analysis results will not be deleted.', 'rrze-multisite-manager');
+            ? __('All scheduled storage-analysis tasks and their temporary central analysis data will be removed. Stored report results remain available.', 'rrze-multisite-manager')
+            : __('All scheduled shortcode and block analysis tasks and their stored analysis results will be removed.', 'rrze-multisite-manager');
         $this->renderAnalysisTaskRemovalAjaxDialog($analysisType, $label, $warning);
     }
 
@@ -2332,10 +2340,10 @@ class Settings {
 
     protected function renderLegacyCentralCronCleanupSection(): void {
         $modalId = wp_unique_id('rrze-msm-legacy-central-cron-cleanup-');
-        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12"><header class="rrze-msm-widget-header"><h2>' . esc_html__('Remove obsolete local central Cron events', 'rrze-multisite-manager') . '</h2></header>';
-        echo '<p>' . esc_html__('Removes obsolete local copies of dashboard-metrics and availability-monitoring events from subsites. The central events on the main site remain unchanged.', 'rrze-multisite-manager') . '</p>';
-        echo '<button type="button" class="button button-secondary rrze-msm-open-legacy-cron-cleanup-dialog" data-dialog-id="' . esc_attr($modalId) . '">' . esc_html__('Remove obsolete local Cron events', 'rrze-multisite-manager') . '</button>';
-        echo '<dialog class="rrze-msm-task-removal-dialog rrze-msm-legacy-cron-cleanup-dialog" id="' . esc_attr($modalId) . '" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr(wp_create_nonce('rrze_msm_legacy_central_cron_cleanup')) . '" data-completed-text="' . esc_attr__('Cleanup completed.', 'rrze-multisite-manager') . '" data-failed-text="' . esc_attr__('The cleanup request failed. You can reopen this dialog to continue.', 'rrze-multisite-manager') . '"><h3>' . esc_html__('Remove obsolete local central Cron events', 'rrze-multisite-manager') . '</h3><p>' . esc_html__('The network is processed in groups of 100 websites without using WP-Cron.', 'rrze-multisite-manager') . '</p><p data-legacy-cron-cleanup-status></p><p data-legacy-cron-cleanup-progress hidden><span data-legacy-cron-cleanup-processed>0</span> / <span data-legacy-cron-cleanup-total>0</span></p><label class="rrze-msm-modal-checkbox" data-legacy-cron-cleanup-confirmation><input type="checkbox" data-legacy-cron-cleanup-confirm><span>' . esc_html__('I understand that obsolete local Cron events will be removed.', 'rrze-multisite-manager') . '</span></label><div class="rrze-msm-modal-actions" data-legacy-cron-cleanup-actions><button type="button" class="button button-secondary" data-legacy-cron-cleanup-cancel onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="button" class="button button-secondary rrze-msm-button-danger" data-legacy-cron-cleanup-start disabled>' . esc_html__('Start cleanup', 'rrze-multisite-manager') . '</button><button type="button" class="button button-secondary" data-legacy-cron-cleanup-close hidden onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Close', 'rrze-multisite-manager') . '</button></div></dialog></section>';
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12"><header class="rrze-msm-widget-header"><h2>' . esc_html__('Remove legacy local central Cron events', 'rrze-multisite-manager') . '</h2></header>';
+        echo '<p>' . esc_html__('One-time migration cleanup for obsolete subsite copies of dashboard-metrics and availability-monitoring events. It does not remove current central analysis tasks or analysis data.', 'rrze-multisite-manager') . '</p>';
+        echo '<button type="button" class="button button-secondary rrze-msm-open-legacy-cron-cleanup-dialog" data-dialog-id="' . esc_attr($modalId) . '">' . esc_html__('Remove legacy local Cron events', 'rrze-multisite-manager') . '</button>';
+        echo '<dialog class="rrze-msm-task-removal-dialog rrze-msm-legacy-cron-cleanup-dialog" id="' . esc_attr($modalId) . '" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr(wp_create_nonce('rrze_msm_legacy_central_cron_cleanup')) . '" data-completed-text="' . esc_attr__('Cleanup completed.', 'rrze-multisite-manager') . '" data-failed-text="' . esc_attr__('The cleanup request failed. You can reopen this dialog to continue.', 'rrze-multisite-manager') . '"><h3>' . esc_html__('Remove legacy local central Cron events', 'rrze-multisite-manager') . '</h3><p>' . esc_html__('The network is processed in groups of 100 websites without using WP-Cron.', 'rrze-multisite-manager') . '</p><p data-legacy-cron-cleanup-status></p><p data-legacy-cron-cleanup-progress hidden><span data-legacy-cron-cleanup-processed>0</span> / <span data-legacy-cron-cleanup-total>0</span></p><label class="rrze-msm-modal-checkbox" data-legacy-cron-cleanup-confirmation><input type="checkbox" data-legacy-cron-cleanup-confirm><span>' . esc_html__('I understand that obsolete local Cron events will be removed.', 'rrze-multisite-manager') . '</span></label><div class="rrze-msm-modal-actions" data-legacy-cron-cleanup-actions><button type="button" class="button button-secondary" data-legacy-cron-cleanup-cancel onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="button" class="button button-secondary rrze-msm-button-danger" data-legacy-cron-cleanup-start disabled>' . esc_html__('Start cleanup', 'rrze-multisite-manager') . '</button><button type="button" class="button button-secondary" data-legacy-cron-cleanup-close hidden onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Close', 'rrze-multisite-manager') . '</button></div></dialog></section>';
     }
 
     protected function renderNetworkMonitoringTaskRemovalSection(): void {
@@ -2399,7 +2407,7 @@ class Settings {
         $actions = [
             [
                 'title' => __('Remove storage-analysis tasks', 'rrze-multisite-manager'),
-                'description' => __('Removes every scheduled storage-analysis Cron entry for every website. Stored analysis results are not deleted.', 'rrze-multisite-manager'),
+                'description' => __('Removes every scheduled storage-analysis Cron entry and temporary central analysis data for every website. Stored storage reports remain available.', 'rrze-multisite-manager'),
                 'action' => 'rrze_multisite_manager_remove_storage_analysis_tasks',
                 'nonce' => 'rrze_multisite_manager_remove_storage_analysis_tasks',
                 'confirmation' => 'confirm_storage_task_removal',
@@ -2407,7 +2415,7 @@ class Settings {
             ],
             [
                 'title' => __('Remove shortcode and block analysis tasks', 'rrze-multisite-manager'),
-                'description' => __('Removes every scheduled shortcode and block analysis Cron entry for every website. Stored analysis results are not deleted.', 'rrze-multisite-manager'),
+                'description' => __('Removes every scheduled shortcode and block analysis Cron entry and all stored shortcode and block findings for every website.', 'rrze-multisite-manager'),
                 'action' => 'rrze_multisite_manager_remove_shortcode_block_analysis_tasks',
                 'nonce' => 'rrze_multisite_manager_remove_shortcode_block_analysis_tasks',
                 'confirmation' => 'confirm_shortcode_block_task_removal',
@@ -3160,13 +3168,13 @@ class Settings {
         $statusMessage = (string)($status['message'] ?? '');
 
         if (($status['status'] ?? '') === 'complete') {
-            $statusMessage = __('Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden.', 'rrze-multisite-manager');
+            $statusMessage = __('Cleanup completed. Storage, shortcode and block analyses, and dashboard metrics can now be started manually again.', 'rrze-multisite-manager');
         }
 
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12" id="rrze-msm-full-data-cleanup" data-auto-run="' . esc_attr($isRunning ? '1' : '0') . '">';
         echo '<header class="rrze-msm-widget-header">';
-        echo '<h2>' . esc_html__('Clean up legacy MSM data', 'rrze-multisite-manager') . '</h2>';
-        echo '<p>' . esc_html__('Deletes stored storage-analysis results, their metadata, and all MSM transients. Dashboard metrics are also removed. This cannot be undone.', 'rrze-multisite-manager') . '</p>';
+        echo '<h2>' . esc_html__('Delete MSM analysis and metrics data', 'rrze-multisite-manager') . '</h2>';
+        echo '<p>' . esc_html__('Deletes central shortcode, block, media-index and analysis-run data; stored storage reports and their metadata; dashboard metrics; and MSM transients. This cannot be undone.', 'rrze-multisite-manager') . '</p>';
         echo '</header>';
 
         if ($showStatus && !empty($status)) {
@@ -3196,7 +3204,7 @@ class Settings {
             echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_full_data_cleanup')) . '">';
             echo '<input type="hidden" name="redirect_to" value="' . esc_attr(add_query_arg(['monitoring_tab' => 'tools'], $this->getMonitoringPageUrl())) . '">';
             wp_nonce_field('rrze_multisite_manager_start_full_data_cleanup');
-            echo '<label><input type="checkbox" name="confirm_cleanup" value="1"> ' . esc_html__('I understand that saved storage analyses, metrics, and MSM transient caches will be permanently deleted.', 'rrze-multisite-manager') . '</label><br>';
+            echo '<label><input type="checkbox" name="confirm_cleanup" value="1"> ' . esc_html__('I understand that all stored analyses, metrics, and MSM transient caches will be permanently deleted.', 'rrze-multisite-manager') . '</label><br>';
             submit_button(__('Start complete data cleanup', 'rrze-multisite-manager'), 'delete', 'submit', false);
             echo '</form>';
         }
