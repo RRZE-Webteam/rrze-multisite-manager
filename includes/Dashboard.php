@@ -471,6 +471,13 @@ class Dashboard {
         $metricsLastRunLabel = !empty($metricsStatus['last_run_timestamp'])
             ? wp_date('d.m.Y H:i', (int)$metricsStatus['last_run_timestamp'])
             : __('No metrics run yet', 'rrze-multisite-manager');
+        $availabilityLastRunTimestamp = max(
+            (int)($metricsStatus['operational_status_updated_at_timestamp'] ?? 0),
+            (new MonitoringService($this->plugin, $this->config))->getLastCompletedRunTimestamp()
+        );
+        $availabilityLastRunLabel = $availabilityLastRunTimestamp > 0
+            ? wp_date('d.m.Y H:i', $availabilityLastRunTimestamp)
+            : __('No availability check yet', 'rrze-multisite-manager');
         $widgets = $this->getWidgetInstances();
         $views = $this->viewManager->getViews(array_keys($widgets));
         $currentView = $this->viewManager->getCurrentView($views, 'default');
@@ -499,6 +506,7 @@ class Dashboard {
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
                 'metrics_last_run_label' => $metricsLastRunLabel,
+                'availability_last_run_label' => $availabilityLastRunLabel,
                 'metrics_has_data' => !empty($metricsStatus['has_data']),
                 'metrics_missing_notice_html' => empty($metricsStatus['has_data']) ? $this->renderMissingMetricsNoticeHtml() : '',
             ],

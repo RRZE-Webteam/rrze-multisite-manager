@@ -318,6 +318,13 @@ class MonitoringService {
         ];
     }
 
+    /** Returns the completion timestamp of the most recent network availability pass. */
+    public function getLastCompletedRunTimestamp(): int {
+        $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
+
+        return $lastRun !== '' ? max(0, (int)strtotime($lastRun . ' GMT')) : 0;
+    }
+
     public function getRunHistory(): array {
         $history = get_site_option(self::OPTION_RUN_LOG, []);
 
@@ -479,7 +486,9 @@ class MonitoringService {
             $this->finalizeRunState($timestamp);
             $this->resetBatchState();
             $this->releaseMonitoringLock();
-            (new MetricsService(null, $this->config))->invalidateCaches();
+            $metrics = new MetricsService(null, $this->config);
+            $metrics->refreshDashboardOperationalStatusTimestamp(strtotime($timestamp . ' GMT'));
+            $metrics->invalidateCaches();
             return $completedResult;
         }
 
@@ -1002,6 +1011,13 @@ class MonitoringService {
         $this->logMonitoringWarning($result);
         $this->appendSiteHistory($siteId, $result);
         $this->reconcileStorageAnalysisSchedule($siteId);
+
+        if ($statusChanged) {
+            (new MetricsService(null, $this->config))->refreshDashboardSiteStatus(
+                $siteId,
+                strtotime($timestamp . ' GMT')
+            );
+        }
 
         return $result;
     }

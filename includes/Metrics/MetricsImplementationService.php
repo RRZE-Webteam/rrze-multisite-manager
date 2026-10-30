@@ -919,7 +919,7 @@ class MetricsImplementationService {
      * Updates the cached dashboard representation of one website without
      * recalculating metrics for the complete network.
      */
-    public function refreshDashboardSiteStatus(int $siteId): bool {
+    public function refreshDashboardSiteStatus(int $siteId, int $statusUpdatedAt = 0): bool {
         $cached = $this->getStoredDashboardCache();
         $data = [];
         $siteOverview = [];
@@ -982,6 +982,7 @@ class MetricsImplementationService {
         $data['provisioning_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'provisioning');
         $data['dns_missing_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'dns_missing');
         $data['unreachable_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'unreachable');
+        $data['operational_status_distribution'] = $this->buildDashboardOperationalStatusDistribution($siteOverview);
         $data['summary'] = $this->refreshDashboardSummarySiteCounts((array)($data['summary'] ?? []), $siteOverview);
         if ($this->hasDashboardSitePublicStatus($siteOverview)) {
             $data['status_distribution'] = $this->buildDashboardStatusDistribution($siteOverview);
@@ -1001,6 +1002,32 @@ class MetricsImplementationService {
         $cached['data'] = $data;
         $cached['version'] = self::DASHBOARD_CACHE_VERSION;
         $cached['dirty'] = true;
+        $cached['operational_status_updated_at'] = max(
+            (int)($cached['operational_status_updated_at'] ?? 0),
+            $statusUpdatedAt > 0 ? $statusUpdatedAt : time()
+        );
+        update_site_option($this->getCacheKey(), $cached);
+
+        return true;
+    }
+
+    /** Records the completion time of a monitoring pass without recalculating metrics. */
+    public function refreshDashboardOperationalStatusTimestamp(int $statusUpdatedAt): bool {
+        $cached = $this->getStoredDashboardCache();
+
+        if (
+            $statusUpdatedAt <= 0
+            || empty($cached['data'])
+            || !is_array($cached['data'])
+            || !$this->isCompleteDashboardData((array)$cached['data'])
+        ) {
+            return false;
+        }
+
+        $cached['operational_status_updated_at'] = max(
+            (int)($cached['operational_status_updated_at'] ?? 0),
+            $statusUpdatedAt
+        );
         update_site_option($this->getCacheKey(), $cached);
 
         return true;
@@ -1072,6 +1099,58 @@ class MetricsImplementationService {
 
         foreach ($rows as $index => $row) {
             $rows[$index]['percent'] = (int)round(((int)$row['value'] / $totalSites) * 100);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Rebuilds only the operational-status widget from cached website records
+     * after an availability check changes a website's operational status.
+     *
+     * @param array<int, array<string, mixed>> $sites
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildDashboardOperationalStatusDistribution(array $sites): array {
+        $buckets = [
+            'automatic' => 0,
+            'healthy' => 0,
+            'provisioning' => 0,
+            'dns_missing' => 0,
+            'unreachable' => 0,
+            'retired' => 0,
+        ];
+
+        foreach ($sites as $site) {
+            $status = sanitize_key((string)($site['operational_status'] ?? ''));
+
+            if (!isset($buckets[$status])) {
+                $status = 'automatic';
+            }
+
+            $buckets[$status]++;
+        }
+
+        $totalSites = max(1, count($sites));
+        $definitions = [
+            'automatic' => [__('Not set / automatic', 'rrze-multisite-manager'), 'automatic', 'theme-1'],
+            'healthy' => [__('Technically reachable', 'rrze-multisite-manager'), 'technically_reachable', 'positive'],
+            'provisioning' => [__('Provisioning in progress', 'rrze-multisite-manager'), 'provisioning', 'info'],
+            'dns_missing' => [__('DNS missing', 'rrze-multisite-manager'), 'dns_missing', 'danger'],
+            'unreachable' => [__('Technically unreachable', 'rrze-multisite-manager'), 'technically_unreachable', 'warning'],
+            'retired' => [__('Out of service', 'rrze-multisite-manager'), 'out_of_service', 'neutral'],
+        ];
+        $rows = [];
+
+        foreach ($definitions as $bucket => [$label, $statusKey, $accent]) {
+            $rows[] = [
+                'label' => $label,
+                'status_key' => $statusKey,
+                'value' => (int)$buckets[$bucket],
+                'accent' => $accent,
+                'color' => $this->config->getSiteStatusColor($statusKey),
+                'percent' => (int)round(((int)$buckets[$bucket] / $totalSites) * 100),
+            ];
         }
 
         return $rows;
@@ -1755,6 +1834,7 @@ class MetricsImplementationService {
             'needs_refresh' => $needsRefresh,
             'is_running' => $isRunning,
             'last_run_timestamp' => (int)($cached['generated_at'] ?? 0),
+            'operational_status_updated_at_timestamp' => (int)($cached['operational_status_updated_at'] ?? 0),
             'last_started_at_timestamp' => (int)($cached['started_at'] ?? 0),
             'last_finished_at_timestamp' => (int)($cached['generated_at'] ?? 0),
             'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
