@@ -448,6 +448,10 @@ class MetricsImplementationService {
             return $existingState;
         }
 
+        // The database-usage view caches an aggregate for five minutes. Drop it
+        // before the first batch so it cannot show the pre-cleanup inventory.
+        delete_site_transient('rrze_msm_database_usage_aggregation_v1');
+
         $state = [
             'status' => 'waiting',
             'started_at' => current_time('mysql', true),
@@ -520,6 +524,7 @@ class MetricsImplementationService {
 
             if (count($siteIds) < self::FULL_DATA_CLEANUP_BATCH_SIZE && !$transientResult['has_more'] && !$centralRemaining && !$historyRemaining) {
                 $this->clearDashboardDataCaches();
+                delete_site_transient('rrze_msm_database_usage_aggregation_v1');
                 delete_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION);
                 $state['status'] = 'complete';
                 $state['finished_at'] = current_time('mysql', true);
@@ -551,10 +556,16 @@ class MetricsImplementationService {
     protected function getFullDataCleanupTransientInventory(): array {
         global $wpdb;
 
-        $valueKey = $wpdb->esc_like('_site_transient_rrze_msm_') . '%';
-        $timeoutKey = $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%';
+        $valueKeys = [
+            $wpdb->esc_like('_site_transient_rrze_msm_') . '%',
+            $wpdb->esc_like('_site_transient_rrze_multisite_manager_') . '%',
+        ];
+        $timeoutKeys = [
+            $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%',
+            $wpdb->esc_like('_site_transient_timeout_rrze_multisite_manager_') . '%',
+        ];
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The administrator explicitly requested an inventory of scoped, obsolete plugin transient rows.
-        $row = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS row_count, COALESCE(SUM(OCTET_LENGTH(meta_value)), 0) AS byte_count FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s OR meta_key LIKE %s", $valueKey, $timeoutKey), ARRAY_A);
+        $row = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS row_count, COALESCE(SUM(OCTET_LENGTH(meta_value)), 0) AS byte_count FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s OR meta_key LIKE %s OR meta_key LIKE %s OR meta_key LIKE %s", ...array_merge($valueKeys, $timeoutKeys)), ARRAY_A);
 
         return [
             'rows' => max(0, (int)($row['row_count'] ?? 0)),
@@ -566,12 +577,18 @@ class MetricsImplementationService {
     protected function deleteFullDataCleanupTransientBatch(): array {
         global $wpdb;
 
-        $valueKey = $wpdb->esc_like('_site_transient_rrze_msm_') . '%';
-        $timeoutKey = $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%';
+        $valueKeys = [
+            $wpdb->esc_like('_site_transient_rrze_msm_') . '%',
+            $wpdb->esc_like('_site_transient_rrze_multisite_manager_') . '%',
+        ];
+        $timeoutKeys = [
+            $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%',
+            $wpdb->esc_like('_site_transient_timeout_rrze_multisite_manager_') . '%',
+        ];
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The cleanup is explicitly administrator-initiated and deletes only this plugin's transient namespace in bounded batches.
-        $values = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $valueKey, self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE));
+        $values = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE (meta_key LIKE %s OR meta_key LIKE %s) LIMIT %d", ...array_merge($valueKeys, [self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE])));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Matching timeout rows are part of the same scoped transient namespace.
-        $timeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $timeoutKey, self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE));
+        $timeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE (meta_key LIKE %s OR meta_key LIKE %s) LIMIT %d", ...array_merge($timeoutKeys, [self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE])));
 
         return [
             'values' => $values,
@@ -581,19 +598,36 @@ class MetricsImplementationService {
     }
 
     protected function deleteSiteStorageAnalysisData(int $siteId): int {
-        $deleted = 0;
-        $optionNames = array_merge(
-            $this->storageAnalysisResults->getPersistentOptionNames(),
-            ['rrze_msm_storage_analysis_scheduler_status', 'rrze_msm_shortcode_block_analysis_status', 'rrze_msm_analysis_reanalysis']
-        );
+        global $wpdb;
 
-        foreach ($optionNames as $optionName) {
-            if (delete_blog_option($siteId, $optionName)) {
-                $deleted++;
-            }
+        if ($siteId <= 0) {
+            return 0;
         }
 
-        return $deleted;
+        $optionsTable = (string)$wpdb->get_blog_prefix($siteId) . 'options';
+        if (preg_match('/^[A-Za-z0-9_]+$/', $optionsTable) !== 1) {
+            throw new \RuntimeException(__('MSM website data could not be removed.', 'rrze-multisite-manager'));
+        }
+
+        $patterns = [
+            $wpdb->esc_like('rrze_msm_') . '%',
+            $wpdb->esc_like('rrze_multisite_manager_') . '%',
+            $wpdb->esc_like('_transient_rrze_msm_') . '%',
+            $wpdb->esc_like('_transient_rrze_multisite_manager_') . '%',
+            $wpdb->esc_like('_transient_timeout_rrze_msm_') . '%',
+            $wpdb->esc_like('_transient_timeout_rrze_multisite_manager_') . '%',
+        ];
+        $conditions = implode(' OR ', array_fill(0, count($patterns), 'option_name LIKE %s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- An explicit administrator cleanup deletes only MSM-owned option and transient prefixes from a validated WordPress options-table name.
+        $deleted = $wpdb->query($wpdb->prepare("DELETE FROM $optionsTable WHERE $conditions", ...$patterns));
+        if ($deleted === false || $wpdb->last_error) {
+            throw new \RuntimeException(__('MSM website data could not be removed.', 'rrze-multisite-manager'));
+        }
+
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete('notoptions', 'options');
+
+        return max(0, (int)$deleted);
     }
 
     protected function clearDashboardDataCaches(): void {
