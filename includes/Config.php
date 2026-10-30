@@ -32,7 +32,7 @@ class Config {
                 'metrics_cache_ttl' => HOUR_IN_SECONDS,
                 'monitoring_schedule_slug' => 'rrze_msm_every_six_hours',
                 'monitoring_interval' => 6 * HOUR_IN_SECONDS,
-                'availability_monitoring_batch_size' => 5,
+                'availability_monitoring_batch_size' => 10,
                 'availability_monitoring_request_budget_seconds' => 45,
                 'availability_monitoring_http_timeout_seconds' => 4,
                 'availability_monitoring_http_fallback_timeout_seconds' => 2,
@@ -173,8 +173,8 @@ class Config {
                     ],
                     [
                         'name' => 'batch_size',
-                        'label' => __('Batch size for network processes', 'rrze-multisite-manager'),
-                        'desc' => __('Number of websites processed in each batch for dashboard metrics and website availability checks. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
+                        'label' => __('Dashboard metrics batch size', 'rrze-multisite-manager'),
+                        'desc' => __('Number of websites processed in each dashboard-metrics batch. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 25,
                         'min' => 5,
@@ -379,6 +379,15 @@ class Config {
                         'type' => 'select',
                         'default' => 'fourtimesdaily',
                         'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
+                        'name' => 'availability_batch_size',
+                        'label' => __('Websites per availability-check batch', 'rrze-multisite-manager'),
+                        'desc' => __('Number of websites checked in one availability-monitoring Cron request. The default of 10 keeps failed DNS or HTTP requests within the request budget; larger values can speed up healthy networks but may require more continuations when websites time out.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 10,
+                        'min' => 1,
+                        'max' => 25,
                     ],
                     [
                         'name' => 'provisioning_grace_hours',
@@ -597,7 +606,11 @@ class Config {
     }
 
     public function getAvailabilityMonitoringBatchSize(): int {
-        return max(1, min(25, (int)($this->config['constants']['availability_monitoring_batch_size'] ?? 5)));
+        $options = get_site_option($this->getOptionName(), []);
+        $default = (int)($this->config['constants']['availability_monitoring_batch_size'] ?? 10);
+        $size = is_array($options) ? (int)($options['monitoring_availability_batch_size'] ?? $default) : $default;
+
+        return max(1, min(25, $size));
     }
 
     public function getAvailabilityMonitoringRequestBudgetSeconds(): int {

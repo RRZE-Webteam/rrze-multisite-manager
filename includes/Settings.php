@@ -1366,6 +1366,7 @@ class Settings {
             __('Central settings for dashboard metrics and the network-wide availability task. The availability cycle, log and event retention apply only to availability checks.', 'rrze-multisite-manager')
         );
         $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
+            'availability_batch_size',
             'provisioning_grace_hours',
             'dns_failure_threshold',
             'http_failure_threshold',
@@ -3570,7 +3571,7 @@ class Settings {
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12" id="rrze-msm-full-data-cleanup" data-auto-run="' . esc_attr($isRunning ? '1' : '0') . '">';
         echo '<header class="rrze-msm-widget-header">';
         echo '<h2>' . esc_html__('Delete MSM analysis and metrics data', 'rrze-multisite-manager') . '</h2>';
-        echo '<p>' . esc_html__('Deletes central shortcode, block, media-index and analysis-run data; stored storage reports and their metadata; current and historical dashboard metrics; and MSM transients. This cannot be undone.', 'rrze-multisite-manager') . '</p>';
+        echo '<p>' . esc_html__('Deletes central shortcode, block, media-index and analysis-run data; current and historical dashboard metrics; and all MSM-owned website options and transient caches. Network-wide plugin settings and the cleanup status are retained. This cannot be undone.', 'rrze-multisite-manager') . '</p>';
         echo '</header>';
 
         if ($showStatus && !empty($status)) {

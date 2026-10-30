@@ -36,7 +36,7 @@ The tab also lists the key/value footprint of MSM-owned network options, per-sit
 
 ### Tools
 
-Contains maintenance actions, such as removing obsolete local central Cron entries and cleaning up data. Extensive cleanups run as admin-AJAX batches. A cancellation leaves no permanent lock; stale run state is handled after expiry.
+Contains maintenance actions, such as removing obsolete local central Cron entries and cleaning up data. The full MSM data cleanup removes central analysis and dashboard-metric rows, all MSM-owned per-site options and local transient rows, and MSM network-transient rows. Network-wide plugin settings and the compact cleanup status remain. Extensive cleanups run as admin-AJAX batches. A cancellation leaves no permanent lock; stale run state is handled after expiry.
 
 ## Event links
 
