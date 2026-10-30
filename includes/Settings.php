@@ -1931,32 +1931,41 @@ class Settings {
             return;
         }
 
-        echo '<table class="widefat striped rrze-msm-table"><thead><tr>';
+        echo '<table class="striped rrze-msm-datatable"><thead><tr>';
         echo '<th>' . esc_html__('Purpose', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Table', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Data', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Indexes', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Total', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Rows (estimated)', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html__('Data', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html__('Indexes', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html__('Total', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html__('Rows (estimated)', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
         foreach ($rows as $row) {
             echo '<tr>';
             echo '<td>' . esc_html($row['label']) . '</td>';
             echo '<td><code>' . esc_html($row['table']) . '</code></td>';
-            echo '<td>' . esc_html(size_format($row['data_bytes'], 2)) . '</td>';
-            echo '<td>' . esc_html(size_format($row['index_bytes'], 2)) . '</td>';
-            echo '<td>' . esc_html(size_format($row['data_bytes'] + $row['index_bytes'], 2)) . '</td>';
-            echo '<td>' . esc_html(number_format_i18n($row['rows'])) . '</td>';
+            echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatDatabaseStorageMegabytes($row['data_bytes'])) . '</td>';
+            echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatDatabaseStorageMegabytes($row['index_bytes'])) . '</td>';
+            echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatDatabaseStorageMegabytes($row['data_bytes'] + $row['index_bytes'])) . '</td>';
+            echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n($row['rows'])) . '</td>';
             echo '</tr>';
         }
         echo '</tbody><tfoot><tr>';
-        echo '<th colspan="2">' . esc_html__('Displayed tables total', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html(size_format($totalDataBytes, 2)) . '</th>';
-        echo '<th>' . esc_html(size_format($totalIndexBytes, 2)) . '</th>';
-        echo '<th>' . esc_html(size_format($totalDataBytes + $totalIndexBytes, 2)) . '</th>';
-        echo '<th></th>';
+        echo '<th colspan="2"><strong>' . esc_html__('Displayed tables total', 'rrze-multisite-manager') . '</strong></th>';
+        echo '<th class="rrze-msm-col-numeric"><strong>' . esc_html($this->formatDatabaseStorageMegabytes($totalDataBytes)) . '</strong></th>';
+        echo '<th class="rrze-msm-col-numeric"><strong>' . esc_html($this->formatDatabaseStorageMegabytes($totalIndexBytes)) . '</strong></th>';
+        echo '<th class="rrze-msm-col-numeric"><strong>' . esc_html($this->formatDatabaseStorageMegabytes($totalDataBytes + $totalIndexBytes)) . '</strong></th>';
+        echo '<th class="rrze-msm-col-numeric"></th>';
         echo '</tr></tfoot></table>';
         echo '</section>';
+    }
+
+    /** Formats central database storage consistently in megabytes. */
+    protected function formatDatabaseStorageMegabytes(int $bytes): string {
+        return sprintf(
+            /* translators: %s: localized storage size in megabytes. */
+            _x('%s MB', 'database storage size', 'rrze-multisite-manager'),
+            number_format_i18n(max(0, $bytes) / MB_IN_BYTES, 2)
+        );
     }
 
     /** Displays the central table footprint grouped by its three monitoring areas. */
@@ -2006,10 +2015,10 @@ class Settings {
             return;
         }
 
-        echo '<table class="widefat striped rrze-msm-table"><thead><tr>';
+        echo '<table class="striped rrze-msm-datatable"><thead><tr>';
         echo '<th>' . esc_html__('Storage type', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Entries', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html__('Stored key and value data', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html__('Entries', 'rrze-multisite-manager') . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html__('Stored key and value data', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
         foreach ($labels as $bucket => $label) {
             $row = (array)($usage[$bucket] ?? []);
@@ -2024,14 +2033,14 @@ class Settings {
             $totalBytes += $bytes;
             echo '<tr>';
             echo '<td>' . esc_html($label) . '</td>';
-            echo '<td>' . esc_html(number_format_i18n($entries)) . '</td>';
-            echo '<td>' . esc_html(size_format($bytes, 2)) . '</td>';
+            echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n($entries)) . '</td>';
+            echo '<td class="rrze-msm-col-numeric">' . esc_html($this->formatDatabaseStorageMegabytes($bytes)) . '</td>';
             echo '</tr>';
         }
         echo '</tbody><tfoot><tr>';
         echo '<th>' . esc_html__('Options and transient caches total', 'rrze-multisite-manager') . '</th>';
-        echo '<th>' . esc_html(number_format_i18n($totalEntries)) . '</th>';
-        echo '<th>' . esc_html(size_format($totalBytes, 2)) . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html(number_format_i18n($totalEntries)) . '</th>';
+        echo '<th class="rrze-msm-col-numeric">' . esc_html($this->formatDatabaseStorageMegabytes($totalBytes)) . '</th>';
         echo '</tr></tfoot></table>';
         echo '</section>';
     }

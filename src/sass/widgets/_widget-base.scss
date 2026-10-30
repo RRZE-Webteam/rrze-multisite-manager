@@ -647,6 +647,12 @@ td.rrze-msm-plugin-col-active-sites {
     border: 1px solid var(--rrze-msm-table-border);
 }
 
+.rrze-msm-datatable th.rrze-msm-col-numeric,
+.rrze-msm-datatable td.rrze-msm-col-numeric {
+    text-align: right !important;
+    white-space: nowrap;
+}
+
 .rrze-msm-datatable.striped > tbody > :nth-child(odd) th,
 .rrze-msm-datatable.striped > tbody > :nth-child(odd) td {
     background: var(--rrze-msm-surface-alt);
