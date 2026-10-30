@@ -9,8 +9,11 @@ defined('ABSPATH') || exit;
                 <h1><?php echo esc_html__('RRZE Multisite Manager', 'rrze-multisite-manager'); ?></h1>
                 <p><?php echo esc_html__('Local network metrics and operational overview for this WordPress multisite.', 'rrze-multisite-manager'); ?></p>
                 <p>
-                    <?php /* translators: %s: date and time of the last metrics run. */ ?>
-                    <span><?php echo esc_html(sprintf(__('Status: %s', 'rrze-multisite-manager'), (string)$metrics_last_run_label)); ?></span>
+                    <?php /* translators: %s: date and time of the last dashboard metrics run. */ ?>
+                    <span><?php echo esc_html(sprintf(__('Dashboard metrics: %s', 'rrze-multisite-manager'), (string)$metrics_last_run_label)); ?></span>
+                    <span aria-hidden="true"> · </span>
+                    <?php /* translators: %s: date and time of the last availability-status update. */ ?>
+                    <span><?php echo esc_html(sprintf(__('Availability status: %s', 'rrze-multisite-manager'), (string)$availability_last_run_label)); ?></span>
                 </p>
             </div>
             <div class="rrze-msm-header-controls">

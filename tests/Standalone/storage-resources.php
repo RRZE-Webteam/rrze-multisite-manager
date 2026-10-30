@@ -1,6 +1,6 @@
 <?php
 /**
- * Isolated resource regressions. No WordPress installation or database is loaded.
+ * Isolated resource regressions. Uses in-memory SQLite; no WordPress installation or external database.
  * Run: php tests/Standalone/storage-resources.php
  */
 declare(strict_types=1);
@@ -19,6 +19,7 @@ define('MINUTE_IN_SECONDS', 60);
 define('HOUR_IN_SECONDS', 3600);
 define('DAY_IN_SECONDS', 86400);
 define('MB_IN_BYTES', 1048576);
+require_once dirname(__DIR__) . '/Support/AnalysisDatabase.php';
 
 spl_autoload_register(static function (string $class): void {
     $prefix = 'RRZE\\MultisiteManager\\';
@@ -90,12 +91,13 @@ function add_option($key, $value, $deprecated = '', $autoload = true) {
     return true;
 }
 function delete_option($key) { unset($GLOBALS['test_options'][get_current_blog_id()][$key]); return true; }
-function get_blog_option($id, $key, $default = false) { return $GLOBALS['test_options'][$id][$key] ?? $default; }
+function get_blog_option($id, $key, $default = false) { if ($key === 'rrze_msm_analysis_storage_version') { return 1; } return $GLOBALS['test_options'][$id][$key] ?? $default; }
 function update_blog_option($id, $key, $value) { $GLOBALS['test_options'][$id][$key] = $value; return true; }
 function get_site_option($key, $default = false) { return $GLOBALS['test_network_options'][$key] ?? $default; }
 function update_site_option($key, $value) { $GLOBALS['test_network_options'][$key] = $value; return true; }
 function add_site_option($key, $value) { if (array_key_exists($key, $GLOBALS['test_network_options'])) { return false; } return update_site_option($key, $value); }
 function delete_site_option($key) { unset($GLOBALS['test_network_options'][$key]); return true; }
+function wp_check_invalid_utf8($value, $strip = false) { return $value; }
 function wp_using_ext_object_cache() { return $GLOBALS['test_external_cache']; }
 function wp_cache_supports($feature) { return $feature === 'flush_runtime'; }
 function wp_cache_flush_runtime() { $GLOBALS['test_runtime_flushes']++; return true; }
@@ -306,7 +308,7 @@ final class AttachmentRows {
             return array_values(array_filter([$first, $second, $meta], static fn($key) => strlen(serialize($GLOBALS['test_options'][get_current_blog_id()][$key] ?? [])) > ($key === $meta ? $metaLimit : $resultLimit)));
         }
         check(str_contains($query, 'WHERE site_id = 1') && str_contains($query, 'LIMIT 250') && !str_contains($query, 'SELECT meta_value'), 'Expired cleanup must fetch only bounded, network-scoped keys.');
-        return [];
+        return array_map(static fn($key) => '_site_transient_timeout_' . $key, array_slice(array_filter(array_keys($GLOBALS['test_transients']), static fn($key) => str_contains($key, 'storage_attachment_index_')), 0, 250));
     }
     public array $rows = [];
     public function prepare(string $query, ...$args): string { $this->parameters = $args; return vsprintf($query, $args); }
@@ -414,7 +416,7 @@ $GLOBALS['test_uploads'] = $temporary;
 try {
     file_put_contents($temporary . '/new.pdf', 'unused media');
     foreach (['', 'https://example.org/uploads/new.pdf', 'https:\/\/example.org\/uploads\/new.pdf', 'wp-image-30', '[gallery ids="30"]'] as $referenceValue) {
-        $GLOBALS['wpdb'] = new OrphanRows();
+        $GLOBALS['wpdb'] = new AnalysisDatabase(new OrphanRows());
         $GLOBALS['wpdb']->referenceValue = $referenceValue;
         $metrics = new ResourceMetrics();
         $state = $metrics->initialOrphan([
@@ -460,7 +462,9 @@ try {
     for ($id = 1; $id <= 252; $id++) {
         file_put_contents($temporary . '/page-' . $id . '.pdf', 'x');
     }
-    $GLOBALS['wpdb'] = new AttachmentPageRows();
+    $GLOBALS['wpdb'] = new AnalysisDatabase(new AttachmentPageRows());
+    (new RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService())->acquire(1);
+    (new RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->saveUsage(1, [250 => true]);
     $pagedMetrics = new ResourceMetrics();
     $pagedState = [
         'media_attachment_cursor' => 253,
@@ -524,13 +528,13 @@ try {
     check($usage->getCurrentSiteUsage()['used_bytes'] === 0, 'A measured zero must remain a known value.');
 
     $referenceRows = new ReferenceRows();
-    $GLOBALS['wpdb'] = $referenceRows;
+    $GLOBALS['wpdb'] = new AnalysisDatabase($referenceRows);
     $referenceMetrics = new ResourceMetrics();
     check($referenceMetrics->referencePostRows(0) === [], 'Post reference scan did not run.');
     check($referenceMetrics->referenceMetaRows(0) === [], 'Metadata reference scan did not run.');
     check(count($referenceRows->queries) === 2, 'Both reference sources must be queried.');
 
-    $wpdb = new AttachmentRows();
+    $wpdb = new AnalysisDatabase(new AttachmentRows());
     $GLOBALS['wpdb'] = $wpdb;
     for ($id = 1; $id <= 251; $id++) {
         // All entries deliberately share a variant, which must only be counted once.
@@ -557,12 +561,12 @@ try {
     check($payload['attachment_stats']['attachment_count'] === 251, 'Final payload did not use the accumulated summary.');
     check($payload['difference_bytes'] === null, 'Missing comparison must remain unknown.');
     foreach ($wpdb->rows as $row) { $metrics->entry($state, $row->attached_file); check($metrics->cacheSize() <= 32, 'Index segment cache grew beyond 32 buckets.'); }
-    check((bool)array_filter($GLOBALS['test_cache_deletions'], static fn($entry) => str_contains($entry[0], ':_site_transient_rrze_msm_site_storage_attachment_index_bucket_')), 'Database-backed segments stayed in the WordPress runtime cache.');
+    check(!array_filter(array_keys($GLOBALS['test_transients']), static fn($key) => str_contains($key, 'storage_attachment_index_bucket_')), 'Media segments must live only in the central table.');
     $GLOBALS['test_external_cache'] = true;
     $deletedBefore = count($GLOBALS['test_cache_deletions']);
     $externalMetrics = new ResourceMetrics();
     foreach ($wpdb->rows as $row) { $externalMetrics->entry($state, $row->attached_file); }
-    check($GLOBALS['test_runtime_flushes'] > 0 && count($GLOBALS['test_cache_deletions']) === $deletedBefore, 'External-cache handling must flush only runtime data, not delete persistent buckets.');
+    check($GLOBALS['test_runtime_flushes'] === 0 && count($GLOBALS['test_cache_deletions']) === $deletedBefore, 'Central index reads must not touch the object cache.');
     $GLOBALS['test_external_cache'] = false;
     $aggregate = $metrics->aggregate(['used_bytes' => 20, 'max_bytes' => 100]);
     check($aggregate['unknown_site_count'] === 1 && $aggregate['percent'] === null, 'Unknown usage must suppress capacity percentages.');

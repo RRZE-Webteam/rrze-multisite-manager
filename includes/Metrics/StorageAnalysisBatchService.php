@@ -26,11 +26,11 @@ class StorageAnalysisBatchService {
         callable $finalize
     ): array {
         if ($restart) {
-            delete_site_transient($baseStateKey);
-            delete_site_transient($orphanStateKey);
+            (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($baseStateKey);
+            (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($orphanStateKey);
         }
 
-        $state = get_site_transient($baseStateKey);
+        $state = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($baseStateKey);
 
         if (!is_array($state) || empty($state) || $restart) {
             $state = $initialize();
@@ -99,10 +99,10 @@ class StorageAnalysisBatchService {
         }
 
         if ($restart) {
-            delete_site_transient($orphanStateKey);
+            (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($orphanStateKey);
         }
 
-        $state = get_site_transient($orphanStateKey);
+        $state = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($orphanStateKey);
 
         if (!is_array($state) || empty($state) || $restart) {
             $state = $initialize($analysis);

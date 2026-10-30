@@ -16,7 +16,7 @@ Links from a row lead to Website details, WordPress network administration, and 
 
 ## Data state
 
-The overview uses dashboard metrics. It is therefore an aggregated snapshot, not a live query of every individual site. The dashboard or Monitoring shows the refresh timestamp and progress.
+The overview uses dashboard metrics. It is therefore an aggregated snapshot, not a live query of every individual site. Its stored counters, content totals and storage values come from the current rows in `rrze_msm_analysis_dashboard_metrics`; names, URLs, quotas and technical-status enrichment remain runtime presentation data. The dashboard or Monitoring shows the refresh timestamp and progress.
 
 ## Implementation
 

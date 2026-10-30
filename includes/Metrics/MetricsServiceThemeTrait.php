@@ -152,26 +152,109 @@ trait MetricsServiceThemeTrait {
         );
     }
 
-    /** Adds theme state that must not depend on a cached metrics run. */
+    /**
+     * Adds live theme state to the cached dashboard payload.
+     *
+     * Themes are installed globally in a multisite. The dashboard payload is
+     * intentionally cached, but it must not conceal a newly installed theme
+     * merely because it is not network-enabled yet. The costly per-site usage
+     * aggregation remains cached; newly discovered themes start with no cached
+     * usage until the next dashboard refresh completes.
+     */
     protected function hydrateDashboardThemeRuntimeState(array $dashboardData): array {
         $defaultThemeStylesheet = $this->getWordPressDefaultThemeStylesheet();
+        $allowedThemes = $this->getAllowedThemes();
+        $installedThemes = wp_get_themes();
+        $themes = [];
+        $knownStylesheets = [];
+        $stylesheet = '';
+        $installedTheme = null;
 
-        foreach ((array)($dashboardData['themes'] ?? []) as $index => $theme) {
+        foreach ((array)($dashboardData['themes'] ?? []) as $theme) {
             if (!is_array($theme)) {
                 continue;
             }
 
-            $dashboardData['themes'][$index] = $this->hydrateThemeRuntimeState($theme, $defaultThemeStylesheet);
+            $stylesheet = (string)($theme['stylesheet'] ?? '');
+
+            // Do not retain themes that have been removed since the cache was
+            // generated. WordPress returns all installed themes here,
+            // independently of their network availability.
+            if ($stylesheet === '' || !isset($installedThemes[$stylesheet])) {
+                continue;
+            }
+
+            $theme['network_enabled'] = isset($allowedThemes[$stylesheet]);
+            $themes[] = $this->hydrateThemeRuntimeState($theme, $defaultThemeStylesheet, $allowedThemes);
+            $knownStylesheets[$stylesheet] = true;
         }
+
+        foreach ($installedThemes as $stylesheet => $installedTheme) {
+            if (isset($knownStylesheets[$stylesheet]) || !$installedTheme instanceof \WP_Theme) {
+                continue;
+            }
+
+            $themes[] = $this->createUncachedThemeData(
+                (string)$stylesheet,
+                $installedTheme,
+                $allowedThemes,
+                $defaultThemeStylesheet
+            );
+        }
+
+        usort($themes, [self::class, 'compareThemeUsage']);
+        $dashboardData['themes'] = $themes;
 
         return $dashboardData;
     }
 
+    /** Builds a display item for a theme discovered after the last metrics run. */
+    protected function createUncachedThemeData(
+        string $stylesheet,
+        \WP_Theme $theme,
+        array $allowedThemes,
+        string $defaultThemeStylesheet
+    ): array {
+        $description = (string)$theme->get('Description');
+        $screenshot = $theme->get_screenshot();
+        $tags = $theme->get('Tags');
+        $themeData = [
+            'stylesheet' => $stylesheet,
+            'name' => $theme->get('Name') ?: $stylesheet,
+            'version' => $theme->get('Version') ?: 'n/a',
+            'description' => wp_strip_all_tags($description),
+            'site_count' => 0,
+            'network_enabled' => isset($allowedThemes[$stylesheet]),
+            'is_default_theme' => $stylesheet === $defaultThemeStylesheet,
+            'active_sites' => [],
+            'active_sites_truncated' => false,
+            'author' => (string)$theme->get('Author'),
+            'author_url' => (string)$theme->get('AuthorURI'),
+            'theme_uri' => (string)$theme->get('ThemeURI'),
+            'text_domain' => (string)$theme->get('TextDomain'),
+            'template' => (string)$theme->get_template(),
+            'screenshot' => is_string($screenshot) ? $screenshot : '',
+            'is_block_theme' => method_exists($theme, 'is_block_theme') ? (bool)$theme->is_block_theme() : false,
+            'tags' => is_array($tags) ? $this->normalizeStringList($tags) : [],
+        ];
+        $themeData['status'] = $this->getThemeStatus($themeData);
+
+        return $themeData;
+    }
+
     /** Adds the live WordPress default-theme marker and its status badge. */
-    protected function hydrateThemeRuntimeState(array $theme, ?string $defaultThemeStylesheet = null): array {
+    protected function hydrateThemeRuntimeState(
+        array $theme,
+        ?string $defaultThemeStylesheet = null,
+        ?array $allowedThemes = null
+    ): array {
         $defaultThemeStylesheet = $defaultThemeStylesheet ?? $this->getWordPressDefaultThemeStylesheet();
+        $allowedThemes = $allowedThemes ?? $this->getAllowedThemes();
+        $stylesheet = (string)($theme['stylesheet'] ?? '');
+
         $theme['is_default_theme'] = $defaultThemeStylesheet !== ''
-            && (string)($theme['stylesheet'] ?? '') === $defaultThemeStylesheet;
+            && $stylesheet === $defaultThemeStylesheet;
+        $theme['network_enabled'] = $stylesheet !== '' && isset($allowedThemes[$stylesheet]);
         $theme['status'] = $this->getThemeStatus($theme);
 
         return $theme;

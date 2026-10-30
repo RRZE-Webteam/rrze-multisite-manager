@@ -29,6 +29,7 @@ class StorageAnalysisResourceService {
     }
 
     public function acquire(int $siteId): void {
+        \RRZE\MultisiteManager\Analysis\AnalysisLifecycle::prepareSite($siteId);
         $this->locked(function () use ($siteId): void {
             $available = -1;
             $occupiedSiteIds = [];
@@ -152,7 +153,7 @@ class StorageAnalysisResourceService {
         $sizes = [];
         foreach ($buckets as $bucket => $entries) {
             $bucket = (string)$bucket;
-            if (preg_match('/^[a-f0-9]{2}$/', $bucket) !== 1 || !is_array($entries)) {
+            if (preg_match('/^u?[a-f0-9]{2}$/', $bucket) !== 1 || !is_array($entries)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
                 throw new \RuntimeException(__('Invalid media index reservation.', 'rrze-multisite-manager'));
             }
@@ -208,10 +209,7 @@ class StorageAnalysisResourceService {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
             throw new \RuntimeException(__('The analysis working state exceeded its storage limit. The previous completed result is preserved.', 'rrze-multisite-manager'));
         }
-        if (get_site_transient($key) !== $state && !set_site_transient($key, $state, min($ttl, str_contains($key, 'storage_attachment_index_bucket_') ? 7 * DAY_IN_SECONDS : DAY_IN_SECONDS))) {
-            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('The temporary analysis state could not be saved.', 'rrze-multisite-manager'));
-        }
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->save($key, $state, $ttl);
     }
 
     public function release(int $siteId): void {
@@ -300,15 +298,7 @@ class StorageAnalysisResourceService {
     }
 
     private function deleteSiteKeys(int $siteId): void {
-        $keys = [];
-        foreach (['v1', 'v2'] as $version) {
-            $keys[] = 'rrze_msm_site_storage_analysis_base_state_resumable_' . $version . '_' . $siteId;
-            $keys[] = 'rrze_msm_site_storage_analysis_orphan_state_resumable_' . $version . '_' . $siteId;
-            foreach (range(0, 255) as $bucket) {
-                $keys[] = 'rrze_msm_site_storage_attachment_index_bucket_resumable_' . $version . '_' . $siteId . '_' . str_pad(dechex($bucket), 2, '0', STR_PAD_LEFT);
-            }
-        }
-        $this->deleteKeys($keys);
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->clearSite($siteId);
     }
 
     private function deleteKeys(array $keys): void {

@@ -159,6 +159,19 @@ class Config {
                         'choices' => $schedulerFrequencyChoices,
                     ],
                     [
+                        'name' => 'dashboard_metrics_history_frequency',
+                        'label' => __('Dashboard metrics history cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often current dashboard metric snapshots are retained as historical statistics. Current snapshots are always kept separately.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'weekly',
+                        'choices' => [
+                            'disabled' => __('Disabled (keep existing statistics)', 'rrze-multisite-manager'),
+                            'daily' => __('Daily', 'rrze-multisite-manager'),
+                            'weekly' => __('Weekly', 'rrze-multisite-manager'),
+                            'monthly' => __('Monthly', 'rrze-multisite-manager'),
+                        ],
+                    ],
+                    [
                         'name' => 'batch_size',
                         'label' => __('Batch size for network processes', 'rrze-multisite-manager'),
                         'desc' => __('Number of websites processed in each batch for dashboard metrics and website availability checks. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),

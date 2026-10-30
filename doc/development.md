@@ -63,3 +63,15 @@ PO files can then be maintained, for example, with Loco Translate and compiled t
 ## Documentation maintenance
 
 For new or renamed menu pages, create or update a file in `doc/` and link it from [doc/README.md](README.md). Document new persistent options, meta keys, transients, Cron hooks, locks, and AJAX endpoints additionally in [Runtime state and scheduler](runtime-state.md). When a background workflow or its state transitions change, update the matching Mermaid flow diagram there or in [Storage analysis](storage-analysis.md) as well.
+
+### Central analysis schema changes
+
+The four central analysis tables are specified in [Runtime state and scheduler](runtime-state.md#central-analysis-tables). They use `$wpdb->base_prefix`, not a website prefix; every database operation must therefore constrain `network_id`, `blog_id`, and the relevant `run_id`.
+
+When changing this schema:
+
+1. Update `AnalysisStore::SCHEMA_VERSION`, the `dbDelta()` declarations, and `verifySchema()` together.
+2. Keep `AnalysisStore::DATA_VERSION` separate from additive schema versions. Raising the schema version must not repeat the destructive legacy-data migration.
+3. Preserve separate `shortcodes` and `blocks` tables and their phase checkpoints. Do not move large findings back to options, post types, or object-cache payloads.
+4. Add or update isolated persistence regressions and, where possible, WordPress/MySQL integration coverage for upgrades and cleanup.
+5. Document new columns, indexes, retention, and deletion behaviour in the central-schema section before shipping.

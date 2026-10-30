@@ -289,6 +289,7 @@ class MonitoringService {
                 'id' => 'site-availability',
                 'title' => __('Website availability', 'rrze-multisite-manager'),
                 'description' => __('Checks DNS and HTTP reachability of all active websites and updates the plugin\'s monitoring meta fields.', 'rrze-multisite-manager'),
+                'cron_hook' => $hook,
                 'interval_hours' => $this->getMonitoringIntervalHours(),
                 'provisioning_grace_hours' => $this->getProvisioningGraceHours(),
                 'dns_failure_threshold' => $this->getDnsFailureThreshold(),
@@ -315,6 +316,13 @@ class MonitoringService {
                 'run_state' => $runState,
             ],
         ];
+    }
+
+    /** Returns the completion timestamp of the most recent network availability pass. */
+    public function getLastCompletedRunTimestamp(): int {
+        $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
+
+        return $lastRun !== '' ? max(0, (int)strtotime($lastRun . ' GMT')) : 0;
     }
 
     public function getRunHistory(): array {
@@ -478,7 +486,9 @@ class MonitoringService {
             $this->finalizeRunState($timestamp);
             $this->resetBatchState();
             $this->releaseMonitoringLock();
-            (new MetricsService(null, $this->config))->invalidateCaches();
+            $metrics = new MetricsService(null, $this->config);
+            $metrics->refreshDashboardOperationalStatusTimestamp(strtotime($timestamp . ' GMT'));
+            $metrics->invalidateCaches();
             return $completedResult;
         }
 
@@ -1001,6 +1011,13 @@ class MonitoringService {
         $this->logMonitoringWarning($result);
         $this->appendSiteHistory($siteId, $result);
         $this->reconcileStorageAnalysisSchedule($siteId);
+
+        if ($statusChanged) {
+            (new MetricsService(null, $this->config))->refreshDashboardSiteStatus(
+                $siteId,
+                strtotime($timestamp . ' GMT')
+            );
+        }
 
         return $result;
     }

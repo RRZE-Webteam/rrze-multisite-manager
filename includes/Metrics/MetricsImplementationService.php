@@ -32,6 +32,9 @@ class MetricsImplementationService {
     protected const DASHBOARD_COMPOSE_HOOK = 'rrze_msm_compose_dashboard_metrics';
     protected const DASHBOARD_COMPOSITION_WATCHDOG_HOOK = 'rrze_msm_watch_dashboard_metrics_composition';
     protected const DASHBOARD_REFRESH_SCHEDULE = 'rrze_msm_dashboard_metrics_cycle';
+    protected const DASHBOARD_HISTORY_COMPACTION_HOOK = 'rrze_msm_compact_dashboard_metrics_history';
+    protected const DASHBOARD_HISTORY_COMPACTION_SCHEDULE = 'rrze_msm_dashboard_metrics_history_cycle';
+    protected const DASHBOARD_HISTORY_RUN_STATE_OPTION = 'rrze_msm_dashboard_metrics_history_run_state';
     protected const DASHBOARD_SCHEDULING_ENABLED_OPTION = 'rrze_msm_dashboard_metrics_scheduling_enabled';
     protected const DETAIL_CACHE_MAINTENANCE_HOOK = 'rrze_msm_maintain_detail_cache';
     protected const DASHBOARD_CACHE_VERSION = 6;
@@ -86,6 +89,7 @@ class MetricsImplementationService {
     protected MediaMetadataAnalysisService $mediaMetadataAnalysis;
     protected DashboardMetricsRefreshService $dashboardRefresh;
     protected DashboardMetricsBatchService $dashboardBatch;
+    protected DashboardMetricsHistoryStore $dashboardHistory;
     protected StorageUploadScannerService $storageUploadScanner;
     protected StorageAnalysisBatchService $storageAnalysisBatch;
     protected MetricsCacheService $metricsCache;
@@ -104,7 +108,6 @@ class MetricsImplementationService {
     protected array $currentSiteAttachmentUsagePathIndexCache = [];
     protected array $currentSiteStorageAnalysisAttachmentIndexCache = [];
     protected array $currentSiteStorageAnalysisAttachmentIndexBucketCache = [];
-    protected int $storageIndexRuntimeCacheReads = 0;
     protected ?array $themeSiteAggregate = null;
     protected ?int $dashboardSiteCount = null;
 
@@ -141,6 +144,7 @@ class MetricsImplementationService {
             self::DASHBOARD_LOCK_TTL
         );
         $this->dashboardBatch = new DashboardMetricsBatchService($this->dashboardRefresh);
+        $this->dashboardHistory = new DashboardMetricsHistoryStore();
         $this->storageUploadScanner = new StorageUploadScannerService();
         $this->storageAnalysisBatch = new StorageAnalysisBatchService();
         $this->siteDetailMetrics = new SiteDetailMetricsService();
@@ -167,6 +171,7 @@ class MetricsImplementationService {
         add_action(self::DASHBOARD_REFRESH_HOOK, [$this, 'handleScheduledDashboardRefresh']);
         add_action(self::DASHBOARD_COMPOSE_HOOK, [$this, 'handleScheduledDashboardComposition'], 10, 1);
         add_action(self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK, [$this, 'handleDashboardCompositionWatchdog'], 10, 1);
+        add_action(self::DASHBOARD_HISTORY_COMPACTION_HOOK, [$this, 'handleScheduledDashboardHistoryCompaction']);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action(self::STORAGE_ANALYSIS_CLEANUP_HOOK, [$this, 'runLegacyStorageAnalysisCleanup']);
         add_action(self::FULL_DATA_CLEANUP_HOOK, [$this, 'runFullDataCleanup']);
@@ -181,6 +186,10 @@ class MetricsImplementationService {
         $schedules[self::DASHBOARD_REFRESH_SCHEDULE] = [
             'interval' => $this->getMetricsRefreshIntervalSeconds(),
             'display' => $this->getMetricsRefreshScheduleLabel(),
+        ];
+        $schedules[self::DASHBOARD_HISTORY_COMPACTION_SCHEDULE] = [
+            'interval' => $this->getDashboardHistoryCompactionIntervalSeconds(),
+            'display' => $this->getDashboardHistoryCompactionScheduleLabel(),
         ];
 
         return $schedules;
@@ -220,6 +229,7 @@ class MetricsImplementationService {
         }
 
         $this->ensureDashboardRefreshSchedule();
+        $this->ensureDashboardHistoryCompactionSchedule();
 
         if ($this->recoverPendingDashboardComposition()) {
             return;
@@ -427,7 +437,7 @@ class MetricsImplementationService {
     }
 
     /**
-     * Starts a destructive, batched cleanup of obsolete metrics, MSM transients and storage-analysis data.
+     * Starts a destructive, batched cleanup of central analysis data, metrics and MSM transients.
      *
      * @return array<string, mixed>
      */
@@ -488,6 +498,8 @@ class MetricsImplementationService {
             $state['status'] = 'running';
             $state['updated_at'] = current_time('mysql', true);
             $state['message'] = __('Cleanup is running.', 'rrze-multisite-manager');
+            $centralRemaining = (new \RRZE\MultisiteManager\Analysis\AnalysisLifecycle())->purgeNetworkBatch();
+            $historyRemaining = $this->dashboardHistory->purgeBatch();
             $transientResult = $this->deleteFullDataCleanupTransientBatch();
             $state['deleted_transient_values'] = (int)($state['deleted_transient_values'] ?? 0) + $transientResult['values'];
             $state['deleted_transient_timeouts'] = (int)($state['deleted_transient_timeouts'] ?? 0) + $transientResult['timeouts'];
@@ -506,11 +518,12 @@ class MetricsImplementationService {
 
             $state['site_offset'] = max(0, (int)($state['site_offset'] ?? 0)) + count($siteIds);
 
-            if (count($siteIds) < self::FULL_DATA_CLEANUP_BATCH_SIZE && !$transientResult['has_more']) {
+            if (count($siteIds) < self::FULL_DATA_CLEANUP_BATCH_SIZE && !$transientResult['has_more'] && !$centralRemaining && !$historyRemaining) {
                 $this->clearDashboardDataCaches();
+                delete_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION);
                 $state['status'] = 'complete';
                 $state['finished_at'] = current_time('mysql', true);
-                $state['message'] = __('Fertig: Die Bereinigung ist abgeschlossen. Speicheranalysen und Dashboard-Metriken können nun wieder manuell gestartet werden.', 'rrze-multisite-manager');
+                $state['message'] = __('Cleanup completed. Storage, shortcode and block analyses, and dashboard metrics can now be started manually again.', 'rrze-multisite-manager');
                 update_site_option(self::FULL_DATA_CLEANUP_STATE_OPTION, $state);
                 return;
             }
@@ -571,7 +584,7 @@ class MetricsImplementationService {
         $deleted = 0;
         $optionNames = array_merge(
             $this->storageAnalysisResults->getPersistentOptionNames(),
-            ['rrze_msm_storage_analysis_scheduler_status']
+            ['rrze_msm_storage_analysis_scheduler_status', 'rrze_msm_shortcode_block_analysis_status', 'rrze_msm_analysis_reanalysis']
         );
 
         foreach ($optionNames as $optionName) {
@@ -652,7 +665,9 @@ class MetricsImplementationService {
                 $this->scheduleDashboardRefresh();
             }
 
-            return $this->hydrateDashboardThemeRuntimeState((array)($cached['data'] ?? []));
+            return $this->hydrateDashboardThemeRuntimeState(
+                $this->hydrateDashboardMetricSnapshots((array)($cached['data'] ?? []))
+            );
         }
 
         $this->scheduleDashboardRefresh(5, true);
@@ -668,13 +683,17 @@ class MetricsImplementationService {
 
         if (!$force && $this->isDashboardRefreshLocked()) {
             if ($this->hasCompleteDashboardCache($cached)) {
-                return $this->hydrateDashboardThemeRuntimeState((array)($cached['data'] ?? []));
+                return $this->hydrateDashboardThemeRuntimeState(
+                    $this->hydrateDashboardMetricSnapshots((array)($cached['data'] ?? []))
+                );
             }
         }
 
         if (!$this->acquireDashboardRefreshLock()) {
             if ($this->hasCompleteDashboardCache($cached)) {
-                return $this->hydrateDashboardThemeRuntimeState((array)($cached['data'] ?? []));
+                return $this->hydrateDashboardThemeRuntimeState(
+                    $this->hydrateDashboardMetricSnapshots((array)($cached['data'] ?? []))
+                );
             }
         }
 
@@ -682,21 +701,208 @@ class MetricsImplementationService {
         $networkStorageUsage = $this->getNetworkStorageUsage();
 
         $data = $this->buildDashboardDataPayload($siteOverview, $networkStorageUsage);
+        $recordedAt = time();
 
-        update_site_option(
-            $this->getCacheKey(),
-            [
-                'version' => self::DASHBOARD_CACHE_VERSION,
-                'data' => $data,
-                'generated_at' => time(),
-                'started_at' => time(),
-                'duration_seconds' => 0,
-                'dirty' => false,
-            ]
+        try {
+            $this->dashboardHistory->saveCurrentSnapshots(
+                $this->buildDashboardHistorySnapshots($data),
+                $recordedAt
+            );
+            $this->scheduleDashboardHistoryCompaction(5);
+
+            update_site_option(
+                $this->getCacheKey(),
+                [
+                    'version' => self::DASHBOARD_CACHE_VERSION,
+                    'data' => $data,
+                    'generated_at' => time(),
+                    'started_at' => time(),
+                    'duration_seconds' => 0,
+                    'dirty' => false,
+                ]
+            );
+        } finally {
+            $this->releaseDashboardRefreshLock();
+        }
+
+        return $this->hydrateDashboardThemeRuntimeState($this->hydrateDashboardMetricSnapshots($data));
+    }
+
+    /**
+     * Replaces durable dashboard counters in the cached presentation payload.
+     *
+     * The cache deliberately still carries richer, non-historical data such
+     * as names, URLs, quotas, plugin details and availability checks. Values
+     * persisted in the dashboard metric table must, however, always win for
+     * the dashboard counters and per-site storage/content metrics.
+     */
+    protected function hydrateDashboardMetricSnapshots(array $dashboardData): array {
+        try {
+            $snapshots = $this->dashboardHistory->getCurrentSnapshots();
+        } catch (\RuntimeException) {
+            // A damaged or not-yet-created table must not make the dashboard
+            // unusable while installation/repair handles the schema.
+            return $dashboardData;
+        }
+
+        $networkSnapshot = (array)($snapshots[0] ?? []);
+        $siteSnapshots = $snapshots;
+        unset($siteSnapshots[0]);
+
+        if (empty($networkSnapshot) || empty($siteSnapshots)) {
+            return $dashboardData;
+        }
+
+        $siteOverview = array_values((array)($dashboardData['site_overview'] ?? []));
+        if (count($siteOverview) !== count($siteSnapshots)) {
+            // Current snapshots are saved as an all-or-nothing completed run.
+            // Do not merge a stale or partially repaired table with a newer
+            // cache representation.
+            return $dashboardData;
+        }
+
+        foreach ($siteOverview as $index => $site) {
+            $siteId = (int)($site['id'] ?? 0);
+            $snapshot = (array)($siteSnapshots[$siteId] ?? []);
+
+            if ($siteId <= 0 || empty($snapshot)) {
+                return $dashboardData;
+            }
+
+            $siteOverview[$index] = $this->hydrateDashboardSiteMetricSnapshot((array)$site, $snapshot);
+        }
+
+        $dashboardData['site_overview'] = $siteOverview;
+        $dashboardData['network_storage_usage'] = $this->buildDashboardStorageUsageFromSnapshots($siteOverview);
+        $dashboardData['summary'] = $this->hydrateDashboardSummarySnapshot(
+            (array)($dashboardData['summary'] ?? []),
+            $networkSnapshot,
+            (array)$dashboardData['network_storage_usage']
         );
-        $this->releaseDashboardRefreshLock();
+        $dashboardData['status_distribution'] = $this->buildDashboardStatusDistributionFromSnapshots($siteSnapshots);
 
-        return $this->hydrateDashboardThemeRuntimeState($data);
+        return $dashboardData;
+    }
+
+    /** @param array<string, mixed> $site @param array<string, mixed> $snapshot */
+    protected function hydrateDashboardSiteMetricSnapshot(array $site, array $snapshot): array {
+        $storage = is_array($site['storage'] ?? null) ? $site['storage'] : [];
+        $mediaBytes = $snapshot['media_bytes'] ?? null;
+        $content = is_array($site['content_counts'] ?? null) ? $site['content_counts'] : [];
+
+        if (is_numeric($mediaBytes)) {
+            $storage['used_bytes'] = max(0, (int)$mediaBytes);
+            $storage['used_label'] = size_format((int)$storage['used_bytes']);
+            if (!empty($storage['is_unlimited'])) {
+                $storage['percent'] = null;
+            } elseif (is_numeric($storage['max_bytes'] ?? null) && (int)$storage['max_bytes'] > 0) {
+                $storage['percent'] = (int)round(((int)$storage['used_bytes'] / (int)$storage['max_bytes']) * 100);
+            } else {
+                $storage['percent'] = null;
+            }
+        } else {
+            unset($storage['used_bytes']);
+            $storage['used_label'] = __('Unknown', 'rrze-multisite-manager');
+            $storage['percent'] = null;
+        }
+
+        $site['storage'] = $storage;
+        $site['database_bytes'] = is_numeric($snapshot['database_bytes'] ?? null)
+            ? max(0, (int)$snapshot['database_bytes'])
+            : null;
+        $site['plugin_count'] = max(0, (int)($snapshot['plugin_count'] ?? 0));
+        $site['theme_count'] = max(0, (int)($snapshot['theme_count'] ?? 0));
+        $site['user_count'] = max(0, (int)($snapshot['user_count'] ?? 0));
+        $site['custom_post_type_count'] = max(0, (int)($snapshot['custom_post_type_count'] ?? 0));
+        $content['pages'] = max(0, (int)($snapshot['page_count'] ?? 0));
+        $content['posts'] = max(0, (int)($snapshot['post_count'] ?? 0));
+        $content['media'] = max(0, (int)($snapshot['media_count'] ?? 0));
+        $site['content_counts'] = $content;
+
+        return $site;
+    }
+
+    /** @param array<int, array<string, mixed>> $siteOverview */
+    protected function buildDashboardStorageUsageFromSnapshots(array $siteOverview): array {
+        $state = [
+            'items' => [],
+            'total_used_bytes' => 0,
+            'total_max_bytes' => 0,
+            'has_unlimited_site' => false,
+            'unknown_site_count' => 0,
+        ];
+
+        foreach ($siteOverview as $site) {
+            if (!is_array($site)) {
+                continue;
+            }
+
+            $this->accumulateDashboardBatchStorageUsage(
+                $state,
+                (int)($site['id'] ?? 0),
+                (string)($site['name'] ?? ''),
+                is_array($site['storage'] ?? null) ? $site['storage'] : []
+            );
+        }
+
+        return $this->finalizeDashboardBatchStorageUsage($state);
+    }
+
+    /** @param array<string, mixed> $summary @param array<string, mixed> $snapshot @param array<string, mixed> $storage */
+    protected function hydrateDashboardSummarySnapshot(array $summary, array $snapshot, array $storage): array {
+        $summary['total_sites'] = max(0, (int)($snapshot['websites_total'] ?? 0));
+        $summary['active_sites'] = max(0, (int)($snapshot['websites_active'] ?? 0));
+        $summary['archived_sites'] = max(0, (int)($snapshot['websites_archived'] ?? 0));
+        $summary['spam_sites'] = max(0, (int)($snapshot['websites_blocked'] ?? 0));
+        $summary['deleted_sites'] = max(0, (int)($snapshot['websites_deleted'] ?? 0));
+        $summary['total_storage_used_bytes'] = max(0, (int)($storage['total_used_bytes'] ?? 0));
+        $summary['total_storage_used_label'] = (string)($storage['total_used_label'] ?? '');
+        $summary['total_storage_max_bytes'] = max(0, (int)($storage['total_max_bytes'] ?? 0));
+        $summary['total_storage_max_label'] = (string)($storage['total_max_label'] ?? '');
+        $summary['has_unlimited_storage_site'] = !empty($storage['has_unlimited_site']);
+
+        return $summary;
+    }
+
+    /** @param array<int, array<string, mixed>> $snapshots */
+    protected function buildDashboardStatusDistributionFromSnapshots(array $snapshots): array {
+        $buckets = [
+            'active_public' => 0,
+            'active_private' => 0,
+            'archived' => 0,
+            'blocked' => 0,
+            'deleted' => 0,
+        ];
+
+        foreach ($snapshots as $snapshot) {
+            $status = sanitize_key((string)($snapshot['site_status'] ?? ''));
+            if (isset($buckets[$status])) {
+                $buckets[$status]++;
+            }
+        }
+
+        $total = max(1, array_sum($buckets));
+        $definitions = [
+            'active_public' => [__('Active and public', 'rrze-multisite-manager'), 'positive'],
+            'active_private' => [__('Active, excluded from search engines', 'rrze-multisite-manager'), 'info'],
+            'archived' => [__('Archived', 'rrze-multisite-manager'), 'warning'],
+            'blocked' => [__('Blocked', 'rrze-multisite-manager'), 'blocked'],
+            'deleted' => [__('Marked for deletion', 'rrze-multisite-manager'), 'danger'],
+        ];
+        $rows = [];
+
+        foreach ($definitions as $key => [$label, $accent]) {
+            $rows[] = [
+                'label' => $label,
+                'status_key' => $key,
+                'value' => $buckets[$key],
+                'accent' => $accent,
+                'color' => $this->config->getSiteStatusColor($key),
+                'percent' => (int)round(($buckets[$key] / $total) * 100),
+            ];
+        }
+
+        return $rows;
     }
 
     public function clearCache(): void {
@@ -713,7 +919,7 @@ class MetricsImplementationService {
      * Updates the cached dashboard representation of one website without
      * recalculating metrics for the complete network.
      */
-    public function refreshDashboardSiteStatus(int $siteId): bool {
+    public function refreshDashboardSiteStatus(int $siteId, int $statusUpdatedAt = 0): bool {
         $cached = $this->getStoredDashboardCache();
         $data = [];
         $siteOverview = [];
@@ -776,6 +982,7 @@ class MetricsImplementationService {
         $data['provisioning_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'provisioning');
         $data['dns_missing_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'dns_missing');
         $data['unreachable_sites'] = $this->filterFormattedSitesByOperationalStatus($siteOverview, 'unreachable');
+        $data['operational_status_distribution'] = $this->buildDashboardOperationalStatusDistribution($siteOverview);
         $data['summary'] = $this->refreshDashboardSummarySiteCounts((array)($data['summary'] ?? []), $siteOverview);
         if ($this->hasDashboardSitePublicStatus($siteOverview)) {
             $data['status_distribution'] = $this->buildDashboardStatusDistribution($siteOverview);
@@ -795,6 +1002,32 @@ class MetricsImplementationService {
         $cached['data'] = $data;
         $cached['version'] = self::DASHBOARD_CACHE_VERSION;
         $cached['dirty'] = true;
+        $cached['operational_status_updated_at'] = max(
+            (int)($cached['operational_status_updated_at'] ?? 0),
+            $statusUpdatedAt > 0 ? $statusUpdatedAt : time()
+        );
+        update_site_option($this->getCacheKey(), $cached);
+
+        return true;
+    }
+
+    /** Records the completion time of a monitoring pass without recalculating metrics. */
+    public function refreshDashboardOperationalStatusTimestamp(int $statusUpdatedAt): bool {
+        $cached = $this->getStoredDashboardCache();
+
+        if (
+            $statusUpdatedAt <= 0
+            || empty($cached['data'])
+            || !is_array($cached['data'])
+            || !$this->isCompleteDashboardData((array)$cached['data'])
+        ) {
+            return false;
+        }
+
+        $cached['operational_status_updated_at'] = max(
+            (int)($cached['operational_status_updated_at'] ?? 0),
+            $statusUpdatedAt
+        );
         update_site_option($this->getCacheKey(), $cached);
 
         return true;
@@ -866,6 +1099,58 @@ class MetricsImplementationService {
 
         foreach ($rows as $index => $row) {
             $rows[$index]['percent'] = (int)round(((int)$row['value'] / $totalSites) * 100);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Rebuilds only the operational-status widget from cached website records
+     * after an availability check changes a website's operational status.
+     *
+     * @param array<int, array<string, mixed>> $sites
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildDashboardOperationalStatusDistribution(array $sites): array {
+        $buckets = [
+            'automatic' => 0,
+            'healthy' => 0,
+            'provisioning' => 0,
+            'dns_missing' => 0,
+            'unreachable' => 0,
+            'retired' => 0,
+        ];
+
+        foreach ($sites as $site) {
+            $status = sanitize_key((string)($site['operational_status'] ?? ''));
+
+            if (!isset($buckets[$status])) {
+                $status = 'automatic';
+            }
+
+            $buckets[$status]++;
+        }
+
+        $totalSites = max(1, count($sites));
+        $definitions = [
+            'automatic' => [__('Not set / automatic', 'rrze-multisite-manager'), 'automatic', 'theme-1'],
+            'healthy' => [__('Technically reachable', 'rrze-multisite-manager'), 'technically_reachable', 'positive'],
+            'provisioning' => [__('Provisioning in progress', 'rrze-multisite-manager'), 'provisioning', 'info'],
+            'dns_missing' => [__('DNS missing', 'rrze-multisite-manager'), 'dns_missing', 'danger'],
+            'unreachable' => [__('Technically unreachable', 'rrze-multisite-manager'), 'technically_unreachable', 'warning'],
+            'retired' => [__('Out of service', 'rrze-multisite-manager'), 'out_of_service', 'neutral'],
+        ];
+        $rows = [];
+
+        foreach ($definitions as $bucket => [$label, $statusKey, $accent]) {
+            $rows[] = [
+                'label' => $label,
+                'status_key' => $statusKey,
+                'value' => (int)$buckets[$bucket],
+                'accent' => $accent,
+                'color' => $this->config->getSiteStatusColor($statusKey),
+                'percent' => (int)round(((int)$buckets[$bucket] / $totalSites) * 100),
+            ];
         }
 
         return $rows;
@@ -980,6 +1265,78 @@ class MetricsImplementationService {
             fn(): bool => $this->isDashboardRefreshInProgress(),
             fn(): array => $this->runDashboardRefreshBatch()
         );
+    }
+
+    /** Copies current snapshots to the configured historical cadence. */
+    public function handleScheduledDashboardHistoryCompaction(...$args): void {
+        if (!$this->isCentralNetworkCronSite() || self::isFullDataCleanupInProgress() || !$this->isDashboardSchedulingEnabled() || !$this->isDashboardHistoryCompactionEnabled()) {
+            return;
+        }
+
+        $startedAt = time();
+        $snapshotCount = 0;
+        update_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION, [
+            'status' => 'running',
+            'started_at' => $startedAt,
+            'finished_at' => 0,
+            'duration_seconds' => 0,
+            'created_count' => 0,
+            'site_count' => max(0, $snapshotCount - 1),
+            'error' => '',
+        ]);
+
+        try {
+            $snapshotCount = $this->dashboardHistory->getCurrentSnapshotCount();
+            $created = $this->dashboardHistory->compact($this->getDashboardHistoryCompactionIntervalSeconds());
+            $finishedAt = time();
+            update_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION, [
+                'status' => 'complete',
+                'started_at' => $startedAt,
+                'finished_at' => $finishedAt,
+                'duration_seconds' => max(0, $finishedAt - $startedAt),
+                'created_count' => $created,
+                'site_count' => max(0, $snapshotCount - 1),
+                'error' => '',
+            ]);
+        } catch (\Throwable $exception) {
+            $finishedAt = time();
+            update_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION, [
+                'status' => 'error',
+                'started_at' => $startedAt,
+                'finished_at' => $finishedAt,
+                'duration_seconds' => max(0, $finishedAt - $startedAt),
+                'created_count' => 0,
+                'site_count' => max(0, $snapshotCount - 1),
+                'error' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
+        }
+    }
+
+    /** Queues a normal one-time statistics run on the central Cron site. */
+    public function scheduleDashboardHistoryCompactionFromNow(): bool {
+        if (!$this->isCentralNetworkCronSite()) {
+            return (bool)$this->inCentralNetworkCronContext(
+                fn(): bool => $this->scheduleDashboardHistoryCompactionFromNow()
+            );
+        }
+
+        if (self::isFullDataCleanupInProgress() || !$this->isDashboardSchedulingEnabled() || !$this->isDashboardHistoryCompactionEnabled()) {
+            return false;
+        }
+
+        if (wp_next_scheduled(self::DASHBOARD_HISTORY_COMPACTION_HOOK, [true])) {
+            return true;
+        }
+
+        $scheduled = wp_schedule_single_event(time() + 5, self::DASHBOARD_HISTORY_COMPACTION_HOOK, [true]);
+
+        return !is_wp_error($scheduled);
+    }
+
+    public function deleteDashboardMetricStatistics(): int {
+        return $this->dashboardHistory->purgeStatistics();
     }
 
     public function handleScheduledDashboardComposition(string $runId): void {
@@ -1477,6 +1834,7 @@ class MetricsImplementationService {
             'needs_refresh' => $needsRefresh,
             'is_running' => $isRunning,
             'last_run_timestamp' => (int)($cached['generated_at'] ?? 0),
+            'operational_status_updated_at_timestamp' => (int)($cached['operational_status_updated_at'] ?? 0),
             'last_started_at_timestamp' => (int)($cached['started_at'] ?? 0),
             'last_finished_at_timestamp' => (int)($cached['generated_at'] ?? 0),
             'next_run_timestamp' => $nextRunTimestamp ? (int)$nextRunTimestamp : 0,
@@ -1511,11 +1869,38 @@ class MetricsImplementationService {
                 : __('Check dashboard metrics composition', 'rrze-multisite-manager');
         }
 
+        $lastHistoryTimestamp = $this->dashboardHistory->getLastStatisticTimestamp();
+        $historyCompactionEnabled = $this->isDashboardHistoryCompactionEnabled();
+        $historyRunState = $this->getDashboardHistoryRunState();
+        $historyStartedAt = max(0, (int)($historyRunState['started_at'] ?? 0));
+        $historyFinishedAt = max(0, (int)($historyRunState['finished_at'] ?? 0));
+        $historyCreatedCount = max(0, (int)($historyRunState['created_count'] ?? 0));
+        $historySiteCount = max(0, (int)($historyRunState['site_count'] ?? 0));
+        $historyIsRunning = (string)($historyRunState['status'] ?? '') === 'running';
+        $historyHasError = (string)($historyRunState['status'] ?? '') === 'error';
+        $historyLastRunAt = $historyFinishedAt > 0 ? $historyFinishedAt : $lastHistoryTimestamp;
+        $historyStatusMessage = '';
+
+        if ($historyHasError) {
+            $historyStatusMessage = __('Dashboard metric statistics could not be completed. Check the error log and run the task again.', 'rrze-multisite-manager');
+        } elseif ($historyFinishedAt > 0 && $historyCreatedCount === 0) {
+            $historyStatusMessage = $historySiteCount > 0
+                ? __('No new dashboard metric statistics were due for this run.', 'rrze-multisite-manager')
+                : __('No completed dashboard snapshot was available for this run.', 'rrze-multisite-manager');
+        } elseif ($historyFinishedAt > 0) {
+            $historyStatusMessage = sprintf(
+                /* translators: %d: number of created metric statistic snapshots. */
+                _n('%d dashboard metric statistic was created.', '%d dashboard metric statistics were created.', $historyCreatedCount, 'rrze-multisite-manager'),
+                number_format_i18n($historyCreatedCount)
+            );
+        }
+
         return [
             [
                 'id' => 'dashboard-metrics',
                 'title' => __('Dashboard metrics', 'rrze-multisite-manager'),
                 'description' => __('Calculates the aggregated network metrics for the dashboard as well as website, plugin, and theme overviews.', 'rrze-multisite-manager'),
+                'cron_hook' => self::DASHBOARD_REFRESH_HOOK,
                 'interval_hours' => $this->getMetricsRefreshIntervalHours(),
                 'interval_label' => $this->getMetricsRefreshScheduleLabel(),
                 'last_run' => $status['last_run_timestamp'] > 0 ? gmdate('Y-m-d H:i:s', (int)$status['last_run_timestamp']) : '',
@@ -1549,6 +1934,39 @@ class MetricsImplementationService {
                     'is_dirty' => !empty($status['is_dirty']),
                     'has_composition_error' => (string)($status['composition_error'] ?? '') !== '',
                     'is_composing' => $isComposing,
+                ],
+            ],
+            [
+                'id' => 'dashboard-metrics-history',
+                'title' => __('Dashboard metric statistics', 'rrze-multisite-manager'),
+                'description' => __('Copies the latest complete dashboard metrics into the historical statistics table at the configured cadence.', 'rrze-multisite-manager'),
+                'cron_hook' => self::DASHBOARD_HISTORY_COMPACTION_HOOK,
+                'interval_hours' => (int)round($this->getDashboardHistoryCompactionIntervalSeconds() / HOUR_IN_SECONDS),
+                'interval_label' => $this->getDashboardHistoryCompactionScheduleLabel(),
+                'last_run' => $historyLastRunAt > 0 ? gmdate('Y-m-d H:i:s', $historyLastRunAt) : '',
+                'started_at' => $historyStartedAt > 0 ? gmdate('Y-m-d H:i:s', $historyStartedAt) : '',
+                'finished_at' => $historyFinishedAt > 0 ? gmdate('Y-m-d H:i:s', $historyFinishedAt) : '',
+                'last_site_count' => $historySiteCount > 0 ? $historySiteCount : (int)($status['last_site_count'] ?? 0),
+                'next_run_timestamp' => $this->getNextDashboardHistoryCompactionTimestamp(),
+                'is_running' => $historyIsRunning,
+                'status_key' => $historyHasError ? 'error' : '',
+                'schedule_action_state' => 'start',
+                'batch_offset' => 0,
+                'batch_total' => 0,
+                'checked_sites' => $historyFinishedAt > 0 ? $historySiteCount : 0,
+                'remaining_sites' => 0,
+                'progress_percent' => $historyFinishedAt > 0 && $historySiteCount > 0 ? 100 : 0,
+                'batch_size' => 0,
+                'current_duration_seconds' => $historyIsRunning && $historyStartedAt > 0 ? max(0, time() - $historyStartedAt) : 0,
+                'last_duration_seconds' => $historyIsRunning ? 0 : max(0, (int)($historyRunState['duration_seconds'] ?? 0)),
+                'status_message' => $historyStatusMessage,
+                'next_step_label' => '',
+                'run_state' => [
+                    'has_data' => $historyLastRunAt > 0 || !$historyCompactionEnabled,
+                    'needs_refresh' => false,
+                    'is_dirty' => false,
+                    'has_composition_error' => false,
+                    'is_composing' => false,
                 ],
             ],
         ];
@@ -3814,7 +4232,7 @@ class MetricsImplementationService {
     }
 
     protected function getSiteOverviewMetrics(int $siteId): array {
-        $cacheKey = 'rrze_msm_site_overview_metrics_v2_' . $this->getDetailCacheVersion() . '_' . $siteId;
+        $cacheKey = 'rrze_msm_site_overview_metrics_v3_' . $this->getDetailCacheVersion() . '_' . $siteId;
         $roleCounts = [
             'admins' => 0,
             'editors' => 0,
@@ -3837,6 +4255,7 @@ class MetricsImplementationService {
         ];
         $cached = get_site_transient($cacheKey);
         $userData = [];
+        $networkActivePlugins = array_keys((array)get_site_option('active_sitewide_plugins', []));
 
         if (is_array($cached) && !empty($cached)) {
             return $cached;
@@ -3851,6 +4270,9 @@ class MetricsImplementationService {
         $contentCounts['posts'] = $this->countContentItems('post');
         $contentCounts['media'] = $this->countContentItems('attachment');
         $storage = $this->getSiteStorageUsage();
+        $activePlugins = get_option('active_plugins', []);
+        $customPostTypes = get_post_types(['_builtin' => false], 'names');
+        $databaseBytes = $this->getSiteDatabaseSizeBytes($siteId);
 
         restore_current_blog();
 
@@ -3859,11 +4281,67 @@ class MetricsImplementationService {
             'role_counts' => $roleCounts,
             'content_counts' => $contentCounts,
             'storage' => $storage,
+            'plugin_count' => count(array_unique(array_merge(
+                $networkActivePlugins,
+                is_array($activePlugins) ? array_filter($activePlugins, 'is_string') : []
+            ))),
+            // Installed themes are shared by the WordPress installation, but
+            // this count documents the set available to each website.
+            'theme_count' => count(wp_get_themes()),
+            'user_count' => max(0, (int)($userData['total_users'] ?? 0)),
+            'custom_post_type_count' => count(array_diff(
+                array_filter($customPostTypes, 'is_string'),
+                ['post', 'page', 'attachment']
+            )),
+            'database_bytes' => $databaseBytes,
         ];
 
         set_site_transient($cacheKey, $cached, $this->getDetailCacheTtl());
 
         return $cached;
+    }
+
+    /**
+     * Measures all tables belonging to a website. Network-global and MSM's
+     * shared analysis tables are excluded; unavailable metadata remains NULL.
+     */
+    protected function getSiteDatabaseSizeBytes(int $siteId): ?int {
+        global $wpdb;
+
+        $prefix = (string)$wpdb->prefix;
+        $basePrefix = (string)$wpdb->base_prefix;
+        if ($siteId <= 0 || $prefix === '') {
+            return null;
+        }
+
+        $globalTables = array_merge((array)$wpdb->tables('global'), (array)$wpdb->tables('ms_global'));
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('runs');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('shortcodes');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('blocks');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('mediaindex');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('dashboard_metrics');
+        $globalTables = array_values(array_unique(array_filter($globalTables, 'is_string')));
+        $where = ['table_schema = DATABASE()', 'table_name LIKE %s'];
+        $arguments = [$wpdb->esc_like($prefix) . '%'];
+
+        if ($siteId === (int)get_main_site_id(get_current_network_id())) {
+            $where[] = 'table_name NOT REGEXP %s';
+            $arguments[] = '^' . preg_quote($basePrefix, '/') . '[0-9]+_';
+        }
+
+        if (!empty($globalTables)) {
+            $placeholders = implode(',', array_fill(0, count($globalTables), '%s'));
+            $where[] = "table_name NOT IN ($placeholders)";
+            $arguments = array_merge($arguments, $globalTables);
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Database table metadata is intentionally sampled by the dashboard metrics process and persisted as a historical snapshot.
+        $size = $wpdb->get_var($wpdb->prepare(
+            'SELECT SUM(data_length + index_length) FROM information_schema.tables WHERE ' . implode(' AND ', $where),
+            ...$arguments
+        ));
+
+        return is_numeric($size) ? max(0, (int)$size) : null;
     }
 
     protected function getSiteDetailMetrics(int $siteId, array $load = []): array {
@@ -4776,25 +5254,12 @@ class MetricsImplementationService {
 
     public function getCachedSiteStorageAnalysis(int $siteId): array {
         $cached = [];
-        $legacyCached = [];
 
         if ($siteId <= 0) {
             return [];
         }
 
         $cached = $this->storageAnalysisResults->getResult($siteId);
-
-        if (!is_array($cached) || empty($cached)) {
-            $legacyCached = get_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
-
-            if (is_array($legacyCached) && !empty($legacyCached)) {
-                $cached = $this->normalizeSiteStorageAnalysis($legacyCached);
-                switch_to_blog($siteId);
-                $this->saveCurrentSiteStorageAnalysisResult($cached);
-                restore_current_blog();
-                delete_site_transient($this->getSiteStorageAnalysisCacheKey($siteId));
-            }
-        }
 
         if (!is_array($cached) || empty($cached)) {
             return [];
@@ -4808,8 +5273,8 @@ class MetricsImplementationService {
 
     public function getSiteStorageAnalysisProcessStatus(int $siteId, bool $loadResult = false): array {
         $resultMeta = $this->getSiteStorageAnalysisResultMeta($siteId);
-        $baseState = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
-        $orphanState = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        $baseState = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisBaseStateKey($siteId));
+        $orphanState = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisOrphanStateKey($siteId));
 
         if ($loadResult) {
             $this->getCachedSiteStorageAnalysis($siteId);
@@ -4859,13 +5324,13 @@ class MetricsImplementationService {
         }
 
         if ($phase === 'orphan') {
-            $state = get_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+            $state = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisOrphanStateKey($siteId));
 
             return is_array($state) ? $this->buildSiteStorageOrphanProgressContext($state) : [];
         }
 
         if ($phase === 'base') {
-            $state = get_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
+            $state = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($this->getSiteStorageAnalysisBaseStateKey($siteId));
 
             if (!is_array($state)) {
                 return [];
@@ -5308,7 +5773,6 @@ class MetricsImplementationService {
                     $bucket = (string)$bucket;
                     $key = $this->storageAnalysisState->getAttachmentIndexBucketKey($siteId, $this->getDetailCacheVersion(), $bucket);
                     StorageAnalysisResourceService::saveState($key, $stored, 7 * DAY_IN_SECONDS);
-                    $this->releaseStorageIndexRuntimeCache($key);
                     unset($state['pending_index_buckets'][$bucket], $this->currentSiteStorageAnalysisAttachmentIndexBucketCache[$siteId . ':' . $bucket]);
                 }
             });
@@ -5352,26 +5816,11 @@ class MetricsImplementationService {
     }
 
     protected function readStorageIndexBucket(string $key): array {
-        $stored = get_site_transient($key);
+        $stored = (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->read($key);
         if (preg_match('/_resumable_v2_(\d+)_([a-f0-9]{2})$/', $key, $parts)) {
             $this->storageResources->assertBucketPresent((int)$parts[1], $parts[2], is_array($stored));
         }
-        $this->releaseStorageIndexRuntimeCache($key);
         return is_array($stored) ? $stored : [];
-    }
-
-    /** Do not leave a second, unlimited segment cache inside WordPress's runtime cache. */
-    protected function releaseStorageIndexRuntimeCache(string $key): void {
-        if (!wp_using_ext_object_cache()) {
-            // Only the in-process copies are removed; the transient remains in sitemeta.
-            $network = get_current_network_id();
-            wp_cache_delete($network . ':_site_transient_' . $key, 'site-options');
-            wp_cache_delete($network . ':_site_transient_timeout_' . $key, 'site-options');
-        } elseif (++$this->storageIndexRuntimeCacheReads >= 8 && wp_cache_supports('flush_runtime')) {
-            // Never flush persistent cache data or use a fallback to wp_cache_flush().
-            wp_cache_flush_runtime();
-            $this->storageIndexRuntimeCacheReads = 0;
-        }
     }
 
     /** Adds file roles used by the paginated summary, without storing a second path index. */
@@ -5695,12 +6144,11 @@ class MetricsImplementationService {
             )
         );
 
-        // The persistent result already records completion. Keeping an additional completed
-        // transient only produces an unnecessary value/timeout pair in the network table.
+        // The persistent result records completion; retire the temporary checkpoints.
         // Keep the bounded index until the following orphan phase. Rebuilding it
         // would scan every attachment and write every temporary segment twice.
-        delete_site_transient($this->getSiteStorageAnalysisBaseStateKey($siteId));
-        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($this->getSiteStorageAnalysisBaseStateKey($siteId));
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($this->getSiteStorageAnalysisOrphanStateKey($siteId));
     }
 
     protected function initializeCurrentSiteStorageAnalysisOrphanState(array $analysis, string $assignmentMode = 'batch'): array {
@@ -6094,6 +6542,8 @@ class MetricsImplementationService {
             $stage = 'complete';
         }
 
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->saveUsage(get_current_blog_id(), (array)($state['used_attachment_ids'] ?? []));
+        $state['used_attachment_ids'] = [];
         $state['attachment_usage_matches'] = $usageMatches;
         $state['attachment_usage_stage'] = $stage;
         $state['message'] = $stage === 'complete'
@@ -6509,7 +6959,7 @@ class MetricsImplementationService {
                 throw new \RuntimeException(__('Attachment metadata exceeded the analysis input limit. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
             }
             $path = $this->normalizeRelativeUploadPath((string)($row->attached_file ?? ''));
-            if ($path === '' || !empty($state['used_attachment_ids'][$id])) {
+            if ($path === '' || (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->isUsed($siteId, $id)) {
                 continue;
             }
             $absolutePath = $this->getCurrentSiteStorageAbsolutePathFromRelative($state, $path);
@@ -6563,7 +7013,7 @@ class MetricsImplementationService {
         $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
 
         // The completed orphan status is part of the persistent analysis result.
-        delete_site_transient($this->getSiteStorageAnalysisOrphanStateKey($siteId));
+        (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->delete($this->getSiteStorageAnalysisOrphanStateKey($siteId));
         $this->storageResources->release($siteId);
     }
 
@@ -10035,6 +10485,104 @@ class MetricsImplementationService {
         $this->ensureDashboardRefreshSchedule();
     }
 
+    public function rescheduleDashboardHistoryCompactionCycle(): void {
+        if (!$this->isCentralNetworkCronSite()) {
+            return;
+        }
+
+        $this->clearDashboardHistoryCompactionEvents();
+        $this->ensureDashboardHistoryCompactionSchedule();
+    }
+
+    protected function getDashboardHistoryCompactionFrequency(): string {
+        $frequency = (string)($this->settings?->getOption('monitoring', 'dashboard_metrics_history_frequency', 'weekly') ?? 'weekly');
+
+        return in_array($frequency, ['disabled', 'daily', 'weekly', 'monthly'], true) ? $frequency : 'weekly';
+    }
+
+    protected function isDashboardHistoryCompactionEnabled(): bool {
+        return $this->getDashboardHistoryCompactionFrequency() !== 'disabled';
+    }
+
+    protected function getDashboardHistoryCompactionIntervalSeconds(): int {
+        return match ($this->getDashboardHistoryCompactionFrequency()) {
+            'daily' => DAY_IN_SECONDS,
+            'monthly' => 30 * DAY_IN_SECONDS,
+            default => WEEK_IN_SECONDS,
+        };
+    }
+
+    protected function getDashboardHistoryCompactionScheduleLabel(): string {
+        return match ($this->getDashboardHistoryCompactionFrequency()) {
+            'disabled' => __('Dashboard metric statistics disabled', 'rrze-multisite-manager'),
+            'daily' => __('Daily dashboard metric statistics', 'rrze-multisite-manager'),
+            'monthly' => __('Monthly dashboard metric statistics', 'rrze-multisite-manager'),
+            default => __('Weekly dashboard metric statistics', 'rrze-multisite-manager'),
+        };
+    }
+
+    /** @return array<string, int|string> */
+    protected function getDashboardHistoryRunState(): array {
+        $state = get_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION, []);
+
+        return is_array($state) ? $state : [];
+    }
+
+    protected function ensureDashboardHistoryCompactionSchedule(): void {
+        if (!$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled() || !$this->isDashboardHistoryCompactionEnabled()) {
+            return;
+        }
+
+        if (wp_next_scheduled(self::DASHBOARD_HISTORY_COMPACTION_HOOK)) {
+            return;
+        }
+
+        wp_schedule_event(
+            time() + MINUTE_IN_SECONDS,
+            self::DASHBOARD_HISTORY_COMPACTION_SCHEDULE,
+            self::DASHBOARD_HISTORY_COMPACTION_HOOK
+        );
+    }
+
+    protected function scheduleDashboardHistoryCompaction(int $delay = 5): void {
+        if (!$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled() || !$this->isDashboardHistoryCompactionEnabled()) {
+            return;
+        }
+
+        if (!wp_next_scheduled(self::DASHBOARD_HISTORY_COMPACTION_HOOK, [true])) {
+            wp_schedule_single_event(time() + max(5, $delay), self::DASHBOARD_HISTORY_COMPACTION_HOOK, [true]);
+        }
+    }
+
+    protected function clearDashboardHistoryCompactionEvents(): int {
+        $removed = 0;
+        foreach ((array)_get_cron_array() as $timestamp => $events) {
+            foreach ((array)($events[self::DASHBOARD_HISTORY_COMPACTION_HOOK] ?? []) as $event) {
+                if (wp_unschedule_event((int)$timestamp, self::DASHBOARD_HISTORY_COMPACTION_HOOK, (array)($event['args'] ?? []))) {
+                    $removed++;
+                }
+            }
+        }
+
+        return $removed;
+    }
+
+    protected function getNextDashboardHistoryCompactionTimestamp(): int {
+        if (!$this->isCentralNetworkCronSite()) {
+            return (int)$this->inCentralNetworkCronContext(fn(): int => $this->getNextDashboardHistoryCompactionTimestamp());
+        }
+
+        $nextTimestamp = 0;
+        foreach ((array)_get_cron_array() as $timestamp => $events) {
+            if (!empty($events[self::DASHBOARD_HISTORY_COMPACTION_HOOK])) {
+                $nextTimestamp = (int)$timestamp;
+                break;
+            }
+        }
+
+        return $nextTimestamp;
+    }
+
     protected function ensureDashboardRefreshSchedule(): void {
         if (!$this->isCentralNetworkCronSite() || !$this->isDashboardSchedulingEnabled()) {
             return;
@@ -10094,7 +10642,7 @@ class MetricsImplementationService {
         $removed = 0;
 
         foreach ((array)$cron as $timestamp => $events) {
-            foreach ([self::DASHBOARD_REFRESH_HOOK, self::DASHBOARD_COMPOSE_HOOK, self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK] as $hook) {
+            foreach ([self::DASHBOARD_REFRESH_HOOK, self::DASHBOARD_COMPOSE_HOOK, self::DASHBOARD_COMPOSITION_WATCHDOG_HOOK, self::DASHBOARD_HISTORY_COMPACTION_HOOK] as $hook) {
                 foreach ((array)($events[$hook] ?? []) as $event) {
                     if (wp_unschedule_event(
                         (int)$timestamp,
@@ -10468,7 +11016,70 @@ class MetricsImplementationService {
 
     protected function finalizeDashboardRefreshBatchState(array $state): void {
         $data = $this->buildDashboardDataPayloadFromBatchState($state);
-        $this->dashboardRefresh->saveCompletedCache($data, (int)($state['started_at'] ?? time()));
+        $recordedAt = time();
+
+        $this->dashboardHistory->saveCurrentSnapshots(
+            $this->buildDashboardHistorySnapshots($data),
+            $recordedAt
+        );
+        $this->dashboardRefresh->saveCompletedCache($data, (int)($state['started_at'] ?? $recordedAt));
+        $this->scheduleDashboardHistoryCompaction(5);
+    }
+
+    /**
+     * Reduces the completed dashboard payload to durable, numeric snapshots.
+     * The network row (blog_id 0) preserves counts by website status.
+     *
+     * @return array<int, array<string, int|string|null>>
+     */
+    protected function buildDashboardHistorySnapshots(array $data): array {
+        $summary = is_array($data['summary'] ?? null) ? $data['summary'] : [];
+        $snapshots = [[
+            'blog_id' => 0,
+            'site_status' => '',
+            'websites_total' => (int)($summary['total_sites'] ?? 0),
+            'websites_active' => (int)($summary['active_sites'] ?? 0),
+            'websites_archived' => (int)($summary['archived_sites'] ?? 0),
+            'websites_blocked' => (int)($summary['spam_sites'] ?? 0),
+            'websites_deleted' => (int)($summary['deleted_sites'] ?? 0),
+            'media_bytes' => null,
+            'database_bytes' => null,
+            'plugin_count' => 0,
+            'theme_count' => 0,
+            'user_count' => 0,
+            'page_count' => 0,
+            'post_count' => 0,
+            'media_count' => 0,
+            'custom_post_type_count' => 0,
+        ]];
+
+        foreach ((array)($data['site_overview'] ?? []) as $site) {
+            if (!is_array($site) || (int)($site['id'] ?? 0) <= 0) {
+                continue;
+            }
+            $storage = is_array($site['storage'] ?? null) ? $site['storage'] : [];
+            $content = is_array($site['content_counts'] ?? null) ? $site['content_counts'] : [];
+            $snapshots[] = [
+                'blog_id' => (int)$site['id'],
+                'site_status' => (string)($site['status'] ?? ''),
+                'websites_total' => 0,
+                'websites_active' => 0,
+                'websites_archived' => 0,
+                'websites_blocked' => 0,
+                'websites_deleted' => 0,
+                'media_bytes' => is_numeric($storage['used_bytes'] ?? null) ? (int)$storage['used_bytes'] : null,
+                'database_bytes' => is_numeric($site['database_bytes'] ?? null) ? (int)$site['database_bytes'] : null,
+                'plugin_count' => (int)($site['plugin_count'] ?? 0),
+                'theme_count' => (int)($site['theme_count'] ?? 0),
+                'user_count' => (int)($site['user_count'] ?? 0),
+                'page_count' => (int)($content['pages'] ?? 0),
+                'post_count' => (int)($content['posts'] ?? 0),
+                'media_count' => (int)($content['media'] ?? 0),
+                'custom_post_type_count' => (int)($site['custom_post_type_count'] ?? 0),
+            ];
+        }
+
+        return $snapshots;
     }
 
     protected function createBasePluginUsageStats(): array {

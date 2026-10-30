@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.3.17
+ * Version:         1.3.21
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -101,6 +101,12 @@ function systemRequirements(Config $config): string {
 }
 
 function loaded(): void {
+    if (!isNetworkActivationValid()) {
+        add_action('admin_notices', __NAMESPACE__ . '\\showNetworkActivationRequiredNotice');
+        add_action('network_admin_notices', __NAMESPACE__ . '\\showNetworkActivationRequiredNotice');
+        return;
+    }
+
     $config = new Config();
 
     if ($error = systemRequirements($config)) {
@@ -114,6 +120,28 @@ function loaded(): void {
 
     $main = new Main($plugin);
     $main->onLoaded();
+}
+
+/**
+ * WordPress Core enforces the Network header during regular activation. This
+ * guard also prevents execution if a database import or custom tooling has
+ * created an invalid per-site activation entry.
+ */
+function isNetworkActivationValid(): bool {
+    if (!is_multisite()) {
+        return true;
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    return is_plugin_active_for_network(plugin_basename(__FILE__));
+}
+
+function showNetworkActivationRequiredNotice(): void {
+    if (!current_user_can('manage_network_plugins')) {
+        return;
+    }
+
+    echo '<div class="notice notice-error"><p>' . esc_html__('RRZE Multisite Manager must be activated network-wide in a multisite installation.', 'rrze-multisite-manager') . '</p></div>';
 }
 
 function registerSystemRequirementNotice(): void {
@@ -145,6 +173,10 @@ function showSystemRequirementNotice(): void {
 }
 
 function activate(bool $networkWide = false): void {
+    // The four central tables are independent of individual sites. Create or
+    // update them before this activation completes, rather than on first use.
+    (new Analysis\AnalysisStore())->install();
+
     $config = new Config();
     $metrics = new MetricsService(null, $config);
 
@@ -161,10 +193,53 @@ function activate(bool $networkWide = false): void {
     (new ShortcodeBlockAnalysisSchedulerService($config))->markScheduleConfigurationCurrent();
 }
 
-function deactivate(): void {
-    MonitoringService::disableScheduledChecks(null, false);
-    (new MetricsService())->disableDashboardScheduling(false);
-    MetricsService::disableMaintenanceScheduling(false);
-    StorageAnalysisSchedulerService::clearScheduledEvents(null, false);
-    ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents(null, false);
+function deactivate(bool $networkWide = false): void {
+    Analysis\AnalysisLifecycle::unschedule();
+    MonitoringService::disableScheduledChecks();
+    (new MetricsService())->disableDashboardScheduling();
+    MetricsService::disableMaintenanceScheduling();
+    StorageAnalysisSchedulerService::clearScheduledEvents();
+    ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents();
+    clearPluginCronEvents();
+
+}
+
+/** Remove every plugin-owned Cron hook from every site during network deactivation. */
+function clearPluginCronEvents(): int {
+    $removed = 0;
+    $currentSiteId = get_current_blog_id();
+    $siteIds = get_sites(['fields' => 'ids', 'number' => 0]);
+    foreach (array_unique(array_map('absint', $siteIds)) as $siteId) {
+        if ($siteId <= 0) {
+            continue;
+        }
+        if ($siteId !== $currentSiteId) {
+            switch_to_blog($siteId);
+        }
+        try {
+            $cron = _get_cron_array();
+            $changed = false;
+            foreach ((array)$cron as $timestamp => $events) {
+                foreach (array_keys((array)$events) as $hook) {
+                    if (!str_starts_with((string)$hook, 'rrze_msm_')) {
+                        continue;
+                    }
+                    $removed += count((array)$cron[$timestamp][$hook]);
+                    unset($cron[$timestamp][$hook]);
+                    $changed = true;
+                }
+                if (empty($cron[$timestamp])) {
+                    unset($cron[$timestamp]);
+                }
+            }
+            if ($changed) {
+                _set_cron_array($cron);
+            }
+        } finally {
+            if ($siteId !== $currentSiteId) {
+                restore_current_blog();
+            }
+        }
+    }
+    return $removed;
 }
