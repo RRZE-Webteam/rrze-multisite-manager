@@ -40,6 +40,7 @@ class Dashboard {
     protected ViewManager $viewManager;
     protected array $pageHooks = [];
     protected const META_ARCHIVED_AT = 'rrze_msm_archived_at';
+    protected const META_DELETED_AT = 'rrze_msm_deleted_at';
     protected const META_SPAM_AT = 'rrze_msm_spam_at';
     protected const META_STATUS_NOTE = 'rrze_msm_status_note';
     protected const META_STATUS_USER_ID = 'rrze_msm_status_user_id';
@@ -2201,6 +2202,7 @@ class Dashboard {
 
             check_admin_referer('rrze_multisite_manager_site_status_delete_' . $siteId);
             update_blog_status($siteId, 'deleted', 1);
+            update_site_meta($siteId, self::META_DELETED_AT, current_time('mysql', true));
         } else {
             wp_die(esc_html__('Invalid status action.', 'rrze-multisite-manager'));
         }
@@ -3243,6 +3245,7 @@ class Dashboard {
             update_blog_status($siteId, 'archived', 1);
             update_blog_status($siteId, 'spam', 0);
             update_blog_status($siteId, 'deleted', 0);
+            delete_site_meta($siteId, self::META_DELETED_AT);
             delete_site_meta($siteId, self::META_SPAM_AT);
             update_site_meta($siteId, self::META_ARCHIVED_AT, $timestamp);
         } elseif ($statusAction === 'spam') {
@@ -3261,6 +3264,7 @@ class Dashboard {
         update_blog_status($siteId, 'archived', 0);
         update_blog_status($siteId, 'spam', 0);
         update_blog_status($siteId, 'deleted', 0);
+        delete_site_meta($siteId, self::META_DELETED_AT);
         delete_site_meta($siteId, self::META_ARCHIVED_AT);
         delete_site_meta($siteId, self::META_SPAM_AT);
         delete_site_meta($siteId, self::META_STATUS_NOTE);

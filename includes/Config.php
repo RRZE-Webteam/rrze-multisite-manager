@@ -10,6 +10,9 @@ class Config {
     private array $config = [];
 
     public function __construct() {
+        $network = function_exists('get_network') ? get_network() : null;
+        $serverDomain = $network instanceof \WP_Network ? $network->domain : '';
+        $websiteStatusReportSubject = 'MSM Report: Website-Status ' . $serverDomain;
         $schedulerFrequencies = [
             'weekly' => ['hours' => 168, 'label' => __('Once weekly', 'rrze-multisite-manager')],
             'twiceweekly' => ['hours' => 84, 'label' => __('Twice weekly', 'rrze-multisite-manager')],
@@ -125,6 +128,11 @@ class Config {
                     'description' => __('Settings for technical reachability and availability checks.', 'rrze-multisite-manager'),
                 ],
                 [
+                    'id' => 'reporting',
+                    'title' => __('Website Status Report', 'rrze-multisite-manager'),
+                    'description' => __('Settings for the central website status report.', 'rrze-multisite-manager'),
+                ],
+                [
                     'id' => 'debugging',
                     'title' => __('Debugging', 'rrze-multisite-manager'),
                     'description' => __('Optional logging for background processes.', 'rrze-multisite-manager'),
@@ -147,6 +155,63 @@ class Config {
                         'type' => 'number',
                         'default' => 6,
                         'min' => 1,
+                    ],
+                ],
+                'reporting' => [
+                    [
+                        'name' => 'website_status_report_enabled',
+                        'label' => __('Enable reporting', 'rrze-multisite-manager'),
+                        'desc' => __('Creates a centrally scheduled email report for website statuses.', 'rrze-multisite-manager'),
+                        'type' => 'checkbox',
+                        'default' => false,
+                    ],
+                    [
+                        'name' => 'website_status_report_frequency',
+                        'label' => __('Cycle', 'rrze-multisite-manager'),
+                        'desc' => __('For monthly reports, the report is sent on the first selected weekday of each month.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'weekly',
+                        'choices' => [
+                            'weekly' => __('Weekly', 'rrze-multisite-manager'),
+                            'biweekly' => __('Every two weeks', 'rrze-multisite-manager'),
+                            'monthly' => __('Monthly', 'rrze-multisite-manager'),
+                        ],
+                    ],
+                    [
+                        'name' => 'website_status_report_weekday',
+                        'label' => __('Weekday', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => '1',
+                        'choices' => [
+                            '0' => __('Sunday', 'rrze-multisite-manager'),
+                            '1' => __('Monday', 'rrze-multisite-manager'),
+                            '2' => __('Tuesday', 'rrze-multisite-manager'),
+                            '3' => __('Wednesday', 'rrze-multisite-manager'),
+                            '4' => __('Thursday', 'rrze-multisite-manager'),
+                            '5' => __('Friday', 'rrze-multisite-manager'),
+                            '6' => __('Saturday', 'rrze-multisite-manager'),
+                        ],
+                    ],
+                    [
+                        'name' => 'website_status_report_time',
+                        'label' => __('Earliest sending time', 'rrze-multisite-manager'),
+                        'desc' => __('The report is sent by the next WordPress Cron run at or after this local time.', 'rrze-multisite-manager'),
+                        'type' => 'time',
+                        'default' => '09:00',
+                    ],
+                    [
+                        'name' => 'website_status_report_recipient',
+                        'label' => __('Recipient email address', 'rrze-multisite-manager'),
+                        'desc' => __('Defaults to the network administrator email address.', 'rrze-multisite-manager'),
+                        'type' => 'email',
+                        'default' => '',
+                    ],
+                    [
+                        'name' => 'website_status_report_subject',
+                        'label' => __('Mail subject', 'rrze-multisite-manager'),
+                        'desc' => __('Defaults to the network domain. You can adjust the subject as needed.', 'rrze-multisite-manager'),
+                        'type' => 'text',
+                        'default' => $websiteStatusReportSubject,
                     ],
                 ],
                 'monitoring' => [
