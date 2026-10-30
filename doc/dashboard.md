@@ -23,6 +23,8 @@ Dashboard metrics are calculated centrally on the network's main site in the bac
 
 The composition task has its own expiring lock and watchdog. A new metrics run is held back while collection or composition is pending. The Monitoring row reports the separate composition phase after all sites reach 100 percent and names its next Cron step, so this expected interval is not mistaken for a stalled site loop. Successful and finally failed runs remove their own one-time composition/watchdog events. If composition repeatedly fails, the run is marked as failed and is visible in Monitoring, where it can be reset. This prevents a crashed final task from leaving a permanent lock or allowing overlapping runs.
 
+After a complete run, the dashboard also writes one current snapshot per website and one network summary into the central metrics table. These rows are deliberately separate from the dashboard cache. A second scheduled job copies the current rows as immutable `statistic` rows daily, weekly, or monthly; the default is weekly. It can be disabled without deleting existing statistics. The current rows remain in place, while statistics are retained only at the selected cadence. The snapshot includes active plugins, installed themes, users, pages, posts, media, custom post types, measured media storage, and website-specific database-table storage. Shared network and MSM analysis tables are not attributed to a website.
+
 When the calculation logic changes, the cache detects its version change and schedules a new batch calculation. This avoids an expensive synchronous run in an admin request.
 
 ## Implementation

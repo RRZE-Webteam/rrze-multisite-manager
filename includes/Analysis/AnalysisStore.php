@@ -9,7 +9,7 @@ defined('ABSPATH') || exit;
 
 /** Installation-wide derived data. Every query is network-scoped; no object-cache payloads. */
 class AnalysisStore {
-    public const SCHEMA_VERSION = 3;
+    public const SCHEMA_VERSION = 4;
     // Destructive legacy-data replacement is independent of additive schema repairs.
     public const DATA_VERSION = 1;
     public const CHECKPOINT_BYTES = 1048576;
@@ -18,16 +18,16 @@ class AnalysisStore {
 
     public function table(string $kind): string {
         global $wpdb;
-        if (!in_array($kind, ['runs', 'shortcodes', 'blocks', 'mediaindex'], true)) {
+        if (!in_array($kind, ['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics'], true)) {
             throw new \InvalidArgumentException('Invalid analysis table.');
         }
         return $wpdb->base_prefix . 'rrze_msm_analysis_' . $kind;
     }
 
-    /** Explicitly requested only during confirmed network plugin deactivation. */
+    /** Removes all central analysis tables; called only during plugin uninstall. */
     public function dropTables(): void {
         global $wpdb;
-        foreach (['shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
+        foreach (['dashboard_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
             $table = $this->table($kind);
             $this->check($wpdb->query("DROP TABLE IF EXISTS $table"), 'drop-' . $kind);
         }
@@ -80,6 +80,34 @@ class AnalysisStore {
                 KEY names (network_id,blog_id,run_id,name,id)
             ) ENGINE=InnoDB $charset;");
         }
+        $dashboardMetrics = $this->table('dashboard_metrics');
+        dbDelta("CREATE TABLE $dashboardMetrics (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            network_id bigint(20) unsigned NOT NULL,
+            blog_id bigint(20) unsigned NOT NULL,
+            entry_key varchar(64) NOT NULL,
+            snapshot_status varchar(16) NOT NULL,
+            recorded_at bigint(20) unsigned NOT NULL,
+            site_status varchar(24) NOT NULL DEFAULT '',
+            websites_total int(10) unsigned NOT NULL DEFAULT 0,
+            websites_active int(10) unsigned NOT NULL DEFAULT 0,
+            websites_archived int(10) unsigned NOT NULL DEFAULT 0,
+            websites_blocked int(10) unsigned NOT NULL DEFAULT 0,
+            websites_deleted int(10) unsigned NOT NULL DEFAULT 0,
+            media_bytes bigint(20) unsigned NULL,
+            database_bytes bigint(20) unsigned NULL,
+            plugin_count int(10) unsigned NOT NULL DEFAULT 0,
+            theme_count int(10) unsigned NOT NULL DEFAULT 0,
+            user_count int(10) unsigned NOT NULL DEFAULT 0,
+            page_count int(10) unsigned NOT NULL DEFAULT 0,
+            post_count int(10) unsigned NOT NULL DEFAULT 0,
+            media_count int(10) unsigned NOT NULL DEFAULT 0,
+            custom_post_type_count int(10) unsigned NOT NULL DEFAULT 0,
+            PRIMARY KEY  (id),
+            UNIQUE KEY entry (network_id,blog_id,entry_key),
+            KEY snapshots (network_id,snapshot_status,recorded_at,id),
+            KEY site_snapshots (network_id,blog_id,snapshot_status,recorded_at,id)
+        ) ENGINE=InnoDB $charset;");
         $this->verifySchema();
         update_site_option('rrze_msm_analysis_schema', self::SCHEMA_VERSION);
         if ((int)get_site_option('rrze_msm_analysis_schema', 0) !== self::SCHEMA_VERSION) {
@@ -90,18 +118,28 @@ class AnalysisStore {
     /** Never mark a partial dbDelta installation as current merely because its tables exist. */
     protected function verifySchema(): void {
         global $wpdb;
-        $common = ['id', 'network_id', 'blog_id', 'run_id'];
-        foreach (['runs', 'shortcodes', 'blocks', 'mediaindex'] as $kind) {
+        foreach (['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics'] as $kind) {
             $table = $this->table($kind);
             $definition = $wpdb->get_row($wpdb->prepare('SHOW TABLE STATUS LIKE %s', $wpdb->esc_like($table)));
             if (!$definition || strtolower((string)$definition->Engine) !== 'innodb') {
                 $this->fail('schema-engine-' . $kind);
             }
-            $required = $kind === 'runs'
+            if ($kind === 'dashboard_metrics') {
+                $common = ['id', 'network_id', 'blog_id'];
+                $required = [
+                    'entry_key', 'snapshot_status', 'recorded_at', 'site_status',
+                    'websites_total', 'websites_active', 'websites_archived', 'websites_blocked', 'websites_deleted',
+                    'media_bytes', 'database_bytes', 'plugin_count', 'theme_count', 'user_count',
+                    'page_count', 'post_count', 'media_count', 'custom_post_type_count',
+                ];
+            } else {
+                $common = ['id', 'network_id', 'blog_id', 'run_id'];
+                $required = $kind === 'runs'
                 ? ['slot', 'kind', 'status', 'payload', 'summary', 'updated_at', 'expires_at']
                 : ['entry_key', 'name', 'post_id', 'payload', 'payload_bytes'];
-            if ($kind === 'shortcodes' || $kind === 'blocks') {
-                $required = array_merge($required, ['registered', 'provider', 'category', 'origin', 'description']);
+                if ($kind === 'shortcodes' || $kind === 'blocks') {
+                    $required = array_merge($required, ['registered', 'provider', 'category', 'origin', 'description']);
+                }
             }
             // Table identifiers come only from table()'s fixed allowlist and the WP base prefix.
             $columns = $wpdb->get_col("SHOW COLUMNS FROM $table");

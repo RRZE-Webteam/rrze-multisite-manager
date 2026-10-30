@@ -34,6 +34,8 @@ use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
 class Settings {
     protected const LEGACY_CENTRAL_CRON_CLEANUP_STATE_OPTION = 'rrze_msm_legacy_central_cron_cleanup_state';
     protected const LEGACY_CENTRAL_CRON_CLEANUP_BATCH_SIZE = 100;
+    protected const DATABASE_USAGE_CACHE_KEY = 'rrze_msm_database_usage_aggregation_v1';
+    protected const DATABASE_USAGE_CACHE_TTL = 300;
     protected Plugin $plugin;
     protected string $optionName = '';
     public array $options = [];
@@ -70,9 +72,11 @@ class Settings {
             add_action('admin_post_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('admin_post_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
             add_action('admin_post_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
+            add_action('admin_post_rrze_multisite_manager_run_dashboard_metric_statistics', [$this, 'runDashboardMetricStatisticsNow']);
             add_action('admin_post_rrze_multisite_manager_reset_metrics', [$this, 'resetMetrics']);
             add_action('admin_post_rrze_multisite_manager_reset_monitoring', [$this, 'resetMonitoring']);
             add_action('admin_post_rrze_multisite_manager_start_full_data_cleanup', [$this, 'startFullDataCleanup']);
+            add_action('admin_post_rrze_multisite_manager_delete_dashboard_metric_statistics', [$this, 'deleteDashboardMetricStatistics']);
             add_action('admin_post_rrze_multisite_manager_remove_dashboard_metrics_tasks', [$this, 'removeDashboardMetricsTasks']);
             add_action('admin_post_rrze_multisite_manager_remove_monitoring_tasks', [$this, 'removeMonitoringTasks']);
             add_action('admin_post_rrze_multisite_manager_remove_storage_analysis_tasks', [$this, 'removeStorageAnalysisTasks']);
@@ -95,9 +99,11 @@ class Settings {
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
             add_action('network_admin_edit_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
+            add_action('network_admin_edit_rrze_multisite_manager_run_dashboard_metric_statistics', [$this, 'runDashboardMetricStatisticsNow']);
             add_action('network_admin_edit_rrze_multisite_manager_reset_metrics', [$this, 'resetMetrics']);
             add_action('network_admin_edit_rrze_multisite_manager_reset_monitoring', [$this, 'resetMonitoring']);
             add_action('network_admin_edit_rrze_multisite_manager_start_full_data_cleanup', [$this, 'startFullDataCleanup']);
+            add_action('network_admin_edit_rrze_multisite_manager_delete_dashboard_metric_statistics', [$this, 'deleteDashboardMetricStatistics']);
             add_action('network_admin_edit_rrze_multisite_manager_remove_dashboard_metrics_tasks', [$this, 'removeDashboardMetricsTasks']);
             add_action('network_admin_edit_rrze_multisite_manager_remove_monitoring_tasks', [$this, 'removeMonitoringTasks']);
             add_action('network_admin_edit_rrze_multisite_manager_remove_storage_analysis_tasks', [$this, 'removeStorageAnalysisTasks']);
@@ -224,6 +230,7 @@ class Settings {
 
         $monitoringFrequencyChanged = (string)($previousOptions['monitoring_monitoring_frequency'] ?? '') !== (string)($options['monitoring_monitoring_frequency'] ?? '');
         $metricsFrequencyChanged = (string)($previousOptions['monitoring_metrics_frequency'] ?? '') !== (string)($options['monitoring_metrics_frequency'] ?? '');
+        $dashboardMetricsHistoryFrequencyChanged = (string)($previousOptions['monitoring_dashboard_metrics_history_frequency'] ?? '') !== (string)($options['monitoring_dashboard_metrics_history_frequency'] ?? '');
         $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_small_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_small_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_medium_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_individual_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_individual_frequency'] ?? '');
@@ -237,6 +244,10 @@ class Settings {
 
         if ($metricsFrequencyChanged) {
             (new MetricsService($this, $this->config))->rescheduleDashboardRefreshCycle();
+        }
+
+        if ($dashboardMetricsHistoryFrequencyChanged) {
+            (new MetricsService($this, $this->config))->rescheduleDashboardHistoryCompactionCycle();
         }
 
         if ($storageAnalysisFrequencyChanged) {
@@ -287,6 +298,16 @@ class Settings {
 
         if (!empty($_GET['metrics-refreshed'])) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The metrics refresh has been started and is now running in batches.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (isset($_GET['dashboard-metric-statistics-scheduled'])) {
+            $message = sanitize_key((string)wp_unslash($_GET['dashboard-metric-statistics-scheduled'])) === 'true'
+                ? __('The dashboard metric statistics task was scheduled to start shortly.', 'rrze-multisite-manager')
+                : __('The dashboard metric statistics task could not be scheduled. Check that dashboard metrics and statistics are enabled.', 'rrze-multisite-manager');
+            $className = sanitize_key((string)wp_unslash($_GET['dashboard-metric-statistics-scheduled'])) === 'true'
+                ? 'notice-success'
+                : 'notice-error';
+            echo '<div class="notice ' . esc_attr($className) . ' is-dismissible"><p>' . esc_html($message) . '</p></div>';
         }
 
         if (!empty($_GET['full-data-cleanup-started'])) {
@@ -440,6 +461,29 @@ class Settings {
             );
 
         wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    /** Schedules the dashboard metric statistics task as a normal Cron event. */
+    public function runDashboardMetricStatisticsNow(): void {
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_run_dashboard_metric_statistics');
+
+        $scheduled = (new MetricsService($this, $this->config))->scheduleDashboardHistoryCompactionFromNow();
+        $redirectUrl = $redirectTo !== ''
+            ? $redirectTo
+            : add_query_arg(['page' => $this->getMonitoringSlug()], admin_url('admin.php'));
+
+        wp_safe_redirect(add_query_arg(
+            'dashboard-metric-statistics-scheduled',
+            $scheduled ? 'true' : 'false',
+            $redirectUrl
+        ));
         exit;
     }
 
@@ -923,6 +967,34 @@ class Settings {
         exit;
     }
 
+    public function deleteDashboardMetricStatistics(): void {
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_delete_dashboard_metric_statistics');
+
+        $redirectUrl = $redirectTo !== ''
+            ? $redirectTo
+            : add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => 'tools'], admin_url('admin.php'));
+
+        if (empty($_POST['confirm_dashboard_metric_statistics_deletion'])) {
+            wp_safe_redirect(add_query_arg('dashboard-metric-statistics-deletion-confirmation-required', 'true', $redirectUrl));
+            exit;
+        }
+
+        if (MetricsService::isFullDataCleanupInProgress()) {
+            wp_safe_redirect(add_query_arg('dashboard-metric-statistics-deletion-unavailable', 'true', $redirectUrl));
+            exit;
+        }
+
+        $deleted = (new MetricsService($this, $this->config))->deleteDashboardMetricStatistics();
+        wp_safe_redirect(add_query_arg('dashboard-metric-statistics-deleted', $deleted, $redirectUrl));
+        exit;
+    }
+
     public function removeStorageAnalysisTasks(): void {
         $this->removeWebsiteAnalysisTasks(
             'rrze_multisite_manager_remove_storage_analysis_tasks',
@@ -1281,11 +1353,18 @@ class Settings {
         echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="monitoring">';
-        $this->renderMonitoringFieldGroup(__('Network-wide', 'rrze-multisite-manager'), [
+        $this->renderMonitoringFieldGroup(
+            __('Network-wide', 'rrze-multisite-manager'),
+            [
             'metrics_frequency',
+            'dashboard_metrics_history_frequency',
             'monitoring_frequency',
             'batch_size',
-        ]);
+            'run_log_entries',
+            'recent_event_entries',
+            ],
+            __('Central settings for dashboard metrics and the network-wide availability task. The availability cycle, log and event retention apply only to availability checks.', 'rrze-multisite-manager')
+        );
         $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
             'provisioning_grace_hours',
             'dns_failure_threshold',
@@ -1327,17 +1406,13 @@ class Settings {
             'shortcode_block_analysis_frequency',
             'shortcode_block_analysis_timeout_minutes',
         ]);
-        $this->renderMonitoringFieldGroup(__('Monitoring', 'rrze-multisite-manager'), [
-            'run_log_entries',
-            'recent_event_entries',
-        ]);
         submit_button();
         echo '</form>';
         $this->renderMonitoringManagementNotice();
     }
 
     /** @param array<int, string> $fieldNames */
-    protected function renderMonitoringFieldGroup(string $title, array $fieldNames): void {
+    protected function renderMonitoringFieldGroup(string $title, array $fieldNames, string $description = ''): void {
         $availableFields = $this->settingsFields['monitoring'] ?? [];
         $fieldsByName = [];
 
@@ -1361,6 +1436,9 @@ class Settings {
 
         echo '<section class="rrze-msm-settings-group">';
         echo '<header class="rrze-msm-settings-group-header"><h2>' . esc_html($title) . '</h2></header>';
+        if ($description !== '') {
+            echo '<p class="rrze-msm-settings-group-content">' . esc_html($description) . '</p>';
+        }
         echo '<table class="form-table" role="presentation"><tbody>';
 
         foreach ($fields as $field) {
@@ -1383,6 +1461,7 @@ class Settings {
 
         echo '</tbody></table>';
         echo '</section>';
+
     }
 
     protected function renderMonitoringManagementNotice(): void {
@@ -1414,7 +1493,7 @@ class Settings {
             $currentTab = 'storage';
         }
 
-        if (!in_array($currentTab, ['network', 'storage', 'shortcode-block', 'tools'], true)) {
+        if (!in_array($currentTab, ['network', 'storage', 'shortcode-block', 'database-usage', 'tools'], true)) {
             $currentTab = 'network';
         }
 
@@ -1439,6 +1518,7 @@ class Settings {
         echo '<a class="nav-tab' . ($currentTab === 'network' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'network'], $baseUrl)) . '">' . esc_html__('Network-wide', 'rrze-multisite-manager') . '</a>';
         echo '<a class="nav-tab' . ($currentTab === 'storage' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'storage'], $baseUrl)) . '">' . esc_html__('Storage analyses', 'rrze-multisite-manager') . '</a>';
         echo '<a class="nav-tab' . ($currentTab === 'shortcode-block' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'shortcode-block'], $baseUrl)) . '">' . esc_html__('Shortcodes and Blocks', 'rrze-multisite-manager') . '</a>';
+        echo '<a class="nav-tab' . ($currentTab === 'database-usage' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'database-usage'], $baseUrl)) . '">' . esc_html__('Database usage', 'rrze-multisite-manager') . '</a>';
         echo '<a class="nav-tab' . ($currentTab === 'tools' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'tools'], $baseUrl)) . '">' . esc_html__('Tools', 'rrze-multisite-manager') . '</a>';
         echo '</nav>';
 
@@ -1446,6 +1526,8 @@ class Settings {
             $this->renderWebsiteStorageMonitoringTab();
         } elseif ($currentTab === 'shortcode-block') {
             $this->renderWebsiteShortcodeBlockMonitoringTable();
+        } elseif ($currentTab === 'database-usage') {
+            $this->renderDatabaseUsageMonitoringTab();
         } elseif ($currentTab === 'tools') {
             $this->renderMonitoringToolsTab();
         } else {
@@ -1498,6 +1580,22 @@ class Settings {
 
         if (!empty($_GET['full-data-cleanup-confirmation-required'])) {
             echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Please confirm the data cleanup before starting it.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (!empty($_GET['dashboard-metric-statistics-deletion-confirmation-required'])) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Please confirm the deletion of the dashboard metric statistics.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (!empty($_GET['dashboard-metric-statistics-deletion-unavailable'])) {
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Dashboard metric statistics cannot be deleted while complete MSM data cleanup is running.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (isset($_GET['dashboard-metric-statistics-deleted'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(sprintf(
+                /* translators: %d: number of deleted historical metric snapshots. */
+                __('Deleted %d dashboard metric statistics.', 'rrze-multisite-manager'),
+                absint(wp_unslash($_GET['dashboard-metric-statistics-deleted']))
+            )) . '</p></div>';
         }
 
         if (isset($_GET['storage-analysis-tasks-removed'])) {
@@ -1773,6 +1871,277 @@ class Settings {
         }
 
         echo '</span></div></div>';
+    }
+
+    /**
+     * Displays the allocated database footprint of the central analysis tables.
+     * InnoDB row counts are estimates; data and index bytes are table metadata.
+     *
+     * @param array<int, string> $kinds
+     */
+    protected function renderAnalysisTableStorage(array $kinds, string $title = ''): void {
+        global $wpdb;
+
+        $store = new Analysis\AnalysisStore();
+        $labels = [
+            'runs' => __('Analysis runs and checkpoints (shared)', 'rrze-multisite-manager'),
+            'shortcodes' => __('Shortcode findings', 'rrze-multisite-manager'),
+            'blocks' => __('Block findings', 'rrze-multisite-manager'),
+            'mediaindex' => __('Storage and media index', 'rrze-multisite-manager'),
+            'dashboard_metrics' => __('Dashboard metric snapshots', 'rrze-multisite-manager'),
+        ];
+        $rows = [];
+        $totalDataBytes = 0;
+        $totalIndexBytes = 0;
+
+        foreach ($kinds as $kind) {
+            try {
+                $table = $store->table($kind);
+            } catch (\InvalidArgumentException) {
+                continue;
+            }
+
+            $status = $wpdb->get_row($wpdb->prepare('SHOW TABLE STATUS LIKE %s', $wpdb->esc_like($table)));
+            if (!$status || $wpdb->last_error) {
+                continue;
+            }
+
+            $dataBytes = max(0, (int)($status->Data_length ?? 0));
+            $indexBytes = max(0, (int)($status->Index_length ?? 0));
+            $totalDataBytes += $dataBytes;
+            $totalIndexBytes += $indexBytes;
+            $rows[] = [
+                'table' => $table,
+                'label' => (string)($labels[$kind] ?? $kind),
+                'data_bytes' => $dataBytes,
+                'index_bytes' => $indexBytes,
+                'rows' => max(0, (int)($status->Rows ?? 0)),
+            ];
+        }
+
+        $title = $title !== '' ? $title : __('Central analysis database storage', 'rrze-multisite-manager');
+
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-analysis-table-storage">';
+        echo '<header class="rrze-msm-widget-header"><h2>' . esc_html($title) . '</h2></header>';
+        echo '<p class="description">' . esc_html__('Allocated data and index size of the central analysis tables. InnoDB row counts are estimates.', 'rrze-multisite-manager') . '</p>';
+
+        if (!$rows) {
+            echo '<p>' . esc_html__('No central analysis table metadata is currently available.', 'rrze-multisite-manager') . '</p>';
+            echo '</section>';
+            return;
+        }
+
+        echo '<table class="widefat striped rrze-msm-table"><thead><tr>';
+        echo '<th>' . esc_html__('Purpose', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Table', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Data', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Indexes', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Total', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Rows (estimated)', 'rrze-multisite-manager') . '</th>';
+        echo '</tr></thead><tbody>';
+        foreach ($rows as $row) {
+            echo '<tr>';
+            echo '<td>' . esc_html($row['label']) . '</td>';
+            echo '<td><code>' . esc_html($row['table']) . '</code></td>';
+            echo '<td>' . esc_html(size_format($row['data_bytes'], 2)) . '</td>';
+            echo '<td>' . esc_html(size_format($row['index_bytes'], 2)) . '</td>';
+            echo '<td>' . esc_html(size_format($row['data_bytes'] + $row['index_bytes'], 2)) . '</td>';
+            echo '<td>' . esc_html(number_format_i18n($row['rows'])) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody><tfoot><tr>';
+        echo '<th colspan="2">' . esc_html__('Displayed tables total', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html(size_format($totalDataBytes, 2)) . '</th>';
+        echo '<th>' . esc_html(size_format($totalIndexBytes, 2)) . '</th>';
+        echo '<th>' . esc_html(size_format($totalDataBytes + $totalIndexBytes, 2)) . '</th>';
+        echo '<th></th>';
+        echo '</tr></tfoot></table>';
+        echo '</section>';
+    }
+
+    /** Displays the central table footprint grouped by its three monitoring areas. */
+    protected function renderDatabaseUsageMonitoringTab(): void {
+        echo '<div class="rrze-msm-widget-grid">';
+        $this->renderAnalysisTableStorage(
+            ['dashboard_metrics'],
+            __('Dashboard metric data', 'rrze-multisite-manager')
+        );
+        $this->renderAnalysisTableStorage(
+            ['runs', 'mediaindex'],
+            __('Storage analysis data', 'rrze-multisite-manager')
+        );
+        $this->renderAnalysisTableStorage(
+            ['runs', 'shortcodes', 'blocks'],
+            __('Shortcode and block analysis data', 'rrze-multisite-manager')
+        );
+        $this->renderMsmOptionAndTransientStorage();
+        echo '</div>';
+    }
+
+    /**
+     * Shows the owned options and transient rows that are intentionally kept
+     * outside the central analysis tables. Payloads stay in the database; the
+     * size query never loads serialized values into PHP.
+     */
+    protected function renderMsmOptionAndTransientStorage(): void {
+        $usage = $this->getMsmOptionAndTransientStorageUsage();
+        $labels = [
+            'network_option' => __('Network options and task state', 'rrze-multisite-manager'),
+            'network_transient' => __('Network transient values', 'rrze-multisite-manager'),
+            'network_transient_timeout' => __('Network transient expiry entries', 'rrze-multisite-manager'),
+            'site_option' => __('Website options and report data', 'rrze-multisite-manager'),
+            'site_transient' => __('Website transient values', 'rrze-multisite-manager'),
+            'site_transient_timeout' => __('Website transient expiry entries', 'rrze-multisite-manager'),
+        ];
+        $totalEntries = 0;
+        $totalBytes = 0;
+
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-analysis-table-storage">';
+        echo '<header class="rrze-msm-widget-header"><h2>' . esc_html__('MSM options and transient caches', 'rrze-multisite-manager') . '</h2></header>';
+        echo '<p class="description">' . esc_html__('Stored key and value bytes for MSM-owned options and transients. This does not include InnoDB table overhead or WordPress and third-party data. The aggregation is refreshed at most every five minutes.', 'rrze-multisite-manager') . '</p>';
+
+        if (empty($usage)) {
+            echo '<p>' . esc_html__('No MSM options or transient cache entries are currently stored.', 'rrze-multisite-manager') . '</p>';
+            echo '</section>';
+            return;
+        }
+
+        echo '<table class="widefat striped rrze-msm-table"><thead><tr>';
+        echo '<th>' . esc_html__('Storage type', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Entries', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Stored key and value data', 'rrze-multisite-manager') . '</th>';
+        echo '</tr></thead><tbody>';
+        foreach ($labels as $bucket => $label) {
+            $row = (array)($usage[$bucket] ?? []);
+            $entries = max(0, (int)($row['entries'] ?? 0));
+            $bytes = max(0, (int)($row['bytes'] ?? 0));
+
+            if ($entries === 0) {
+                continue;
+            }
+
+            $totalEntries += $entries;
+            $totalBytes += $bytes;
+            echo '<tr>';
+            echo '<td>' . esc_html($label) . '</td>';
+            echo '<td>' . esc_html(number_format_i18n($entries)) . '</td>';
+            echo '<td>' . esc_html(size_format($bytes, 2)) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody><tfoot><tr>';
+        echo '<th>' . esc_html__('Options and transient caches total', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html(number_format_i18n($totalEntries)) . '</th>';
+        echo '<th>' . esc_html(size_format($totalBytes, 2)) . '</th>';
+        echo '</tr></tfoot></table>';
+        echo '</section>';
+    }
+
+    /** @return array<string, array{entries: int, bytes: int}> */
+    protected function getMsmOptionAndTransientStorageUsage(): array {
+        global $wpdb;
+
+        $cached = get_site_transient(self::DATABASE_USAGE_CACHE_KEY);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $usage = [];
+        $networkId = get_current_network_id();
+        $ownedOptionName = $this->config->getOptionName();
+        $patterns = [
+            'rrze_msm_',
+            'rrze_multisite_manager_',
+            '_site_transient_rrze_msm_',
+            '_site_transient_rrze_multisite_manager_',
+            '_site_transient_timeout_rrze_msm_',
+            '_site_transient_timeout_rrze_multisite_manager_',
+            '_transient_rrze_msm_',
+            '_transient_rrze_multisite_manager_',
+            '_transient_timeout_rrze_msm_',
+            '_transient_timeout_rrze_multisite_manager_',
+        ];
+        $networkConditions = ['meta_key = %s'];
+        $networkArguments = [$networkId, $ownedOptionName];
+
+        foreach ($patterns as $pattern) {
+            $networkConditions[] = 'meta_key LIKE %s';
+            $networkArguments[] = $wpdb->esc_like($pattern) . '%';
+        }
+
+        $networkSql = "SELECT CASE
+                WHEN meta_key LIKE '_site_transient_timeout_%' THEN 'network_transient_timeout'
+                WHEN meta_key LIKE '_site_transient_%' THEN 'network_transient'
+                ELSE 'network_option'
+            END AS bucket,
+            COUNT(*) AS entry_count,
+            COALESCE(SUM(OCTET_LENGTH(meta_key) + OCTET_LENGTH(meta_value)), 0) AS byte_count
+            FROM {$wpdb->sitemeta}
+            WHERE site_id = %d AND (" . implode(' OR ', $networkConditions) . ")
+            GROUP BY bucket";
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The table is a WordPress core table and all values are prepared.
+        $networkRows = (array)$wpdb->get_results($wpdb->prepare($networkSql, ...$networkArguments), ARRAY_A);
+        $this->mergeMsmOptionStorageUsage($usage, $networkRows);
+
+        $siteIds = get_sites([
+            'network_id' => $networkId,
+            'fields' => 'ids',
+            'number' => 0,
+        ]);
+        $siteConditions = ['option_name = %s'];
+        $siteArguments = [$ownedOptionName];
+
+        foreach ($patterns as $pattern) {
+            $siteConditions[] = 'option_name LIKE %s';
+            $siteArguments[] = $wpdb->esc_like($pattern) . '%';
+        }
+
+        foreach ((array)$siteIds as $siteId) {
+            $optionsTable = (string)$wpdb->get_blog_prefix((int)$siteId) . 'options';
+            if (preg_match('/^[A-Za-z0-9_]+$/', $optionsTable) !== 1) {
+                continue;
+            }
+
+            $siteSql = "SELECT CASE
+                    WHEN option_name LIKE '_transient_timeout_%' THEN 'site_transient_timeout'
+                    WHEN option_name LIKE '_transient_%' THEN 'site_transient'
+                    ELSE 'site_option'
+                END AS bucket,
+                COUNT(*) AS entry_count,
+                COALESCE(SUM(OCTET_LENGTH(option_name) + OCTET_LENGTH(option_value)), 0) AS byte_count
+                FROM $optionsTable
+                WHERE " . implode(' OR ', $siteConditions) . "
+                GROUP BY bucket";
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The options table name comes from wpdb::get_blog_prefix() and values are prepared.
+            $siteRows = (array)$wpdb->get_results($wpdb->prepare($siteSql, ...$siteArguments), ARRAY_A);
+            $this->mergeMsmOptionStorageUsage($usage, $siteRows);
+        }
+
+        set_site_transient(self::DATABASE_USAGE_CACHE_KEY, $usage, self::DATABASE_USAGE_CACHE_TTL);
+
+        return $usage;
+    }
+
+    /**
+     * @param array<string, array{entries: int, bytes: int}> $usage
+     * @param array<int, array<string, mixed>> $rows
+     */
+    protected function mergeMsmOptionStorageUsage(array &$usage, array $rows): void {
+        foreach ($rows as $row) {
+            $bucket = sanitize_key((string)($row['bucket'] ?? ''));
+            if ($bucket === '') {
+                continue;
+            }
+
+            if (!isset($usage[$bucket])) {
+                $usage[$bucket] = [
+                    'entries' => 0,
+                    'bytes' => 0,
+                ];
+            }
+
+            $usage[$bucket]['entries'] += max(0, (int)($row['entry_count'] ?? 0));
+            $usage[$bucket]['bytes'] += max(0, (int)($row['byte_count'] ?? 0));
+        }
     }
 
     protected function renderWebsiteStorageMonitoringTab(): void {
@@ -2233,7 +2602,7 @@ class Settings {
         echo '</div>';
     }
 
-    protected function getSiteCrontrolUrl(int $siteId): string {
+    protected function getSiteCrontrolUrl(int $siteId, string $search = 'rrze_msm'): string {
         $pluginFile = 'wp-crontrol/wp-crontrol.php';
         $networkActive = function_exists('is_plugin_active_for_network') && is_plugin_active_for_network($pluginFile);
 
@@ -2244,7 +2613,7 @@ class Settings {
         return add_query_arg(
             [
                 'page' => 'wp-crontrol',
-                's' => 'rrze_msm',
+                's' => sanitize_text_field($search),
             ],
             get_admin_url($siteId, 'tools.php')
         );
@@ -2333,6 +2702,7 @@ class Settings {
 
     protected function renderMonitoringToolsTab(): void {
         $this->renderFullDataCleanupSection(new MetricsService($this, $this->config));
+        $this->renderDashboardMetricStatisticsCleanupSection();
         $this->renderLegacyCentralCronCleanupSection();
         $this->renderNetworkMonitoringTaskRemovalSection();
         $this->renderWebsiteAnalysisTaskRemovalSection();
@@ -2611,6 +2981,7 @@ class Settings {
         }
 
         echo '</section>';
+
     }
 
     protected function renderViewsTab(): void {
@@ -2967,6 +3338,14 @@ class Settings {
         $html = '<div class="rrze-msm-process-description">';
         $html .= '<div>' . esc_html($description) . '</div>';
 
+        $cronHook = (string)($process['cron_hook'] ?? '');
+        if ($cronHook !== '') {
+            $cronUrl = $this->getSiteCrontrolUrl((int)get_main_site_id(get_current_network_id()), $cronHook);
+            if ($cronUrl !== '') {
+                $html .= '<div class="rrze-msm-process-meta"><a href="' . esc_url($cronUrl) . '">' . esc_html__('View Cron event', 'rrze-multisite-manager') . '</a></div>';
+            }
+        }
+
         if (!empty($meta)) {
             $html .= '<div class="rrze-msm-process-meta">' . esc_html(implode(' | ', $meta)) . '</div>';
         }
@@ -3080,6 +3459,14 @@ class Settings {
                 $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Reset and restart', 'rrze-multisite-manager') . '</button>';
                 $html .= '</form>';
             }
+        } elseif ($processId === 'dashboard-metrics-history') {
+            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_run_dashboard_metric_statistics')) . '">';
+            if ($redirectTo !== '') {
+                $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
+            }
+            $html .= wp_nonce_field('rrze_multisite_manager_run_dashboard_metric_statistics', '_wpnonce', true, false);
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Start early now', 'rrze-multisite-manager') . '</button>';
+            $html .= '</form>';
         } else {
             $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_run_monitoring')) . '">';
             if ($redirectTo !== '') {
@@ -3174,7 +3561,7 @@ class Settings {
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12" id="rrze-msm-full-data-cleanup" data-auto-run="' . esc_attr($isRunning ? '1' : '0') . '">';
         echo '<header class="rrze-msm-widget-header">';
         echo '<h2>' . esc_html__('Delete MSM analysis and metrics data', 'rrze-multisite-manager') . '</h2>';
-        echo '<p>' . esc_html__('Deletes central shortcode, block, media-index and analysis-run data; stored storage reports and their metadata; dashboard metrics; and MSM transients. This cannot be undone.', 'rrze-multisite-manager') . '</p>';
+        echo '<p>' . esc_html__('Deletes central shortcode, block, media-index and analysis-run data; stored storage reports and their metadata; current and historical dashboard metrics; and MSM transients. This cannot be undone.', 'rrze-multisite-manager') . '</p>';
         echo '</header>';
 
         if ($showStatus && !empty($status)) {
@@ -3209,6 +3596,21 @@ class Settings {
             echo '</form>';
         }
 
+        echo '</section>';
+    }
+
+    protected function renderDashboardMetricStatisticsCleanupSection(): void {
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
+        echo '<header class="rrze-msm-widget-header"><h2>' . esc_html__('Delete dashboard metric statistics', 'rrze-multisite-manager') . '</h2></header>';
+        echo '<p>' . esc_html__('Deletes only historical dashboard metric statistics. The current dashboard snapshot for every website remains available. If the statistics cycle is active, a later cycle creates a new first statistic from the current snapshots.', 'rrze-multisite-manager') . '</p>';
+        $this->renderTaskRemovalForm(
+            'rrze_multisite_manager_delete_dashboard_metric_statistics',
+            'confirm_dashboard_metric_statistics_deletion',
+            __('Delete dashboard metric statistics', 'rrze-multisite-manager'),
+            __('This permanently deletes all historical dashboard metric statistics while retaining current snapshots.', 'rrze-multisite-manager'),
+            add_query_arg(['monitoring_tab' => 'tools'], $this->getMonitoringPageUrl()),
+            __('I understand that all historical dashboard metric statistics will be permanently deleted.', 'rrze-multisite-manager')
+        );
         echo '</section>';
     }
 

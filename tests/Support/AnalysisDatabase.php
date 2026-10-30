@@ -18,6 +18,7 @@ class AnalysisDatabase {
         foreach (['shortcodes', 'blocks', 'mediaindex'] as $kind) {
             self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_$kind (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, blog_id INTEGER, run_id TEXT, entry_key TEXT, name TEXT DEFAULT '', post_id INTEGER DEFAULT 0, payload TEXT, payload_bytes INTEGER, registered INTEGER DEFAULT 1, provider TEXT DEFAULT '', category TEXT DEFAULT '', origin TEXT DEFAULT '', description TEXT DEFAULT '', UNIQUE(network_id,blog_id,run_id,entry_key))");
         }
+        self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_dashboard_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, blog_id INTEGER, entry_key TEXT, snapshot_status TEXT, recorded_at INTEGER, site_status TEXT DEFAULT '', websites_total INTEGER DEFAULT 0, websites_active INTEGER DEFAULT 0, websites_archived INTEGER DEFAULT 0, websites_blocked INTEGER DEFAULT 0, websites_deleted INTEGER DEFAULT 0, media_bytes INTEGER NULL, database_bytes INTEGER NULL, plugin_count INTEGER DEFAULT 0, theme_count INTEGER DEFAULT 0, user_count INTEGER DEFAULT 0, page_count INTEGER DEFAULT 0, post_count INTEGER DEFAULT 0, media_count INTEGER DEFAULT 0, custom_post_type_count INTEGER DEFAULT 0, UNIQUE(network_id,blog_id,entry_key))");
     }
 
     public function &__get(string $key): mixed { return $this->delegate->$key; }

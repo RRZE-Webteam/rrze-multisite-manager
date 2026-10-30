@@ -289,6 +289,7 @@ class MonitoringService {
                 'id' => 'site-availability',
                 'title' => __('Website availability', 'rrze-multisite-manager'),
                 'description' => __('Checks DNS and HTTP reachability of all active websites and updates the plugin\'s monitoring meta fields.', 'rrze-multisite-manager'),
+                'cron_hook' => $hook,
                 'interval_hours' => $this->getMonitoringIntervalHours(),
                 'provisioning_grace_hours' => $this->getProvisioningGraceHours(),
                 'dns_failure_threshold' => $this->getDnsFailureThreshold(),

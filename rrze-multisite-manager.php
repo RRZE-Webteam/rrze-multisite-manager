@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.3.18
+ * Version:         1.3.19
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -50,7 +50,6 @@ add_action('admin_init', __NAMESPACE__ . '\loadTextdomain', 0);
 add_filter('load_textdomain_mofile', __NAMESPACE__ . '\preferBundledTextdomainMofile', 10, 2);
 register_activation_hook(__FILE__, __NAMESPACE__ . '\activate');
 register_deactivation_hook(__FILE__, __NAMESPACE__ . '\deactivate');
-add_action('admin_post_rrze_msm_confirm_network_deactivation', __NAMESPACE__ . '\confirmNetworkDeactivation');
 
 function loadTextdomain(): void {
     $domain = 'rrze-multisite-manager';
@@ -195,11 +194,6 @@ function activate(bool $networkWide = false): void {
 }
 
 function deactivate(bool $networkWide = false): void {
-    $choice = getConfirmedNetworkDeactivationChoice();
-    if (shouldConfirmNetworkDeactivation($networkWide, $choice)) {
-        renderNetworkDeactivationConfirmation();
-    }
-
     Analysis\AnalysisLifecycle::unschedule();
     MonitoringService::disableScheduledChecks();
     (new MetricsService())->disableDashboardScheduling();
@@ -208,72 +202,6 @@ function deactivate(bool $networkWide = false): void {
     ShortcodeBlockAnalysisSchedulerService::clearScheduledEvents();
     clearPluginCronEvents();
 
-    if ($choice === 'delete-tables') {
-        (new Analysis\AnalysisStore())->dropTables();
-    }
-}
-
-function getConfirmedNetworkDeactivationChoice(): string {
-    $choice = isset($_REQUEST['rrze_msm_deactivation_choice']) ? sanitize_key((string)wp_unslash($_REQUEST['rrze_msm_deactivation_choice'])) : '';
-    $nonce = isset($_REQUEST['rrze_msm_deactivation_nonce']) ? sanitize_text_field((string)wp_unslash($_REQUEST['rrze_msm_deactivation_nonce'])) : '';
-    if (!in_array($choice, ['keep-tables', 'delete-tables'], true) || !wp_verify_nonce($nonce, 'rrze_msm_network_deactivation_' . $choice)) {
-        return '';
-    }
-    return $choice;
-}
-
-function shouldConfirmNetworkDeactivation(bool $networkWide, mixed $choice): bool {
-    if (!is_multisite() || !$networkWide || $choice !== '' || !is_admin()) {
-        return false;
-    }
-    if ((defined('WP_CLI') && WP_CLI) || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST') && REST_REQUEST)) {
-        return false;
-    }
-    $action = isset($_REQUEST['action']) ? sanitize_key((string)wp_unslash($_REQUEST['action'])) : '';
-    return in_array($action, ['deactivate', 'deactivate-selected'], true);
-}
-
-function renderNetworkDeactivationConfirmation(): never {
-    if (!current_user_can('manage_network_plugins')) {
-        wp_die(esc_html__('You are not allowed to deactivate this plugin.', 'rrze-multisite-manager'));
-    }
-    $actionUrl = network_admin_url('admin-post.php');
-    $cancelUrl = network_admin_url('plugins.php');
-    ob_start();
-    echo '<p>' . esc_html__('Deactivate RRZE Multisite Manager and remove all of its scheduled tasks?', 'rrze-multisite-manager') . '</p>';
-    echo '<p>' . esc_html__('Choose whether the central analysis tables and all analysis data they contain should be retained or deleted.', 'rrze-multisite-manager') . '</p>';
-    echo '<form method="post" action="' . esc_url($actionUrl) . '">';
-    wp_nonce_field('rrze_msm_confirm_network_deactivation');
-    echo '<input type="hidden" name="action" value="rrze_msm_confirm_network_deactivation">';
-    submit_button(__('Deactivate and keep analysis tables', 'rrze-multisite-manager'), 'secondary', 'deactivation_choice', false, ['value' => 'keep-tables']);
-    echo ' <button type="submit" class="button button-primary" name="deactivation_choice" value="delete-tables">' . esc_html__('Deactivate and delete analysis tables', 'rrze-multisite-manager') . '</button>';
-    echo ' <a class="button-link" href="' . esc_url($cancelUrl) . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</a>';
-    echo '</form>';
-    wp_die(ob_get_clean(), esc_html__('Confirm plugin deactivation', 'rrze-multisite-manager'), ['response' => 200]);
-}
-
-function confirmNetworkDeactivation(): void {
-    if (!current_user_can('manage_network_plugins')) {
-        wp_die(esc_html__('You are not allowed to deactivate this plugin.', 'rrze-multisite-manager'));
-    }
-    check_admin_referer('rrze_msm_confirm_network_deactivation');
-    $choice = isset($_POST['deactivation_choice']) ? sanitize_key((string)wp_unslash($_POST['deactivation_choice'])) : '';
-    if (!in_array($choice, ['keep-tables', 'delete-tables'], true)) {
-        wp_die(esc_html__('Select how the analysis tables should be handled.', 'rrze-multisite-manager'));
-    }
-    $plugin = plugin_basename(__FILE__);
-    $url = wp_nonce_url(
-        add_query_arg([
-            'action' => 'deactivate',
-            'plugin' => $plugin,
-            'networkwide' => '1',
-            'rrze_msm_deactivation_choice' => $choice,
-            'rrze_msm_deactivation_nonce' => wp_create_nonce('rrze_msm_network_deactivation_' . $choice),
-        ], network_admin_url('plugins.php')),
-        'deactivate-plugin_' . $plugin
-    );
-    wp_safe_redirect($url);
-    exit;
 }
 
 /** Remove every plugin-owned Cron hook from every site during network deactivation. */

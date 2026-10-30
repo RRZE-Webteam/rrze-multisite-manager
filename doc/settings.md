@@ -12,7 +12,7 @@ This tab maintains defaults for dashboard tables, inactivity marking, and option
 
 The tab configures:
 
-* intervals for dashboard metrics and availability checks
+* intervals for dashboard metrics, their historical statistics (daily, weekly, monthly, or disabled while retaining existing data; weekly by default), and availability checks
 * batch size for network-wide processes
 * grace period for new sites and DNS/HTTP failure thresholds
 * intervals, execution limits, and assignment criteria for storage analyses

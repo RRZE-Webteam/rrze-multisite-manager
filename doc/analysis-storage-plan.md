@@ -1,10 +1,11 @@
 # Central analysis storage implementation plan
 
-1. Create four installation-wide tables using `base_prefix`: analysis_runs, analysis_shortcodes, analysis_blocks and analysis_mediaindex (all prefixed `rrze_msm_`). Scope all operations by network and website; use run identities for isolation.
+1. Create installation-wide tables using `base_prefix`: analysis_runs, analysis_shortcodes, analysis_blocks, analysis_mediaindex and dashboard_metrics (all prefixed `rrze_msm_`). Scope all operations by network and website; use run identities for isolation.
 2. Write bounded shortcode/block findings incrementally into separate tables, including unfinished results. Persist only bounded checkpoints; publish a completed generation after both phases succeed. Read small monitoring summaries and paginated details.
 3. Move storage checkpoints and bounded media-index segments out of evictable transients. Keep existing byte budgets, worker admission and conservative missing-segment handling.
 4. Remove old analysis results and runtime keys without deserializing them, using resumable site/key batches. Mark affected sites as requiring reanalysis. Preserve unrelated data, settings and scheduling preferences.
-5. Add regression coverage, update runtime documentation and regenerate build/translation artifacts. Report integration-test limitations explicitly.
+5. Persist the latest dashboard snapshot per website and a network-status summary; copy immutable historical snapshots only at the configured daily, weekly, or monthly cadence.
+6. Add regression coverage, update runtime documentation and regenerate build/translation artifacts. Report integration-test limitations explicitly.
 
 No old analysis is imported. Cleanup must finish for a website before new analysis data is written. Completed compact storage summaries remain non-autoloaded options; the large temporary media index lives only in the central table.
 
