@@ -611,6 +611,7 @@ class Dashboard {
         $dashboardData = [];
         $widget = null;
         $currentTab = isset($_GET['tab']) ? sanitize_key((string)$_GET['tab']) : 'all';
+        $statusFilter = isset($_GET['site_status']) ? sanitize_key((string)wp_unslash($_GET['site_status'])) : '';
         $summary = [];
         $tabs = [];
         $tabTables = [];
@@ -630,6 +631,10 @@ class Dashboard {
 
         if (!in_array($currentTab, ['all', 'active', 'archived', 'blocked', 'deleted', 'provisioning', 'dns-missing', 'unreachable'], true)) {
             $currentTab = 'all';
+        }
+
+        if (!in_array($statusFilter, ['public', 'not-public', 'automatic', 'retired'], true)) {
+            $statusFilter = '';
         }
 
         $tabs = [
@@ -770,25 +775,33 @@ class Dashboard {
         }
 
         $tableOptions = [
-            'table_id' => 'site-overview-page-' . $currentTab,
+            'table_id' => 'site-overview-page-' . $currentTab . ($statusFilter !== '' ? '-' . $statusFilter : ''),
             'default_per_page' => (int)($dashboardData['site_table_default_limit'] ?? 10),
             'sort_key' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'name' : 'registered',
             'sort_direction' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'asc' : 'desc',
-            'top_controls_html' => $this->renderSiteOverviewSearchControl($siteSearch, $currentTab),
+            'top_controls_html' => $this->renderSiteOverviewSearchControl($siteSearch, $currentTab, $statusFilter),
             'show_archived_at' => $currentTab === 'archived',
             'show_deleted_at' => $currentTab === 'deleted',
             'show_dns_missing_since' => $currentTab === 'dns-missing',
         ];
+        $allSites = array_values((array)($dashboardData['site_overview'] ?? []));
         $tableSites = match ($currentTab) {
-            'active' => array_values(array_filter($dashboardData['site_overview'] ?? [], static fn(array $site): bool => empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']))),
-            'archived' => $dashboardData['archived_sites'] ?? [],
-            'blocked' => $dashboardData['blocked_sites'] ?? [],
-            'deleted' => $dashboardData['deleted_sites'] ?? [],
-            'provisioning' => $dashboardData['provisioning_sites'] ?? [],
-            'dns-missing' => $dashboardData['dns_missing_sites'] ?? [],
-            'unreachable' => $dashboardData['unreachable_sites'] ?? [],
-            default => $dashboardData['site_overview'] ?? [],
+            'active' => array_values(array_filter($allSites, static fn(array $site): bool => empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']))),
+            'archived' => array_values(array_filter($allSites, static fn(array $site): bool => !empty($site['is_archived']))),
+            'blocked' => array_values(array_filter($allSites, static fn(array $site): bool => !empty($site['is_spam']))),
+            'deleted' => array_values(array_filter($allSites, static fn(array $site): bool => !empty($site['is_deleted']))),
+            'provisioning' => array_values(array_filter($allSites, static fn(array $site): bool => (string)($site['operational_status'] ?? '') === 'provisioning')),
+            'dns-missing' => array_values(array_filter($allSites, static fn(array $site): bool => (string)($site['operational_status'] ?? '') === 'dns_missing')),
+            'unreachable' => array_values(array_filter($allSites, static fn(array $site): bool => (string)($site['operational_status'] ?? '') === 'unreachable')),
+            default => $allSites,
         };
+
+        if ($statusFilter !== '') {
+            $tableSites = array_values(array_filter(
+                $allSites,
+                fn(array $site): bool => $this->siteMatchesOverviewStatusFilter($site, $statusFilter)
+            ));
+        }
 
         if ($siteSearch !== '') {
             $tableSites = array_values(array_filter(
@@ -841,16 +854,31 @@ class Dashboard {
         return strlen($search) >= 3 ? $search : '';
     }
 
-    protected function renderSiteOverviewSearchControl(string $search, string $currentTab): string {
+    protected function renderSiteOverviewSearchControl(string $search, string $currentTab, string $statusFilter = ''): string {
         $slug = (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview');
 
         return '<div class="rrze-msm-site-overview-search"><form method="get" action="' . esc_url(admin_url('admin.php')) . '">'
             . '<input type="hidden" name="page" value="' . esc_attr($slug) . '">'
             . '<input type="hidden" name="tab" value="' . esc_attr($currentTab) . '">'
+            . ($statusFilter !== '' ? '<input type="hidden" name="site_status" value="' . esc_attr($statusFilter) . '">' : '')
             . '<label for="rrze-msm-site-overview-search">' . esc_html__('Search website', 'rrze-multisite-manager') . '</label> '
             . '<input type="search" id="rrze-msm-site-overview-search" name="site_overview_search" value="' . esc_attr($search) . '" minlength="3" required> '
             . '<button type="submit" class="button">' . esc_html__('Search', 'rrze-multisite-manager') . '</button>'
             . '</form></div>';
+    }
+
+    /** @param array<string, mixed> $site */
+    protected function siteMatchesOverviewStatusFilter(array $site, string $statusFilter): bool {
+        $isActive = empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']);
+        $operationalStatus = sanitize_key((string)($site['operational_status'] ?? ''));
+
+        return match ($statusFilter) {
+            'public' => $isActive && !empty($site['is_public']),
+            'not-public' => $isActive && empty($site['is_public']),
+            'automatic' => in_array($operationalStatus, ['', 'automatic', 'not_scheduled'], true),
+            'retired' => $operationalStatus === 'retired',
+            default => false,
+        };
     }
 
     public function renderEnvironmentOverviewPage(): void {

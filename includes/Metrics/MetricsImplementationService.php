@@ -813,7 +813,21 @@ class MetricsImplementationService {
             $networkSnapshot,
             (array)$dashboardData['network_storage_usage']
         );
-        $dashboardData['status_distribution'] = $this->buildDashboardStatusDistributionFromSnapshots($siteSnapshots);
+        // Website statuses can be changed directly from the overview and by
+        // Core hooks between two complete dashboard metric runs. Keep their
+        // tab counters in sync with the current cached site list instead of
+        // showing the older status totals from the last metric snapshot.
+        $dashboardData['summary'] = $this->refreshDashboardSummarySiteCounts(
+            (array)$dashboardData['summary'],
+            $siteOverview
+        );
+        // The presentation cache still carries the WordPress site flags. Use
+        // those flags for the distribution so that older snapshot rows with
+        // an invalid legacy site_status value cannot turn every bucket into 0.
+        // New snapshots persist the same canonical keys (see below).
+        $dashboardData['status_distribution'] = $this->hasDashboardSitePublicStatus($siteOverview)
+            ? $this->buildDashboardStatusDistribution($siteOverview)
+            : $this->buildDashboardStatusDistributionFromSnapshots($siteSnapshots);
 
         return $dashboardData;
     }
@@ -910,6 +924,11 @@ class MetricsImplementationService {
 
         foreach ($snapshots as $snapshot) {
             $status = sanitize_key((string)($snapshot['site_status'] ?? ''));
+            // "spam" was used by an intermediate implementation. Keep old
+            // rows readable while all new rows use the public "blocked" key.
+            if ($status === 'spam') {
+                $status = 'blocked';
+            }
             if (isset($buckets[$status])) {
                 $buckets[$status]++;
             }
@@ -961,6 +980,13 @@ class MetricsImplementationService {
         $updatedSite = [];
         $previousSite = [];
         $found = false;
+
+        // A website-status change also affects the badge list in the detail
+        // screen. Its cache is separate from the dashboard presentation cache
+        // and must not wait for its regular TTL to expire.
+        if ($siteId > 0) {
+            $this->invalidateSiteDetailCaches($siteId);
+        }
 
         if (
             $siteId <= 0
@@ -9776,37 +9802,47 @@ class MetricsImplementationService {
         $status = [];
         $operationalStatus = (string)get_site_meta($siteId, 'rrze_msm_operational_status', true);
 
-        if ((int)$site->deleted === 1) {
-            $status[] = [
-                'label' => __('Deleted', 'rrze-multisite-manager'),
-                'accent' => 'danger',
-                'color' => $this->config->getSiteStatusColor('deleted'),
-            ];
-        } elseif ((int)$site->spam === 1) {
-            $status[] = [
-                'label' => __('Blocked', 'rrze-multisite-manager'),
-                'accent' => 'neutral',
-                'color' => $this->config->getSiteStatusColor('blocked'),
-            ];
-        } elseif ((int)$site->archived === 1) {
+        if ((int)$site->archived === 1) {
             $status[] = [
                 'label' => __('Archived', 'rrze-multisite-manager'),
                 'accent' => 'warning',
                 'color' => $this->config->getSiteStatusColor('archived'),
             ];
-        } else {
+        }
+
+        if ((int)$site->spam === 1) {
+            $status[] = [
+                'label' => __('Blocked', 'rrze-multisite-manager'),
+                'accent' => 'neutral',
+                'color' => $this->config->getSiteStatusColor('blocked'),
+            ];
+        }
+
+        if ((int)$site->deleted === 1) {
+            $status[] = [
+                'label' => __('Delete', 'rrze-multisite-manager'),
+                'accent' => 'danger',
+                'color' => $this->config->getSiteStatusColor('deleted'),
+            ];
+        }
+
+        if (empty($status)) {
             $status[] = [
                 'label' => __('Active', 'rrze-multisite-manager'),
                 'accent' => 'positive',
                 'color' => $this->config->getSiteStatusColor('active'),
+                'status_class' => 'rrze-msm-badge-status-active',
             ];
 
             $status[] = [
                 'label' => (int)$site->public === 1
                     ? __('Public', 'rrze-multisite-manager')
                     : __('Not public', 'rrze-multisite-manager'),
-                'accent' => (int)$site->public === 1 ? 'info' : 'neutral',
-                'color' => $this->config->getSiteStatusColor((int)$site->public === 1 ? 'public' : 'not_public'),
+                'accent' => 'info',
+                'color' => $this->config->getSiteStatusColor((int)$site->public === 1 ? 'public' : 'active_private'),
+                'status_class' => (int)$site->public === 1
+                    ? 'rrze-msm-badge-status-active'
+                    : 'rrze-msm-badge-status-active-nobots',
             ];
         }
 
@@ -11096,7 +11132,7 @@ class MetricsImplementationService {
             $content = is_array($site['content_counts'] ?? null) ? $site['content_counts'] : [];
             $snapshots[] = [
                 'blog_id' => (int)$site['id'],
-                'site_status' => (string)($site['status'] ?? ''),
+                'site_status' => $this->getDashboardHistorySiteStatus((array)$site),
                 'websites_total' => 0,
                 'websites_active' => 0,
                 'websites_archived' => 0,
@@ -11115,6 +11151,32 @@ class MetricsImplementationService {
         }
 
         return $snapshots;
+    }
+
+    /**
+     * Returns the durable, presentation-independent status key for a website
+     * metric snapshot.
+     *
+     * The status field in the dashboard payload is an array of badges. It
+     * must not be cast to a string for persistence; doing so stores "Array"
+     * and makes status distributions unreadable after cache hydration.
+     *
+     * @param array<string, mixed> $site
+     */
+    protected function getDashboardHistorySiteStatus(array $site): string {
+        if (!empty($site['is_deleted'])) {
+            return 'deleted';
+        }
+
+        if (!empty($site['is_spam'])) {
+            return 'blocked';
+        }
+
+        if (!empty($site['is_archived'])) {
+            return 'archived';
+        }
+
+        return !empty($site['is_public']) ? 'active_public' : 'active_private';
     }
 
     protected function createBasePluginUsageStats(): array {
