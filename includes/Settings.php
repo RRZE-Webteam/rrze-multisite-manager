@@ -1033,13 +1033,14 @@ class Settings {
         if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
         }
-        check_admin_referer('rrze_multisite_manager_start_shared_analysis_batch_' . $type);
+        $batchMode = isset($_POST['batch_mode']) ? sanitize_key((string)wp_unslash($_POST['batch_mode'])) : '';
+        check_admin_referer('rrze_multisite_manager_start_shared_analysis_batch_' . $type . '_' . $batchMode);
         if (empty($_POST['confirm_start_shared_batch'])) {
             wp_safe_redirect(add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => $type], admin_url('admin.php')));
             exit;
         }
         $started = $type === 'storage'
-            ? (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->startBatchNow()
+            ? (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->startBatchNow($batchMode)
             : ($type === 'shortcode-block' ? (new ShortcodeBlockAnalysisSchedulerService($this->config))->startBatchNow() : false);
         wp_safe_redirect(add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => $type, 'shared-batch-started' => $started ? 'true' : 'false'], admin_url('admin.php')));
         exit;
@@ -2333,8 +2334,10 @@ class Settings {
         $this->renderMonitoringTablePagination('storage_monitoring_page', $currentPage, $totalItems, $perPage);
         echo '</div>';
         echo '<div class="rrze-msm-site-actions">';
-        if ($scheduler->canStartBatchNow()) {
-            $this->renderStartSharedBatchForm('storage');
+        foreach (['small-batch', 'medium-batch'] as $batchMode) {
+            if ($scheduler->canStartBatchNow($batchMode)) {
+                $this->renderStartSharedBatchForm('storage', $batchMode);
+            }
         }
         $this->renderWebsiteAnalysisTaskRemovalForm('storage');
         echo '</div>';
@@ -2484,7 +2487,10 @@ class Settings {
                 $cronSiteId = ($process['assignment_mode'] ?? '') === 'batch'
                     ? (int)get_main_site_id(get_current_network_id())
                     : $siteId;
-                $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteShortcodeBlockAnalysisPageUrl($siteId), __('Shortcodes and Blocks', 'rrze-multisite-manager'), $cronSiteId);
+                $cronHook = ($process['assignment_mode'] ?? '') === 'batch'
+                    ? $this->config->getShortcodeBlockAnalysisBatchHook()
+                    : $this->config->getShortcodeBlockAnalysisHook();
+                $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteShortcodeBlockAnalysisPageUrl($siteId), __('Shortcodes and Blocks', 'rrze-multisite-manager'), $cronSiteId, $cronHook);
                 echo '</div>';
                 echo '</td>';
                 echo '<td>' . $this->renderScheduledJobStatusHtml($process);
@@ -2630,14 +2636,14 @@ class Settings {
         echo '</section>';
     }
 
-    protected function renderMonitoringSiteHoverLinks(int $siteId, string $analysisUrl, string $analysisLabel, int $cronSiteId = 0): void {
+    protected function renderMonitoringSiteHoverLinks(int $siteId, string $analysisUrl, string $analysisLabel, int $cronSiteId = 0, string $cronSearch = 'rrze_msm'): void {
         echo '<div class="row-actions">';
         echo '<span class="rrze-msm-row-action-dashboard"><a href="' . esc_url(get_admin_url($siteId)) . '">' . esc_html__('Dashboard', 'rrze-multisite-manager') . '</a></span>';
         echo ' | ';
         echo '<span class="rrze-msm-row-action-details"><a href="' . esc_url($this->getSiteDetailsPageUrl($siteId)) . '">' . esc_html__('Details', 'rrze-multisite-manager') . '</a></span>';
         echo ' | ';
         echo '<span class="rrze-msm-row-action-analysis"><a href="' . esc_url($analysisUrl) . '">' . esc_html($analysisLabel) . '</a></span>';
-        $crontrolUrl = $this->getSiteCrontrolUrl($cronSiteId > 0 ? $cronSiteId : $siteId);
+        $crontrolUrl = $this->getSiteCrontrolUrl($cronSiteId > 0 ? $cronSiteId : $siteId, $cronSearch);
 
         if ($crontrolUrl !== '') {
             echo ' | ';
@@ -2649,7 +2655,9 @@ class Settings {
 
     protected function getSiteCrontrolUrl(int $siteId, string $search = 'rrze_msm'): string {
         $pluginFile = 'wp-crontrol/wp-crontrol.php';
-        $networkActive = function_exists('is_plugin_active_for_network') && is_plugin_active_for_network($pluginFile);
+        $networkPlugins = get_site_option('active_sitewide_plugins', []);
+        $networkActive = (function_exists('is_plugin_active_for_network') && is_plugin_active_for_network($pluginFile))
+            || (is_array($networkPlugins) && array_key_exists($pluginFile, $networkPlugins));
 
         if (!$networkActive && !in_array($pluginFile, (array)get_blog_option($siteId, 'active_plugins', []), true)) {
             return '';
@@ -2675,9 +2683,13 @@ class Settings {
         $this->renderAnalysisTaskRemovalAjaxDialog($analysisType, $label, $warning);
     }
 
-    protected function renderAnalysisTaskRemovalAjaxDialog(string $analysisType, string $label, string $warning): void {
+    protected function renderAnalysisTaskRemovalAjaxDialog(string $analysisType, string $label, string $warning, bool $useToolSwitch = false): void {
         $modalId = wp_unique_id('rrze-msm-analysis-task-removal-');
-        $this->renderMonitoringToolSwitch($label, 'button', 'rrze-msm-open-analysis-task-removal-dialog', ['data-dialog-id' => $modalId]);
+        if ($useToolSwitch) {
+            $this->renderMonitoringToolSwitch($label, 'button', 'rrze-msm-open-analysis-task-removal-dialog', ['data-dialog-id' => $modalId]);
+        } else {
+            echo '<button type="button" class="button button-secondary rrze-msm-open-analysis-task-removal-dialog" data-dialog-id="' . esc_attr($modalId) . '">' . esc_html($label) . '</button>';
+        }
         echo '<dialog class="rrze-msm-task-removal-dialog rrze-msm-analysis-task-removal-dialog" id="' . esc_attr($modalId) . '" data-analysis-type="' . esc_attr($analysisType) . '" data-ajax-url="' . esc_url(admin_url('admin-ajax.php')) . '" data-nonce="' . esc_attr(wp_create_nonce('rrze_msm_analysis_task_removal')) . '" data-running-text="' . esc_attr__('Cleanup in progress.', 'rrze-multisite-manager') . '" data-completed-text="' . esc_attr__('Cleanup completed.', 'rrze-multisite-manager') . '" data-failed-text="' . esc_attr__('The cleanup request failed. You can reopen this dialog to continue.', 'rrze-multisite-manager') . '" aria-labelledby="' . esc_attr($modalId) . '-title">';
         echo '<h3 id="' . esc_attr($modalId) . '-title">' . esc_html($label) . '</h3><p class="rrze-msm-modal-text">' . esc_html($warning) . '</p>';
         echo '<p class="rrze-msm-modal-text" data-analysis-task-removal-status></p>';
@@ -2686,14 +2698,23 @@ class Settings {
         echo '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" data-analysis-task-removal-close onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="button" class="button button-secondary rrze-msm-button-danger" data-analysis-task-removal-start disabled>' . esc_html($label) . '</button><button type="button" class="button button-secondary" data-analysis-task-removal-reload hidden>' . esc_html__('Reload page', 'rrze-multisite-manager') . '</button></div></dialog>';
     }
 
-    protected function renderStartSharedBatchForm(string $analysisType): void {
+    protected function renderStartSharedBatchForm(string $analysisType, string $batchMode = ''): void {
         $modalId = wp_unique_id('rrze-msm-start-shared-batch-');
-        $label = __('Start shared batches early', 'rrze-multisite-manager');
-        $warning = __('Start the shared batch now for all websites assigned to it?', 'rrze-multisite-manager');
+        $isStorageBatch = $analysisType === 'storage' && in_array($batchMode, ['small-batch', 'medium-batch'], true);
+        $label = $isStorageBatch
+            ? ($batchMode === 'medium-batch'
+                ? __('Start medium shared batches early', 'rrze-multisite-manager')
+                : __('Start small shared batches early', 'rrze-multisite-manager'))
+            : __('Start shared batches early', 'rrze-multisite-manager');
+        $warning = $isStorageBatch
+            ? ($batchMode === 'medium-batch'
+                ? __('Start the medium shared batch now for all websites assigned to it?', 'rrze-multisite-manager')
+                : __('Start the small shared batch now for all websites assigned to it?', 'rrze-multisite-manager'))
+            : __('Start the shared batch now for all websites assigned to it?', 'rrze-multisite-manager');
         echo '<button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').showModal();") . '">' . esc_html($label) . '</button>';
         echo '<dialog class="rrze-msm-task-removal-dialog" id="' . esc_attr($modalId) . '"><h3>' . esc_html($label) . '</h3><p class="rrze-msm-modal-text">' . esc_html($warning) . '</p>';
-        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_shared_analysis_batch')) . '"><input type="hidden" name="analysis_type" value="' . esc_attr($analysisType) . '">';
-        wp_nonce_field('rrze_multisite_manager_start_shared_analysis_batch_' . $analysisType);
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_shared_analysis_batch')) . '"><input type="hidden" name="analysis_type" value="' . esc_attr($analysisType) . '"><input type="hidden" name="batch_mode" value="' . esc_attr($batchMode) . '">';
+        wp_nonce_field('rrze_multisite_manager_start_shared_analysis_batch_' . $analysisType . '_' . $batchMode);
         echo '<label class="rrze-msm-modal-checkbox"><input type="checkbox" name="confirm_start_shared_batch" value="1" required><span>' . esc_html__('I understand that all websites in the shared batch will be started now.', 'rrze-multisite-manager') . '</span></label>';
         echo '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="submit" class="button button-secondary">' . esc_html($label) . '</button></div></form></dialog>';
     }
@@ -2876,7 +2897,8 @@ class Settings {
             $this->renderAnalysisTaskRemovalAjaxDialog(
                 (string)($action['action'] === 'rrze_multisite_manager_remove_storage_analysis_tasks' ? 'storage' : 'shortcode-block'),
                 (string)$action['label'],
-                (string)$action['description']
+                (string)$action['description'],
+                true
             );
             echo '</section>';
         }

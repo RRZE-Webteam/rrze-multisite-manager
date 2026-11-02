@@ -370,8 +370,8 @@ class Config {
                     ],
                     [
                         'name' => 'storage_analysis_max_concurrent_runs',
-                        'label' => __('Maximum concurrent storage analyses', 'rrze-multisite-manager'),
-                        'desc' => __('Allows four storage analyses and temporary indexes across the network by default, with up to eight. Additional analyses wait for capacity.', 'rrze-multisite-manager'),
+                        'label' => __('Maximum concurrent storage analyses per task type', 'rrze-multisite-manager'),
+                        'desc' => __('Allows four storage analyses and temporary indexes by default for each task type: small shared batch, medium shared batch, and individual task. Additional analyses of the same type wait for capacity. The multisite Cron runner must be configured with at least the combined worker limit for this parallelism to be reached.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 4,
                         'min' => 4,

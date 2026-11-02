@@ -294,6 +294,8 @@ abstract class Widgets {
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
         $topControlsHtml = (string)($args['top_controls_html'] ?? '');
+        $showArchivedAt = !empty($args['show_archived_at']);
+        $showDeletedAt = !empty($args['show_deleted_at']);
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
@@ -315,6 +317,12 @@ abstract class Widgets {
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('registered', __('Registered', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('last-updated', __('Last updated', 'rrze-multisite-manager')) . '</th>';
+        if ($showArchivedAt) {
+            echo '<th>' . esc_html__('Archived since', 'rrze-multisite-manager') . '</th>';
+        }
+        if ($showDeletedAt) {
+            echo '<th>' . esc_html__('Marked for deletion since', 'rrze-multisite-manager') . '</th>';
+        }
         echo '<th>' . $this->renderSiteTableSortButton('admin-email', __('Admin email', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . esc_html__('Users', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Content', 'rrze-multisite-manager') . '</th>';
@@ -339,6 +347,12 @@ abstract class Widgets {
             echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
             echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['registered_timestamp'] ?? 0))) . '</td>';
             echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['last_updated_timestamp'] ?? 0))) . '</td>';
+            if ($showArchivedAt) {
+                echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['archived_at'] ?? ''))) . '</td>';
+            }
+            if ($showDeletedAt) {
+                echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['deleted_at'] ?? ''))) . '</td>';
+            }
             echo '<td>' . $this->renderSiteAdminEmail((string)($site['admin_email'] ?? '')) . '</td>';
             echo '<td>' . $this->renderRoleCounts((int)($site['id'] ?? 0), (array)($site['role_counts'] ?? [])) . '</td>';
             echo '<td>' . $this->renderContentCounts((array)($site['content_counts'] ?? [])) . '</td>';
@@ -423,6 +437,7 @@ abstract class Widgets {
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'name'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
         $topControlsHtml = (string)($args['top_controls_html'] ?? '');
+        $showDnsMissingSince = !empty($args['show_dns_missing_since']);
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
@@ -445,6 +460,9 @@ abstract class Widgets {
         echo '<th>' . esc_html__('DNS', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('HTTP', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Last check', 'rrze-multisite-manager') . '</th>';
+        if ($showDnsMissingSince) {
+            echo '<th>' . esc_html__('DNS missing since', 'rrze-multisite-manager') . '</th>';
+        }
         echo '<th>' . esc_html__('Note', 'rrze-multisite-manager') . '</th>';
         echo '</tr></thead><tbody>';
 
@@ -460,6 +478,9 @@ abstract class Widgets {
             echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['last_availability_check'] ?? ''))) . '</td>';
+            if ($showDnsMissingSince) {
+                echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['operational_status_changed_at'] ?? ''))) . '</td>';
+            }
             echo '<td>' . $this->renderStatusNote((string)($site['monitoring_note'] ?? '')) . '</td>';
             echo '</tr>';
         }

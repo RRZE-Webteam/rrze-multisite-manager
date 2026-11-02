@@ -14,6 +14,7 @@ class StorageAnalysisResourceService {
     public const MAX_STATE_BYTES = 1048576;
     public const MAINTENANCE_HOOK = 'rrze_msm_storage_resource_maintenance';
     private const SLOT_PREFIX = 'rrze_msm_storage_resource_slot_';
+    private const WORKER_PREFIX = 'rrze_msm_storage_worker_';
     private const MUTEX = 'rrze_msm_storage_resource_mutex';
     private const MAINTENANCE_OFFSET = 'rrze_msm_storage_resource_maintenance_offset';
     private const MAX_SLOTS = Config::STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS;
@@ -24,26 +25,76 @@ class StorageAnalysisResourceService {
         $this->config = $config ?? new Config();
     }
 
+    /** @return array<int, string> */
+    private function getAssignmentModes(): array {
+        return ['small_batch', 'medium_batch', 'site'];
+    }
+
+    private function normalizeAssignmentMode(string $assignmentMode): string {
+        return match ($assignmentMode) {
+            'medium-batch', 'medium_batch' => 'medium_batch',
+            'small-batch', 'small_batch', 'batch' => 'small_batch',
+            default => 'site',
+        };
+    }
+
+    private function getSlotKey(string $mode, int $slot): string {
+        return self::SLOT_PREFIX . $mode . '_' . $slot;
+    }
+
+    private function getWorkerKey(string $mode, int $slot): string {
+        return self::WORKER_PREFIX . $mode . '_' . $slot;
+    }
+
+    /** @return array<int, string> */
+    private function getSlotKeys(): array {
+        $keys = [];
+        foreach ($this->getAssignmentModes() as $mode) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
+                $keys[] = $this->getSlotKey($mode, $slot);
+            }
+        }
+
+        return $keys;
+    }
+
+    /** @return array<int, string> */
+    private function getWorkerKeys(): array {
+        $keys = [];
+        foreach ($this->getAssignmentModes() as $mode) {
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
+                $keys[] = $this->getWorkerKey($mode, $slot);
+            }
+        }
+
+        return $keys;
+    }
+
     public function register(): void {
         add_action(self::MAINTENANCE_HOOK, [$this, 'maintain']);
     }
 
-    public function acquire(int $siteId): void {
+    public function acquire(int $siteId, string $assignmentMode = 'site'): void {
         \RRZE\MultisiteManager\Analysis\AnalysisLifecycle::prepareSite($siteId);
-        $this->locked(function () use ($siteId): void {
+        $mode = $this->normalizeAssignmentMode($assignmentMode);
+        $this->locked(function () use ($siteId, $mode): void {
             $available = -1;
             $occupiedSiteIds = [];
-            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $record = get_option(self::SLOT_PREFIX . $slot, []);
-                if (!empty($record['site_id']) && (int)($record['expires_at'] ?? 0) < time() && !$this->hasLiveWorker((int)$record['site_id'], false)) {
-                    $this->deleteSiteKeys((int)$record['site_id']);
-                    delete_option(self::SLOT_PREFIX . $slot);
-                    $record = [];
-                }
+            foreach ($this->getSlotKeys() as $key) {
+                $record = get_option($key, []);
                 if (is_array($record) && (int)($record['site_id'] ?? 0) === $siteId) {
                     $record['expires_at'] = time() + DAY_IN_SECONDS;
-                    $this->writeSlot($slot, $record);
+                    $this->writeSlot($key, $record);
                     return;
+                }
+            }
+            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
+                $key = $this->getSlotKey($mode, $slot);
+                $record = get_option($key, []);
+                if (!empty($record['site_id']) && (int)($record['expires_at'] ?? 0) < time() && !$this->hasLiveWorker((int)$record['site_id'], false)) {
+                    $this->deleteSiteKeys((int)$record['site_id']);
+                    delete_option($key);
+                    $record = [];
                 }
                 if (!empty($record['site_id']) && $slot < $this->config->getStorageAnalysisMaxConcurrentRuns()) {
                     $occupiedSiteIds[] = (int)$record['site_id'];
@@ -71,17 +122,22 @@ class StorageAnalysisResourceService {
                     esc_html($occupiedSiteIdsLabel)
                 ));
             }
-            $this->writeSlot($available, ['site_id' => $siteId, 'expires_at' => time() + DAY_IN_SECONDS, 'buckets' => []]);
+            $this->writeSlot($this->getSlotKey($mode, $available), ['site_id' => $siteId, 'mode' => $mode, 'expires_at' => time() + DAY_IN_SECONDS, 'buckets' => []]);
         });
         $this->ensureMaintenance();
     }
 
-    public function run(int $siteId, callable $callback): mixed {
+    public function run(int $siteId, callable $callback, string $assignmentMode = 'site'): mixed {
         $token = wp_generate_uuid4();
         $selected = -1;
-        $this->locked(function () use ($siteId, $token, &$selected): void {
+        $mode = $this->normalizeAssignmentMode($assignmentMode);
+        $this->locked(function () use ($siteId, $token, $mode, &$selected): void {
+            if ($this->hasLiveWorker($siteId, false)) {
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+                throw new StorageAnalysisBusyException(__('Another request is already processing this website.', 'rrze-multisite-manager'));
+            }
             for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $key = 'rrze_msm_storage_worker_' . $slot;
+                $key = $this->getWorkerKey($mode, $slot);
                 $record = get_option($key, []);
                 if (!empty($record) && $this->canReclaimWorker($record)) {
                     delete_option($key);
@@ -95,7 +151,7 @@ class StorageAnalysisResourceService {
                     $selected = $slot;
                 }
             }
-            if ($selected < 0 || !add_option('rrze_msm_storage_worker_' . $selected, ['site_id' => $siteId, 'token' => $token, 'expires_at' => time() + DAY_IN_SECONDS, 'host' => (string)gethostname(), 'pid' => getmypid()], '', false)) {
+            if ($selected < 0 || !add_option($this->getWorkerKey($mode, $selected), ['site_id' => $siteId, 'mode' => $mode, 'token' => $token, 'expires_at' => time() + DAY_IN_SECONDS, 'host' => (string)gethostname(), 'pid' => getmypid()], '', false)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
                 throw new StorageAnalysisBusyException(__('Storage analysis workers are occupied. The analysis will be retried.', 'rrze-multisite-manager'));
             }
@@ -106,8 +162,8 @@ class StorageAnalysisResourceService {
             return $callback();
         } finally {
             unset(self::$liveWorkerTokens[$token]);
-            $this->locked(function () use ($selected, $token): void {
-                $key = 'rrze_msm_storage_worker_' . $selected;
+            $this->locked(function () use ($selected, $token, $mode): void {
+                $key = $this->getWorkerKey($mode, $selected);
                 $record = get_option($key, []);
                 if (($record['token'] ?? '') === $token) {
                     delete_option($key);
@@ -129,8 +185,8 @@ class StorageAnalysisResourceService {
     }
 
     private function hasLiveWorker(int $siteId, bool $allowOwned): bool {
-        for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-            $record = get_option('rrze_msm_storage_worker_' . $slot, []);
+        foreach ($this->getWorkerKeys() as $key) {
+            $record = get_option($key, []);
             if ((int)($record['site_id'] ?? 0) === $siteId && !$this->canReclaimWorker($record)) {
                 if (!$allowOwned || empty(self::$liveWorkerTokens[(string)($record['token'] ?? '')])) {
                     return true;
@@ -164,8 +220,8 @@ class StorageAnalysisResourceService {
             $sizes[$bucket] = strlen(serialize($entries)); // Each input is already bounded to 128 KiB.
         }
         $this->locked(function () use ($siteId, $sizes, $write): void {
-            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $record = get_option(self::SLOT_PREFIX . $slot, []);
+            foreach ($this->getSlotKeys() as $key) {
+                $record = get_option($key, []);
                 if ((int)($record['site_id'] ?? 0) !== $siteId) {
                     continue;
                 }
@@ -176,7 +232,7 @@ class StorageAnalysisResourceService {
                 }
                 $record['expires_at'] = time() + DAY_IN_SECONDS;
                 // Reserve before writing so an interrupted request cannot leave unaccounted segments.
-                $this->writeSlot($slot, $record);
+                $this->writeSlot($key, $record);
                 $write();
                 return;
             }
@@ -191,8 +247,8 @@ class StorageAnalysisResourceService {
         }
         $expected = false;
         $this->inMainSite(function () use ($siteId, $bucket, &$expected): void {
-            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $record = get_option(self::SLOT_PREFIX . $slot, []);
+            foreach ($this->getSlotKeys() as $key) {
+                $record = get_option($key, []);
                 if ((int)($record['site_id'] ?? 0) === $siteId && !empty($record['buckets'][$bucket])) {
                     $expected = true;
                 }
@@ -214,17 +270,16 @@ class StorageAnalysisResourceService {
 
     public function release(int $siteId): void {
         $this->locked(function () use ($siteId): void {
-            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $record = get_option(self::SLOT_PREFIX . $slot, []);
+            foreach ($this->getSlotKeys() as $key) {
+                $record = get_option($key, []);
                 if ((int)($record['site_id'] ?? 0) === $siteId) {
-                    delete_option(self::SLOT_PREFIX . $slot);
+                    delete_option($key);
                 }
             }
         });
     }
 
-    private function writeSlot(int $slot, array $record): void {
-        $key = self::SLOT_PREFIX . $slot;
+    private function writeSlot(string $key, array $record): void {
         if (get_option($key, null) === $record) {
             return;
         }
@@ -288,10 +343,10 @@ class StorageAnalysisResourceService {
                 throw new StorageAnalysisBusyException(__('Another request is already processing this website.', 'rrze-multisite-manager'));
             }
             $this->deleteSiteKeys($siteId);
-            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $record = get_option(self::SLOT_PREFIX . $slot, []);
+            foreach ($this->getSlotKeys() as $key) {
+                $record = get_option($key, []);
                 if ((int)($record['site_id'] ?? 0) === $siteId) {
-                    delete_option(self::SLOT_PREFIX . $slot);
+                    delete_option($key);
                 }
             }
         });
@@ -329,17 +384,16 @@ class StorageAnalysisResourceService {
             return;
         }
         $this->locked(function (): void {
-            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $record = get_option(self::SLOT_PREFIX . $slot, []);
+            foreach ($this->getSlotKeys() as $key) {
+                $record = get_option($key, []);
                 if (!empty($record['site_id']) && (int)($record['expires_at'] ?? 0) < time() && !$this->hasLiveWorker((int)$record['site_id'], false)) {
                     $this->deleteSiteKeys((int)$record['site_id']);
-                    delete_option(self::SLOT_PREFIX . $slot);
+                    delete_option($key);
                 }
             }
         });
         $this->locked(function (): void {
-            for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
-                $key = 'rrze_msm_storage_worker_' . $slot;
+            foreach ($this->getWorkerKeys() as $key) {
                 $record = get_option($key, []);
                 if (empty($record)) {
                     continue;

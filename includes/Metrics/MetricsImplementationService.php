@@ -5401,7 +5401,7 @@ class MetricsImplementationService {
         switch_to_blog($siteId);
 
         try {
-            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageAnalysisBatch($siteId, $restart, $assignmentMode));
+            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageAnalysisBatch($siteId, $restart, $assignmentMode), $assignmentMode);
             if (empty($status['success'])) {
                 $this->storageResources->clearSite($siteId);
             }
@@ -5431,7 +5431,7 @@ class MetricsImplementationService {
         switch_to_blog($siteId);
 
         try {
-            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageOrphanAnalysisBatch($siteId, $restart, $assignmentMode));
+            $status = $this->storageResources->run($siteId, fn(): array => $this->runCurrentSiteStorageOrphanAnalysisBatch($siteId, $restart, $assignmentMode), $assignmentMode);
             if (empty($status['success'])) {
                 $this->storageResources->clearSite($siteId);
             }
@@ -5451,8 +5451,8 @@ class MetricsImplementationService {
         return $this->mediaMetadataAnalysis->getAnalysis($siteId);
     }
 
-    public function runSiteMediaMetadataAnalysisBatch(int $siteId, bool $restart = false): array {
-        return $this->mediaMetadataAnalysis->runBatch($siteId, $restart);
+    public function runSiteMediaMetadataAnalysisBatch(int $siteId, bool $restart = false, string $assignmentMode = 'site'): array {
+        return $this->mediaMetadataAnalysis->runBatch($siteId, $restart, $assignmentMode);
     }
 
     protected function buildCurrentSiteStorageAnalysis(): array {
@@ -5576,7 +5576,7 @@ class MetricsImplementationService {
     }
 
     protected function runCurrentSiteStorageAnalysisBatch(int $siteId, bool $restart = false, string $assignmentMode = 'batch'): array {
-        $this->storageResources->acquire($siteId);
+        $this->storageResources->acquire($siteId, $assignmentMode);
         return $this->storageAnalysisBatch->runBase(
             $siteId,
             $restart,
@@ -5595,7 +5595,7 @@ class MetricsImplementationService {
     protected function runCurrentSiteStorageOrphanAnalysisBatch(int $siteId, bool $restart = false, string $assignmentMode = 'batch'): array {
         $analysis = $this->getCachedSiteStorageAnalysis($siteId);
         if (!empty($analysis)) {
-            $this->storageResources->acquire($siteId);
+            $this->storageResources->acquire($siteId, $assignmentMode);
         }
 
         return $this->storageAnalysisBatch->runOrphan(
@@ -5637,7 +5637,7 @@ class MetricsImplementationService {
         }
 
         $this->clearCurrentSiteStorageAnalysisAttachmentIndexBuckets($siteId);
-        $this->storageResources->acquire($siteId);
+        $this->storageResources->acquire($siteId, $assignmentMode);
 
         return [
             'site_id' => $siteId,
@@ -6190,7 +6190,7 @@ class MetricsImplementationService {
         $siteId = get_current_blog_id();
         // The base phase leaves its bounded attachment index in place for this
         // phase. It is released only after orphan analysis has completed.
-        $this->storageResources->acquire($siteId);
+        $this->storageResources->acquire($siteId, $assignmentMode);
         $candidates = is_array($analysis['largest_orphan_files'] ?? null) ? array_values((array)$analysis['largest_orphan_files']) : [];
 
         return [

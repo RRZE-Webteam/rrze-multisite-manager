@@ -775,6 +775,9 @@ class Dashboard {
             'sort_key' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'name' : 'registered',
             'sort_direction' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'asc' : 'desc',
             'top_controls_html' => $this->renderSiteOverviewSearchControl($siteSearch, $currentTab),
+            'show_archived_at' => $currentTab === 'archived',
+            'show_deleted_at' => $currentTab === 'deleted',
+            'show_dns_missing_since' => $currentTab === 'dns-missing',
         ];
         $tableSites = match ($currentTab) {
             'active' => array_values(array_filter($dashboardData['site_overview'] ?? [], static fn(array $site): bool => empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']))),
