@@ -10,6 +10,40 @@
     text-align: center;
 }
 
+a.rrze-msm-badge-link {
+    text-decoration: none;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-positive:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-positive:not(.button):not(.button-secondary):not(.button-link):visited {
+    color: var(--rrze-msm-positive-text);
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-warning:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-warning:not(.button):not(.button-secondary):not(.button-link):visited {
+    color: var(--rrze-msm-warning-text);
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-danger:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-danger:not(.button):not(.button-secondary):not(.button-link):visited {
+    color: var(--rrze-msm-danger-text);
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-info:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-info:not(.button):not(.button-secondary):not(.button-link):visited {
+    color: var(--rrze-msm-info-text);
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-neutral:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-neutral:not(.button):not(.button-secondary):not(.button-link):visited {
+    color: var(--rrze-msm-neutral-text);
+}
+
+a.rrze-msm-badge-link:hover,
+a.rrze-msm-badge-link:focus {
+    text-decoration: underline;
+}
+
 .rrze-msm-badge-positive {
     background: var(--rrze-msm-positive);
     color: var(--rrze-msm-positive-text);
@@ -48,4 +82,24 @@
 .rrze-msm-badge-inactive {
     background: var(--rrze-msm-inactive);
     color: var(--rrze-msm-inactive-text);
+}
+
+.rrze-msm-badge-status-active {
+    background: var(--rrze-msm-status-color-active);
+    color: var(--rrze-msm-status-active-text);
+}
+
+.rrze-msm-badge-status-active-nobots {
+    background: var(--rrze-msm-status-color-active-nobots);
+    color: #fff;
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-status-active:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-status-active:not(.button):not(.button-secondary):not(.button-link):visited {
+    color: var(--rrze-msm-status-active-text);
+}
+
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-status-active-nobots:not(.button):not(.button-secondary):not(.button-link),
+.rrze-multisite-manager-admin a.rrze-msm-badge-link.rrze-msm-badge-status-active-nobots:not(.button):not(.button-secondary):not(.button-link):visited {
+    color: #fff;
 }

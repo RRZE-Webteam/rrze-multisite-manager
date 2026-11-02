@@ -47,12 +47,19 @@ abstract class Widgets {
         $statusItem = [];
 
         foreach ($statusItems as $statusItem) {
-            $color = (string)($statusItem['color'] ?? '');
-            $style = preg_match('/^#[0-9a-f]{6}$/i', $color) === 1
-                ? ' style="background-color: ' . esc_attr($color) . '; color: #fff;"'
+            $url = isset($statusItem['url']) ? (string)$statusItem['url'] : '';
+            $statusClass = isset($statusItem['status_class'])
+                ? sanitize_html_class((string)$statusItem['status_class'])
                 : '';
+            $classes = 'rrze-msm-badge rrze-msm-badge-' . esc_attr((string)$statusItem['accent'])
+                . ($statusClass !== '' ? ' ' . $statusClass : '');
 
-            $html .= '<span class="rrze-msm-badge rrze-msm-badge-' . esc_attr((string)$statusItem['accent']) . '"' . $style . '>' . esc_html((string)$statusItem['label']) . '</span> ';
+            if ($url !== '') {
+                $html .= '<a class="' . $classes . ' rrze-msm-badge-link" href="' . esc_url($url) . '">' . esc_html((string)$statusItem['label']) . '</a> ';
+                continue;
+            }
+
+            $html .= '<span class="' . $classes . '">' . esc_html((string)$statusItem['label']) . '</span> ';
         }
 
         return trim($html);
@@ -315,6 +322,7 @@ abstract class Widgets {
         echo '<thead><tr>';
         echo '<th class="rrze-msm-site-branding-column">' . esc_html__('Logo', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
+        echo '<th>' . esc_html__('Operational status', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('registered', __('Registered', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('last-updated', __('Last updated', 'rrze-multisite-manager')) . '</th>';
         if ($showArchivedAt) {
@@ -345,6 +353,7 @@ abstract class Widgets {
             echo '>';
             echo '<td class="rrze-msm-site-branding-cell">' . $this->renderSiteBranding((array)($site['branding'] ?? []), (string)$site['name']) . '</td>';
             echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
+            echo '<td>' . $this->renderWebsiteOverviewOperationalStatusBadges($site) . '</td>';
             echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['registered_timestamp'] ?? 0))) . '</td>';
             echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['last_updated_timestamp'] ?? 0))) . '</td>';
             if ($showArchivedAt) {
@@ -455,6 +464,7 @@ abstract class Widgets {
         echo '</div>';
         echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table rrze-msm-site-hover-actions-table">';
         echo '<thead><tr>';
+        echo '<th class="rrze-msm-site-branding-column">' . esc_html__('Logo', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . esc_html__('Operational status', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('DNS', 'rrze-multisite-manager') . '</th>';
@@ -473,8 +483,9 @@ abstract class Widgets {
             echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site['last_availability_check'] ?? ''))) . '"';
             echo ' data-sort-admin-email=""';
             echo '>';
+            echo '<td class="rrze-msm-site-branding-cell">' . $this->renderSiteBranding((array)($site['branding'] ?? []), (string)$site['name']) . '</td>';
             echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
-            echo '<td>' . $this->renderOperationalStatusBadge((string)($site['operational_status_label'] ?? ''), (string)($site['operational_status'] ?? '')) . '</td>';
+            echo '<td>' . $this->renderWebsiteOverviewOperationalStatusBadges($site) . '</td>';
             echo '<td>' . esc_html((string)($site['dns_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html((string)($site['http_status_label'] ?? __('Not set', 'rrze-multisite-manager'))) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site['last_availability_check'] ?? ''))) . '</td>';
@@ -1309,7 +1320,7 @@ abstract class Widgets {
         return '<div class="rrze-msm-status-note">' . nl2br(esc_html($note)) . '</div>';
     }
 
-    protected function renderOperationalStatusBadge(string $label, string $status): string {
+    protected function renderOperationalStatusBadge(string $label, string $status, string $url = ''): string {
         $accent = 'neutral';
 
         if ($status === 'healthy') {
@@ -1326,17 +1337,147 @@ abstract class Widgets {
             $label = __('Not set', 'rrze-multisite-manager');
         }
 
-        $colorKey = match ($status) {
-            'healthy' => 'technically_reachable',
-            'provisioning' => 'provisioning',
-            'dns_missing' => 'dns_missing',
-            'unreachable' => 'technically_unreachable',
-            'retired' => 'out_of_service',
-            default => 'automatic',
-        };
-        $color = $this->config->getSiteStatusColor($colorKey);
+        $classes = 'rrze-msm-badge rrze-msm-badge-' . esc_attr($accent);
 
-        return '<span class="rrze-msm-badge rrze-msm-badge-' . esc_attr($accent) . '" style="background-color: ' . esc_attr($color) . '; color: #fff;">' . esc_html($label) . '</span>';
+        if ($url !== '') {
+            return '<a class="' . $classes . ' rrze-msm-badge-link" href="' . esc_url($url) . '">' . esc_html($label) . '</a>';
+        }
+
+        return '<span class="' . $classes . '">' . esc_html($label) . '</span>';
+    }
+
+    /**
+     * Renders the status pills used in the website overview.
+     *
+     * A healthy technical check is deliberately represented by the Core
+     * status: an active website is useful information, while a second green
+     * "technically reachable" pill merely repeats that fact. An HTTP-level
+     * outage keeps its technical warning visible alongside the Core status.
+     * "Not public" is shown only when that Core flag is actually set.
+     *
+     * @param array<string, mixed> $site
+     */
+    protected function renderWebsiteOverviewOperationalStatusBadges(array $site): string {
+        $operationalStatus = sanitize_key((string)($site['operational_status'] ?? ''));
+        $isCoreActive = empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']);
+        $coreBadges = [];
+
+        if (!empty($site['is_archived'])) {
+            $coreBadges[] = [
+                'label' => __('Archived', 'rrze-multisite-manager'),
+                'accent' => 'warning',
+                'color' => $this->config->getSiteStatusColor('archived'),
+                'url' => $this->getWebsiteOverviewStatusUrl('archived'),
+            ];
+        }
+
+        if (!empty($site['is_deleted'])) {
+            $coreBadges[] = [
+                'label' => __('Delete', 'rrze-multisite-manager'),
+                'accent' => 'danger',
+                'color' => $this->config->getSiteStatusColor('deleted'),
+                'url' => $this->getWebsiteOverviewStatusUrl('deleted'),
+            ];
+        }
+
+        if (!empty($site['is_spam'])) {
+            $coreBadges[] = [
+                'label' => __('Blocked', 'rrze-multisite-manager'),
+                'accent' => 'neutral',
+                'color' => $this->config->getSiteStatusColor('blocked'),
+                'url' => $this->getWebsiteOverviewStatusUrl('blocked'),
+            ];
+        }
+
+        if ($isCoreActive) {
+            $coreBadges[] = [
+                'label' => __('Active', 'rrze-multisite-manager'),
+                'accent' => 'positive',
+                'color' => $this->config->getSiteStatusColor('active'),
+                'url' => $this->getWebsiteOverviewStatusUrl('active'),
+                'status_class' => 'rrze-msm-badge-status-active',
+            ];
+            $coreBadges[] = !empty($site['is_public'])
+                ? [
+                    'label' => __('Public', 'rrze-multisite-manager'),
+                    'accent' => 'info',
+                    'color' => $this->config->getSiteStatusColor('public'),
+                    'url' => $this->getWebsiteOverviewStatusUrl('public'),
+                    'status_class' => 'rrze-msm-badge-status-active',
+                ]
+                : [
+                    'label' => __('Not public', 'rrze-multisite-manager'),
+                    'accent' => 'info',
+                    'color' => $this->config->getSiteStatusColor('active_private'),
+                    'url' => $this->getWebsiteOverviewStatusUrl('not-public'),
+                    'status_class' => 'rrze-msm-badge-status-active-nobots',
+                ];
+        }
+
+        if ($operationalStatus === 'healthy' && $isCoreActive) {
+            return $this->getStatusBadgesHtml($coreBadges);
+        }
+
+        if ($operationalStatus === 'unreachable' && $isCoreActive) {
+            $unreachableBadges = [$coreBadges[0]];
+
+            if (empty($site['is_public'])) {
+                $unreachableBadges[] = $coreBadges[1];
+            }
+
+            return $this->getStatusBadgesHtml($unreachableBadges) . ' ' . $this->renderOperationalStatusBadge(
+                (string)($site['operational_status_label'] ?? ''),
+                $operationalStatus,
+                $this->getWebsiteOverviewStatusUrl($operationalStatus)
+            );
+        }
+
+        $operationalBadge = $this->renderOperationalStatusBadge(
+            (string)($site['operational_status_label'] ?? ''),
+            $operationalStatus,
+            $this->getWebsiteOverviewStatusUrl($operationalStatus)
+        );
+
+        if (!empty($coreBadges)) {
+            return $operationalBadge . ' ' . $this->getStatusBadgesHtml($coreBadges);
+        }
+
+        if ($isCoreActive && empty($site['is_public'])) {
+            return $operationalBadge . ' ' . $this->getStatusBadgesHtml([
+                $coreBadges[1],
+            ]);
+        }
+
+        return $operationalBadge;
+    }
+
+    protected function getWebsiteOverviewStatusUrl(string $status): string {
+        $status = sanitize_key($status);
+        $tabMap = [
+            'active' => 'active',
+            'archived' => 'archived',
+            'blocked' => 'blocked',
+            'deleted' => 'deleted',
+            'provisioning' => 'provisioning',
+            'dns_missing' => 'dns-missing',
+            'unreachable' => 'unreachable',
+        ];
+        $statusFilters = ['public', 'not-public', 'automatic', 'retired'];
+
+        if (!isset($tabMap[$status]) && !in_array($status, $statusFilters, true)) {
+            return '';
+        }
+
+        $args = [
+            'page' => (string)($this->config->getMenuSettings()['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview'),
+            'tab' => $tabMap[$status] ?? 'all',
+        ];
+
+        if (!isset($tabMap[$status])) {
+            $args['site_status'] = $status;
+        }
+
+        return add_query_arg($args, admin_url('admin.php'));
     }
 
     protected function renderSiteTitleAndUrl(array $site): string {
