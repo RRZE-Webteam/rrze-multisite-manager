@@ -191,6 +191,48 @@ class DashboardMetricsHistoryStore {
         return $snapshots;
     }
 
+    /**
+     * Returns the most recent historical snapshot for every website at or
+     * before the supplied timestamp. This is used for report comparisons and
+     * deliberately never falls back to transient dashboard data.
+     *
+     * @return array<int, array<string, int|string|null>>
+     */
+    public function getLatestStatisticSnapshotsAtOrBefore(int $timestamp): array {
+        global $wpdb;
+
+        $table = $this->store->table('dashboard_metrics');
+        $networkId = get_current_network_id();
+        $timestamp = max(1, $timestamp);
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT snapshot.* FROM $table snapshot
+            INNER JOIN (
+                SELECT blog_id, MAX(recorded_at) AS recorded_at
+                FROM $table
+                WHERE network_id = %d AND snapshot_status = 'statistic' AND recorded_at <= %d
+                GROUP BY blog_id
+            ) latest ON latest.blog_id = snapshot.blog_id AND latest.recorded_at = snapshot.recorded_at
+            WHERE snapshot.network_id = %d AND snapshot.snapshot_status = 'statistic'
+            ORDER BY snapshot.blog_id ASC",
+            $networkId,
+            $timestamp,
+            $networkId
+        ), ARRAY_A);
+
+        if ($wpdb->last_error) {
+            throw new \RuntimeException(__('Dashboard metric statistics could not be read.', 'rrze-multisite-manager'));
+        }
+
+        $snapshots = [];
+        foreach ((array)$rows as $row) {
+            if (is_array($row)) {
+                $snapshots[max(0, (int)($row['blog_id'] ?? 0))] = $row;
+            }
+        }
+
+        return $snapshots;
+    }
+
     /** Deletes only immutable historical rows; current dashboard snapshots remain intact. */
     public function purgeStatistics(): int {
         global $wpdb;

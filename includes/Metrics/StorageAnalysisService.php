@@ -39,7 +39,7 @@ class StorageAnalysisService {
         return $this->metrics->runSiteStorageOrphanAnalysisBatch($siteId, false, $assignmentMode);
     }
 
-    public function runMediaMetadataBatch(int $siteId, bool $restart): array {
-        return $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restart);
+    public function runMediaMetadataBatch(int $siteId, bool $restart, string $assignmentMode = 'site'): array {
+        return $this->metrics->runSiteMediaMetadataAnalysisBatch($siteId, $restart, $assignmentMode);
     }
 }

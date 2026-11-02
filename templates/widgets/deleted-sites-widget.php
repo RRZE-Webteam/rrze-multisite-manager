@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) { exit; }
 
 $tableId = sanitize_key((string)$widget_id);
 $defaultPerPage = max(1, absint($default_per_page ?? 10));
-$siteTable = $this->renderSiteTable($sites, ['table_id' => $tableId, 'default_per_page' => $defaultPerPage, 'sort_key' => 'registered', 'sort_direction' => 'desc']);
+$siteTable = $this->renderStatusSiteTable($sites, ['table_id' => $tableId, 'default_per_page' => $defaultPerPage, 'status_type' => 'deleted', 'sort_key' => 'last-updated', 'sort_direction' => 'desc']);
 ?>
 <section class="rrze-msm-widget <?php echo esc_attr($widget_classes); ?>" data-widget-id="<?php echo esc_attr($widget_id); ?>">
     <div class="rrze-msm-widget-controls">

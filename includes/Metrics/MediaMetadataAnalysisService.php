@@ -38,7 +38,7 @@ class MediaMetadataAnalysisService {
         return $this->results->getMediaMetadataResult($siteId);
     }
 
-    public function runBatch(int $siteId, bool $restart = false): array {
+    public function runBatch(int $siteId, bool $restart = false, string $assignmentMode = 'site'): array {
         if ($siteId <= 0) {
             return [
                 'success' => false,
@@ -70,7 +70,7 @@ class MediaMetadataAnalysisService {
                     $store->saveCheckpoint($siteId, 'storage_metadata', 'storage_metadata', $state);
                 }
                 return $state;
-            });
+            }, $assignmentMode);
         } finally {
             restore_current_blog();
         }

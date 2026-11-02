@@ -87,6 +87,8 @@ class StorageAnalysisSchedulerService {
     }
 
     public function ensureRecurringSchedules(): void {
+        $this->migrateLegacyContinuationQueue();
+
         $signature = $this->getScheduleSignature();
         $storedSignature = get_site_option(self::SCHEDULE_SIGNATURE_OPTION, null);
 
@@ -170,27 +172,31 @@ class StorageAnalysisSchedulerService {
         return (bool)get_site_option(self::MIGRATION_LOCK_OPTION, false);
     }
 
-    public function canStartBatchNow(): bool {
-        $lock = get_site_option(self::BATCH_LOCK_OPTION, []);
+    public function canStartBatchNow(string $mode = 'small-batch'): bool {
+        if (!in_array($mode, ['small-batch', 'medium-batch'], true)) {
+            return false;
+        }
+
+        $lock = get_site_option($this->getBatchLockOptionName($mode), []);
         $startedAt = is_array($lock) ? (int)($lock['started_at'] ?? 0) : (int)$lock;
 
         return !$this->isScheduleMigrationInProgress()
             && $startedAt <= 0
-            && !empty($this->getBatchSiteIds())
-            && (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getStorageAnalysisBatchHook())) > 0;
+            && !empty($this->getBatchSiteIds($mode))
+            && (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($mode))) > 0;
     }
 
-    public function startBatchNow(): bool {
-        if (!$this->canStartBatchNow()) {
+    public function startBatchNow(string $mode = 'small-batch'): bool {
+        if (!$this->canStartBatchNow($mode)) {
             return false;
         }
 
-        return (bool)$this->inBatchCronContext(function (): bool {
-            $hook = $this->config->getStorageAnalysisBatchHook();
+        return (bool)$this->inBatchCronContext(function () use ($mode): bool {
+            $hook = $this->getBatchHook($mode);
             wp_clear_scheduled_hook($hook);
-            $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey('small-batch'), $hook);
+            $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey($mode), $hook);
             if ($scheduled) {
-                LoggingService::info($this->config, 'RRZE-MSM: Shared storage-analysis batch started early.', ['cron_site_id' => $this->getBatchCronSiteId(), 'batch_site_count' => count($this->getBatchSiteIds())]);
+                LoggingService::info($this->config, 'RRZE-MSM: Shared storage-analysis batch started early.', ['cron_site_id' => $this->getBatchCronSiteId(), 'batch_mode' => $mode, 'batch_site_count' => count($this->getBatchSiteIds($mode))]);
             }
             return $scheduled;
         });
@@ -1013,23 +1019,14 @@ class StorageAnalysisSchedulerService {
 
         if (!$this->acquireSiteLock($siteId)) {
             $this->recordRunWait($siteId, __('Another storage analysis request is already running for this website.', 'rrze-multisite-manager'));
-            if ($fromBatch) {
-                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $this->getSiteAssignmentMode($siteId));
-            } else {
-                $this->scheduleIndividualRetry($siteId);
-            }
+            $this->scheduleSiteRetry($siteId);
             return;
         }
 
         if (!$this->acquireNetworkRunSlot($siteId)) {
             $this->releaseSiteLock($siteId);
             $this->recordRunWait($siteId, __('All storage analysis execution slots are occupied.', 'rrze-multisite-manager'));
-
-            if ($fromBatch) {
-                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $this->getSiteAssignmentMode($siteId));
-            } else {
-                $this->scheduleIndividualRetry($siteId);
-            }
+            $this->scheduleSiteRetry($siteId);
 
             return;
         }
@@ -1045,11 +1042,7 @@ class StorageAnalysisSchedulerService {
             $this->runSingleProcessAnalysis($siteId);
         } catch (StorageAnalysisBusyException $exception) {
             $this->recordRunWait($siteId, $exception->getMessage());
-            if ($fromBatch) {
-                $this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $this->getSiteAssignmentMode($siteId));
-            } else {
-                $this->scheduleIndividualRetry($siteId);
-            }
+            $this->scheduleSiteRetry($siteId);
         } catch (\Throwable $exception) {
             $this->markRunFailed($siteId, $exception->getMessage());
             $this->logStorageAnalysisError($siteId, $phase, $exception->getMessage());
@@ -1175,39 +1168,82 @@ class StorageAnalysisSchedulerService {
             $this->continuationSchedulingError = __('Scheduling for this website has been removed.', 'rrze-multisite-manager');
             return false;
         }
-        if (!$this->acquireNetworkRunSlotsLock()) {
-            // A brief queue-lock collision must not discard a website's saved progress.
-            $assignmentMode = $this->getSiteAssignmentMode($siteId);
-            if ($this->isBatchAssignmentMode($assignmentMode)) {
-                $scheduled = (bool)$this->inBatchCronContext(function () use ($siteId, $assignmentMode): bool {
-                    $args = [$siteId, true];
-                    $hook = $this->getBatchHook($assignmentMode);
-                    return (bool)wp_next_scheduled($hook, $args) || (bool)wp_schedule_single_event(time() + MINUTE_IN_SECONDS, $hook, $args);
-                });
+        /*
+         * A continuation belongs in the Cron table of the affected website.
+         * The multisite Cron runner can then start several different sites in
+         * parallel. A central queue made every continuation appear on the main
+         * site and therefore limited the whole network to one runner process.
+         */
+        return $this->scheduleSiteContinuation($siteId);
+    }
 
-                if (!$scheduled) {
-                    $this->continuationSchedulingError = __('The batch retry event could not be scheduled after a queue-lock collision.', 'rrze-multisite-manager');
-                }
+    /**
+     * Schedule a single short continuation in the target website's Cron table.
+     *
+     * The third argument identifies this as a storage-analysis continuation;
+     * `runScheduledAnalysis()` already accepts it for batch and individual
+     * assignments alike.
+     */
+    protected function scheduleSiteContinuation(int $siteId, int $delaySeconds = 1): bool {
+        return (bool)$this->inSiteCronContext($siteId, function () use ($siteId, $delaySeconds): bool {
+            $args = [$siteId, self::SCHEDULED_PHASE, true];
+            $hook = $this->config->getStorageAnalysisHook();
+            $timestamp = time() + max(1, $delaySeconds);
+            $existingTimestamp = (int)wp_next_scheduled($hook, $args);
 
-                return $scheduled;
+            if ($existingTimestamp > 0 && $existingTimestamp <= $timestamp) {
+                return true;
             }
-            $scheduled = $this->scheduleIndividualRetry($siteId);
-
-            if (!$scheduled) {
-                $this->continuationSchedulingError = __('The individual retry event could not be scheduled after a queue-lock collision.', 'rrze-multisite-manager');
+            if ($existingTimestamp > 0) {
+                wp_clear_scheduled_hook($hook, $args);
             }
 
-            return $scheduled;
+            $scheduled = wp_schedule_single_event($timestamp, $hook, $args, true);
+            if ((is_wp_error($scheduled) || !$scheduled) && $existingTimestamp > 0) {
+                wp_schedule_single_event($existingTimestamp, $hook, $args);
+            }
+
+            if (is_wp_error($scheduled)) {
+                $this->continuationSchedulingError = sprintf(
+                    /* translators: %s: WordPress Cron scheduling error. */
+                    __('WordPress could not create the continuation event: %s', 'rrze-multisite-manager'),
+                    $scheduled->get_error_message()
+                );
+            } elseif (!$scheduled) {
+                $this->continuationSchedulingError = __('WordPress could not create the continuation event.', 'rrze-multisite-manager');
+            }
+
+            return !is_wp_error($scheduled) && (bool)$scheduled;
+        });
+    }
+
+    /** Move continuations queued by older releases into their target Cron tables. */
+    protected function migrateLegacyContinuationQueue(): void {
+        $queue = get_site_option(self::CONTINUATION_QUEUE_OPTION, []);
+        if (!is_array($queue) || empty($queue)) {
+            return;
         }
-        try {
-            $queue = get_site_option(self::CONTINUATION_QUEUE_OPTION, []);
-            $queue = is_array($queue) ? $queue : [];
-            $queue[$siteId] = $runId;
-            update_site_option(self::CONTINUATION_QUEUE_OPTION, $queue);
-        } finally {
-            $this->releaseNetworkRunSlotsLock();
+
+        $remaining = [];
+        foreach ($queue as $siteId => $runId) {
+            $siteId = (int)$siteId;
+            if ($siteId <= 0 || !is_string($runId) || $runId === '') {
+                continue;
+            }
+            if (!$this->scheduleSiteContinuation($siteId)) {
+                $remaining[$siteId] = $runId;
+            }
         }
-        return $this->scheduleContinuationQueueEvent();
+
+        if (empty($remaining)) {
+            delete_site_option(self::CONTINUATION_QUEUE_OPTION);
+            $this->inBatchCronContext(function (): void {
+                wp_clear_scheduled_hook(self::CONTINUATION_HOOK);
+            });
+            return;
+        }
+
+        update_site_option(self::CONTINUATION_QUEUE_OPTION, $remaining);
     }
 
     protected function scheduleContinuationQueueEvent(int $delaySeconds = 1): bool {
@@ -1770,7 +1806,7 @@ class StorageAnalysisSchedulerService {
                     $complete = ($result['status']['orphan']['status'] ?? '') === 'complete';
                 } elseif ($phase === self::METADATA_PHASE) {
                     $current = get_blog_option($siteId, self::OPTION_STATUS, []);
-                    $result = $this->storageAnalysis->runMediaMetadataBatch($siteId, empty($current['metadata_started']));
+                    $result = $this->storageAnalysis->runMediaMetadataBatch($siteId, empty($current['metadata_started']), $assignmentMode);
                     $this->markMediaMetadataStarted($siteId);
                     $complete = ($result['analysis']['status'] ?? '') === 'complete';
                 } else {
@@ -1845,13 +1881,9 @@ class StorageAnalysisSchedulerService {
                 $this->logStorageAnalysisError($siteId, $phase, $message);
                 return;
             }
-            // A single assignment retries on its own site, without occupying the central queue.
-            $scheduled = $this->getSiteAssignmentMode($siteId) === 'site'
-                ? $this->scheduleIndividualRetry($siteId)
-                : $this->scheduleAnalysisContinuation($siteId, $runId);
-            if ($scheduled && $this->getSiteAssignmentMode($siteId) === 'site') {
-                $this->removeAnalysisContinuation($siteId, $runId);
-            }
+            // A resource wait must back off on the affected website, regardless
+            // of whether its recurring assignment is individual or shared.
+            $scheduled = $this->scheduleSiteRetry($siteId);
             if ($scheduled && $waitingSince === 0) {
                 $this->logContinuationDiagnostic('capacity_wait', $siteId, $runId, [
                     'phase' => $phase,
@@ -2483,24 +2515,28 @@ class StorageAnalysisSchedulerService {
         try {
             $slots = get_site_option(self::NETWORK_RUN_SLOTS_OPTION, []);
             $slots = is_array($slots) ? $slots : [];
+            $mode = $this->getSiteAssignmentMode($siteId);
+            $modeSlots = is_array($slots[$mode] ?? null) ? $slots[$mode] : [];
             $expiresBefore = time() - self::REQUEST_LOCK_TTL;
 
-            foreach ($slots as $lockedSiteId => $startedAt) {
+            foreach ($modeSlots as $lockedSiteId => $startedAt) {
                 if ((int)$startedAt <= $expiresBefore) {
-                    unset($slots[$lockedSiteId]);
+                    unset($modeSlots[$lockedSiteId]);
                 }
             }
 
-            if (isset($slots[$siteId])) {
+            if (isset($modeSlots[$siteId])) {
                 return true;
             }
 
-            if (count($slots) >= $this->config->getStorageAnalysisMaxConcurrentRuns()) {
+            if (count($modeSlots) >= $this->config->getStorageAnalysisMaxConcurrentRuns()) {
+                $slots[$mode] = $modeSlots;
                 update_site_option(self::NETWORK_RUN_SLOTS_OPTION, $slots);
                 return false;
             }
 
-            $slots[$siteId] = time();
+            $modeSlots[$siteId] = time();
+            $slots[$mode] = $modeSlots;
             update_site_option(self::NETWORK_RUN_SLOTS_OPTION, $slots);
 
             return true;
@@ -2517,7 +2553,15 @@ class StorageAnalysisSchedulerService {
         try {
             $slots = get_site_option(self::NETWORK_RUN_SLOTS_OPTION, []);
             $slots = is_array($slots) ? $slots : [];
-            unset($slots[$siteId]);
+            $mode = $this->getSiteAssignmentMode($siteId);
+            $modeSlots = is_array($slots[$mode] ?? null) ? $slots[$mode] : [];
+            unset($modeSlots[$siteId]);
+
+            if (empty($modeSlots)) {
+                unset($slots[$mode]);
+            } else {
+                $slots[$mode] = $modeSlots;
+            }
 
             if (empty($slots)) {
                 delete_site_option(self::NETWORK_RUN_SLOTS_OPTION);
@@ -2589,6 +2633,15 @@ class StorageAnalysisSchedulerService {
 
             return !is_wp_error($scheduled) && (bool)$scheduled;
         });
+    }
+
+    /** Schedule a delayed retry after a lock or resource-capacity collision. */
+    protected function scheduleSiteRetry(int $siteId): bool {
+        // The current slice has already reserved an immediate continuation.
+        // Replace it with a real backoff instead of causing a tight retry loop.
+        $this->clearIndividualRetry($siteId);
+
+        return $this->scheduleIndividualRetry($siteId);
     }
 
     protected function getNextIndividualRetryTimestamp(int $siteId): int {

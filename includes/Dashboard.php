@@ -40,6 +40,7 @@ class Dashboard {
     protected ViewManager $viewManager;
     protected array $pageHooks = [];
     protected const META_ARCHIVED_AT = 'rrze_msm_archived_at';
+    protected const META_DELETED_AT = 'rrze_msm_deleted_at';
     protected const META_SPAM_AT = 'rrze_msm_spam_at';
     protected const META_STATUS_NOTE = 'rrze_msm_status_note';
     protected const META_STATUS_USER_ID = 'rrze_msm_status_user_id';
@@ -66,6 +67,13 @@ class Dashboard {
     }
 
     public function onLoaded(): void {
+        // These Core hooks also run for changes made outside the MSM screens,
+        // for example from Network Admin, WP-CLI, or another plugin.
+        add_action('archive_blog', [$this, 'recordArchivedSiteTimestamp']);
+        add_action('unarchive_blog', [$this, 'clearArchivedSiteTimestamp']);
+        add_action('make_delete_blog', [$this, 'recordDeletedSiteTimestamp']);
+        add_action('make_undelete_blog', [$this, 'clearDeletedSiteTimestamp']);
+
         if (!is_admin()) {
             return;
         }
@@ -111,6 +119,51 @@ class Dashboard {
         add_action('network_admin_edit_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
     }
 
+    public function recordArchivedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        update_site_meta($siteId, self::META_ARCHIVED_AT, current_time('mysql', true));
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    public function clearArchivedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        delete_site_meta($siteId, self::META_ARCHIVED_AT);
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    public function recordDeletedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        update_site_meta($siteId, self::META_DELETED_AT, current_time('mysql', true));
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    public function clearDeletedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        delete_site_meta($siteId, self::META_DELETED_AT);
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    protected function refreshDashboardSiteStatus(int $siteId): void {
+        if ($this->metrics->refreshDashboardSiteStatus($siteId)) {
+            return;
+        }
+
+        $this->metrics->clearCache();
+        $this->metrics->queueDashboardRefresh();
+    }
+
     public function registerMenu(): void {
         $menuSettings = $this->config->getMenuSettings();
         $pageTitle = (string)($menuSettings['page_title'] ?? __('RRZE Multisite Manager', 'rrze-multisite-manager'));
@@ -134,11 +187,13 @@ class Dashboard {
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
         $settingsSlug = $this->settings->getSettingsSlug();
 
-        if (!is_network_admin() && !is_super_admin() && current_user_can('manage_options')) {
+        // Superadmins retain the network-wide MSM menu, but must also see the
+        // local Tools entries to verify the exact view of website admins.
+        if (!is_network_admin() && (is_super_admin() || current_user_can('manage_options'))) {
             $showRequestNotice = $this->config->shouldShowLocalAnalysisRequestNotice();
             $currentSiteId = get_current_blog_id();
 
-            if (current_user_can('upload_files') && ($showRequestNotice || $this->hasLocalStorageAnalysis($currentSiteId))) {
+            if ((is_super_admin() || current_user_can('upload_files')) && ($showRequestNotice || $this->hasLocalStorageAnalysis($currentSiteId))) {
                 $this->pageHooks[] = add_management_page(
                     __('Storage Analysis', 'rrze-multisite-manager'),
                     __('Storage Analysis', 'rrze-multisite-manager'),
@@ -720,6 +775,9 @@ class Dashboard {
             'sort_key' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'name' : 'registered',
             'sort_direction' => in_array($currentTab, ['provisioning', 'dns-missing', 'unreachable'], true) ? 'asc' : 'desc',
             'top_controls_html' => $this->renderSiteOverviewSearchControl($siteSearch, $currentTab),
+            'show_archived_at' => $currentTab === 'archived',
+            'show_deleted_at' => $currentTab === 'deleted',
+            'show_dns_missing_since' => $currentTab === 'dns-missing',
         ];
         $tableSites = match ($currentTab) {
             'active' => array_values(array_filter($dashboardData['site_overview'] ?? [], static fn(array $site): bool => empty($site['is_archived']) && empty($site['is_spam']) && empty($site['is_deleted']))),
@@ -2201,6 +2259,7 @@ class Dashboard {
 
             check_admin_referer('rrze_multisite_manager_site_status_delete_' . $siteId);
             update_blog_status($siteId, 'deleted', 1);
+            update_site_meta($siteId, self::META_DELETED_AT, current_time('mysql', true));
         } else {
             wp_die(esc_html__('Invalid status action.', 'rrze-multisite-manager'));
         }
@@ -3243,6 +3302,7 @@ class Dashboard {
             update_blog_status($siteId, 'archived', 1);
             update_blog_status($siteId, 'spam', 0);
             update_blog_status($siteId, 'deleted', 0);
+            delete_site_meta($siteId, self::META_DELETED_AT);
             delete_site_meta($siteId, self::META_SPAM_AT);
             update_site_meta($siteId, self::META_ARCHIVED_AT, $timestamp);
         } elseif ($statusAction === 'spam') {
@@ -3261,6 +3321,7 @@ class Dashboard {
         update_blog_status($siteId, 'archived', 0);
         update_blog_status($siteId, 'spam', 0);
         update_blog_status($siteId, 'deleted', 0);
+        delete_site_meta($siteId, self::META_DELETED_AT);
         delete_site_meta($siteId, self::META_ARCHIVED_AT);
         delete_site_meta($siteId, self::META_SPAM_AT);
         delete_site_meta($siteId, self::META_STATUS_NOTE);
