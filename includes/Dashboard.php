@@ -67,6 +67,13 @@ class Dashboard {
     }
 
     public function onLoaded(): void {
+        // These Core hooks also run for changes made outside the MSM screens,
+        // for example from Network Admin, WP-CLI, or another plugin.
+        add_action('archive_blog', [$this, 'recordArchivedSiteTimestamp']);
+        add_action('unarchive_blog', [$this, 'clearArchivedSiteTimestamp']);
+        add_action('make_delete_blog', [$this, 'recordDeletedSiteTimestamp']);
+        add_action('make_undelete_blog', [$this, 'clearDeletedSiteTimestamp']);
+
         if (!is_admin()) {
             return;
         }
@@ -112,6 +119,51 @@ class Dashboard {
         add_action('network_admin_edit_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
     }
 
+    public function recordArchivedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        update_site_meta($siteId, self::META_ARCHIVED_AT, current_time('mysql', true));
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    public function clearArchivedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        delete_site_meta($siteId, self::META_ARCHIVED_AT);
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    public function recordDeletedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        update_site_meta($siteId, self::META_DELETED_AT, current_time('mysql', true));
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    public function clearDeletedSiteTimestamp(int $siteId): void {
+        if ($siteId <= 0) {
+            return;
+        }
+
+        delete_site_meta($siteId, self::META_DELETED_AT);
+        $this->refreshDashboardSiteStatus($siteId);
+    }
+
+    protected function refreshDashboardSiteStatus(int $siteId): void {
+        if ($this->metrics->refreshDashboardSiteStatus($siteId)) {
+            return;
+        }
+
+        $this->metrics->clearCache();
+        $this->metrics->queueDashboardRefresh();
+    }
+
     public function registerMenu(): void {
         $menuSettings = $this->config->getMenuSettings();
         $pageTitle = (string)($menuSettings['page_title'] ?? __('RRZE Multisite Manager', 'rrze-multisite-manager'));
@@ -135,11 +187,13 @@ class Dashboard {
         $viewsSlug = (string)($menuSettings['views_slug'] ?? 'rrze-multisite-manager-views');
         $settingsSlug = $this->settings->getSettingsSlug();
 
-        if (!is_network_admin() && !is_super_admin() && current_user_can('manage_options')) {
+        // Superadmins retain the network-wide MSM menu, but must also see the
+        // local Tools entries to verify the exact view of website admins.
+        if (!is_network_admin() && (is_super_admin() || current_user_can('manage_options'))) {
             $showRequestNotice = $this->config->shouldShowLocalAnalysisRequestNotice();
             $currentSiteId = get_current_blog_id();
 
-            if (current_user_can('upload_files') && ($showRequestNotice || $this->hasLocalStorageAnalysis($currentSiteId))) {
+            if ((is_super_admin() || current_user_can('upload_files')) && ($showRequestNotice || $this->hasLocalStorageAnalysis($currentSiteId))) {
                 $this->pageHooks[] = add_management_page(
                     __('Storage Analysis', 'rrze-multisite-manager'),
                     __('Storage Analysis', 'rrze-multisite-manager'),

@@ -362,10 +362,12 @@ abstract class Widgets {
         $statusType = (string)($args['status_type'] ?? 'archive');
         $sortKey = $this->normalizeSiteTableSortKey((string)($args['sort_key'] ?? 'last-updated'));
         $sortDirection = strtolower((string)($args['sort_direction'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        $statusLabel = $statusType === 'spam'
-            ? __('Blocked since', 'rrze-multisite-manager')
-            : __('Archived since', 'rrze-multisite-manager');
-        $statusMetaKey = $statusType === 'spam' ? 'spam_at' : 'archived_at';
+        $statusDefinitions = [
+            'archive' => [__('Archived since', 'rrze-multisite-manager'), 'archived_at'],
+            'spam' => [__('Blocked since', 'rrze-multisite-manager'), 'spam_at'],
+            'deleted' => [__('Marked for deletion since', 'rrze-multisite-manager'), 'deleted_at'],
+        ];
+        [$statusLabel, $statusMetaKey] = $statusDefinitions[$statusType] ?? $statusDefinitions['archive'];
         $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
@@ -382,6 +384,8 @@ abstract class Widgets {
         echo '<table class="widefat striped rrze-msm-table rrze-msm-status-site-table rrze-msm-site-hover-actions-table">';
         echo '<thead><tr>';
         echo '<th>' . $this->renderSiteTableSortButton('name', __('Site', 'rrze-multisite-manager')) . '</th>';
+        echo '<th>' . $this->renderSiteTableSortButton('registered', __('Registered', 'rrze-multisite-manager')) . '</th>';
+        echo '<th>' . $this->renderSiteTableSortButton('last-updated', __('Last updated', 'rrze-multisite-manager')) . '</th>';
         echo '<th>' . esc_html($statusLabel) . '</th>';
         echo '<th>' . esc_html__('By', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Note', 'rrze-multisite-manager') . '</th>';
@@ -390,11 +394,13 @@ abstract class Widgets {
         foreach ($sites as $site) {
             echo '<tr class="' . esc_attr($this->getSiteRowStatusClass($site)) . '"';
             echo ' data-sort-name="' . esc_attr((string)($site['name_sort'] ?? strtolower((string)$site['name']))) . '"';
-            echo ' data-sort-registered="0"';
-            echo ' data-sort-last-updated="' . esc_attr((string)$this->getStatusMetaTimestamp((string)($site[$statusMetaKey] ?? ''))) . '"';
+            echo ' data-sort-registered="' . esc_attr((string)($site['registered_timestamp'] ?? 0)) . '"';
+            echo ' data-sort-last-updated="' . esc_attr((string)($site['last_updated_timestamp'] ?? 0)) . '"';
             echo ' data-sort-admin-email=""';
             echo '>';
             echo '<td class="rrze-msm-site-overview-site">' . $this->renderSiteOverviewTitleAndUrl($site) . '</td>';
+            echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['registered_timestamp'] ?? 0))) . '</td>';
+            echo '<td>' . esc_html($this->formatSiteTimestamp((int)($site['last_updated_timestamp'] ?? 0))) . '</td>';
             echo '<td>' . esc_html($this->formatStatusMetaDate((string)($site[$statusMetaKey] ?? ''))) . '</td>';
             echo '<td>' . $this->renderStatusUser((int)($site['status_user_id'] ?? 0)) . '</td>';
             echo '<td>' . $this->renderStatusNote((string)($site['status_note'] ?? '')) . '</td>';

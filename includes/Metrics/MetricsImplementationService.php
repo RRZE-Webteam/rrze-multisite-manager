@@ -4175,6 +4175,7 @@ class MetricsImplementationService {
             'status_note' => (string)get_site_meta($siteId, 'rrze_msm_status_note', true),
             'status_user_id' => (int)get_site_meta($siteId, 'rrze_msm_status_user_id', true),
             'archived_at' => (string)get_site_meta($siteId, 'rrze_msm_archived_at', true),
+            'deleted_at' => (string)get_site_meta($siteId, 'rrze_msm_deleted_at', true),
             'spam_at' => (string)get_site_meta($siteId, 'rrze_msm_spam_at', true),
             'operational_status' => (string)get_site_meta($siteId, 'rrze_msm_operational_status', true),
             'operational_status_label' => $this->getOperationalStatusLabel((string)get_site_meta($siteId, 'rrze_msm_operational_status', true)),
