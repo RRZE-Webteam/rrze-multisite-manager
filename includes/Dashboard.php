@@ -25,6 +25,7 @@ use RRZE\MultisiteManager\Widgets\StatusWidget;
 use RRZE\MultisiteManager\Widgets\SummaryWidget;
 use RRZE\MultisiteManager\Widgets\ShortcodeBlockMonitoringWidget;
 use RRZE\MultisiteManager\Widgets\StorageAnalysisMonitoringWidget;
+use RRZE\MultisiteManager\Widgets\StorageAnalysisBatchPerformanceWidget;
 use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
 use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
@@ -218,6 +219,13 @@ class Dashboard {
             return;
         }
 
+        // The central manager is deliberately registered only in the main
+        // site's dashboard. Site-specific analysis pages above remain local
+        // under Tools so administrators can still access their own results.
+        if (!is_main_site()) {
+            return;
+        }
+
         $this->pageHooks[] = add_menu_page(
             $pageTitle,
             $menuTitle,
@@ -390,7 +398,7 @@ class Dashboard {
                 [
                     'page' => $dashboardSlug,
                 ],
-                $this->getAdminPageBaseUrl()
+                get_admin_url(get_main_site_id(), 'admin.php')
             ),
             'meta' => [
                 'title' => $menuTitle,
@@ -3253,6 +3261,7 @@ class Dashboard {
             'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
             'storage_analysis_monitoring' => new StorageAnalysisMonitoringWidget($this->plugin, $this->config, $this->storageAnalysisScheduler),
+            'storage_analysis_batch_performance' => new StorageAnalysisBatchPerformanceWidget($this->plugin, $this->config, $this->storageAnalysisScheduler),
             'shortcode_block_monitoring' => new ShortcodeBlockMonitoringWidget($this->plugin, $this->config, $this->shortcodeBlockAnalysisScheduler),
             'new_monitoring_alerts' => new NewMonitoringAlertsWidget($this->plugin, $this->config),
             'problem_sites' => new ProblemSitesWidget($this->plugin, $this->config),

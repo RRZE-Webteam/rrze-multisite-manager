@@ -220,6 +220,23 @@ class ViewManager {
                 ],
                 'system' => true,
             ],
+            'monitoring' => [
+                'slug' => 'monitoring',
+                'label' => __('Monitoring', 'rrze-multisite-manager'),
+                'widgets' => [
+                    'summary',
+                    'website_status',
+                    'status',
+                    'operational_status',
+                    'network_storage_usage',
+                    'storage_analysis_monitoring',
+                    'storage_analysis_batch_performance',
+                    'shortcode_block_monitoring',
+                    'new_monitoring_alerts',
+                    'problem_sites',
+                ],
+                'system' => true,
+            ],
             'all_widgets' => [
                 'slug' => 'all_widgets',
                 'label' => __('All widgets', 'rrze-multisite-manager'),

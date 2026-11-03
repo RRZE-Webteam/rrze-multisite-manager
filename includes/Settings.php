@@ -26,6 +26,7 @@ use RRZE\MultisiteManager\Widgets\SiteOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ShortcodeBlockMonitoringWidget;
 use RRZE\MultisiteManager\Widgets\StatusWidget;
 use RRZE\MultisiteManager\Widgets\StorageAnalysisMonitoringWidget;
+use RRZE\MultisiteManager\Widgets\StorageAnalysisBatchPerformanceWidget;
 use RRZE\MultisiteManager\Widgets\SummaryWidget;
 use RRZE\MultisiteManager\Widgets\ThemeOverviewWidget;
 use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
@@ -89,6 +90,9 @@ class Settings {
             add_action('admin_post_rrze_multisite_manager_remove_selected_storage_analysis_sites', [$this, 'removeSelectedStorageAnalysisSites']);
             add_action('admin_post_rrze_multisite_manager_remove_selected_shortcode_block_analysis_sites', [$this, 'removeSelectedShortcodeBlockAnalysisSites']);
             add_action('admin_post_rrze_multisite_manager_start_shared_analysis_batch', [$this, 'startSharedAnalysisBatch']);
+            add_action('admin_post_rrze_multisite_manager_abort_batch_site_storage_analysis', [$this, 'abortBatchSiteStorageAnalysis']);
+            add_action('admin_post_rrze_multisite_manager_abort_individual_site_storage_analysis', [$this, 'abortIndividualSiteStorageAnalysis']);
+            add_action('admin_post_rrze_multisite_manager_stop_storage_analysis_batch', [$this, 'stopStorageAnalysisBatch']);
             add_action('wp_ajax_rrze_msm_start_analysis_schedule_initialization', [$this, 'ajaxStartAnalysisScheduleInitialization']);
             add_action('wp_ajax_rrze_msm_run_analysis_schedule_initialization_batch', [$this, 'ajaxRunAnalysisScheduleInitializationBatch']);
             add_action('wp_ajax_rrze_msm_start_analysis_task_removal', [$this, 'ajaxStartAnalysisTaskRemoval']);
@@ -115,6 +119,9 @@ class Settings {
             add_action('network_admin_edit_rrze_multisite_manager_remove_selected_storage_analysis_sites', [$this, 'removeSelectedStorageAnalysisSites']);
             add_action('network_admin_edit_rrze_multisite_manager_remove_selected_shortcode_block_analysis_sites', [$this, 'removeSelectedShortcodeBlockAnalysisSites']);
             add_action('network_admin_edit_rrze_multisite_manager_start_shared_analysis_batch', [$this, 'startSharedAnalysisBatch']);
+            add_action('network_admin_edit_rrze_multisite_manager_abort_batch_site_storage_analysis', [$this, 'abortBatchSiteStorageAnalysis']);
+            add_action('network_admin_edit_rrze_multisite_manager_abort_individual_site_storage_analysis', [$this, 'abortIndividualSiteStorageAnalysis']);
+            add_action('network_admin_edit_rrze_multisite_manager_stop_storage_analysis_batch', [$this, 'stopStorageAnalysisBatch']);
         }
     }
 
@@ -184,6 +191,7 @@ class Settings {
             $frequency = (string)($storedOptions['monitoring_storage_analysis_frequency'] ?? 'twiceweekly');
             $options['monitoring_storage_analysis_small_batch_frequency'] = $frequency;
             $options['monitoring_storage_analysis_medium_batch_frequency'] = $frequency;
+            $options['monitoring_storage_analysis_large_batch_frequency'] = $frequency;
             $options['monitoring_storage_analysis_individual_frequency'] = $frequency;
         }
 
@@ -191,7 +199,26 @@ class Settings {
             $timeout = (int)($storedOptions['monitoring_storage_analysis_timeout_minutes'] ?? 360);
             $options['monitoring_storage_analysis_small_batch_timeout_minutes'] = $timeout;
             $options['monitoring_storage_analysis_medium_batch_timeout_minutes'] = $timeout;
+            $options['monitoring_storage_analysis_large_batch_timeout_minutes'] = $timeout;
             $options['monitoring_storage_analysis_individual_timeout_minutes'] = $timeout;
+        }
+
+        // Raise only the former shipped defaults. Deliberately changed values
+        // remain untouched, while existing installations benefit from fewer
+        // Cron continuations immediately after the update.
+        foreach ([
+            'monitoring_storage_analysis_shared_attachment_index_batch_size' => [25, 75],
+            'monitoring_storage_analysis_medium_attachment_index_batch_size' => [35, 150],
+            'monitoring_storage_analysis_large_attachment_index_batch_size' => [60, 300],
+            'monitoring_storage_analysis_individual_attachment_index_batch_size' => [50, 500],
+            'monitoring_storage_analysis_shared_index_write_batch_size' => [16, 64],
+            'monitoring_storage_analysis_medium_index_write_batch_size' => [20, 96],
+            'monitoring_storage_analysis_large_index_write_batch_size' => [24, 128],
+            'monitoring_storage_analysis_individual_index_write_batch_size' => [24, 128],
+        ] as $option => [$legacyDefault, $newDefault]) {
+            if ((int)($options[$option] ?? 0) === $legacyDefault) {
+                $options[$option] = $newDefault;
+            }
         }
 
         return $this->normalizeOptions($options);
@@ -239,6 +266,7 @@ class Settings {
         $dashboardMetricsHistoryFrequencyChanged = (string)($previousOptions['monitoring_dashboard_metrics_history_frequency'] ?? '') !== (string)($options['monitoring_dashboard_metrics_history_frequency'] ?? '');
         $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_small_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_small_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_medium_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_storage_analysis_large_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_large_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_individual_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_individual_frequency'] ?? '');
         $shortcodeAnalysisFrequencyChanged = (string)($previousOptions['monitoring_shortcode_block_analysis_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? '');
         $websiteStatusReportChanged = false;
@@ -561,6 +589,60 @@ class Settings {
                 admin_url('admin.php')
             )
         );
+        exit;
+    }
+
+    public function abortBatchSiteStorageAnalysis(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_abort_batch_site_storage_analysis_' . $siteId);
+        $scheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config);
+        $aborted = $scheduler->abortBatchSiteAnalysis($siteId);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => $this->getMonitoringSlug(),
+            'monitoring_tab' => 'storage',
+            'batch-site-storage-aborted' => $aborted ? 'true' : 'false',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function abortIndividualSiteStorageAnalysis(): void {
+        $siteId = isset($_POST['site_id']) ? absint($_POST['site_id']) : 0;
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_abort_individual_site_storage_analysis_' . $siteId);
+        $scheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config);
+        $aborted = $scheduler->abortIndividualSiteAnalysis($siteId);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => $this->getMonitoringSlug(),
+            'monitoring_tab' => 'storage',
+            'individual-site-storage-aborted' => $aborted ? 'true' : 'false',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function stopStorageAnalysisBatch(): void {
+        $batchMode = isset($_POST['batch_mode']) ? sanitize_key((string)wp_unslash($_POST['batch_mode'])) : '';
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_stop_storage_analysis_batch_' . $batchMode);
+        $scheduler = new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config);
+        $stopped = !empty($_POST['confirm_stop_storage_batch']) && $scheduler->stopBatch($batchMode);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => $this->getMonitoringSlug(),
+            'monitoring_tab' => 'storage',
+            'storage-batch-stopped' => $stopped ? $batchMode : 'false',
+        ], admin_url('admin.php')));
         exit;
     }
 
@@ -1223,6 +1305,19 @@ class Settings {
             return;
         }
 
+        if ($type === 'multiselect') {
+            $choices = is_array($field['choices'] ?? null) ? $field['choices'] : [];
+            $selectedValues = is_array($value) ? $value : [];
+            echo '<select id="' . esc_attr($fieldId) . '" name="' . esc_attr($inputName) . '[]" multiple size="' . esc_attr((string)max(3, count($choices))) . '">';
+
+            foreach ($choices as $choiceValue => $choiceLabel) {
+                echo '<option value="' . esc_attr((string)$choiceValue) . '" ' . selected(in_array((string)$choiceValue, $selectedValues, true), true, false) . '>' . esc_html((string)$choiceLabel) . '</option>';
+            }
+
+            echo '</select>';
+            return;
+        }
+
         echo '<input class="regular-text" type="text" id="' . esc_attr($fieldId) . '" name="' . esc_attr($inputName) . '" value="' . esc_attr((string)$value) . '">';
     }
 
@@ -1242,10 +1337,14 @@ class Settings {
 
         $smallMediaKey = 'monitoring_storage_analysis_small_batch_media_threshold';
         $mediumMediaKey = 'monitoring_storage_analysis_medium_batch_media_threshold';
+        $largeMediaKey = 'monitoring_storage_analysis_large_batch_media_threshold';
         $smallRuntimeKey = 'monitoring_storage_analysis_small_batch_runtime_threshold_seconds';
         $mediumRuntimeKey = 'monitoring_storage_analysis_medium_batch_runtime_threshold_seconds';
+        $largeRuntimeKey = 'monitoring_storage_analysis_large_batch_runtime_threshold_seconds';
         $options[$mediumMediaKey] = max((int)$options[$smallMediaKey], (int)$options[$mediumMediaKey]);
+        $options[$largeMediaKey] = max((int)$options[$mediumMediaKey], (int)$options[$largeMediaKey]);
         $options[$mediumRuntimeKey] = max((int)$options[$smallRuntimeKey], (int)$options[$mediumRuntimeKey]);
+        $options[$largeRuntimeKey] = max((int)$options[$mediumRuntimeKey], (int)$options[$largeRuntimeKey]);
 
         return $options;
     }
@@ -1280,6 +1379,14 @@ class Settings {
             $value = sanitize_key((string)$value);
 
             return array_key_exists($value, $choices) ? $value : $default;
+        }
+
+        if ($type === 'multiselect') {
+            $choices = is_array($field['choices'] ?? null) ? $field['choices'] : [];
+            $values = is_array($value) ? $value : [];
+            $values = array_map('sanitize_key', $values);
+
+            return array_values(array_intersect($values, array_keys($choices)));
         }
 
         if ($type === 'time') {
@@ -1377,15 +1484,16 @@ class Settings {
             [
             'metrics_frequency',
             'dashboard_metrics_history_frequency',
-            'monitoring_frequency',
             'batch_size',
             'run_log_entries',
             'recent_event_entries',
             ],
-            __('Central settings for dashboard metrics and the network-wide availability task. The availability cycle, log and event retention apply only to availability checks.', 'rrze-multisite-manager')
+            __('Central settings for dashboard metrics and network-wide monitoring data.', 'rrze-multisite-manager')
         );
         $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
+            'monitoring_frequency',
             'availability_batch_size',
+            'availability_ignored_statuses',
             'provisioning_grace_hours',
             'dns_failure_threshold',
             'http_failure_threshold',
@@ -1407,6 +1515,14 @@ class Settings {
             'storage_analysis_medium_batch_timeout_minutes',
             'storage_analysis_medium_attachment_index_batch_size',
             'storage_analysis_medium_index_write_batch_size',
+        ]);
+        $this->renderMonitoringFieldGroup(__('Large storage-analysis batches', 'rrze-multisite-manager'), [
+            'storage_analysis_large_batch_frequency',
+            'storage_analysis_large_batch_media_threshold',
+            'storage_analysis_large_batch_runtime_threshold_seconds',
+            'storage_analysis_large_batch_timeout_minutes',
+            'storage_analysis_large_attachment_index_batch_size',
+            'storage_analysis_large_index_write_batch_size',
         ]);
         $this->renderMonitoringFieldGroup(__('Individual storage-analysis tasks', 'rrze-multisite-manager'), [
             'storage_analysis_individual_frequency',
@@ -1755,6 +1871,27 @@ class Settings {
 
         if (!empty($_GET['site-storage-inactive'])) {
             echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Storage analysis is inactive for this website because its current website or monitoring status does not permit scheduled tasks.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        if (isset($_GET['batch-site-storage-aborted'])) {
+            $aborted = $_GET['batch-site-storage-aborted'] === 'true';
+            echo '<div class="notice ' . ($aborted ? 'notice-success' : 'notice-warning') . ' is-dismissible"><p>' . esc_html($aborted
+                ? __('The website analysis was stopped. The next website in the shared batch can now continue.', 'rrze-multisite-manager')
+                : __('This website is no longer the active analysis in a running shared batch.', 'rrze-multisite-manager')) . '</p></div>';
+        }
+
+        if (isset($_GET['individual-site-storage-aborted'])) {
+            $aborted = $_GET['individual-site-storage-aborted'] === 'true';
+            echo '<div class="notice ' . ($aborted ? 'notice-success' : 'notice-warning') . ' is-dismissible"><p>' . esc_html($aborted
+                ? __('The individual storage analysis was stopped.', 'rrze-multisite-manager')
+                : __('The individual storage analysis is no longer running.', 'rrze-multisite-manager')) . '</p></div>';
+        }
+
+        if (isset($_GET['storage-batch-stopped'])) {
+            $stopped = sanitize_key((string)wp_unslash($_GET['storage-batch-stopped']));
+            echo '<div class="notice ' . ($stopped !== 'false' ? 'notice-success' : 'notice-warning') . ' is-dismissible"><p>' . esc_html($stopped !== 'false'
+                ? __('The shared storage-analysis batch was stopped and will not restart automatically.', 'rrze-multisite-manager')
+                : __('The shared storage-analysis batch could not be stopped.', 'rrze-multisite-manager')) . '</p></div>';
         }
 
         if (isset($_GET['site-storage-schedules-initialized'])) {
@@ -2254,7 +2391,7 @@ class Settings {
             echo '<td class="rrze-msm-monitoring-site-url">';
             echo '<div class="rrze-msm-monitoring-site-identity"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
             $scheduleMode = (string)($process['schedule_mode'] ?? '');
-            $cronSiteId = in_array($scheduleMode, ['small-batch', 'medium-batch'], true)
+            $cronSiteId = in_array($scheduleMode, ['small-batch', 'medium-batch', 'large-batch'], true)
                 ? (int)get_main_site_id(get_current_network_id())
                 : $siteId;
             $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteStorageAnalysisPageUrl($siteId), __('Storage Analysis', 'rrze-multisite-manager'), $cronSiteId);
@@ -2267,7 +2404,7 @@ class Settings {
             echo '</td>';
             $assignment = $scheduleMode === 'small-batch'
                 ? __('Small shared batch', 'rrze-multisite-manager')
-                : ($scheduleMode === 'medium-batch' ? __('Medium shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager'));
+                : ($scheduleMode === 'medium-batch' ? __('Medium shared batch', 'rrze-multisite-manager') : ($scheduleMode === 'large-batch' ? __('Large shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager')));
             echo '<td>' . esc_html($assignment) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
             echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'base', true, (array)($process['base_progress'] ?? []));
@@ -2285,12 +2422,21 @@ class Settings {
             }
             echo '<td>' . esc_html($durationLabel) . '</td>';
             echo '<td>' . esc_html($this->formatMonitoringTimestamp($lastRun)) . '</td>';
-            if (!empty($process['is_waiting_for_current_batch'])) {
-                echo '<td><strong>' . esc_html__('Current shared batch', 'rrze-multisite-manager') . '</strong><br><span class="description">' . esc_html__('Waiting for the preceding websites.', 'rrze-multisite-manager') . '</span><br><span class="description">' . esc_html(sprintf(
-                    /* translators: %s: date and time of the next regular scheduled run. */
-                    __('Next regular cycle: %s', 'rrze-multisite-manager'),
-                    $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))
-                )) . '</span></td>';
+            $batchRunState = (string)($process['batch_run_state'] ?? '');
+            $canRestartBatchSite = !empty($process['can_restart_batch_site']);
+            if ($canRestartBatchSite && !in_array($batchRunState, ['stopped', 'not_planned'], true)) {
+                $nextBatchTimestamp = (int)($process['next_run_timestamp'] ?? 0);
+                echo '<td>' . esc_html($nextBatchTimestamp > time()
+                    ? $this->formatMonitoringScheduledTimestamp($nextBatchTimestamp)
+                    : __('Next cycle', 'rrze-multisite-manager')) . '</td>';
+            } elseif ($batchRunState === 'running') {
+                echo '<td>' . esc_html__('Running', 'rrze-multisite-manager') . '</td>';
+            } elseif ($batchRunState === 'stopped') {
+                echo '<td>' . esc_html__('Stopped', 'rrze-multisite-manager') . '</td>';
+            } elseif ($batchRunState === 'not_planned') {
+                echo '<td>' . esc_html__('Not planned', 'rrze-multisite-manager') . '</td>';
+            } elseif (!empty($process['is_waiting_for_current_batch'])) {
+                echo '<td>' . esc_html($this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
             } else {
                 echo '<td>' . esc_html(!empty($process['is_due']) ? __('Waiting for cron', 'rrze-multisite-manager') : $this->formatMonitoringScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
             }
@@ -2299,13 +2445,27 @@ class Settings {
             if ($statusKey === 'inactive' || empty($process['is_eligible'])) {
                 echo '&mdash;';
             } elseif (!empty($process['is_running'])) {
-                echo esc_html__('Running', 'rrze-multisite-manager');
-            } elseif (in_array($scheduleMode, ['small-batch', 'medium-batch'], true)) {
-                if (!empty($process['last_was_aborted']) || $statusKey === 'error') {
+                if (in_array($scheduleMode, ['small-batch', 'medium-batch', 'large-batch'], true) && !empty($process['is_current_batch_site'])) {
+                    echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_abort_batch_site_storage_analysis')) . '">';
+                    echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
+                    wp_nonce_field('rrze_multisite_manager_abort_batch_site_storage_analysis_' . $siteId);
+                    echo '<button type="submit" class="button button-secondary">' . esc_html__('Stop this website', 'rrze-multisite-manager') . '</button>';
+                    echo '</form>';
+                } elseif ($scheduleMode === 'site') {
+                    echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_abort_individual_site_storage_analysis')) . '">';
+                    echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
+                    wp_nonce_field('rrze_multisite_manager_abort_individual_site_storage_analysis_' . $siteId);
+                    echo '<button type="submit" class="button button-secondary">' . esc_html__('Stop individual task', 'rrze-multisite-manager') . '</button>';
+                    echo '</form>';
+                } else {
+                    echo esc_html__('Running', 'rrze-multisite-manager');
+                }
+            } elseif (in_array($scheduleMode, ['small-batch', 'medium-batch', 'large-batch'], true)) {
+                if ($canRestartBatchSite) {
                     echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_start_site_storage_analysis')) . '">';
                     echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
                     wp_nonce_field('rrze_multisite_manager_start_site_storage_analysis_' . $siteId);
-                    echo '<button type="submit" class="button button-secondary">' . esc_html__('Restart this website', 'rrze-multisite-manager') . '</button>';
+                    echo '<button type="submit" class="button button-secondary">' . esc_html__('Restart as individual task', 'rrze-multisite-manager') . '</button>';
                     echo '</form>';
                 } else {
                     echo '&mdash;';
@@ -2334,8 +2494,10 @@ class Settings {
         $this->renderMonitoringTablePagination('storage_monitoring_page', $currentPage, $totalItems, $perPage);
         echo '</div>';
         echo '<div class="rrze-msm-site-actions">';
-        foreach (['small-batch', 'medium-batch'] as $batchMode) {
-            if ($scheduler->canStartBatchNow($batchMode)) {
+        foreach (['small-batch', 'medium-batch', 'large-batch'] as $batchMode) {
+            if ($scheduler->isBatchRunning($batchMode)) {
+                $this->renderStopStorageAnalysisBatchForm($batchMode);
+            } elseif ($scheduler->canStartBatchNow($batchMode)) {
                 $this->renderStartSharedBatchForm('storage', $batchMode);
             }
         }
@@ -2389,7 +2551,7 @@ class Settings {
                     ? __('Small shared batch', 'rrze-multisite-manager')
                     : ($expectedAssignment === 'medium-batch'
                         ? __('Medium shared batch', 'rrze-multisite-manager')
-                        : __('Individual schedule', 'rrze-multisite-manager'));
+                        : ($expectedAssignment === 'large-batch' ? __('Large shared batch', 'rrze-multisite-manager') : __('Individual schedule', 'rrze-multisite-manager')));
                 echo '<tr><th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th><td class="rrze-msm-monitoring-site-url"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span></td>';
                 echo '<td><span class="rrze-msm-badge rrze-msm-badge-neutral">' . esc_html__('Not scheduled', 'rrze-multisite-manager') . '</span></td>';
                 echo '<td>' . esc_html($expectedAssignmentLabel) . '</td>';
@@ -2700,16 +2862,16 @@ class Settings {
 
     protected function renderStartSharedBatchForm(string $analysisType, string $batchMode = ''): void {
         $modalId = wp_unique_id('rrze-msm-start-shared-batch-');
-        $isStorageBatch = $analysisType === 'storage' && in_array($batchMode, ['small-batch', 'medium-batch'], true);
+        $isStorageBatch = $analysisType === 'storage' && in_array($batchMode, ['small-batch', 'medium-batch', 'large-batch'], true);
         $label = $isStorageBatch
-            ? ($batchMode === 'medium-batch'
-                ? __('Start medium shared batches early', 'rrze-multisite-manager')
-                : __('Start small shared batches early', 'rrze-multisite-manager'))
+            ? ($batchMode === 'large-batch'
+                ? __('Start large shared batch', 'rrze-multisite-manager')
+                : ($batchMode === 'medium-batch' ? __('Start medium shared batch', 'rrze-multisite-manager') : __('Start small shared batch', 'rrze-multisite-manager')))
             : __('Start shared batches early', 'rrze-multisite-manager');
         $warning = $isStorageBatch
-            ? ($batchMode === 'medium-batch'
-                ? __('Start the medium shared batch now for all websites assigned to it?', 'rrze-multisite-manager')
-                : __('Start the small shared batch now for all websites assigned to it?', 'rrze-multisite-manager'))
+            ? ($batchMode === 'large-batch'
+                ? __('Start the large shared batch now for all websites assigned to it?', 'rrze-multisite-manager')
+                : ($batchMode === 'medium-batch' ? __('Start the medium shared batch now for all websites assigned to it?', 'rrze-multisite-manager') : __('Start the small shared batch now for all websites assigned to it?', 'rrze-multisite-manager')))
             : __('Start the shared batch now for all websites assigned to it?', 'rrze-multisite-manager');
         echo '<button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').showModal();") . '">' . esc_html($label) . '</button>';
         echo '<dialog class="rrze-msm-task-removal-dialog" id="' . esc_attr($modalId) . '"><h3>' . esc_html($label) . '</h3><p class="rrze-msm-modal-text">' . esc_html($warning) . '</p>';
@@ -2717,6 +2879,19 @@ class Settings {
         wp_nonce_field('rrze_multisite_manager_start_shared_analysis_batch_' . $analysisType . '_' . $batchMode);
         echo '<label class="rrze-msm-modal-checkbox"><input type="checkbox" name="confirm_start_shared_batch" value="1" required><span>' . esc_html__('I understand that all websites in the shared batch will be started now.', 'rrze-multisite-manager') . '</span></label>';
         echo '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="submit" class="button button-secondary">' . esc_html($label) . '</button></div></form></dialog>';
+    }
+
+    protected function renderStopStorageAnalysisBatchForm(string $batchMode): void {
+        $label = $batchMode === 'large-batch'
+            ? __('Stop large shared batch', 'rrze-multisite-manager')
+            : ($batchMode === 'medium-batch' ? __('Stop medium shared batch', 'rrze-multisite-manager') : __('Stop small shared batch', 'rrze-multisite-manager'));
+        $modalId = wp_unique_id('rrze-msm-stop-storage-batch-');
+        echo '<button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').showModal();") . '">' . esc_html($label) . '</button>';
+        echo '<dialog class="rrze-msm-task-removal-dialog" id="' . esc_attr($modalId) . '"><h3>' . esc_html($label) . '</h3><p class="rrze-msm-modal-text">' . esc_html__('Stops the current website, clears the queued continuation, and removes this batch’s recurring Cron event. The website assignment remains available so you can start the batch again later.', 'rrze-multisite-manager') . '</p>';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_stop_storage_analysis_batch')) . '"><input type="hidden" name="batch_mode" value="' . esc_attr($batchMode) . '">';
+        wp_nonce_field('rrze_multisite_manager_stop_storage_analysis_batch_' . $batchMode);
+        echo '<label class="rrze-msm-modal-checkbox"><input type="checkbox" name="confirm_stop_storage_batch" value="1" required><span>' . esc_html__('I understand that this shared batch will not restart automatically.', 'rrze-multisite-manager') . '</span></label>';
+        echo '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="submit" class="button button-secondary rrze-msm-button-danger">' . esc_html($label) . '</button></div></form></dialog>';
     }
 
     protected function renderAnalysisScheduleInitializationDialog(string $analysisType, string $label, string $warning, string $confirmationText): void {
@@ -2981,7 +3156,7 @@ class Settings {
             number_format_i18n($activeWebsiteCount)
         ));
         echo '</strong>.<br>';
-        echo esc_html__('Website availability is checked only for active websites. Websites with the status "Archived", "Blocked", or "Marked for deletion" are excluded from the check.', 'rrze-multisite-manager');
+        echo esc_html__('Website availability includes all websites unless their status is selected under “Ignore websites” in the availability settings.', 'rrze-multisite-manager');
 
         if ($crontrolUrl !== '') {
             $crontrolUrl = add_query_arg(
@@ -3160,6 +3335,11 @@ class Settings {
             'operational_status' => new OperationalStatusWidget($this->plugin, $this->config),
             'network_storage_usage' => new NetworkStorageUsageWidget($this->plugin, $this->config),
             'storage_analysis_monitoring' => new StorageAnalysisMonitoringWidget(
+                $this->plugin,
+                $this->config,
+                new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config)
+            ),
+            'storage_analysis_batch_performance' => new StorageAnalysisBatchPerformanceWidget(
                 $this->plugin,
                 $this->config,
                 new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config)
