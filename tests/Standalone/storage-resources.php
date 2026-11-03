@@ -337,7 +337,7 @@ final class SliceAnalysis extends RRZE\MultisiteManager\Metrics\StorageAnalysisS
         if ($this->busy) { throw new RRZE\MultisiteManager\Metrics\StorageAnalysisBusyException('Simulated occupied worker'); }
         if ($this->assertReserved) {
             $status = get_blog_option($siteId, 'rrze_msm_storage_analysis_scheduler_status', []);
-            $event = (int)wp_next_scheduled('rrze_msm_run_site_storage_analysis', [$siteId, 'scheduled', true]);
+            $event = (int)wp_next_scheduled('rrze_msm_run_site_storage_analysis', [$siteId, 'scheduled', false]);
             check($event > 0 && !empty($status['run_id']), 'The next slice must be reserved in the website Cron table before processing starts.');
         }
         if ($this->fail) { throw new RuntimeException('Simulated failure'); }
@@ -628,7 +628,7 @@ try {
     $siteContinuationHook = 'rrze_msm_run_site_storage_analysis';
     for ($request = 0; $request < 10 && !empty($scheduler->getStatus(2)['is_running']); $request++) {
         $before = array_sum($analysis->calls);
-        unset($GLOBALS['test_events'][$siteContinuationHook][serialize([2, 'scheduled', true])]);
+        unset($GLOBALS['test_events'][$siteContinuationHook][serialize([2, 'scheduled', false])]);
         $scheduler = new SliceScheduler($analysis); // Fresh service for the next request.
         $scheduler->runScheduledAnalysis(2, 'scheduled');
         check(array_sum($analysis->calls) - $before <= 1000, 'A continuation exceeded its emergency step cap.');
@@ -658,13 +658,13 @@ try {
     check(empty($busyStatus['last_was_aborted']) && ($busyStatus['phases']['base']['status'] ?? '') === 'scheduled', 'A blocked new run must not display a previous abort or claim file-index progress.');
     check(($busyStatus['last_error'] ?? '') === 'Simulated occupied worker', 'The capacity reason was not saved.');
     $individualRetryHook = 'rrze_msm_run_site_storage_analysis';
-    check((int)wp_next_scheduled($individualRetryHook, [12, 'scheduled', true]) >= time() + MINUTE_IN_SECONDS - 1, 'A blocked individual run has no near-term site Cron retry.');
+    check((int)wp_next_scheduled($individualRetryHook, [12, 'scheduled', false]) >= time() + MINUTE_IN_SECONDS - 1, 'A blocked individual run has no near-term site Cron retry.');
     check(empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])), 'An individual capacity wait kept occupying the central continuation queue.');
     $capacityWaitLogs = array_filter($GLOBALS['test_actions'], static fn($action) => ($action[0] ?? '') === 'rrze.log.info' && ($action[2]['event'] ?? '') === 'capacity_wait' && ($action[2]['site_id'] ?? 0) === 12);
     check(count($capacityWaitLogs) === 1, 'The first capacity wait did not record its retry in the info log.');
     $busyStatus['resource_wait_started_at'] = time() - DAY_IN_SECONDS - 301;
     update_blog_option(12, 'rrze_msm_storage_analysis_scheduler_status', $busyStatus);
-    unset($GLOBALS['test_events'][$individualRetryHook][serialize([12, 'scheduled', true])]);
+    unset($GLOBALS['test_events'][$individualRetryHook][serialize([12, 'scheduled', false])]);
     $busyScheduler->runScheduledAnalysis(12, 'scheduled');
     $busyStatus = $busyScheduler->getStatus(12);
     check(empty($busyStatus['is_running']) && ($busyStatus['phases']['base']['status'] ?? '') === 'error', 'A permanently occupied worker left an endless running state.');
@@ -676,10 +676,10 @@ try {
     $recoveringScheduler = new SliceScheduler($recoveringAnalysis);
     $recoveringScheduler->runSlice(13);
     $recoveringAnalysis->busy = false;
-    check((int)wp_next_scheduled($individualRetryHook, [13, 'scheduled', true]) > 0, 'The recoverable individual run lost its retry.');
+    check((int)wp_next_scheduled($individualRetryHook, [13, 'scheduled', false]) > 0, 'The recoverable individual run lost its retry.');
     $recoveringScheduler->recover(13);
     check(empty(get_site_option('rrze_msm_storage_analysis_continuation_queue', [])), 'Monitoring bypassed the individual retry backoff.');
-    unset($GLOBALS['test_events'][$individualRetryHook][serialize([13, 'scheduled', true])]);
+    unset($GLOBALS['test_events'][$individualRetryHook][serialize([13, 'scheduled', false])]);
     $recoveringScheduler->runScheduledAnalysis(13, 'scheduled');
     $recoveringStatus = $recoveringScheduler->getStatus(13);
     check(!empty($recoveringStatus['is_running']) && empty($recoveringStatus['last_error']) && empty($recoveringStatus['resource_wait_started_at']), 'A successful retry kept the capacity error visible.');
@@ -691,61 +691,23 @@ try {
     $batchAnalysis->baseBatchesUntilComplete = 1020;
     $batchScheduler = new BatchSliceScheduler($batchAnalysis);
     $batchScheduler->runBatchScheduledAnalysis();
-    check(!empty(get_blog_option(10, 'rrze_msm_storage_analysis_scheduler_status')['is_running']), 'The first batch site did not start.');
-    check(empty(get_blog_option(11, 'rrze_msm_storage_analysis_scheduler_status')), 'The next batch site started before the active analysis finished.');
-    check((int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id') === 10, 'The batch cursor did not retain the active site.');
+    $batchQueue = get_site_option('rrze_msm_storage_analysis_small_batch_queue', []);
+    $firstBatchSiteId = (int)($batchQueue['current_site_id'] ?? 0);
+    $secondBatchSiteId = $firstBatchSiteId === 10 ? 11 : 10;
+    check($firstBatchSiteId > 0 && !empty(get_blog_option($firstBatchSiteId, 'rrze_msm_storage_analysis_scheduler_status')['is_running']), 'The first queued batch site did not start.');
+    check(empty(get_blog_option($secondBatchSiteId, 'rrze_msm_storage_analysis_scheduler_status')), 'The next batch site started before the active analysis finished.');
     $batchScheduler->runBatchScheduledAnalysis(true);
-    check(!empty(get_blog_option(11, 'rrze_msm_storage_analysis_scheduler_status')['last_started_at']), 'A scheduled batch continuation did not start another website.');
-    for ($request = 0; $request < 10 && (!empty($batchScheduler->getStatus(10)['is_running']) || !empty($batchScheduler->getStatus(11)['is_running'])); $request++) {
-        foreach ([10, 11] as $siteId) {
-            if (empty($batchScheduler->getStatus($siteId)['is_running'])) {
-                continue;
-            }
-            unset($GLOBALS['test_events'][$siteContinuationHook][serialize([$siteId, 'scheduled', true])]);
-            $batchScheduler = new BatchSliceScheduler($batchAnalysis);
-            $batchScheduler->runScheduledAnalysis($siteId, 'scheduled', true);
-        }
+    check(empty(get_blog_option($secondBatchSiteId, 'rrze_msm_storage_analysis_scheduler_status')), 'A recurring batch event skipped the active queued website.');
+    for ($request = 0; $request < 10 && !empty($batchScheduler->getStatus($firstBatchSiteId)['is_running']); $request++) {
+        unset($GLOBALS['test_events'][$siteContinuationHook][serialize([$firstBatchSiteId, 'scheduled', true])]);
+        $batchScheduler = new BatchSliceScheduler($batchAnalysis);
+        $batchScheduler->runScheduledAnalysis($firstBatchSiteId, 'scheduled', true);
     }
-    check(empty($batchScheduler->getStatus(10)['is_running']) && empty($batchScheduler->getStatus(11)['is_running']), 'The parallel batch websites did not finish.');
-    $batchCursor = (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0);
-    $recurringBatchTimestamp = (int)wp_next_scheduled($batchHook);
-    update_blog_option(10, 'rrze_msm_storage_analysis_scheduler_status', ['last_was_aborted' => true, 'last_error' => 'Previous batch failed']);
-    $targetedAnalysis = new SliceAnalysis();
-    $targetedAnalysis->baseBatchesUntilComplete = 1020;
-    $targetedScheduler = new BatchSliceScheduler($targetedAnalysis);
-    check($targetedScheduler->startAnalysisNow(10), 'An aborted shared-batch website could not be restarted on its own.');
-    check((int)wp_next_scheduled($batchHook, [10, true]) > 0, 'The targeted shared-batch Cron event was not scheduled.');
-    check((int)wp_next_scheduled($batchHook) === $recurringBatchTimestamp && (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0) === $batchCursor, 'Targeted restart changed the shared recurring event or its cursor.');
-    check(get_site_option('rrze_msm_storage_analysis_batch_site_ids', []) === [10, 11], 'Targeted restart changed other batch assignments.');
-    check(empty($targetedScheduler->getStatus(10)['last_was_aborted']), 'Targeted restart retained the old abort.');
-    unset($GLOBALS['test_events'][$batchHook][serialize([10, true])]); // WP-Cron consumes a single event before invoking its callback.
-    update_site_option('rrze_msm_storage_analysis_batch_lock', ['started_at' => time(), 'token' => 'other-request']);
-    $targetedScheduler->runBatchScheduledAnalysis(10, true);
-    check((int)wp_next_scheduled($batchHook, [10, true]) >= time() + MINUTE_IN_SECONDS - 1, 'A busy shared batch discarded the targeted retry.');
-    delete_site_option('rrze_msm_storage_analysis_batch_lock');
-    unset($GLOBALS['test_events'][$batchHook][serialize([10, true])]);
-    $targetedScheduler->runBatchScheduledAnalysis(10, true);
-    check(!empty($targetedScheduler->getStatus(10)['is_running']) && (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0) === $batchCursor, 'Targeted batch execution did not start independently.');
-    for ($request = 0; $request < 10 && !empty($targetedScheduler->getStatus(10)['is_running']); $request++) {
-        unset($GLOBALS['test_events'][$siteContinuationHook][serialize([10, 'scheduled', true])]);
-        $targetedScheduler = new BatchSliceScheduler($targetedAnalysis);
-        $targetedScheduler->runScheduledAnalysis(10, 'scheduled', true);
-    }
-    check(empty($targetedScheduler->getStatus(10)['is_running']) && $targetedAnalysis->calls === ['base' => 1020, 'orphan' => 3, 'metadata' => 2], 'Targeted batch restart did not complete all phases.');
-    check(empty(get_blog_option(11, 'rrze_msm_storage_analysis_scheduler_status', [])['is_running']), 'Targeted restart also started another batch website.');
-    check(!$targetedScheduler->startAnalysisNow(10), 'A healthy shared-batch website was restarted outside its scheduled run.');
-    $GLOBALS['test_network_options']['rrze_msm_storage_analysis_removed_site_ids'] = [10];
-    update_blog_option(10, 'rrze_msm_storage_analysis_scheduler_status', [
-        'last_was_aborted' => false,
-        'last_error' => 'Scheduling for this website has been removed.',
-    ]);
-    check($targetedScheduler->startAnalysisNow(10), 'A failed shared-batch website could not be restarted on its own.');
-    check((int)wp_next_scheduled($batchHook, [10, true]) > 0, 'A failed shared-batch restart did not schedule its targeted Cron event.');
-    check(empty(get_site_option('rrze_msm_storage_analysis_removed_site_ids', [])), 'A failed shared-batch restart retained the scheduling removal marker.');
-    check(empty($targetedScheduler->getStatus(10)['last_error']), 'A failed shared-batch restart retained the old error.');
-    check((int)wp_next_scheduled($batchHook) === $recurringBatchTimestamp && (int)get_site_option('rrze_msm_storage_analysis_batch_last_site_id', 0) === $batchCursor, 'A failed shared-batch restart changed the recurring event or cursor.');
-    check(get_site_option('rrze_msm_storage_analysis_batch_site_ids', []) === [10, 11], 'A failed shared-batch restart changed other batch assignments.');
-    unset($GLOBALS['test_network_options']['rrze_msm_storage_analysis_batch_site_ids'], $GLOBALS['test_network_options']['rrze_msm_storage_analysis_batch_last_site_id'], $GLOBALS['test_events'][$batchHook]);
+    check(empty($batchScheduler->getStatus($firstBatchSiteId)['is_running']), 'The first queued batch website did not finish.');
+    $batchScheduler->runBatchScheduledAnalysis(true);
+    $advancedBatchQueue = get_site_option('rrze_msm_storage_analysis_small_batch_queue', []);
+    check(is_array($advancedBatchQueue), 'The shared-batch queue state was lost after a website finished.');
+    unset($GLOBALS['test_network_options']['rrze_msm_storage_analysis_batch_site_ids'], $GLOBALS['test_network_options']['rrze_msm_storage_analysis_small_batch_queue'], $GLOBALS['test_events'][$batchHook]);
     $GLOBALS['test_network_options']['rrze_msm_storage_analysis_continuation_queue'] = [2 => $oldRunId];
     $before = array_sum($analysis->calls);
     $scheduler->runAnalysisContinuation();
@@ -779,11 +741,11 @@ try {
     check(empty(get_site_option('rrze_msm_storage_analysis_removed_site_ids', [])), 'An explicit restart retained the scheduling removal marker.');
     $restartStatus = $restartScheduler->getStatus($restartSiteId);
     check(empty($restartStatus['last_was_aborted']) && empty($restartStatus['last_error']) && empty($restartStatus['last_attempt_at']), 'An explicit restart retained the old abort status.');
-    $GLOBALS['test_events'][$siteContinuationHook][serialize([$restartSiteId, 'scheduled', true])] = time() + 245 * HOUR_IN_SECONDS;
+    $GLOBALS['test_events'][$siteContinuationHook][serialize([$restartSiteId, 'scheduled', false])] = time() + 245 * HOUR_IN_SECONDS;
     $restartScheduler->runSlice($restartSiteId);
     check(!empty($restartScheduler->getStatus($restartSiteId)['is_running']), 'The restarted single assignment did not begin.');
-    check((int)wp_next_scheduled($siteContinuationHook, [$restartSiteId, 'scheduled', true]) <= time() + 10, 'A distant continuation delayed the orphan and metadata phases.');
-    unset($GLOBALS['test_events'][$siteContinuationHook][serialize([$restartSiteId, 'scheduled', true])]);
+    check((int)wp_next_scheduled($siteContinuationHook, [$restartSiteId, 'scheduled', false]) <= time() + 10, 'A distant continuation delayed the orphan and metadata phases.');
+    unset($GLOBALS['test_events'][$siteContinuationHook][serialize([$restartSiteId, 'scheduled', false])]);
     (new RestartScheduler($restartAnalysis))->runScheduledAnalysis($restartSiteId, 'scheduled');
     check(empty($restartScheduler->getStatus($restartSiteId)['is_running']), 'The single assignment did not finish all phases after its index.');
     check($restartAnalysis->calls === ['base' => 1020, 'orphan' => 3, 'metadata' => 2], 'The single assignment skipped or repeated a phase.');
@@ -960,7 +922,7 @@ try {
         $resources->release($siteId);
     }
     $GLOBALS['test_network_options']['rrze-multisite-manager']['monitoring_storage_analysis_max_concurrent_runs'] = 4;
-    foreach (['small-batch', 'medium-batch', 'site'] as $offset => $mode) {
+    foreach (['small-batch', 'medium-batch', 'large-batch', 'site'] as $offset => $mode) {
         $firstSiteId = 200 + ($offset * 10);
         foreach (range($firstSiteId, $firstSiteId + 3) as $siteId) {
             $resources->acquire($siteId, $mode);

@@ -52,9 +52,14 @@ class StorageAnalysisMonitoringWidget extends Widgets {
                     'accent' => 'info',
                 ],
                 [
+                    'label' => __('Large shared batch', 'rrze-multisite-manager'),
+                    'value' => $counts['large-batch'],
+                    'accent' => 'warning',
+                ],
+                [
                     'label' => __('Individual schedule', 'rrze-multisite-manager'),
                     'value' => $counts['site'],
-                    'accent' => 'warning',
+                    'accent' => 'danger',
                 ],
                 [
                     'label' => __('No scheduled storage analysis', 'rrze-multisite-manager'),

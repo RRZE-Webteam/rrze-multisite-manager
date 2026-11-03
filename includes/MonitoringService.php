@@ -516,14 +516,20 @@ class MonitoringService {
      * @return array<string, mixed>
      */
     protected function getActiveSiteQueryArgs(array $args = []): array {
-        return array_merge(
-            [
-                'archived' => 0,
-                'spam' => 0,
-                'deleted' => 0,
-            ],
-            $args
-        );
+        $statusToQueryArgument = [
+            'archived' => 'archived',
+            'blocked' => 'spam',
+            'deleted' => 'deleted',
+        ];
+        $queryArgs = [];
+
+        foreach ($this->getIgnoredSiteStatuses() as $status) {
+            if (isset($statusToQueryArgument[$status])) {
+                $queryArgs[$statusToQueryArgument[$status]] = 0;
+            }
+        }
+
+        return array_merge($queryArgs, $args);
     }
 
     protected function scheduleNextBatch(int $delay = 30): void {
@@ -932,10 +938,7 @@ class MonitoringService {
             return [];
         }
 
-        if (!$this->isActiveSite($site)) {
-            (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService(null, $this->config)), $this->config))
-                ->deactivateIneligibleSite($siteId);
-            (new ShortcodeBlockAnalysisSchedulerService($this->config))->deactivateSite($siteId);
+        if ($this->isSiteExcludedFromAvailability($site)) {
             return [];
         }
 
@@ -1046,10 +1049,22 @@ class MonitoringService {
         );
     }
 
-    protected function isActiveSite(\WP_Site $site): bool {
-        return (int)$site->archived === 0
-            && (int)$site->spam === 0
-            && (int)$site->deleted === 0;
+    /** @return array<int, string> */
+    protected function getIgnoredSiteStatuses(): array {
+        $options = get_site_option($this->config->getOptionName(), []);
+        $statuses = is_array($options) && is_array($options['monitoring_availability_ignored_statuses'] ?? null)
+            ? $options['monitoring_availability_ignored_statuses']
+            : [];
+
+        return array_values(array_intersect(array_map('sanitize_key', $statuses), ['archived', 'blocked', 'deleted']));
+    }
+
+    protected function isSiteExcludedFromAvailability(\WP_Site $site): bool {
+        $statuses = $this->getIgnoredSiteStatuses();
+
+        return (in_array('archived', $statuses, true) && (int)$site->archived === 1)
+            || (in_array('blocked', $statuses, true) && (int)$site->spam === 1)
+            || (in_array('deleted', $statuses, true) && (int)$site->deleted === 1);
     }
 
     protected function updateOperationalStatus(int $siteId, string $currentStatus, string $nextStatus, string $timestamp, string $source): bool {
