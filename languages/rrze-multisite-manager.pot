@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.3.29\n"
+"Project-Id-Version: RRZE Multisite Manager 1.3.30\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-04T08:26:24+00:00\n"
-"PO-Revision-Date: 2026-11-04 08:26+0000\n"
+"POT-Creation-Date: 2026-11-04T10:10:53+00:00\n"
+"PO-Revision-Date: 2026-11-04 10:10+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -968,7 +968,7 @@ msgid "The storage analysis is complete. The page is being reloaded."
 msgstr ""
 
 #: includes/Dashboard.php:473
-#: includes/StorageAnalysisSchedulerService.php:2147
+#: includes/StorageAnalysisSchedulerService.php:2187
 msgid "The storage analysis could not be completed."
 msgstr ""
 
@@ -2831,7 +2831,7 @@ msgstr ""
 #: includes/Presentation/StatusFormatter.php:39
 #: includes/Settings.php:3555
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:887
-#: includes/StorageAnalysisSchedulerService.php:2934
+#: includes/StorageAnalysisSchedulerService.php:2975
 msgid "Error"
 msgstr ""
 
@@ -3576,7 +3576,7 @@ msgstr ""
 
 #: includes/Settings.php:2418
 #: includes/Settings.php:3559
-#: includes/StorageAnalysisSchedulerService.php:2933
+#: includes/StorageAnalysisSchedulerService.php:2974
 msgid "Aborted"
 msgstr ""
 
@@ -3595,7 +3595,7 @@ msgstr ""
 #: includes/Settings.php:3402
 #: includes/Settings.php:3551
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:886
-#: includes/StorageAnalysisSchedulerService.php:2930
+#: includes/StorageAnalysisSchedulerService.php:2971
 msgid "Running"
 msgstr ""
 
@@ -3609,7 +3609,7 @@ msgstr ""
 
 #: includes/Settings.php:2442
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:888
-#: includes/StorageAnalysisSchedulerService.php:2932
+#: includes/StorageAnalysisSchedulerService.php:2973
 msgid "Waiting for cron"
 msgstr ""
 
@@ -3649,7 +3649,7 @@ msgstr ""
 #: includes/Settings.php:3448
 #: includes/Settings.php:3563
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:891
-#: includes/StorageAnalysisSchedulerService.php:2937
+#: includes/StorageAnalysisSchedulerService.php:2978
 msgid "Not scheduled"
 msgstr ""
 
@@ -4161,7 +4161,7 @@ msgstr ""
 #: includes/Settings.php:3406
 #: includes/Settings.php:3568
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:890
-#: includes/StorageAnalysisSchedulerService.php:2936
+#: includes/StorageAnalysisSchedulerService.php:2977
 msgid "Scheduled"
 msgstr ""
 
@@ -4218,7 +4218,7 @@ msgstr ""
 
 #: includes/Settings.php:3567
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:889
-#: includes/StorageAnalysisSchedulerService.php:2935
+#: includes/StorageAnalysisSchedulerService.php:2976
 msgid "Ok"
 msgstr ""
 
@@ -4361,7 +4361,7 @@ msgid "Decommissioned"
 msgstr ""
 
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:885
-#: includes/StorageAnalysisSchedulerService.php:2931
+#: includes/StorageAnalysisSchedulerService.php:2972
 msgid "Inactive"
 msgstr ""
 
@@ -4445,50 +4445,50 @@ msgstr ""
 msgid "The storage analysis continuation could not be scheduled."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:1903
+#: includes/StorageAnalysisSchedulerService.php:1932
 msgid "Storage analysis continuation diagnostic."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:2094
-#: includes/StorageAnalysisSchedulerService.php:2115
+#: includes/StorageAnalysisSchedulerService.php:2134
+#: includes/StorageAnalysisSchedulerService.php:2155
 msgid "The storage analysis was aborted because it exceeded the configured runtime limit."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:2110
+#: includes/StorageAnalysisSchedulerService.php:2150
 msgid "Not enough PHP memory is available to start another analysis step."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:2119
+#: includes/StorageAnalysisSchedulerService.php:2159
 msgid "The storage analysis was stopped because its scheduled tasks are being removed."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:2143
+#: includes/StorageAnalysisSchedulerService.php:2183
 msgid "Invalid storage analysis phase."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:2209
+#: includes/StorageAnalysisSchedulerService.php:2249
 msgid "Storage analysis remained blocked for more than 24 hours. Check the network-wide reservations before restarting it."
 msgstr ""
 
 #. translators: %s: domain of the currently processed website.
-#: includes/StorageAnalysisSchedulerService.php:2580
+#: includes/StorageAnalysisSchedulerService.php:2621
 msgid "Waiting for completion of website %s."
 msgstr ""
 
 #. translators: %s: WordPress Cron scheduling error.
-#: includes/StorageAnalysisSchedulerService.php:3109
+#: includes/StorageAnalysisSchedulerService.php:3150
 msgid "WordPress could not create the individual retry event: %s"
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:3113
+#: includes/StorageAnalysisSchedulerService.php:3154
 msgid "WordPress could not create the individual retry event."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:3216
+#: includes/StorageAnalysisSchedulerService.php:3257
 msgid "The storage analysis was interrupted before it could finish."
 msgstr ""
 
-#: includes/StorageAnalysisSchedulerService.php:3564
+#: includes/StorageAnalysisSchedulerService.php:3606
 msgid "The storage analysis completed, but its next scheduled run could not be created."
 msgstr ""
 

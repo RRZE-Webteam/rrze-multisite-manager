@@ -1541,6 +1541,19 @@ class StorageAnalysisSchedulerService {
             }
 
             $processedSiteId = $siteId;
+            $assignedMode = $this->getSiteAssignmentMode($siteId);
+
+            // A completed website can be assigned to a different batch for
+            // its next cycle. An obsolete queue created by an earlier release
+            // must not process that website again or block the queue behind it.
+            if ($assignedMode !== 'batch' && $assignedMode !== $batchMode) {
+                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch überspringt veraltete Queue-Site', $siteId, $batchMode, [
+                    'current_assignment' => $assignedMode,
+                ]);
+                $this->advanceBatchQueue($batchMode, $siteId);
+                return;
+            }
+
             // A previous continuation may have been lost, for example while
             // WordPress Cron was unavailable. Recover it before deciding that
             // the queue head is still active, otherwise the whole batch would
@@ -1695,6 +1708,22 @@ class StorageAnalysisSchedulerService {
             return 'unassigned';
         }
 
+        $assignments = get_site_option(self::ASSIGNMENTS_OPTION, []);
+        $assignments = is_array($assignments) ? $assignments : [];
+        $assignedMode = (string)($assignments[$siteId] ?? '');
+
+        if (in_array($assignedMode, ['small-batch', 'medium-batch', 'large-batch'], true)
+            && in_array($siteId, $this->getBatchSiteIds($assignedMode), true)
+            && (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->getBatchHook($assignedMode))) > 0) {
+            return $assignedMode;
+        }
+
+        if ($assignedMode === 'site' && $this->getNextRecurringScheduledTimestamp($siteId) > 0) {
+            return 'site';
+        }
+
+        // Kept as a fallback for schedules created before assignments were
+        // persisted separately from the batch membership lists.
         foreach (['small-batch', 'medium-batch', 'large-batch'] as $mode) {
             if (!in_array($siteId, $this->getBatchSiteIds($mode), true)) {
                 continue;
@@ -1931,6 +1960,17 @@ class StorageAnalysisSchedulerService {
 
     protected function removeBatchSite(int $siteId, ?string $onlyMode = null): void {
         foreach ($onlyMode !== null ? [$onlyMode] : ['small-batch', 'medium-batch', 'large-batch'] as $mode) {
+            $this->removeBatchSiteFromMode($siteId, $mode);
+        }
+    }
+
+    /** Removes obsolete future assignments while retaining the new batch mode. */
+    protected function removeSiteFromOtherBatchModes(int $siteId, string $keepMode): void {
+        foreach (['small-batch', 'medium-batch', 'large-batch'] as $mode) {
+            if ($mode === $keepMode) {
+                continue;
+            }
+
             $this->removeBatchSiteFromMode($siteId, $mode);
         }
     }
@@ -2496,9 +2536,10 @@ class StorageAnalysisSchedulerService {
             $queue = get_site_option($this->getBatchQueueOptionName($assignmentMode), []);
             $queue = is_array($queue) ? $queue : [];
             $currentSiteId = absint($queue['current_site_id'] ?? 0);
+            $currentQueuePosition = max(0, (int)($queue['position'] ?? 0));
             $queuePosition = array_search($siteId, (array)($queue['site_ids'] ?? []), true);
             $isCurrentBatchSite = $currentSiteId > 0 && $siteId === $currentSiteId;
-            if (empty($scheduleStatus['is_running']) && $queuePosition !== false && $queuePosition > 0) {
+            if (empty($scheduleStatus['is_running']) && $queuePosition !== false && $queuePosition > $currentQueuePosition) {
                 $isWaitingForCurrentBatch = true;
                 $previousSiteId = absint($queue['site_ids'][$queuePosition - 1] ?? 0);
                 $waitingForSiteName = (string)wp_parse_url(get_home_url($previousSiteId, '/'), PHP_URL_HOST);
@@ -3534,6 +3575,7 @@ class StorageAnalysisSchedulerService {
                 $siteIds = array_values(array_unique(array_map('absint', $siteIds)));
                 sort($siteIds, SORT_NUMERIC);
                 $this->updateBatchSiteIds($targetMode, $siteIds);
+                $this->removeSiteFromOtherBatchModes($siteId, $targetMode);
                 $this->setSiteAssignment($siteId, $targetMode);
                 $this->clearRecurringScheduleCache();
                 $this->logSiteInfo('Speicherplatzanalyse-Zuordnung zu Sammelbatch geändert', $siteId, $targetMode, [
