@@ -1014,7 +1014,9 @@ class ShortcodeBlockAnalysisSchedulerService {
             return ['run_id' => '', 'initialized' => 0, 'processed' => 0, 'total' => 0, 'complete' => false];
         }
 
-        if (!$this->acquireScheduleInitializationLock($runId)) {
+        $lockToken = $this->acquireScheduleInitializationLock($runId);
+
+        if ($lockToken === '') {
             $progress = $this->getScheduleInitializationProgress($state, false);
             $progress['busy'] = true;
             return $progress;
@@ -1029,6 +1031,12 @@ class ShortcodeBlockAnalysisSchedulerService {
             delete_site_option(self::TASK_REMOVAL_OPTION);
 
             foreach ($siteIds as $siteId) {
+                if (!$this->refreshScheduleInitializationLock($runId, $lockToken)) {
+                    $progress = $this->getScheduleInitializationProgress($state, false);
+                    $progress['busy'] = true;
+                    return $progress;
+                }
+
                 $siteId = (int)$siteId;
 
                 if ($this->isSiteUnscheduled($siteId) && $this->scheduleRecurringAnalysis($siteId, true)) {
@@ -1038,6 +1046,13 @@ class ShortcodeBlockAnalysisSchedulerService {
 
             $state['processed'] = $processed + count($siteIds);
             $state['initialized'] = (int)($state['initialized'] ?? 0) + $initialized;
+
+            if (!$this->refreshScheduleInitializationLock($runId, $lockToken)) {
+                $progress = $this->getScheduleInitializationProgress($state, false);
+                $progress['busy'] = true;
+                return $progress;
+            }
+
             $progress = $this->getScheduleInitializationProgress($state, false);
 
             if ($progress['complete']) {
@@ -1051,24 +1066,59 @@ class ShortcodeBlockAnalysisSchedulerService {
 
             return $progress;
         } finally {
-            $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-            if (is_array($lock) && (string)($lock['run_id'] ?? '') === $runId) {
-                delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
-            }
+            $this->releaseScheduleInitializationLock($runId, $lockToken);
         }
     }
 
-    protected function acquireScheduleInitializationLock(string $runId): bool {
+    /** Returns an exclusive lock token, or an empty string while setup is busy. */
+    protected function acquireScheduleInitializationLock(string $runId): string {
         $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
 
         if (is_array($lock) && (int)($lock['expires_at'] ?? 0) < time()) {
             delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         }
 
-        return add_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
+        $token = wp_generate_uuid4();
+        $acquired = add_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
             'run_id' => $runId,
+            'token' => $token,
             'expires_at' => time() + (5 * MINUTE_IN_SECONDS),
         ]);
+
+        return $acquired ? $token : '';
+    }
+
+    /** Renews the lease only while this request still owns it. */
+    protected function refreshScheduleInitializationLock(string $runId, string $token): bool {
+        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
+
+        if (!is_array($lock)
+            || !hash_equals((string)($lock['run_id'] ?? ''), $runId)
+            || !hash_equals((string)($lock['token'] ?? ''), $token)
+        ) {
+            return false;
+        }
+
+        $lock['expires_at'] = time() + (5 * MINUTE_IN_SECONDS);
+        update_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $lock);
+
+        return true;
+    }
+
+    /** Releases only a lease that belongs to this exact request. */
+    protected function releaseScheduleInitializationLock(string $runId, string $token): void {
+        if ($token === '') {
+            return;
+        }
+
+        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
+
+        if (is_array($lock)
+            && hash_equals((string)($lock['run_id'] ?? ''), $runId)
+            && hash_equals((string)($lock['token'] ?? ''), $token)
+        ) {
+            delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
+        }
     }
 
     /** @return array{run_id: string, initialized: int, processed: int, total: int, complete: bool} */

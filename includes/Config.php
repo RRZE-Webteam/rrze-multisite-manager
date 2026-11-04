@@ -125,6 +125,11 @@ class Config {
                     'description' => __('Settings for dashboard widgets and activity metrics.', 'rrze-multisite-manager'),
                 ],
                 [
+                    'id' => 'users',
+                    'title' => __('Users', 'rrze-multisite-manager'),
+                    'description' => __('Default display settings for the network-wide user list.', 'rrze-multisite-manager'),
+                ],
+                [
                     'id' => 'monitoring',
                     'title' => __('Monitoring', 'rrze-multisite-manager'),
                     'description' => __('Settings for technical reachability and availability checks.', 'rrze-multisite-manager'),
@@ -157,6 +162,22 @@ class Config {
                         'type' => 'number',
                         'default' => 6,
                         'min' => 1,
+                    ],
+                ],
+                'users' => [
+                    [
+                        'name' => 'default_visible_columns',
+                        'label' => __('Default visible columns in the user list', 'rrze-multisite-manager'),
+                        'desc' => __('Applies to users without an individually saved “Screen Options” selection. The list includes all columns currently registered by WordPress and active plugins.', 'rrze-multisite-manager'),
+                        'type' => 'multiselect',
+                        'default' => ['username', 'name', 'email', 'registered', 'blogs'],
+                        'choices' => [
+                            'username' => __('Username', 'rrze-multisite-manager'),
+                            'name' => __('Name', 'rrze-multisite-manager'),
+                            'email' => __('Email', 'rrze-multisite-manager'),
+                            'registered' => __('Registered', 'rrze-multisite-manager'),
+                            'blogs' => __('Websites', 'rrze-multisite-manager'),
+                        ],
                     ],
                 ],
                 'reporting' => [

@@ -40,6 +40,7 @@ class Dashboard {
     protected Template $template;
     protected ViewManager $viewManager;
     protected array $pageHooks = [];
+    protected string $networkUsersPageHook = '';
     protected const META_ARCHIVED_AT = 'rrze_msm_archived_at';
     protected const META_DELETED_AT = 'rrze_msm_deleted_at';
     protected const META_SPAM_AT = 'rrze_msm_spam_at';
@@ -104,6 +105,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_delete_orphan_file', [$this, 'handleOrphanFileDelete']);
         add_action('admin_post_rrze_multisite_manager_request_site_storage_analysis', [$this, 'requestSiteStorageAnalysis']);
         add_action('admin_post_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
+        add_action('admin_post_rrze_multisite_manager_network_users_bulk', [$this, 'handleNetworkUsersBulkAction']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('admin_post_rrze_multisite_manager_toggle_network_audit_plugin', [$this, 'handleNetworkAuditPluginToggle']);
         add_action('admin_action_rrze_multisite_manager_enable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
@@ -174,6 +176,8 @@ class Dashboard {
         $dashboardSlug = (string)($menuSettings['dashboard_slug'] ?? 'rrze-multisite-manager-dashboard');
         $environmentOverviewSlug = (string)($menuSettings['environment_overview_slug'] ?? 'rrze-multisite-manager-environment-overview');
         $siteOverviewSlug = (string)($menuSettings['site_overview_slug'] ?? 'rrze-multisite-manager-site-overview');
+        $usersSlug = 'rrze-multisite-manager-users';
+        $networkUsersDeleteSlug = 'rrze-multisite-manager-users-confirm-delete';
         $pluginOverviewSlug = (string)($menuSettings['plugin_overview_slug'] ?? 'rrze-multisite-manager-plugin-overview');
         $pluginDetailsSlug = (string)($menuSettings['plugin_details_slug'] ?? 'rrze-multisite-manager-plugin-details');
         $themeOverviewSlug = (string)($menuSettings['theme_overview_slug'] ?? 'rrze-multisite-manager-theme-overview');
@@ -336,6 +340,26 @@ class Dashboard {
                 $capability,
                 $shortcodeBlockAnalysisSlug,
                 [$this, 'renderShortcodeBlockAnalysisPage']
+            );
+
+            $this->networkUsersPageHook = (string)add_submenu_page(
+                $parentSlug,
+                __('Users', 'rrze-multisite-manager'),
+                __('Users', 'rrze-multisite-manager'),
+                $capability,
+                $usersSlug,
+                [$this, 'renderNetworkUsersPage']
+            );
+            $this->pageHooks[] = $this->networkUsersPageHook;
+            add_action('load-' . $this->networkUsersPageHook, [$this, 'configureNetworkUsersScreen']);
+
+            $this->pageHooks[] = add_submenu_page(
+                null,
+                __('Delete Users', 'default'),
+                __('Delete Users', 'default'),
+                $capability,
+                $networkUsersDeleteSlug,
+                [$this, 'renderNetworkUsersDeleteConfirmationPage']
             );
 
             $this->pageHooks[] = add_submenu_page(
@@ -592,6 +616,207 @@ class Dashboard {
         echo '<script>window.location.replace(' . wp_json_encode($targetUrl) . ');</script>';
         echo '</div>';
         exit;
+    }
+
+    /** Renders the Core multisite user table with MSM-specific views. */
+    public function renderNetworkUsersPage(): void {
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        if (!class_exists('WP_MS_Users_List_Table')) {
+            require_once ABSPATH . 'wp-admin/includes/class-wp-ms-users-list-table.php';
+        }
+
+        $filter = isset($_GET['rrze_msm_user_filter'])
+            ? sanitize_key((string)wp_unslash($_GET['rrze_msm_user_filter']))
+            : 'all';
+        $filter = $filter === 'without-site-membership' ? $filter : 'all';
+        $role = isset($_GET['role']) ? sanitize_key((string)wp_unslash($_GET['role'])) : '';
+        $role = $filter === 'all' && $role === 'super' ? 'super' : '';
+        $baseUrl = $this->getNetworkUsersUrl();
+        $allUrl = remove_query_arg(['rrze_msm_user_filter', 'role', 'paged'], $baseUrl);
+        $superAdminUrl = add_query_arg([
+            'role' => 'super',
+        ], $baseUrl);
+        $withoutMembershipUrl = add_query_arg([
+            'rrze_msm_user_filter' => 'without-site-membership',
+        ], $baseUrl);
+        $allUsersCount = (int)get_user_count();
+        $superAdminCount = count(get_super_admins());
+        $withoutMembershipCount = NetworkUsersListTable::getUsersWithoutWebsiteMembershipCount();
+        $table = new NetworkUsersListTable($filter === 'without-site-membership');
+
+        $table->prepare_items();
+
+        echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
+        echo '<div class="rrze-msm-page-shell">';
+        echo '<div class="rrze-msm-page-header"><div>';
+        echo '<h1>' . esc_html__('Users', 'rrze-multisite-manager') . '</h1>';
+        echo '<p>' . esc_html__('Network-wide user list based on the WordPress Network Administration.', 'rrze-multisite-manager') . '</p>';
+        echo '</div></div>';
+        echo '<ul class="subsubsub rrze-msm-user-views">';
+        echo '<li><a href="' . esc_url($allUrl) . '"' . ($filter === 'all' && $role !== 'super' ? ' class="current" aria-current="page"' : '') . '>' . esc_html(sprintf(
+            /* translators: %s: number of users. */
+            __('All users (%s)', 'rrze-multisite-manager'),
+            number_format_i18n($allUsersCount)
+        )) . '</a> | </li>';
+        echo '<li><a href="' . esc_url($superAdminUrl) . '"' . ($role === 'super' ? ' class="current" aria-current="page"' : '') . '>' . esc_html(sprintf(
+            /* translators: %s: number of super administrators. */
+            __('Super administrators (%s)', 'rrze-multisite-manager'),
+            number_format_i18n($superAdminCount)
+        )) . '</a> | </li>';
+        echo '<li><a href="' . esc_url($withoutMembershipUrl) . '"' . ($filter === 'without-site-membership' ? ' class="current" aria-current="page"' : '') . '>' . esc_html(sprintf(
+            /* translators: %s: number of users without website assignment. */
+            __('Users without website assignment (%s)', 'rrze-multisite-manager'),
+            number_format_i18n($withoutMembershipCount)
+        )) . '</a></li>';
+        echo '</ul>';
+        echo '<form method="get" class="search-form">';
+        echo '<input type="hidden" name="page" value="rrze-multisite-manager-users">';
+        if ($role === 'super') {
+            echo '<input type="hidden" name="role" value="super">';
+        }
+        if ($filter === 'without-site-membership') {
+            echo '<input type="hidden" name="rrze_msm_user_filter" value="without-site-membership">';
+        }
+        $table->search_box(__('Search users', 'rrze-multisite-manager'), 'rrze-msm-network-users');
+        echo '</form>';
+        echo '<form id="rrze-msm-network-user-list" action="' . esc_url(admin_url('admin-post.php')) . '" method="post">';
+        echo '<input type="hidden" name="action" value="rrze_multisite_manager_network_users_bulk">';
+        wp_nonce_field('rrze_multisite_manager_network_users_bulk', 'rrze_msm_network_users_bulk_nonce');
+        $table->display();
+        echo '</form>';
+        echo '</div></div>';
+    }
+
+    /** Stores selected users and redirects to the regular confirmation screen. */
+    public function handleNetworkUsersBulkAction(): void {
+        if (!$this->currentUserCanUseNetworkAdminFeatures() || !current_user_can('delete_users')) {
+            wp_die(esc_html__('You are not allowed to manage users.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_network_users_bulk', 'rrze_msm_network_users_bulk_nonce');
+
+        $action = isset($_POST['rrze_msm_bulk_action'])
+            ? sanitize_key((string)wp_unslash($_POST['rrze_msm_bulk_action']))
+            : (isset($_POST['rrze_msm_bulk_action2']) ? sanitize_key((string)wp_unslash($_POST['rrze_msm_bulk_action2'])) : '');
+        $userIds = isset($_POST['allusers']) && is_array($_POST['allusers'])
+            ? array_values(array_unique(array_filter(array_map('absint', wp_unslash($_POST['allusers'])))))
+            : [];
+
+        if ($action !== 'delete' || empty($userIds)) {
+            wp_safe_redirect($this->getNetworkUsersUrl());
+            exit;
+        }
+
+        $token = wp_generate_uuid4();
+        set_site_transient(
+            $this->getNetworkUsersDeleteConfirmationTransientKey($token),
+            [
+                'user_id' => get_current_user_id(),
+                'user_ids' => $userIds,
+            ],
+            5 * MINUTE_IN_SECONDS
+        );
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'rrze-multisite-manager-users-confirm-delete',
+            'token' => $token,
+        ], $this->getAdminPageBaseUrl()));
+        exit;
+    }
+
+    /** Renders the Core network-user confirmation in a valid admin screen context. */
+    public function renderNetworkUsersDeleteConfirmationPage(): void {
+        if (!$this->currentUserCanUseNetworkAdminFeatures() || !current_user_can('delete_users')) {
+            wp_die(esc_html__('You are not allowed to manage users.', 'rrze-multisite-manager'));
+        }
+
+        $token = isset($_GET['token']) ? sanitize_text_field((string)wp_unslash($_GET['token'])) : '';
+        $confirmation = $token !== ''
+            ? get_site_transient($this->getNetworkUsersDeleteConfirmationTransientKey($token))
+            : false;
+
+        if (!is_array($confirmation)
+            || (int)($confirmation['user_id'] ?? 0) !== get_current_user_id()
+            || empty($confirmation['user_ids'])
+            || !is_array($confirmation['user_ids'])
+        ) {
+            wp_die(esc_html__('The user deletion request has expired. Please select the users again.', 'rrze-multisite-manager'));
+        }
+
+        delete_site_transient($this->getNetworkUsersDeleteConfirmationTransientKey($token));
+        require_once ABSPATH . 'wp-admin/includes/ms.php';
+
+        // confirm_delete_users() has a relative action for the standard
+        // Network Admin screen. This MSM page uses admin.php instead.
+        ob_start();
+        confirm_delete_users(array_map('absint', $confirmation['user_ids']));
+        $confirmationMarkup = (string)ob_get_clean();
+        $confirmationMarkup = (string)preg_replace(
+            '#(<form\\b[^>]*\\baction\\s*=\\s*)([\'\"])users\\.php\\?action=dodelete\\2#i',
+            '$1"' . esc_url(network_admin_url('users.php?action=dodelete')) . '"',
+            $confirmationMarkup
+        );
+
+        echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Core confirmation markup is escaped by confirm_delete_users().
+        echo $confirmationMarkup;
+        echo '</div>';
+    }
+
+    /** Registers native Screen Options for the MSM network user table. */
+    public function configureNetworkUsersScreen(): void {
+        $screen = get_current_screen();
+
+        if (!$screen instanceof \WP_Screen || $screen->id !== $this->networkUsersPageHook) {
+            return;
+        }
+
+        add_filter('manage_' . $screen->id . '_columns', [$this, 'getNetworkUsersScreenColumns']);
+        add_filter('default_hidden_columns', [$this, 'filterNetworkUsersDefaultHiddenColumns'], 10, 2);
+    }
+
+    /** @return array<string, string> */
+    public function getNetworkUsersScreenColumns(array $columns): array {
+        unset($columns);
+        $columns = [
+            'cb' => '<input type="checkbox" />',
+            'username' => __('Username', 'rrze-multisite-manager'),
+            'name' => __('Name', 'rrze-multisite-manager'),
+            'email' => __('Email', 'rrze-multisite-manager'),
+            'registered' => __('Registered', 'rrze-multisite-manager'),
+            'blogs' => __('Websites', 'rrze-multisite-manager'),
+        ];
+
+        // Plugins may use the standard Users or Network Users screen filter;
+        // Core uses the wpmu_users_columns filter for its list table.
+        $columns = apply_filters('manage_users_columns', $columns);
+        $columns = apply_filters('manage_users-network_columns', $columns);
+        $columns = apply_filters('wpmu_users_columns', $columns);
+
+        return $columns;
+    }
+
+    /** @param array<int, string> $hidden */
+    public function filterNetworkUsersDefaultHiddenColumns(array $hidden, \WP_Screen $screen): array {
+        if ($screen->id !== $this->networkUsersPageHook) {
+            return $hidden;
+        }
+
+        $availableColumnKeys = array_keys($this->getNetworkUsersScreenColumns([]));
+        // The selection column is required for Core bulk actions and must not
+        // be configurable or hidden through the user-column preferences.
+        $selectableColumnKeys = array_values(array_diff($availableColumnKeys, ['cb']));
+        $visibleColumns = $this->settings->getNetworkUsersVisibleColumns($selectableColumnKeys);
+
+        $hidden = array_values(array_diff($hidden, $availableColumnKeys));
+
+        return array_values(array_unique(array_merge(
+            $hidden,
+            array_diff($selectableColumnKeys, $visibleColumns)
+        )));
     }
 
     public function renderViewsPage(): void {
@@ -3082,6 +3307,19 @@ class Dashboard {
             ],
             $this->getAdminPageBaseUrl()
         );
+    }
+
+    protected function getNetworkUsersUrl(): string {
+        return add_query_arg(
+            [
+                'page' => 'rrze-multisite-manager-users',
+            ],
+            $this->getAdminPageBaseUrl()
+        );
+    }
+
+    protected function getNetworkUsersDeleteConfirmationTransientKey(string $token): string {
+        return 'rrze_msm_network_users_delete_' . get_current_user_id() . '_' . sanitize_key($token);
     }
 
     protected function getCurrentSiteOverviewTab(): string {

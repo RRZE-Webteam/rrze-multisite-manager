@@ -623,7 +623,9 @@ class StorageAnalysisSchedulerService {
             return ['run_id' => '', 'initialized' => 0, 'processed' => 0, 'total' => 0, 'complete' => false];
         }
 
-        if (!$this->acquireScheduleInitializationLock($runId)) {
+        $lockToken = $this->acquireScheduleInitializationLock($runId);
+
+        if ($lockToken === '') {
             $progress = $this->getScheduleInitializationProgress($state, false);
             $progress['busy'] = true;
             return $progress;
@@ -638,6 +640,12 @@ class StorageAnalysisSchedulerService {
             update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
 
             foreach ($siteIds as $siteId) {
+                if (!$this->refreshScheduleInitializationLock($runId, $lockToken)) {
+                    $progress = $this->getScheduleInitializationProgress($state, false);
+                    $progress['busy'] = true;
+                    return $progress;
+                }
+
                 $siteId = (int)$siteId;
 
                 if ($this->isSiteAwaitingSchedule($siteId) && $this->scheduleRecurringAnalysis($siteId)) {
@@ -649,6 +657,13 @@ class StorageAnalysisSchedulerService {
 
             $state['processed'] = $processed + count($siteIds);
             $state['initialized'] = (int)($state['initialized'] ?? 0) + $initialized;
+
+            if (!$this->refreshScheduleInitializationLock($runId, $lockToken)) {
+                $progress = $this->getScheduleInitializationProgress($state, false);
+                $progress['busy'] = true;
+                return $progress;
+            }
+
             $progress = $this->getScheduleInitializationProgress($state, false);
 
             if ($progress['complete']) {
@@ -661,24 +676,59 @@ class StorageAnalysisSchedulerService {
 
             return $progress;
         } finally {
-            $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-            if (is_array($lock) && (string)($lock['run_id'] ?? '') === $runId) {
-                delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
-            }
+            $this->releaseScheduleInitializationLock($runId, $lockToken);
         }
     }
 
-    protected function acquireScheduleInitializationLock(string $runId): bool {
+    /** Returns an exclusive lock token, or an empty string while setup is busy. */
+    protected function acquireScheduleInitializationLock(string $runId): string {
         $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
 
         if (is_array($lock) && (int)($lock['expires_at'] ?? 0) < time()) {
             delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         }
 
-        return add_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
+        $token = wp_generate_uuid4();
+        $acquired = add_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
             'run_id' => $runId,
+            'token' => $token,
             'expires_at' => time() + (5 * MINUTE_IN_SECONDS),
         ]);
+
+        return $acquired ? $token : '';
+    }
+
+    /** Renews the lease only while this request still owns it. */
+    protected function refreshScheduleInitializationLock(string $runId, string $token): bool {
+        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
+
+        if (!is_array($lock)
+            || !hash_equals((string)($lock['run_id'] ?? ''), $runId)
+            || !hash_equals((string)($lock['token'] ?? ''), $token)
+        ) {
+            return false;
+        }
+
+        $lock['expires_at'] = time() + (5 * MINUTE_IN_SECONDS);
+        update_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $lock);
+
+        return true;
+    }
+
+    /** Releases only a lease that belongs to this exact request. */
+    protected function releaseScheduleInitializationLock(string $runId, string $token): void {
+        if ($token === '') {
+            return;
+        }
+
+        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
+
+        if (is_array($lock)
+            && hash_equals((string)($lock['run_id'] ?? ''), $runId)
+            && hash_equals((string)($lock['token'] ?? ''), $token)
+        ) {
+            delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
+        }
     }
 
     /** @return array{run_id: string, initialized: int, processed: int, total: int, complete: bool} */
@@ -1564,6 +1614,25 @@ class StorageAnalysisSchedulerService {
             // A central recurring event must never jump ahead of the current
             // website. Its local continuation completes all three phases.
             if (!empty($status['is_running'])) {
+                return;
+            }
+
+            $queueStartedAt = absint($queue['started_at'] ?? 0);
+            $lastCompletedAt = (string)($status['last_completed_at'] ?? '');
+            $lastCompletedTimestamp = $lastCompletedAt !== ''
+                ? (int)strtotime($lastCompletedAt . ' UTC')
+                : 0;
+
+            // Recover a queue that was left at an already completed head.
+            // This can occur when an earlier release completed the local
+            // analysis but lost the central queue advancement. Do not repeat
+            // that analysis: progress to the next queue entry instead.
+            if ($queueStartedAt > 0 && $lastCompletedTimestamp >= $queueStartedAt) {
+                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch setzt abgeschlossene Queue-Site fort', $siteId, $batchMode, [
+                    'queue_started_at' => $queueStartedAt,
+                    'last_completed_at' => $lastCompletedAt,
+                ]);
+                $this->advanceBatchQueue($batchMode, $siteId);
                 return;
             }
 
@@ -2596,8 +2665,12 @@ class StorageAnalysisSchedulerService {
             'name' => (string)get_blog_option($siteId, 'blogname', ''),
             'url' => get_home_url($siteId, '/'),
             'website_status_key' => $this->getWebsiteStatusFilterKey($site),
-            'status' => $this->getSiteProcessStatus($isEligible, $isDue, $analysisStatus, $scheduleStatus),
-            'status_key' => $this->getSiteProcessStatusKey($isEligible, $isDue, $analysisStatus, $scheduleStatus),
+            'status' => $isWaitingForCurrentBatch
+                ? __('Scheduled', 'rrze-multisite-manager')
+                : $this->getSiteProcessStatus($isEligible, $isDue, $analysisStatus, $scheduleStatus),
+            'status_key' => $isWaitingForCurrentBatch
+                ? 'scheduled'
+                : $this->getSiteProcessStatusKey($isEligible, $isDue, $analysisStatus, $scheduleStatus),
             'is_running' => $isEligible && $this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
             'is_eligible' => $isEligible,
             'schedule_mode' => $assignmentMode,
