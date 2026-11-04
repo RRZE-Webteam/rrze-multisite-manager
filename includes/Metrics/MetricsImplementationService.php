@@ -4709,6 +4709,36 @@ class MetricsImplementationService {
         return $sites;
     }
 
+    /**
+     * Builds detail-table rows using the same data model as the Site overview
+     * widget. The caller has already limited the IDs to a plugin or theme use.
+     */
+    protected function getSiteOverviewRowsForIds(array $siteIds): array {
+        $sites = [];
+        $seenSiteIds = [];
+        $siteId = 0;
+        $site = null;
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0 || isset($seenSiteIds[$siteId])) {
+                continue;
+            }
+
+            $site = get_site($siteId);
+
+            if (!$site instanceof \WP_Site) {
+                continue;
+            }
+
+            $seenSiteIds[$siteId] = true;
+            $sites[] = $site;
+        }
+
+        return $this->sortPluginActiveSites($this->formatSites($sites, true));
+    }
+
     protected function getSitePluginDeactivateUrl(int $siteId, string $pluginFile): string {
         return wp_nonce_url(
             add_query_arg(
@@ -11007,11 +11037,11 @@ class MetricsImplementationService {
     }
 
     protected function getPluginDetailsCacheKey(string $pluginFile, bool $includeSourceAnalysis = false): string {
-        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5($pluginFile . '|' . (int)$includeSourceAnalysis . '|' . $this->getPluginCacheFingerprint($pluginFile));
+        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5('site-overview-rows-v1|' . $pluginFile . '|' . (int)$includeSourceAnalysis . '|' . $this->getPluginCacheFingerprint($pluginFile));
     }
 
     protected function getThemeDetailsCacheKey(string $stylesheet, bool $includeSourceAnalysis = false): string {
-        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5($stylesheet . '|' . (int)$includeSourceAnalysis . '|' . $this->getThemeCacheFingerprint($stylesheet));
+        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5('site-overview-rows-v1|' . $stylesheet . '|' . (int)$includeSourceAnalysis . '|' . $this->getThemeCacheFingerprint($stylesheet));
     }
 
     protected function getPluginCacheFingerprint(string $pluginFile): string {

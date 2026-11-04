@@ -2357,7 +2357,7 @@ class Settings {
         echo '<form id="' . esc_attr($selectionFormId) . '" method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_remove_selected_storage_analysis_sites')) . '">';
         wp_nonce_field('rrze_multisite_manager_remove_selected_storage_analysis_sites');
         echo '</form>';
-        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-site-storage" data-sort-key="url" data-sort-direction="asc">';
+        echo '<div class="rrze-msm-site-table-wrap rrze-msm-server-paginated" data-table-id="monitoring-site-storage" data-sort-key="method" data-sort-direction="asc">';
         echo '<div class="tablenav top">';
         $this->renderSelectedSiteBulkActions($selectionFormId, 'top', 'remove', __('Remove selected tasks', 'rrze-multisite-manager'));
         echo '<div class="alignleft actions">';
@@ -2369,7 +2369,7 @@ class Settings {
         echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all"></th>';
         echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="url" data-sort-direction="asc"><span>' . esc_html__('Site', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
         echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="status" data-sort-direction="asc"><span>' . esc_html__('Status', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
-        echo '<th>' . esc_html__('Execution', 'rrze-multisite-manager') . '</th>';
+        echo '<th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="method" data-sort-direction="asc"><span>' . esc_html__('Method', 'rrze-multisite-manager') . '</span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>';
         echo '<th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('File index', 'rrze-multisite-manager') . '</th>';
         echo '<th>' . esc_html__('Orphans', 'rrze-multisite-manager') . '</th>';
@@ -2386,7 +2386,7 @@ class Settings {
             $lastRun = (string)($process['last_run'] ?? '');
             $lastRunTimestamp = $lastRun !== '' ? (int)strtotime($lastRun . ' UTC') : 0;
 
-            echo '<tr data-sort-name="' . esc_attr(strtolower((string)($process['name'] ?? ''))) . '" data-sort-url="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-sort-status="' . esc_attr(strtolower((string)($process['status'] ?? ''))) . '" data-sort-last-run="' . esc_attr((string)$lastRunTimestamp) . '" data-site-status="' . esc_attr((string)($process['website_status_key'] ?? 'inactive')) . '">';
+            echo '<tr data-sort-name="' . esc_attr(strtolower((string)($process['name'] ?? ''))) . '" data-sort-url="' . esc_attr(strtolower((string)($process['url'] ?? ''))) . '" data-sort-status="' . esc_attr(strtolower((string)($process['status'] ?? ''))) . '" data-sort-method="' . esc_attr((string)($process['method_sort'] ?? '9-999999999999')) . '" data-sort-last-run="' . esc_attr((string)$lastRunTimestamp) . '" data-site-status="' . esc_attr((string)($process['website_status_key'] ?? 'inactive')) . '">';
             echo '<th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th>';
             echo '<td class="rrze-msm-monitoring-site-url">';
             echo '<div class="rrze-msm-monitoring-site-identity"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
@@ -2486,7 +2486,7 @@ class Settings {
 
         echo '</tbody><tfoot><tr>';
         echo '<th class="check-column"><label class="screen-reader-text" for="' . esc_attr($selectionFormId) . '-all-bottom">' . esc_html__('Select all visible websites', 'rrze-multisite-manager') . '</label><input type="checkbox" class="rrze-msm-select-visible-sites" id="' . esc_attr($selectionFormId) . '-all-bottom"></th>';
-        echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Execution', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th><th>' . esc_html__('File index', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Orphans', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Metadata', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Runtime', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Finished', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Site', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Status', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Method', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Start', 'rrze-multisite-manager') . '</th><th>' . esc_html__('File index', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Orphans', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Metadata', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Runtime', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Finished', 'rrze-multisite-manager') . '</th><th>' . esc_html__('Next run', 'rrze-multisite-manager') . '</th><th class="rrze-msm-col-actions">' . esc_html__('Action', 'rrze-multisite-manager') . '</th>';
         echo '</tr></tfoot></table>';
         echo '<div class="tablenav bottom">';
         $this->renderSelectedSiteBulkActions($selectionFormId, 'bottom', 'remove', __('Remove selected tasks', 'rrze-multisite-manager'));

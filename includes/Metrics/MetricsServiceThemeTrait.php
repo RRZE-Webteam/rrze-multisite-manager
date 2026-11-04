@@ -15,6 +15,7 @@ trait MetricsServiceThemeTrait {
         $analysis = [];
         $installTimestamp = 0;
         $modifiedTimestamp = 0;
+        $activeSites = [];
 
         foreach ($themes as $themeItem) {
             if ((string)($themeItem['stylesheet'] ?? '') === $stylesheet) {
@@ -34,6 +35,10 @@ trait MetricsServiceThemeTrait {
         if (is_array($cached) && !empty($cached)) {
             return $this->hydrateThemeRuntimeState($cached);
         }
+
+        // Dashboard theme rows contain only a preview of the websites using a
+        // theme. The detail page deliberately loads the complete current list.
+        $activeSites = $this->getActiveSitesForTheme($stylesheet);
 
         $supplementary = $this->getThemeSupplementaryData($stylesheet);
         $analysis = $includeSourceAnalysis ? $this->analyzeThemeCode($stylesheet) : [];
@@ -76,6 +81,9 @@ trait MetricsServiceThemeTrait {
                 'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'main_file_path' => $this->getThemeMainFilePath($stylesheet),
+                'site_count' => count($activeSites),
+                'active_sites' => $activeSites,
+                'active_sites_truncated' => false,
             ]
         );
 
@@ -139,6 +147,47 @@ trait MetricsServiceThemeTrait {
     protected function getThemeUsage(): array {
         $themes = $this->getThemes();
         return $this->buildThemeUsageDistribution($themes);
+    }
+
+    /**
+     * Returns the complete current list of websites using a theme.
+     *
+     * The full list is only collected for the detail page. Keeping it out of
+     * every dashboard theme row prevents unnecessary growth of the shared
+     * dashboard metrics cache.
+     */
+    protected function getActiveSitesForTheme(string $stylesheet): array {
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'orderby' => 'id',
+            'order' => 'ASC',
+        ]);
+        $activeSiteIds = [];
+        $siteId = 0;
+        $siteStylesheet = '';
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            $siteStylesheet = (string)get_blog_option($siteId, 'stylesheet', '');
+
+            if ($siteStylesheet === '') {
+                $siteStylesheet = (string)get_blog_option($siteId, 'template', '');
+            }
+
+            if ($siteStylesheet !== $stylesheet) {
+                continue;
+            }
+
+            $activeSiteIds[] = $siteId;
+        }
+
+        return $this->getSiteOverviewRowsForIds($activeSiteIds);
     }
 
     protected function getInactiveThemes(): array {

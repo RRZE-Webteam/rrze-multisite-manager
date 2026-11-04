@@ -956,6 +956,7 @@ class Dashboard {
         }
 
         $siteWidget = new SiteOverviewWidget($this->plugin, $this->config);
+        $sitePluginWidget = new PluginUsageWidget($this->plugin, $this->config);
         $optionsGroups = $this->filterVisibleSiteOptionGroups($optionsGroups);
         $selectedOptionsGroup = $this->filterVisibleSiteOptionGroupDetail($selectedOptionsGroup);
 
@@ -1075,6 +1076,7 @@ class Dashboard {
                 'site_id' => $siteId,
                 'site_details' => $siteDetails,
                 'site_actions' => !empty($siteDetails) ? $siteWidget->renderActionsForSite($siteDetails, 'text') : '',
+                'site_plugin_widget' => $sitePluginWidget,
                 'site_plugins_url' => $siteId > 0 ? get_admin_url($siteId, 'plugins.php') : '',
                 'site_themes_url' => $siteId > 0 ? get_admin_url($siteId, 'themes.php') : '',
                 'site_storage_analysis_url' => $siteId > 0 ? $this->getSiteStorageAnalysisUrl($siteId) : '',
@@ -1663,6 +1665,7 @@ class Dashboard {
         $pluginFile = isset($_GET['plugin']) ? sanitize_text_field((string)wp_unslash($_GET['plugin'])) : '';
         $sourceAnalysisRequested = $pluginFile !== '' && $this->isSourceAnalysisRequested('plugin', $pluginFile);
         $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile, $sourceAnalysisRequested) : [];
+        $siteOverviewWidget = new SiteOverviewWidget($this->plugin, $this->config);
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -1673,6 +1676,7 @@ class Dashboard {
             [
                 'plugin_file' => $pluginFile,
                 'plugin_details' => $pluginDetails,
+                'site_overview_widget' => $siteOverviewWidget,
                 'plugin_search_placeholder' => __('Search plugin by name', 'rrze-multisite-manager'),
                 'plugin_details_base_url' => $this->getPluginDetailsUrl(),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
@@ -1822,6 +1826,7 @@ class Dashboard {
         $sourceAnalysisRequested = $stylesheet !== '' && $this->isSourceAnalysisRequested('theme', $stylesheet);
         $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet, $sourceAnalysisRequested) : [];
         $themeWidget = new ThemeOverviewWidget($this->plugin, $this->config);
+        $siteOverviewWidget = new SiteOverviewWidget($this->plugin, $this->config);
 
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -1833,6 +1838,7 @@ class Dashboard {
                 'theme_stylesheet' => $stylesheet,
                 'theme_details' => $themeDetails,
                 'theme_widget' => $themeWidget,
+                'site_overview_widget' => $siteOverviewWidget,
                 'theme_search_placeholder' => __('Search theme by name', 'rrze-multisite-manager'),
                 'theme_details_base_url' => $this->getThemeDetailsUrl(),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
