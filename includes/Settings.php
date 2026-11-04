@@ -135,6 +135,48 @@ class Settings {
 
     protected function setFields(): void {
         $this->settingsFields = $this->config->getFields();
+        $this->refreshNetworkUsersColumnField();
+    }
+
+    /** Adds currently registered Core and plugin user-table columns to the settings field. */
+    protected function refreshNetworkUsersColumnField(): void {
+        $columns = [
+            'cb' => '<input type="checkbox" />',
+            'username' => __('Username', 'rrze-multisite-manager'),
+            'name' => __('Name', 'rrze-multisite-manager'),
+            'email' => __('Email', 'rrze-multisite-manager'),
+            'registered' => __('Registered', 'rrze-multisite-manager'),
+            'blogs' => __('Websites', 'rrze-multisite-manager'),
+        ];
+
+        // Plugins can register columns for the regular Users screen or for
+        // Network Admin specifically, whereas Core uses wpmu_users_columns.
+        // Apply all three extension points so the same columns are selectable.
+        $columns = apply_filters('manage_users_columns', $columns);
+        $columns = apply_filters('manage_users-network_columns', $columns);
+        $columns = apply_filters('wpmu_users_columns', $columns);
+        unset($columns['cb']);
+        $choices = [];
+
+        foreach ($columns as $columnKey => $columnLabel) {
+            $columnKey = sanitize_key((string)$columnKey);
+
+            if ($columnKey === '') {
+                continue;
+            }
+
+            $choices[$columnKey] = wp_strip_all_tags((string)$columnLabel);
+        }
+
+        foreach ($this->settingsFields['users'] ?? [] as $index => $field) {
+            if (($field['name'] ?? '') !== 'default_visible_columns') {
+                continue;
+            }
+
+            $this->settingsFields['users'][$index]['choices'] = $choices;
+            $this->settingsFields['users'][$index]['default'] = array_keys($choices);
+            break;
+        }
     }
 
     protected function defaultOptions(): array {
@@ -234,6 +276,25 @@ class Settings {
         return $default;
     }
 
+    /**
+     * Returns the configured default columns that are currently available in
+     * the network user table. Re-reading the options preserves columns that
+     * active plugins register after this plugin has loaded.
+     *
+     * @param array<int, string> $availableColumns
+     * @return array<int, string>
+     */
+    public function getNetworkUsersVisibleColumns(array $availableColumns): array {
+        $this->refreshNetworkUsersColumnField();
+        $options = $this->getOptions();
+        $visibleColumns = $options['users_default_visible_columns'] ?? $availableColumns;
+        $visibleColumns = is_array($visibleColumns)
+            ? array_values(array_intersect(array_map('sanitize_key', $visibleColumns), $availableColumns))
+            : $availableColumns;
+
+        return empty($visibleColumns) ? $availableColumns : $visibleColumns;
+    }
+
     public function sanitizeOptions(mixed $options): array {
         if (!is_array($options)) {
             return $this->options;
@@ -256,6 +317,11 @@ class Settings {
         }
 
         check_admin_referer($this->optionName . '_save');
+
+        // Plugins may register user-table columns after this plugin has been
+        // loaded. Refresh the whitelist immediately before sanitizing input.
+        $this->refreshNetworkUsersColumnField();
+        $this->options = $this->getOptions();
 
         $rawOptions = $_POST[$this->optionName] ?? [];
         $options = $this->sanitizeOptions($rawOptions);
@@ -1466,10 +1532,15 @@ class Settings {
     }
 
     protected function renderGeneralTab(): void {
+        // Register columns at render time as well. Some plugins attach their
+        // wpmu_users_columns filter later than this plugin is loaded.
+        $this->refreshNetworkUsersColumnField();
+        $this->options = $this->getOptions();
+
         echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="general">';
-        $this->renderFields(['dashboard', 'debugging']);
+        $this->renderFields(['dashboard', 'users', 'debugging']);
         submit_button();
         echo '</form>';
         $this->renderMonitoringManagementNotice();
