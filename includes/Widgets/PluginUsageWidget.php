@@ -38,7 +38,7 @@ class PluginUsageWidget extends Widgets {
      * @param array<int, array<string, mixed>> $plugins
      * @return array<int, array<string, mixed>>
      */
-    public function hydrateRuntimeState(array $plugins): array {
+    public function hydrateRuntimeState(array $plugins, bool $onlyProvidedPlugins = false): array {
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
         $cachedPlugins = [];
@@ -50,6 +50,7 @@ class PluginUsageWidget extends Widgets {
         $pluginFile = '';
         $pluginData = [];
         $updateItem = null;
+        $providedPluginFiles = [];
 
         foreach ($plugins as $plugin) {
             if (!is_array($plugin)) {
@@ -60,6 +61,7 @@ class PluginUsageWidget extends Widgets {
 
             if ($pluginFile !== '') {
                 $cachedPlugins[$pluginFile] = $plugin;
+                $providedPluginFiles[$pluginFile] = true;
             }
         }
 
@@ -67,6 +69,10 @@ class PluginUsageWidget extends Widgets {
 
         foreach ($availablePlugins as $pluginFile => $pluginData) {
             $pluginFile = plugin_basename((string)$pluginFile);
+
+            if ($onlyProvidedPlugins && !isset($providedPluginFiles[$pluginFile])) {
+                continue;
+            }
             $updateItem = is_object($pluginUpdates) && isset($pluginUpdates->response[$pluginFile]) && is_object($pluginUpdates->response[$pluginFile])
                 ? $pluginUpdates->response[$pluginFile]
                 : null;
@@ -97,7 +103,8 @@ class PluginUsageWidget extends Widgets {
     }
 
     public function renderTable(array $plugins, array $args = []): string {
-        $plugins = $this->hydrateRuntimeState($plugins);
+        $onlyProvidedPlugins = !empty($args['only_provided_plugins']);
+        $plugins = $this->hydrateRuntimeState($plugins, $onlyProvidedPlugins);
         $tableId = sanitize_key((string)($args['table_id'] ?? 'plugin-usage'));
         $defaultPerPage = max(1, (int)($args['default_per_page'] ?? 10));
         $sortKey = $this->normalizePluginTableSortKey((string)($args['sort_key'] ?? 'name'));
@@ -105,6 +112,8 @@ class PluginUsageWidget extends Widgets {
         $showActiveSites = !isset($args['show_active_sites']) || !empty($args['show_active_sites']);
         $showActiveSiteList = !empty($args['show_active_site_list']);
         $showNetworkButton = !empty($args['show_network_button']);
+        $showBulkActions = !isset($args['show_bulk_actions']) || !empty($args['show_bulk_actions']);
+        $showNetworkActions = !isset($args['show_network_actions']) || !empty($args['show_network_actions']);
         $actionMode = (string)($args['action_mode'] ?? 'text');
         $actionModeClass = $actionMode === 'text' ? 'rrze-msm-plugin-table-text-actions' : 'rrze-msm-plugin-table-icon-actions';
         $actionCellClass = $actionMode === 'text' ? 'rrze-msm-col-actions-text' : 'rrze-msm-col-actions-icon';
@@ -127,7 +136,7 @@ class PluginUsageWidget extends Widgets {
         echo '<div class="tablenav top">';
         echo '<div class="alignleft actions">';
 
-        if ($canUseNetworkAdminFeatures) {
+        if ($showBulkActions && $canUseNetworkAdminFeatures) {
             echo '<label class="screen-reader-text" for="rrze-msm-plugin-bulk-' . esc_attr($tableId) . '">' . esc_html__('Select bulk action', 'rrze-multisite-manager') . '</label>';
             echo '<select id="rrze-msm-plugin-bulk-' . esc_attr($tableId) . '" name="action">';
             echo '<option value="-1">' . esc_html__('Bulk actions', 'rrze-multisite-manager') . '</option>';
@@ -185,7 +194,9 @@ class PluginUsageWidget extends Widgets {
         echo '</div>';
         echo '<table class="widefat striped rrze-msm-table rrze-msm-plugin-table rrze-msm-plugin-overview-table">';
         echo '<colgroup>';
-        echo '<col class="rrze-msm-plugin-col-select">';
+        if ($showBulkActions) {
+            echo '<col class="rrze-msm-plugin-col-select">';
+        }
         echo '<col class="rrze-msm-plugin-col-name">';
         echo '<col class="rrze-msm-plugin-col-version">';
         echo '<col class="rrze-msm-plugin-col-info">';
@@ -195,7 +206,9 @@ class PluginUsageWidget extends Widgets {
         echo '<col class="rrze-msm-plugin-col-enabled">';
         echo '</colgroup>';
         echo '<thead><tr>';
-        echo '<td rowspan="2" class="check-column"><input type="checkbox" class="rrze-msm-plugin-select-all" aria-label="' . esc_attr__('Select all plugins', 'rrze-multisite-manager') . '"></td>';
+        if ($showBulkActions) {
+            echo '<td rowspan="2" class="check-column"><input type="checkbox" class="rrze-msm-plugin-select-all" aria-label="' . esc_attr__('Select all plugins', 'rrze-multisite-manager') . '"></td>';
+        }
         echo '<th rowspan="2" class="rrze-msm-plugin-col-name">' . $this->renderSiteTableSortButton('name', __('Plugin', 'rrze-multisite-manager')) . '</th>';
         echo '<th rowspan="2" class="rrze-msm-plugin-col-version">' . esc_html__('Version', 'rrze-multisite-manager') . '</th>';
         echo '<th rowspan="2" class="rrze-msm-plugin-col-info">' . $this->renderSiteTableSortButton('author', __('Info', 'rrze-multisite-manager')) . '</th>';
@@ -224,7 +237,13 @@ class PluginUsageWidget extends Widgets {
             echo ' data-sort-network-wide="' . esc_attr($networkActive ? '1' : '0') . '"';
             echo ' data-sort-auto-updates="' . esc_attr($autoUpdateEnabled ? '1' : '0') . '"';
             echo ' data-sort-available="' . esc_attr($networkActive || !empty($networkAuditState['enabled']) ? '1' : '0') . '"';
-            echo '><th scope="row" class="check-column"><input type="checkbox" name="checked[]" value="' . esc_attr((string)($plugin['file'] ?? '')) . '"></th><td><strong><a href="' . esc_url($this->getPluginDetailsPageUrl((string)($plugin['file'] ?? ''))) . '">' . esc_html((string)($plugin['name'] ?? '')) . '</a></strong>';
+            echo '>';
+
+            if ($showBulkActions) {
+                echo '<th scope="row" class="check-column"><input type="checkbox" name="checked[]" value="' . esc_attr((string)($plugin['file'] ?? '')) . '"></th>';
+            }
+
+            echo '<td><strong><a href="' . esc_url($this->getPluginDetailsPageUrl((string)($plugin['file'] ?? ''))) . '">' . esc_html((string)($plugin['name'] ?? '')) . '</a></strong>';
 
             if (!empty($plugin['description'])) {
                 echo '<br><span class="description">' . esc_html((string)$plugin['description']) . '</span>';
@@ -245,7 +264,7 @@ class PluginUsageWidget extends Widgets {
                     echo '<a href="' . esc_url((string)$plugin['update_details_url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html__('Details', 'rrze-multisite-manager') . '</a>';
                 }
 
-                if ($canUseNetworkAdminFeatures && $pluginFile !== '') {
+                if ($showNetworkActions && $canUseNetworkAdminFeatures && $pluginFile !== '') {
                     echo '<a href="' . esc_url($this->getNetworkPluginUpdateUrl($pluginFile)) . '">' . esc_html__('Update', 'rrze-multisite-manager') . '</a>';
                 }
 
@@ -261,18 +280,18 @@ class PluginUsageWidget extends Widgets {
                 echo ' | <span class="settings"><a href="' . esc_url((string)$plugin['settings_url']) . '"><span class="dashicons dashicons-admin-generic" aria-hidden="true"></span> ' . esc_html__('Settings', 'rrze-multisite-manager') . '</a></span>';
             }
 
-            if ($networkAuditState['action_url'] !== '') {
+            if ($showNetworkActions && $networkAuditState['action_url'] !== '') {
                 $networkAuditIcon = !empty($networkAuditState['enabled']) ? 'dashicons-hidden' : 'dashicons-visibility';
                 echo ' | <span class="rrze-network-audit-toggle"><a href="' . esc_url($networkAuditState['action_url']) . '"><span class="dashicons ' . esc_attr($networkAuditIcon) . '" aria-hidden="true"></span> ' . esc_html($networkAuditState['action_label']) . '</a></span>';
             }
 
-            if ($canUseNetworkAdminFeatures && $networkActive) {
+            if ($showNetworkActions && $canUseNetworkAdminFeatures && $networkActive) {
                 echo ' | <span class="deactivate"><a href="' . esc_url($this->getNetworkPluginDeactivateUrl($pluginFile)) . '"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span> ' . esc_html__('Deactivate network-wide', 'rrze-multisite-manager') . '</a></span>';
-            } elseif ($canUseNetworkAdminFeatures && $pluginFile !== '') {
+            } elseif ($showNetworkActions && $canUseNetworkAdminFeatures && $pluginFile !== '') {
                 echo ' | <span class="activate"><a href="' . esc_url($this->getNetworkPluginActivateUrl($pluginFile)) . '"><span class="dashicons dashicons-yes-alt" aria-hidden="true"></span> ' . esc_html__('Activate network-wide', 'rrze-multisite-manager') . '</a></span>';
             }
 
-            if ($canUseNetworkAdminFeatures && $pluginFile !== '') {
+            if ($showNetworkActions && $canUseNetworkAdminFeatures && $pluginFile !== '') {
                 $autoUpdateAction = $autoUpdateEnabled ? 'disable-auto-update' : 'enable-auto-update';
                 $autoUpdateLabel = $autoUpdateEnabled ? __('Disable auto-updates', 'rrze-multisite-manager') : __('Enable auto-updates', 'rrze-multisite-manager');
                 $autoUpdateIcon = $autoUpdateEnabled ? 'dashicons-controls-pause' : 'dashicons-update';

@@ -2,14 +2,6 @@
 defined('ABSPATH') || exit;
 // phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal admin markup fragments.
 
-$pluginShortcodeFilter = implode(', ', array_values(array_filter(array_map(
-    static fn($shortcode): string => is_string($shortcode) ? trim($shortcode) : '',
-    (array)($plugin_details['shortcodes'] ?? [])
-))));
-$pluginBlockFilter = implode(', ', array_values(array_filter(array_map(
-    static fn($block): string => is_array($block) ? trim((string)($block['name'] ?? '')) : '',
-    (array)($plugin_details['blocks'] ?? [])
-))));
 ?>
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
     <div class="rrze-msm-page-shell">
@@ -244,70 +236,7 @@ $pluginBlockFilter = implode(', ', array_values(array_filter(array_map(
                         )); ?></p>
                     </header>
                     <?php if (!empty($plugin_details['active_sites']) && is_array($plugin_details['active_sites'])) { ?>
-                        <div class="rrze-msm-site-table-wrap" data-table-id="plugin-details-sites" data-default-per-page="20" data-current-page="1" data-sort-key="name" data-sort-direction="asc">
-                            <div class="tablenav top">
-                                <div class="alignleft actions">
-                                    <label for="rrze-msm-plugin-details-sites-per-page"><?php echo esc_html__('Show:', 'rrze-multisite-manager'); ?></label>
-                                    <select class="rrze-msm-site-table-per-page" id="rrze-msm-plugin-details-sites-per-page">
-                                        <option value="20" selected><?php echo esc_html__('Standard (20)', 'rrze-multisite-manager'); ?></option>
-                                        <option value="10">10</option>
-                                        <option value="30">30</option>
-                                        <option value="50">50</option>
-                                        <option value="100">100</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <table class="widefat striped rrze-msm-table">
-                                <thead>
-                                    <tr>
-                                        <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('Website', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
-                                        <th><?php echo esc_html__('URL', 'rrze-multisite-manager'); ?></th>
-                                        <th><?php echo esc_html__('Action', 'rrze-multisite-manager'); ?></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($plugin_details['active_sites'] as $plugin_site) { ?>
-                                        <?php
-                                        $pluginSiteId = (int)($plugin_site['id'] ?? 0);
-                                        $shortcodeAnalysisUrl = $pluginShortcodeFilter !== '' && $pluginSiteId > 0
-                                            ? add_query_arg(
-                                                [
-                                                    'analysis_tab' => 'shortcodes',
-                                                    'analysis_filter' => $pluginShortcodeFilter,
-                                                ],
-                                                $this->getShortcodeBlockAnalysisUrl($pluginSiteId)
-                                            )
-                                            : '';
-                                        $blockAnalysisUrl = $pluginBlockFilter !== '' && $pluginSiteId > 0
-                                            ? add_query_arg(
-                                                [
-                                                    'analysis_tab' => 'blocks',
-                                                    'analysis_filter' => $pluginBlockFilter,
-                                                ],
-                                                $this->getShortcodeBlockAnalysisUrl($pluginSiteId)
-                                            )
-                                            : '';
-                                        ?>
-                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($plugin_site['name'] ?? ''))); ?>">
-                                            <td><strong><?php echo esc_html((string)($plugin_site['name'] ?? '')); ?></strong></td>
-                                            <td><a href="<?php echo esc_url((string)($plugin_site['url'] ?? '')); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html((string)($plugin_site['url'] ?? '')); ?></a></td>
-                                            <td>
-                                                <a href="<?php echo esc_url($this->getSiteDetailsUrl($pluginSiteId)); ?>"><?php echo esc_html__('Website Details', 'rrze-multisite-manager'); ?></a>
-                                                <?php if ($shortcodeAnalysisUrl !== '') { ?>
-                                                    <span aria-hidden="true"> | </span><a href="<?php echo esc_url($shortcodeAnalysisUrl); ?>"><?php echo esc_html__('Shortcodes', 'rrze-multisite-manager'); ?></a>
-                                                <?php } ?>
-                                                <?php if ($blockAnalysisUrl !== '') { ?>
-                                                    <span aria-hidden="true"> | </span><a href="<?php echo esc_url($blockAnalysisUrl); ?>"><?php echo esc_html__('Blocks', 'rrze-multisite-manager'); ?></a>
-                                                <?php } ?>
-                                            </td>
-                                        </tr>
-                                    <?php } ?>
-                                </tbody>
-                            </table>
-                            <div class="tablenav bottom">
-                                <div class="tablenav-pages rrze-msm-site-table-pagination" aria-label="<?php echo esc_attr__('Pagination', 'rrze-multisite-manager'); ?>"></div>
-                            </div>
-                        </div>
+                        <?php echo $site_overview_widget->renderSiteOverviewTable((array)$plugin_details['active_sites'], ['table_id' => 'plugin-details-sites', 'default_per_page' => 20, 'sort_key' => 'registered', 'sort_direction' => 'desc']); ?>
                     <?php } else { ?>
                         <p><?php echo esc_html__('This plugin is currently not used actively on any website.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>

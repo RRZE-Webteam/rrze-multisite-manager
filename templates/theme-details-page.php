@@ -37,7 +37,23 @@ defined('ABSPATH') || exit;
                 <header class="rrze-msm-widget-header">
                     <h2><?php echo esc_html__('Theme', 'rrze-multisite-manager'); ?></h2>
                 </header>
-                <?php echo $theme_widget->renderThemeCard((array)$theme_details, ['link_title' => false]); ?>
+                <?php echo $theme_widget->renderThemeCard((array)$theme_details, ['link_title' => false, 'show_sites' => false]); ?>
+            </section>
+
+            <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                <header class="rrze-msm-widget-header">
+                    <h2><?php echo esc_html__('Websites using the theme', 'rrze-multisite-manager'); ?></h2>
+                    <p><?php echo esc_html(sprintf(
+                        /* translators: %d: number of websites using the theme. */
+                        __('This theme is currently used on %d websites.', 'rrze-multisite-manager'),
+                        (int)($theme_details['site_count'] ?? 0)
+                    )); ?></p>
+                </header>
+                <?php if (!empty($theme_details['active_sites']) && is_array($theme_details['active_sites'])) { ?>
+                    <?php echo $site_overview_widget->renderSiteOverviewTable((array)$theme_details['active_sites'], ['table_id' => 'theme-details-sites', 'default_per_page' => 20, 'sort_key' => 'registered', 'sort_direction' => 'desc']); ?>
+                <?php } else { ?>
+                    <p><?php echo esc_html__('This theme is currently not used actively on any website.', 'rrze-multisite-manager'); ?></p>
+                <?php } ?>
             </section>
 
             <?php if (!empty($theme_actions_html)) { ?>

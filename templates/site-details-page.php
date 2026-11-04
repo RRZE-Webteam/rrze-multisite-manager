@@ -321,56 +321,7 @@ defined('ABSPATH') || exit;
                     </header>
                     <p><a class="button button-secondary" href="<?php echo esc_url($site_plugins_url); ?>"><?php echo esc_html__('Go to site plugin management', 'rrze-multisite-manager'); ?></a></p>
                     <?php if (!empty($site_details['plugins']) && is_array($site_details['plugins'])) { ?>
-                        <table class="widefat striped rrze-msm-table">
-                            <thead>
-                                <tr>
-                                    <th><?php echo esc_html__('Plugin name', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-plugin-col-version"><?php echo esc_html__('Version', 'rrze-multisite-manager'); ?></th>
-                                    <th><?php echo esc_html__('Author', 'rrze-multisite-manager'); ?></th>
-                                    <th><?php echo esc_html__('Short description', 'rrze-multisite-manager'); ?></th>
-                                    <th><?php echo esc_html__('Status', 'rrze-multisite-manager'); ?></th>
-                                    <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Actions', 'rrze-multisite-manager'); ?></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($site_details['plugins'] as $plugin) { ?>
-                                    <tr>
-                                        <td><a href="<?php echo esc_url($this->getPluginDetailsUrl((string)($plugin['file'] ?? ''))); ?>"><?php echo esc_html((string)$plugin['name']); ?></a></td>
-                                        <td class="rrze-msm-plugin-col-version"><?php echo esc_html((string)$plugin['version']); ?></td>
-                                        <td><?php echo esc_html((string)($plugin['author'] ?? '')); ?></td>
-                                        <td><?php echo esc_html((string)$plugin['description']); ?></td>
-                                        <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
-                                            <?php if (!empty($plugin['network_active'])) { ?>
-                                                <span class="rrze-msm-badge rrze-msm-badge-info"><?php echo esc_html__('Network-active', 'rrze-multisite-manager'); ?></span>
-                                            <?php } elseif ((int)($plugin['site_count'] ?? 0) > 0) { ?>
-                                                <span class="rrze-msm-badge rrze-msm-badge-active"><?php echo esc_html__('Active on websites', 'rrze-multisite-manager'); ?></span>
-                                            <?php } else { ?>
-                                                <span class="rrze-msm-badge rrze-msm-badge-archive"><?php echo esc_html__('Not activated', 'rrze-multisite-manager'); ?></span>
-                                            <?php } ?>
-                                        </td>
-                                        <td>
-                                            <div class="rrze-msm-site-actions">
-                                                <?php if (!empty($plugin['deactivate_url'])) { ?>
-                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-danger rrze-msm-site-action-text" href="<?php echo esc_url((string)$plugin['deactivate_url']); ?>" title="<?php echo esc_attr__('Deactivate on this site', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Deactivate on this site', 'rrze-multisite-manager'); ?>">
-                                                        <span class="rrze-msm-site-action-label"><?php echo esc_html__('Deactivate on this site', 'rrze-multisite-manager'); ?></span>
-                                                    </a>
-                                                <?php } ?>
-                                                <?php if (!empty($plugin['settings_url'])) { ?>
-                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-text" href="<?php echo esc_url((string)$plugin['settings_url']); ?>" title="<?php echo esc_attr__('Settings', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Settings', 'rrze-multisite-manager'); ?>">
-                                                        <span class="rrze-msm-site-action-label"><?php echo esc_html__('Settings', 'rrze-multisite-manager'); ?></span>
-                                                    </a>
-                                                <?php } ?>
-                                                <?php if (!empty($plugin['details_url'])) { ?>
-                                                    <a class="button button-small rrze-msm-site-action rrze-msm-site-action-text rrze-msm-site-action-info" href="<?php echo esc_url((string)$plugin['details_url']); ?>" title="<?php echo esc_attr__('Details', 'rrze-multisite-manager'); ?>" aria-label="<?php echo esc_attr__('Details', 'rrze-multisite-manager'); ?>" target="_blank" rel="noopener noreferrer">
-                                                        <span class="rrze-msm-site-action-label"><?php echo esc_html__('Details', 'rrze-multisite-manager'); ?></span>
-                                                    </a>
-                                                <?php } ?>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
+                        <?php echo $site_plugin_widget->renderTable((array)$site_details['plugins'], ['table_id' => 'site-details-plugins', 'default_per_page' => 20, 'sort_key' => 'name', 'sort_direction' => 'asc', 'only_provided_plugins' => true, 'show_bulk_actions' => false, 'show_network_actions' => false, 'show_active_sites' => true, 'show_active_site_list' => false]); ?>
                     <?php } else { ?>
                         <p><?php echo esc_html__('No active plugins were detected for this website.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>

@@ -80,6 +80,14 @@ trait MetricsServicePluginTrait {
             $status = $this->getPluginStatus($pluginUsageItem);
         }
 
+        // The dashboard stores only a bounded preview for each plugin to keep
+        // the network-wide metrics payload manageable. Detail pages, however,
+        // must show every website currently using this plugin.
+        $pluginUsageItem['active_sites'] = $this->getActiveSitesForPlugin($pluginFile);
+        $pluginUsageItem['site_count'] = count($pluginUsageItem['active_sites']);
+        $pluginUsageItem['active_sites_truncated'] = false;
+        $status = $this->getPluginStatus($pluginUsageItem);
+
         if ((string)($pluginUsageItem['author'] ?? '') === '' && !empty($supplementary['author']['name'])) {
             $pluginUsageItem['author'] = (string)$supplementary['author']['name'];
         }
@@ -166,6 +174,45 @@ trait MetricsServicePluginTrait {
         }
 
         return $this->finalizePluginUsageStats($pluginStats, $missingPlugins, $totalSites);
+    }
+
+    /**
+     * Returns the complete current list of websites using a plugin.
+     *
+     * This is intentionally used only for a detail view. Embedding a complete
+     * site list in every row of the dashboard metrics would grow that cached
+     * network-wide payload disproportionately on large multisites.
+     */
+    protected function getActiveSitesForPlugin(string $pluginFile): array {
+        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
+        $networkActive = isset($networkActivePlugins[$pluginFile]);
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'orderby' => 'id',
+            'order' => 'ASC',
+        ]);
+        $activeSiteIds = [];
+        $siteId = 0;
+        $activePlugins = [];
+
+        foreach ($siteIds as $siteId) {
+            $siteId = (int)$siteId;
+
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            $activePlugins = get_blog_option($siteId, 'active_plugins', []);
+
+            if (!$networkActive && (!is_array($activePlugins) || !in_array($pluginFile, $activePlugins, true))) {
+                continue;
+            }
+
+            $activeSiteIds[] = $siteId;
+        }
+
+        return $this->getSiteOverviewRowsForIds($activeSiteIds);
     }
 
     protected function findPluginUsageItem(array $plugins, string $pluginFile): array {

@@ -2326,6 +2326,38 @@ class StorageAnalysisSchedulerService {
             return ['processes' => [], 'has_more' => false, 'total' => 0];
         }
 
+        if ($scheduled) {
+            $queryArgs = [
+                'fields' => 'ids',
+                'number' => 0,
+                'site__in' => $scheduledSiteIds,
+            ];
+
+            if ($urlSearch !== '') {
+                $queryArgs['search'] = $urlSearch;
+            }
+
+            $siteIds = $this->sortStorageMonitoringSiteIds(array_map('absint', (array)get_sites($queryArgs)));
+            $total = count($siteIds);
+            $offset = ($page - 1) * $perPage;
+            $pageSiteIds = array_slice($siteIds, $offset, $perPage);
+            $processes = [];
+
+            foreach ($pageSiteIds as $siteId) {
+                $process = $this->getSiteProcess($siteId);
+
+                if ($process !== null) {
+                    $processes[] = $process;
+                }
+            }
+
+            return [
+                'processes' => $processes,
+                'has_more' => $offset + $perPage < $total,
+                'total' => $total,
+            ];
+        }
+
         $queryArgs = [
             'fields' => 'ids',
             'number' => $perPage + 1,
@@ -2372,6 +2404,63 @@ class StorageAnalysisSchedulerService {
         ];
     }
 
+    /**
+     * Orders the storage monitoring table by the configured analysis method.
+     * A running shared batch has a persisted randomized queue; its stored
+     * order is authoritative until that batch has completed.
+     *
+     * @param array<int, int> $siteIds
+     * @return array<int, int>
+     */
+    protected function sortStorageMonitoringSiteIds(array $siteIds): array {
+        $modePriority = [
+            'small-batch' => 0,
+            'medium-batch' => 1,
+            'large-batch' => 2,
+            'site' => 3,
+        ];
+        $siteOrder = [];
+        $batchSites = [];
+        $queuePositions = [];
+        $mode = '';
+        $queue = [];
+        $position = 0;
+        $siteId = 0;
+
+        foreach (['small-batch', 'medium-batch', 'large-batch'] as $mode) {
+            foreach ($this->getBatchSiteIds($mode) as $position => $siteId) {
+                $batchSites[(int)$siteId] = $mode;
+                $queuePositions[$mode][(int)$siteId] = (int)$position;
+            }
+
+            $queue = get_site_option($this->getBatchQueueOptionName($mode), []);
+            $queue = is_array($queue) ? $queue : [];
+            foreach ((array)($queue['site_ids'] ?? []) as $position => $siteId) {
+                $siteId = absint($siteId);
+                if ($siteId > 0) {
+                    $queuePositions[$mode][$siteId] = (int)$position;
+                }
+            }
+        }
+
+        foreach ($siteIds as $siteId) {
+            $siteId = absint($siteId);
+            $mode = (string)($batchSites[$siteId] ?? 'site');
+            $priority = (int)($modePriority[$mode] ?? 4);
+            $nextRunTimestamp = $this->getNextRecurringScheduledTimestamp($siteId);
+            $order = $mode === 'site'
+                ? ($nextRunTimestamp > 0 ? $nextRunTimestamp : PHP_INT_MAX)
+                : (int)($queuePositions[$mode][$siteId] ?? PHP_INT_MAX);
+            $siteOrder[$siteId] = [$priority, $order, $siteId];
+        }
+
+        usort($siteIds, static function (int $left, int $right) use ($siteOrder): int {
+            return $siteOrder[$left] <=> $siteOrder[$right];
+        });
+
+        return array_values($siteIds);
+    }
+
     protected function getSiteProcess(int $siteId): ?array {
         $site = get_site($siteId);
         $analysisStatus = $this->storageAnalysis->getProcessStatus($siteId);
@@ -2391,6 +2480,7 @@ class StorageAnalysisSchedulerService {
         $isCurrentBatchSite = false;
         $waitingForSiteName = '';
         $batchRunState = '';
+        $queuePosition = false;
 
         if ($batchMembershipMode !== '') {
             if ($this->isBatchRunning($batchMembershipMode)) {
@@ -2470,6 +2560,7 @@ class StorageAnalysisSchedulerService {
             'is_running' => $isEligible && $this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
             'is_eligible' => $isEligible,
             'schedule_mode' => $assignmentMode,
+            'method_sort' => $this->getStorageMonitoringMethodSortValue($assignmentMode, $queuePosition, $nextRunTimestamp),
             'is_due' => $isDue,
             'is_waiting_for_current_batch' => $isWaitingForCurrentBatch,
             'is_current_batch_site' => $isCurrentBatchSite,
@@ -2495,6 +2586,20 @@ class StorageAnalysisSchedulerService {
             'base_progress' => is_array($analysisStatus['base'] ?? null) ? $analysisStatus['base'] : [],
             'can_start_now' => $isEligible && !$this->isBatchAssignmentMode($assignmentMode) && !$isDue && !$this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
         ];
+    }
+
+    protected function getStorageMonitoringMethodSortValue(string $mode, int|false $queuePosition, int $nextRunTimestamp): string {
+        $priority = match ($mode) {
+            'small-batch' => 0,
+            'medium-batch' => 1,
+            'large-batch' => 2,
+            default => 3,
+        };
+        $order = $mode === 'site'
+            ? ($nextRunTimestamp > 0 ? $nextRunTimestamp : PHP_INT_MAX)
+            : ($queuePosition === false ? PHP_INT_MAX : $queuePosition);
+
+        return sprintf('%d-%012d', $priority, $order);
     }
 
     /**
