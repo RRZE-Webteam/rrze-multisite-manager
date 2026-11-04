@@ -1317,6 +1317,11 @@ class Dashboard {
                 'analysis_list_table' => $analysisListTable,
                 'analysis_assignment_mode' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getSiteAssignmentMode($siteId) : 'unassigned',
                 'analysis_is_configured' => $this->hasLocalShortcodeBlockAnalysis($siteId),
+                'analysis_input_limit_label' => sprintf(
+                    /* translators: %d: configured input size in KiB. */
+                    _n('%d KiB', '%d KiB', (int)($this->config->getShortcodeBlockAnalysisValueMaxBytes() / KB_IN_BYTES), 'rrze-multisite-manager'),
+                    number_format_i18n((int)($this->config->getShortcodeBlockAnalysisValueMaxBytes() / KB_IN_BYTES))
+                ),
                 'show_analysis_request_notice' => $this->config->shouldShowLocalAnalysisRequestNotice(),
                 'analysis_next_run_timestamp' => $siteId > 0 ? $this->shortcodeBlockAnalysisScheduler->getNextScheduledRunTimestamp($siteId) : 0,
                 'analysis_tab' => $tab,

@@ -247,6 +247,10 @@ class MonitoringService {
         $hook = $this->config->getMonitoringHook();
         $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
         $lastSiteCount = (int)get_site_option(self::OPTION_LAST_SITE_COUNT, 0);
+        $targetSiteCount = (int)get_sites($this->getActiveSiteQueryArgs([
+            'count' => true,
+            'number' => 1,
+        ]));
         $batchOffset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
         $batchTotal = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
         $isExecuting = $this->isMonitoringLocked();
@@ -298,6 +302,10 @@ class MonitoringService {
                 'started_at' => $isRunning ? (string)($runState['started_at'] ?? '') : $lastStartedAt,
                 'finished_at' => $isRunning ? '' : $lastFinishedAt,
                 'last_site_count' => $lastSiteCount,
+                // This is evaluated from the current availability settings.
+                // The historical count above remains the reference for a
+                // completed run and its run log.
+                'target_site_count' => $targetSiteCount,
                 // The table displays the next complete run, never a batch continuation.
                 'next_run_timestamp' => $nextRecurringRunTimestamp ? (int)$nextRecurringRunTimestamp : 0,
                 'next_recurring_run_timestamp' => $nextRecurringRunTimestamp,

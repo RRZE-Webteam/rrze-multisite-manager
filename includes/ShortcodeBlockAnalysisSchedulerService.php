@@ -39,7 +39,6 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const CONTINUATION_DELAY_SECONDS = 5;
     protected const BATCH_RUN_STALE_AFTER_SECONDS = 2 * HOUR_IN_SECONDS;
     protected const META_VALUES_PER_POST_LIMIT = 10;
-    protected const ANALYSIS_VALUE_MAX_BYTES = 262144;
     protected const RESULT_MAX_BYTES = 1048576;
     protected const OMITTED_SOURCE_LIMIT = 10;
     protected array $findingTotals = [];
@@ -1400,13 +1399,14 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     protected function getBoundedAnalysisPost(int $postId): ?\WP_Post {
         global $wpdb;
+        $maxBytes = $this->config->getShortcodeBlockAnalysisValueMaxBytes();
         $row = $wpdb->get_row($wpdb->prepare(
             "SELECT ID, post_type, post_status, LEFT(post_title, 512) AS post_title, post_name, post_parent, post_date, post_author,
             CASE WHEN OCTET_LENGTH(post_content) > %d THEN 1 ELSE 0 END AS content_exceeds_limit,
             CASE WHEN OCTET_LENGTH(post_content) <= %d THEN post_content ELSE '' END AS post_content
             FROM {$wpdb->posts} WHERE ID = %d",
-            self::ANALYSIS_VALUE_MAX_BYTES,
-            self::ANALYSIS_VALUE_MAX_BYTES,
+            $maxBytes,
+            $maxBytes,
             $postId
         ));
         if ($wpdb->last_error) {
@@ -1438,7 +1438,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         ];
         $content = (string)$post->post_content;
 
-        if (strlen($content) > self::ANALYSIS_VALUE_MAX_BYTES) {
+        if (strlen($content) > $this->config->getShortcodeBlockAnalysisValueMaxBytes()) {
             return true;
         }
 
@@ -1486,13 +1486,14 @@ class ShortcodeBlockAnalysisSchedulerService {
     /** @return array<int, object> */
     protected function getPostMetaValuesForShortcodeAnalysis(int $postId, int $cursor = 0): array {
         global $wpdb;
+        $maxBytes = $this->config->getShortcodeBlockAnalysisValueMaxBytes();
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT meta_id, LEFT(meta_key, 512) AS metadata_key,
             CASE WHEN OCTET_LENGTH(meta_value) > %d THEN 1 ELSE 0 END AS value_exceeds_limit,
             CASE WHEN OCTET_LENGTH(meta_value) <= %d THEN meta_value ELSE '' END AS meta_value
             FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_id > %d ORDER BY meta_id ASC LIMIT %d",
-            self::ANALYSIS_VALUE_MAX_BYTES,
-            self::ANALYSIS_VALUE_MAX_BYTES,
+            $maxBytes,
+            $maxBytes,
             $postId,
             $cursor,
             self::META_VALUES_PER_POST_LIMIT
@@ -1518,7 +1519,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         ];
         $content = (string)$post->post_content;
 
-        if (strlen($content) <= self::ANALYSIS_VALUE_MAX_BYTES) {
+        if (strlen($content) <= $this->config->getShortcodeBlockAnalysisValueMaxBytes()) {
             $this->collectBlocks($content, $location, $state['blocks']);
         }
     }

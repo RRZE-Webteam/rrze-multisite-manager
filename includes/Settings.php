@@ -1541,6 +1541,7 @@ class Settings {
         $this->renderMonitoringFieldGroup(__('Shortcodes and Blocks', 'rrze-multisite-manager'), [
             'shortcode_block_analysis_frequency',
             'shortcode_block_analysis_timeout_minutes',
+            'shortcode_block_analysis_value_max_kilobytes',
         ]);
         submit_button();
         echo '</form>';
@@ -3126,7 +3127,10 @@ class Settings {
                 echo '<tr>';
                 echo '<td>' . esc_html((string)($process['title'] ?? '')) . '</td>';
                 echo '<td>' . $this->renderProcessDescriptionHtml($process) . '</td>';
-                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n((int)($process['last_site_count'] ?? 0))) . '</td>';
+                $siteCount = isset($process['target_site_count'])
+                    ? (int)$process['target_site_count']
+                    : (int)($process['last_site_count'] ?? 0);
+                echo '<td class="rrze-msm-col-numeric">' . esc_html(number_format_i18n($siteCount)) . '</td>';
                 echo '<td>' . $this->renderProcessStatusHtml($process) . '</td>';
                 if ($showProgressColumns) {
                     echo '<td>' . $this->renderProcessProgressHtml($process) . '</td>';

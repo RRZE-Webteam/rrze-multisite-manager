@@ -50,6 +50,7 @@ class Config {
                 'shortcode_block_analysis_hook' => 'rrze_msm_run_shortcode_block_analysis_site',
                 'shortcode_block_analysis_batch_hook' => 'rrze_msm_run_shortcode_block_analysis_batch',
                 'shortcode_block_analysis_timeout_minutes' => 60,
+                'shortcode_block_analysis_value_max_kilobytes' => 256,
                 'storage_analysis_timeout_minutes' => 60,
                 'monitoring_user_agent' => 'FAU-RRZE-MSM/1.2 (+https://www.wp.rrze.fau.de; mailto:webmaster@fau.de)',
                 'site_status_colors' => [
@@ -492,6 +493,15 @@ class Config {
                         'max' => 1440,
                     ],
                     [
+                        'name' => 'shortcode_block_analysis_value_max_kilobytes',
+                        'label' => __('Maximum input size per post content or metadata value (KiB)', 'rrze-multisite-manager'),
+                        'desc' => __('This limit applies separately to each post or page content field and to each individual post-meta value. It is not a cumulative limit for an entire website analysis.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 256,
+                        'min' => 64,
+                        'max' => 1024,
+                    ],
+                    [
                         'name' => 'monitoring_frequency',
                         'label' => __('Availability check cycle', 'rrze-multisite-manager'),
                         'desc' => __('How often the centrally scheduled availability check starts. Internal batch continuations are not affected.', 'rrze-multisite-manager'),
@@ -843,6 +853,16 @@ class Config {
             MINUTE_IN_SECONDS,
             min(1440 * MINUTE_IN_SECONDS, (int)($options['monitoring_shortcode_block_analysis_timeout_minutes'] ?? $default) * MINUTE_IN_SECONDS)
         );
+    }
+
+    public function getShortcodeBlockAnalysisValueMaxBytes(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $default = (int)($this->config['constants']['shortcode_block_analysis_value_max_kilobytes'] ?? 256);
+        $kilobytes = is_array($options)
+            ? (int)($options['monitoring_shortcode_block_analysis_value_max_kilobytes'] ?? $default)
+            : $default;
+
+        return min(1024, max(64, $kilobytes)) * KB_IN_BYTES;
     }
 
     public function getMonitoringUserAgent(): string {

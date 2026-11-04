@@ -284,11 +284,12 @@ $columnCount = $analysisTab === 'shortcodes'
                                     <li>
                                         <?php if (($source['reason'] ?? '') === 'post_meta_too_large') { ?>
                                             <?php echo wp_kses_post(sprintf(
-                                                /* translators: 1: post ID, 2: post title, 3: meta key. */
-                                                __('Post #%1$d (%2$s), meta field %3$s: value exceeds the 256 KiB input limit.', 'rrze-multisite-manager'),
+                                                /* translators: 1: post ID, 2: post title, 3: meta key, 4: configured input limit. */
+                                                __('Post #%1$d (%2$s), meta field %3$s: value exceeds the %4$s input limit.', 'rrze-multisite-manager'),
                                                 $postId,
                                                 $postTitleLink,
-                                                esc_html($metadataKey)
+                                                esc_html($metadataKey),
+                                                esc_html($analysis_input_limit_label)
                                             )); ?>
                                         <?php } elseif (($source['reason'] ?? '') === 'finding_count_limit') { ?>
                                             <?php echo wp_kses_post(sprintf(
@@ -314,10 +315,11 @@ $columnCount = $analysisTab === 'shortcodes'
                                             )); ?>
                                         <?php } else { ?>
                                             <?php echo wp_kses_post(sprintf(
-                                                /* translators: 1: post ID, 2: post title. */
-                                                __('Post #%1$d (%2$s): content exceeds the 256 KiB input limit.', 'rrze-multisite-manager'),
+                                                /* translators: 1: post ID, 2: post title, 3: configured input limit. */
+                                                __('Post #%1$d (%2$s): content exceeds the %3$s input limit.', 'rrze-multisite-manager'),
                                                 $postId,
-                                                $postTitleLink
+                                                $postTitleLink,
+                                                esc_html($analysis_input_limit_label)
                                             )); ?>
                                         <?php } ?>
                                     </li>
