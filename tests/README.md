@@ -29,3 +29,13 @@ php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/analysis-storage.
 Both standalone harnesses require PDO SQLite. `tests/Support/AnalysisDatabase.php` translates the small MySQL query subset into an isolated in-memory SQLite database; WordPress boundaries remain test doubles. Coverage includes separated phase checkpoints/findings, idempotent replay, transactional rollback, failed publication retaining the old generation, paging/filtering, network/site isolation, expiry, bounded cleanup, legacy removal without payload reads, reanalysis flags and collection byte limits. The storage harness also exercises central media-index persistence and used-attachment segments.
 
 These tests do **not** validate `dbDelta()`, MySQL/MariaDB locking or engine behaviour, real object-cache backends, WordPress rendering, or production load. Before deployment, run the WordPress integration suite against a disposable MySQL/MariaDB multisite and verify upgrade, resumption, cleanup and the paged admin interface.
+
+## Worker coordination regressions
+
+```sh
+php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/worker-coordination.php
+```
+
+This standalone harness executes the real lock/budget services and scheduler admission paths with simulated named-lock and WordPress boundaries. It covers owner tokens, stale markers, unsupported single-lock servers, exhausted capacity across process types, nested calls, network isolation, database unavailability, bounded/deduplicated retries, initial versus continuation arguments, and exception cleanup. It does **not** prove MySQL/MariaDB concurrency semantics. The storage harness also simulates named locks at its DB boundary.
+
+`tests/Unit/WorkerCoordinationTest.php` requires the disposable WordPress test database and opens a second real database connection. It verifies cross-connection exclusion, foreign-release rejection, simultaneous named locks, capacity exhaustion, release on disconnect and nested budget reuse. Run it with the integration suite before deployment; production credentials must not be used.

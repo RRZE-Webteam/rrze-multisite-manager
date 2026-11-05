@@ -23,6 +23,7 @@ defined('ABSPATH') || exit;
  * of being added here.
  */
 class MetricsImplementationService {
+    use \RRZE\MultisiteManager\Support\ProcessLocks;
     use MetricsServiceSiteTrait;
     use MetricsServicePluginTrait;
     use MetricsServiceThemeTrait;
@@ -410,21 +411,11 @@ class MetricsImplementationService {
     }
 
     protected function acquireLegacyStorageAnalysisCleanupLock(): bool {
-        $existingLock = (int)get_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION, 0);
-
-        if ($existingLock > 0 && (time() - $existingLock) < self::STORAGE_ANALYSIS_CLEANUP_LOCK_TTL) {
-            return false;
-        }
-
-        if ($existingLock > 0) {
-            delete_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION);
-        }
-
-        return add_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION, time());
+        return $this->acquireProcessLock(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION) !== '';
     }
 
     protected function releaseLegacyStorageAnalysisCleanupLock(): void {
-        delete_site_option(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION);
+        $this->releaseProcessLock(self::STORAGE_ANALYSIS_CLEANUP_LOCK_OPTION);
     }
 
     /**
@@ -667,21 +658,11 @@ class MetricsImplementationService {
     }
 
     protected function acquireFullDataCleanupLock(): bool {
-        $existingLock = (int)get_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION, 0);
-
-        if ($existingLock > 0 && (time() - $existingLock) < self::FULL_DATA_CLEANUP_LOCK_TTL) {
-            return false;
-        }
-
-        if ($existingLock > 0) {
-            delete_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION);
-        }
-
-        return add_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION, time());
+        return $this->acquireProcessLock(self::FULL_DATA_CLEANUP_LOCK_OPTION) !== '';
     }
 
     protected function releaseFullDataCleanupLock(): void {
-        delete_site_option(self::FULL_DATA_CLEANUP_LOCK_OPTION);
+        $this->releaseProcessLock(self::FULL_DATA_CLEANUP_LOCK_OPTION);
     }
 
     public function getDashboardData(): array {
@@ -1333,6 +1314,28 @@ class MetricsImplementationService {
             return;
         }
 
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            \RRZE\MultisiteManager\Support\WorkerBudget::retry(self::DASHBOARD_HISTORY_COMPACTION_HOOK, [true]);
+            return;
+        }
+        $token = '';
+        try {
+            $token = $this->acquireProcessLock(self::DASHBOARD_HISTORY_COMPACTION_HOOK);
+            if ($token === '') {
+                \RRZE\MultisiteManager\Support\WorkerBudget::retry(self::DASHBOARD_HISTORY_COMPACTION_HOOK, [true]);
+                return;
+            }
+            $this->runAdmittedDashboardHistoryCompaction();
+        } finally {
+            if ($token !== '') {
+                $this->releaseProcessLock(self::DASHBOARD_HISTORY_COMPACTION_HOOK, $token);
+            }
+            $budget->release();
+        }
+    }
+
+    protected function runAdmittedDashboardHistoryCompaction(): void {
         $startedAt = time();
         $snapshotCount = 0;
         update_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION, [
@@ -1407,6 +1410,19 @@ class MetricsImplementationService {
             return;
         }
 
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            $this->scheduleDashboardComposition($runId, MINUTE_IN_SECONDS);
+            return;
+        }
+        try {
+            $this->runAdmittedDashboardComposition($runId);
+        } finally {
+            $budget->release();
+        }
+    }
+
+    protected function runAdmittedDashboardComposition(string $runId): void {
         if (!$this->dashboardRefresh->acquireLock()) {
             return;
         }
@@ -2034,6 +2050,20 @@ class MetricsImplementationService {
 
     /** @return array{complete: bool, checked_sites: int, total_sites: int} */
     protected function runDashboardRefreshBatch(bool $manual = false): array {
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            \RRZE\MultisiteManager\Support\WorkerBudget::retry(self::DASHBOARD_REFRESH_HOOK, ['rrze_msm_worker_retry' => $this->isDashboardRefreshInProgress()]);
+            return ['complete' => false, 'checked_sites' => 0, 'total_sites' => 0];
+        }
+        try {
+            \RRZE\MultisiteManager\Support\WorkerBudget::clearRetries(self::DASHBOARD_REFRESH_HOOK);
+            return $this->runAdmittedDashboardRefreshBatch($manual);
+        } finally {
+            $budget->release();
+        }
+    }
+
+    protected function runAdmittedDashboardRefreshBatch(bool $manual): array {
         return $this->dashboardBatch->run(
             $this->config->getMonitoringBatchSize(),
             $manual,

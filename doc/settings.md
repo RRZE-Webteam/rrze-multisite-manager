@@ -17,6 +17,7 @@ The tab configures:
 * grace period for new sites and DNS/HTTP failure thresholds
 * intervals, execution limits, and assignment criteria for storage analyses
 * intervals and execution limits for shortcode/block analyses
+* a shared network-wide background process limit (default 2, range 1–8) for storage/content analyses, dashboard metrics/statistics and availability checks
 * number of retained log and event entries
 
 Larger batches shorten the entire run but increase the load and execution time of an individual Cron request. Values should therefore match PHP limits, the Cron cadence, and network size.

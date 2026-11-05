@@ -10,6 +10,7 @@ use RRZE\MultisiteManager\Support\NetworkCronCleanupQueue;
 defined('ABSPATH') || exit;
 
 class StorageAnalysisSchedulerService {
+    use \RRZE\MultisiteManager\Support\ProcessLocks;
     protected const OPTION_STATUS = 'rrze_msm_storage_analysis_scheduler_status';
     protected const BASE_PHASE = 'base';
     protected const ORPHAN_PHASE = 'orphan';
@@ -59,7 +60,6 @@ class StorageAnalysisSchedulerService {
 
     protected StorageAnalysisService $storageAnalysis;
     protected Config $config;
-    protected string $networkRunSlotsLockToken = '';
     protected string $continuationSchedulingError = '';
     /** @var array<int, int>|null */
     protected ?array $currentRecurringScheduleTimestamps = null;
@@ -186,11 +186,8 @@ class StorageAnalysisSchedulerService {
             return false;
         }
 
-        $lock = get_site_option($this->getBatchLockOptionName($mode), []);
-        $startedAt = is_array($lock) ? (int)($lock['started_at'] ?? 0) : (int)$lock;
-
         return !$this->isScheduleMigrationInProgress()
-            && $startedAt <= 0
+            && !\RRZE\MultisiteManager\Support\AtomicLock::isLocked($this->getBatchLockOptionName($mode))
             && !$this->isBatchRunning($mode)
             && !empty($this->getBatchSiteIds($mode));
     }
@@ -682,53 +679,22 @@ class StorageAnalysisSchedulerService {
 
     /** Returns an exclusive lock token, or an empty string while setup is busy. */
     protected function acquireScheduleInitializationLock(string $runId): string {
-        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-
-        if (is_array($lock) && (int)($lock['expires_at'] ?? 0) < time()) {
-            delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
-        }
-
-        $token = wp_generate_uuid4();
-        $acquired = add_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
+        return $this->acquireProcessLock(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
             'run_id' => $runId,
-            'token' => $token,
             'expires_at' => time() + (5 * MINUTE_IN_SECONDS),
         ]);
-
-        return $acquired ? $token : '';
     }
 
-    /** Renews the lease only while this request still owns it. */
+    /** Verifies ownership before checkpointing schedule initialization. */
     protected function refreshScheduleInitializationLock(string $runId, string $token): bool {
         $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-
-        if (!is_array($lock)
-            || !hash_equals((string)($lock['run_id'] ?? ''), $runId)
-            || !hash_equals((string)($lock['token'] ?? ''), $token)
-        ) {
-            return false;
-        }
-
-        $lock['expires_at'] = time() + (5 * MINUTE_IN_SECONDS);
-        update_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $lock);
-
-        return true;
+        return is_array($lock) && (string)($lock['run_id'] ?? '') === $runId
+            && \RRZE\MultisiteManager\Support\AtomicLock::owns(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $token);
     }
 
-    /** Releases only a lease that belongs to this exact request. */
+    /** Releases only a lock that belongs to this exact request. */
     protected function releaseScheduleInitializationLock(string $runId, string $token): void {
-        if ($token === '') {
-            return;
-        }
-
-        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-
-        if (is_array($lock)
-            && hash_equals((string)($lock['run_id'] ?? ''), $runId)
-            && hash_equals((string)($lock['token'] ?? ''), $token)
-        ) {
-            delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
-        }
+        $this->releaseProcessLock(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $token);
     }
 
     /** @return array{run_id: string, initialized: int, processed: int, total: int, complete: bool} */
@@ -1240,15 +1206,28 @@ class StorageAnalysisSchedulerService {
             return;
         }
 
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            $this->scheduleSiteRetry($siteId);
+            return;
+        }
+        try {
+            $this->runAdmittedScheduledAnalysis($siteId, $phase, $fromBatch, $assignmentMode);
+        } finally {
+            $budget->release();
+        }
+    }
+
+    protected function runAdmittedScheduledAnalysis(int $siteId, string $phase, bool $fromBatch, string $assignmentMode): void {
+        $isBatchSite = $this->isBatchAssignmentMode($assignmentMode);
         if (!$this->acquireSiteLock($siteId)) {
             $this->recordRunWait($siteId, __('Another storage analysis request is already running for this website.', 'rrze-multisite-manager'));
             $this->scheduleSiteRetry($siteId);
             return;
         }
 
-        // Shared batches have one fixed queue head each. They must not be
-        // throttled by the parallel-run manager; their independent central
-        // Cron tasks provide the required separation.
+        // Shared batches already have one queue head each. They share the
+        // global worker budget, but need no additional per-type execution slot.
         $usesNetworkRunSlot = !$isBatchSite;
         if ($usesNetworkRunSlot && !$this->acquireNetworkRunSlot($siteId)) {
             $this->releaseSiteLock($siteId);
@@ -2141,26 +2120,11 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function acquireBatchLock(string $mode = 'small-batch'): string {
-        $option = $this->getBatchLockOptionName($mode);
-        $existing = get_site_option($option, []);
-        $startedAt = is_array($existing) ? (int)($existing['started_at'] ?? 0) : (int)$existing;
-
-        if ($startedAt > 0 && (time() - $startedAt) > self::REQUEST_LOCK_TTL) {
-            delete_site_option($option);
-        }
-
-        $token = wp_generate_uuid4();
-
-        return add_site_option($option, ['started_at' => time(), 'token' => $token]) ? $token : '';
+        return $this->acquireProcessLock($this->getBatchLockOptionName($mode));
     }
 
     protected function releaseBatchLock(string $token, string $mode = 'small-batch'): void {
-        $option = $this->getBatchLockOptionName($mode);
-        $existing = get_site_option($option, []);
-
-        if (is_array($existing) && ($existing['token'] ?? '') === $token) {
-            delete_site_option($option);
-        }
+        $this->releaseProcessLock($this->getBatchLockOptionName($mode), $token);
     }
 
     /** Runs a bounded slice; the following Cron request resumes the same run. */
@@ -3089,18 +3053,11 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function acquireSiteLock(int $siteId): bool {
-        $optionName = self::LOCK_OPTION_PREFIX . $siteId;
-        $existing = (int)get_site_option($optionName, 0);
-
-        if ($existing > 0 && (time() - $existing) > self::REQUEST_LOCK_TTL) {
-            delete_site_option($optionName);
-        }
-
-        return add_site_option($optionName, time());
+        return $this->acquireProcessLock(self::LOCK_OPTION_PREFIX . $siteId) !== '';
     }
 
     protected function releaseSiteLock(int $siteId): void {
-        delete_site_option(self::LOCK_OPTION_PREFIX . $siteId);
+        $this->releaseProcessLock(self::LOCK_OPTION_PREFIX . $siteId);
     }
 
     protected function acquireNetworkRunSlot(int $siteId): bool {
@@ -3171,34 +3128,18 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function acquireNetworkRunSlotsLock(): bool {
-        // wp_options has a unique option_name index; network metadata does not.
-        $token = wp_generate_uuid4();
-        $acquired = (bool)$this->inBatchCronContext(function () use ($token): bool {
-            $lock = get_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, []);
-            if (is_array($lock) && (int)($lock['expires_at'] ?? 0) < time()) {
-                delete_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
-            }
-            return add_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, ['token' => $token, 'expires_at' => time() + MINUTE_IN_SECONDS], '', false);
-        });
-        if ($acquired) {
-            $this->networkRunSlotsLockToken = $token;
-            // Refresh data potentially read before another request held the lock.
-            $network = get_current_network_id();
-            wp_cache_delete($network . ':' . self::NETWORK_RUN_SLOTS_OPTION, 'site-options');
-            wp_cache_delete($network . ':' . self::CONTINUATION_QUEUE_OPTION, 'site-options');
+        if ($this->acquireProcessLock(self::NETWORK_RUN_SLOTS_LOCK_OPTION) === '') {
+            return false;
         }
-        return $acquired;
+        // Discard snapshots read before another request owned the mutex.
+        $network = get_current_network_id();
+        wp_cache_delete($network . ':' . self::NETWORK_RUN_SLOTS_OPTION, 'site-options');
+        wp_cache_delete($network . ':' . self::CONTINUATION_QUEUE_OPTION, 'site-options');
+        return true;
     }
 
     protected function releaseNetworkRunSlotsLock(): void {
-        $token = $this->networkRunSlotsLockToken;
-        $this->inBatchCronContext(function () use ($token): void {
-            $lock = get_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION, []);
-            if ($token !== '' && is_array($lock) && (string)($lock['token'] ?? '') === $token) {
-                delete_option(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
-            }
-        });
-        $this->networkRunSlotsLockToken = '';
+        $this->releaseProcessLock(self::NETWORK_RUN_SLOTS_LOCK_OPTION);
     }
 
     protected function scheduleIndividualRetry(int $siteId): bool {
@@ -3272,9 +3213,7 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function hasActiveSiteLock(int $siteId): bool {
-        $startedAt = (int)get_site_option(self::LOCK_OPTION_PREFIX . $siteId, 0);
-
-        return $startedAt > 0 && (time() - $startedAt) <= self::REQUEST_LOCK_TTL;
+        return \RRZE\MultisiteManager\Support\AtomicLock::isLocked(self::LOCK_OPTION_PREFIX . $siteId);
     }
 
     protected function recoverInterruptedRun(int $siteId, array $analysisStatus = [], array $scheduleStatus = []): bool {

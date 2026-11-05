@@ -16,9 +16,6 @@ class StorageAnalysisResourceService {
     private const SLOT_PREFIX = 'rrze_msm_storage_resource_slot_';
     private const WORKER_PREFIX = 'rrze_msm_storage_worker_';
     private const MUTEX = 'rrze_msm_storage_resource_mutex';
-    private const MUTEX_RETRY_ATTEMPTS = 40;
-    private const MUTEX_RETRY_MIN_MICROSECONDS = 20000;
-    private const MUTEX_RETRY_MAX_MICROSECONDS = 50000;
     private const MAINTENANCE_OFFSET = 'rrze_msm_storage_resource_maintenance_offset';
     private const MAX_SLOTS = Config::STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS;
     private Config $config;
@@ -132,6 +129,19 @@ class StorageAnalysisResourceService {
     }
 
     public function run(int $siteId, callable $callback, string $assignmentMode = 'site'): mixed {
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
+            throw new StorageAnalysisBusyException(__('Background processes are busy. The analysis will be retried.', 'rrze-multisite-manager'));
+        }
+        try {
+            return $this->runAdmitted($siteId, $callback, $assignmentMode);
+        } finally {
+            $budget->release();
+        }
+    }
+
+    private function runAdmitted(int $siteId, callable $callback, string $assignmentMode): mixed {
         $token = wp_generate_uuid4();
         $selected = -1;
         $mode = $this->normalizeAssignmentMode($assignmentMode);
@@ -296,32 +306,15 @@ class StorageAnalysisResourceService {
 
     private function locked(callable $callback): void {
         $this->inMainSite(function () use ($callback): void {
-            $token = wp_generate_uuid4();
-            $acquired = false;
-
-            for ($attempt = 0; $attempt < self::MUTEX_RETRY_ATTEMPTS; $attempt++) {
-                $record = get_option(self::MUTEX, []);
-                if (is_array($record) && (int)($record['expires_at'] ?? 0) < time()) {
-                    delete_option(self::MUTEX);
-                }
-                if (add_option(self::MUTEX, ['token' => $token, 'expires_at' => time() + MINUTE_IN_SECONDS], '', false)) {
-                    $acquired = true;
-                    break;
-                }
-                usleep(wp_rand(self::MUTEX_RETRY_MIN_MICROSECONDS, self::MUTEX_RETRY_MAX_MICROSECONDS));
-            }
-
-            if (!$acquired) {
+            $token = \RRZE\MultisiteManager\Support\AtomicLock::acquire(self::MUTEX);
+            if ($token === '') {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
                 throw new StorageAnalysisBusyException(__('The central storage-analysis lock is busy. The analysis will be retried.', 'rrze-multisite-manager'));
             }
             try {
                 $callback();
             } finally {
-                $record = get_option(self::MUTEX, []);
-                if (($record['token'] ?? '') === $token) {
-                    delete_option(self::MUTEX);
-                }
+                \RRZE\MultisiteManager\Support\AtomicLock::release(self::MUTEX, $token);
             }
         });
     }

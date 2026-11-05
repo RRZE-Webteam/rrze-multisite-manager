@@ -2,6 +2,7 @@
 /** SQLite exercises persistence/transactions in isolated tests; it does not validate MySQL/dbDelta. */
 class AnalysisDatabase {
     private static ?PDO $database = null;
+    private static array $advisoryLocks = [];
     public string $base_prefix = 'wp_';
     public string $last_error = '';
     public string $failOn = '';
@@ -25,7 +26,7 @@ class AnalysisDatabase {
     public function __set(string $key, mixed $value): void { $this->delegate->$key = $value; }
     private function central(string $sql): bool { return str_contains($sql, 'rrze_msm_analysis_') || in_array($sql, ['START TRANSACTION', 'COMMIT', 'ROLLBACK'], true); }
     public function prepare(string $query, ...$args): string {
-        if (!$this->central($query) && $this->delegate) {
+        if (!$this->central($query) && !str_contains($query, '_LOCK(') && $this->delegate) {
             return $this->delegate->prepare($query, ...$args);
         }
         $position = 0;
@@ -68,6 +69,23 @@ class AnalysisDatabase {
         return $this->get_results($sql)[0] ?? null;
     }
     public function get_col(string $sql): array {
+        if (preg_match("/^SELECT (GET_LOCK|RELEASE_LOCK|IS_USED_LOCK)\\('([^']+)'(?:, 0)?\\)(.*)$/", $sql, $match)) {
+            $name = $match[2];
+            $this->last_error = '';
+            if ($match[1] === 'GET_LOCK') {
+                if (isset(self::$advisoryLocks[$name])) { return [0]; }
+                self::$advisoryLocks[$name] = true;
+                $GLOBALS['test_resource_mutex_acquisitions'] = ($GLOBALS['test_resource_mutex_acquisitions'] ?? 0) + 1;
+                return [1];
+            }
+            if ($match[1] === 'RELEASE_LOCK') {
+                $owned = isset(self::$advisoryLocks[$name]);
+                unset(self::$advisoryLocks[$name]);
+                return [$owned ? 1 : null];
+            }
+            return [isset(self::$advisoryLocks[$name]) ? 1 : (str_contains($match[3], 'CONNECTION_ID') ? 0 : null)];
+        }
+
         if (preg_match('/^SHOW COLUMNS FROM (wp_rrze_msm_analysis_\w+)$/', $sql, $match)) {
             $this->last_error = '';
             return self::$database->query('PRAGMA table_info(' . $match[1] . ')')->fetchAll(PDO::FETCH_COLUMN, 1);

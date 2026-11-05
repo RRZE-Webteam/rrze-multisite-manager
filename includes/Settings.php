@@ -1561,6 +1561,9 @@ class Settings {
             ],
             __('Central settings for dashboard metrics and network-wide monitoring data.', 'rrze-multisite-manager')
         );
+        $this->renderMonitoringFieldGroup(__('Background process capacity', 'rrze-multisite-manager'), [
+            'max_concurrent_workers',
+        ]);
         $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
             'monitoring_frequency',
             'availability_batch_size',
