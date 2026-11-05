@@ -23,6 +23,7 @@ $foundShortcodeCount = (int)($analysis_result['shortcodes_distinct'] ?? 0);
 $foundBlockCount = (int)($analysis_result['blocks_distinct'] ?? 0);
 $unregisteredShortcodeCount = (int)($analysis_result['unregistered_shortcodes'] ?? 0);
 $analysisTruncated = !empty($analysis_result[$analysisTab . '_truncated']);
+$pluginSourceScanTruncated = !empty($analysis_result['plugin_source_scan_truncated']);
 $omittedSourceCount = (int)($analysis_result[$analysisTab . '_omitted_count'] ?? 0);
 $omittedSources = array_values(array_filter((array)($analysis_result[$analysisTab . '_omitted_sources'] ?? []), 'is_array'));
 $analysedPostCount = max(
@@ -326,6 +327,11 @@ $columnCount = $analysisTab === 'shortcodes'
                                 <?php } ?>
                             </ul>
                         <?php } ?>
+                    </div>
+                <?php } ?>
+                <?php if ($pluginSourceScanTruncated) { ?>
+                    <div class="notice notice-warning inline">
+                        <p><?php echo esc_html__('The optional plugin-source index reached a file, byte, directory, or file-size limit. Post and page findings are complete, but some plugin providers may be unknown.', 'rrze-multisite-manager'); ?></p>
                     </div>
                 <?php } ?>
                 <?php if (isset($analysis_list_table) && $analysis_list_table instanceof \WP_List_Table) { ?>

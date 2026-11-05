@@ -28,6 +28,7 @@ function __($value, $domain = '') { return $value; }
 function current_time($format, $gmt = false) { return gmdate('Y-m-d H:i:s'); }
 function get_blog_option($id, $key, $default = false) { return $GLOBALS['options'][$id][$key] ?? $default; }
 function update_blog_option($id, $key, $value) { $GLOBALS['options'][$id][$key] = $value; return true; }
+function get_site_option($key, $default = false) { return $GLOBALS['network_options'][$key] ?? $default; }
 function get_main_site_id($network = null) { return 1; }
 function delete_option($key) { unset($GLOBALS['options'][get_current_blog_id()][$key]); return true; }
 function get_home_url($id, $path = '') { return 'https://example.test/' . $id . $path; }

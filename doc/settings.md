@@ -16,11 +16,16 @@ The tab configures:
 * batch size for network-wide processes
 * grace period for new sites and DNS/HTTP failure thresholds
 * intervals, execution limits, and assignment criteria for storage analyses
-* intervals and execution limits for shortcode/block analyses
+* separate cycles and assignment thresholds for small, medium, and large shortcode/block batches plus individual tasks
+* optional plugin-source indexing for shortcode and block registrations; it is disabled by default, so only post/page content and metadata are searched
 * a shared network-wide background process limit (default 2, range 1–8) for storage/content analyses, dashboard metrics/statistics and availability checks
 * number of retained log and event entries
 
 Larger batches shorten the entire run but increase the load and execution time of an individual Cron request. Values should therefore match PHP limits, the Cron cadence, and network size.
+
+Shortcode/block scheduling initially classifies a website by its combined post and page count. Defaults are small up to 100, medium up to 1,000, large up to 5,000, and individual above that. After a successful complete run, the higher class from content count and active runtime is used: defaults are small up to 3 seconds, medium up to 15 seconds, large up to 60 seconds, and individual above that. Saving changed thresholds starts a bounded rescheduling pass; it does not synchronously scan the complete network.
+
+When plugin-source indexing is enabled, the index is built once per plugin version and network, then reused by all website analyses. The work is continued in bounded steps. Plugin updates invalidate the index; the plugin version, main-file metadata, plugin-directory timestamp, and a 30-day expiry provide additional invalidation without a full directory traversal on every cache lookup. A manual in-place edit of a subsidiary source file that changes neither the version nor the directory timestamp can therefore remain cached until expiry. Literal `add_shortcode()`, `register_block_type()` and `block.json` registrations are recognized. Dynamically assembled registration names cannot be derived reliably from source text.
 
 ## Views
 

@@ -454,12 +454,97 @@ class Config {
                         'max' => self::STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS,
                     ],
                     [
-                        'name' => 'shortcode_block_analysis_frequency',
-                        'label' => __('Shortcode and block analysis cycle per website', 'rrze-multisite-manager'),
-                        'desc' => __('How often the scheduled shortcode and block analysis is run for each website.', 'rrze-multisite-manager'),
+                        'name' => 'shortcode_block_analysis_small_batch_frequency',
+                        'label' => __('Small shortcode and block analysis batch cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the central batch for small content inventories is run.', 'rrze-multisite-manager'),
                         'type' => 'select',
                         'default' => 'twiceweekly',
                         'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_medium_batch_frequency',
+                        'label' => __('Medium shortcode and block analysis batch cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the central batch for medium content inventories is run.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'twiceweekly',
+                        'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_large_batch_frequency',
+                        'label' => __('Large shortcode and block analysis batch cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the central batch for large content inventories is run.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'twiceweekly',
+                        'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_individual_frequency',
+                        'label' => __('Individual shortcode and block analysis cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often individually scheduled shortcode and block analyses are run.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'twiceweekly',
+                        'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_small_batch_post_threshold',
+                        'label' => __('Post and page threshold for the small content-analysis batch', 'rrze-multisite-manager'),
+                        'desc' => __('Websites at or below this combined number of posts and pages initially enter the small shared batch.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 100,
+                        'min' => 1,
+                        'max' => 1000000,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_medium_batch_post_threshold',
+                        'label' => __('Post and page threshold for the medium content-analysis batch', 'rrze-multisite-manager'),
+                        'desc' => __('Websites above the small threshold and at or below this combined number of posts and pages initially enter the medium shared batch. Larger websites enter the large batch.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 1000,
+                        'min' => 1,
+                        'max' => 1000000,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_large_batch_post_threshold',
+                        'label' => __('Post and page threshold for the large content-analysis batch', 'rrze-multisite-manager'),
+                        'desc' => __('Websites above the medium threshold and at or below this combined number of posts and pages initially enter the large shared batch. Larger websites use an individual schedule.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 5000,
+                        'min' => 1,
+                        'max' => 1000000,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_small_batch_runtime_threshold_seconds',
+                        'label' => __('Active runtime threshold for the small content-analysis batch in seconds', 'rrze-multisite-manager'),
+                        'desc' => __('After a successful run, a website above this active runtime is assigned at least to the medium batch.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 3,
+                        'min' => 1,
+                        'max' => 3600,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_medium_batch_runtime_threshold_seconds',
+                        'label' => __('Active runtime threshold for the medium content-analysis batch in seconds', 'rrze-multisite-manager'),
+                        'desc' => __('After a successful run, a website above this active runtime is assigned to the large batch.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 15,
+                        'min' => 1,
+                        'max' => 3600,
+                    ],
+                    [
+                        'name' => 'shortcode_block_analysis_large_batch_runtime_threshold_seconds',
+                        'label' => __('Active runtime threshold for the large content-analysis batch in seconds', 'rrze-multisite-manager'),
+                        'desc' => __('After a successful run, a website above this active runtime is assigned to an individual schedule.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 60,
+                        'min' => 1,
+                        'max' => 3600,
+                    ],
+                    [
+                        'name' => 'shortcode_block_scan_plugin_sources',
+                        'label' => __('Search plugin sources for shortcode and block registrations', 'rrze-multisite-manager'),
+                        'desc' => __('Disabled by default: the analysis searches posts and pages only. When enabled, active plugin sources are indexed centrally and reused across websites to identify registrations that are not loaded in the current process.', 'rrze-multisite-manager'),
+                        'type' => 'checkbox',
+                        'default' => false,
                     ],
                     [
                         'name' => 'show_local_analysis_request_notice',
@@ -899,6 +984,55 @@ class Config {
             : $default;
 
         return min(1024, max(64, $kilobytes)) * KB_IN_BYTES;
+    }
+
+    public function shouldScanPluginSourcesForShortcodesAndBlocks(): bool {
+        $options = get_site_option($this->getOptionName(), []);
+
+        return is_array($options) && !empty($options['monitoring_shortcode_block_scan_plugin_sources']);
+    }
+
+    public function getShortcodeBlockSmallBatchPostThreshold(): int {
+        return $this->getBoundedMonitoringOption('shortcode_block_analysis_small_batch_post_threshold', 100, 1, 1000000);
+    }
+
+    public function getShortcodeBlockMediumBatchPostThreshold(): int {
+        return max(
+            $this->getShortcodeBlockSmallBatchPostThreshold(),
+            $this->getBoundedMonitoringOption('shortcode_block_analysis_medium_batch_post_threshold', 1000, 1, 1000000)
+        );
+    }
+
+    public function getShortcodeBlockLargeBatchPostThreshold(): int {
+        return max(
+            $this->getShortcodeBlockMediumBatchPostThreshold(),
+            $this->getBoundedMonitoringOption('shortcode_block_analysis_large_batch_post_threshold', 5000, 1, 1000000)
+        );
+    }
+
+    public function getShortcodeBlockSmallBatchRuntimeThresholdSeconds(): int {
+        return $this->getBoundedMonitoringOption('shortcode_block_analysis_small_batch_runtime_threshold_seconds', 3, 1, 3600);
+    }
+
+    public function getShortcodeBlockMediumBatchRuntimeThresholdSeconds(): int {
+        return max(
+            $this->getShortcodeBlockSmallBatchRuntimeThresholdSeconds(),
+            $this->getBoundedMonitoringOption('shortcode_block_analysis_medium_batch_runtime_threshold_seconds', 15, 1, 3600)
+        );
+    }
+
+    public function getShortcodeBlockLargeBatchRuntimeThresholdSeconds(): int {
+        return max(
+            $this->getShortcodeBlockMediumBatchRuntimeThresholdSeconds(),
+            $this->getBoundedMonitoringOption('shortcode_block_analysis_large_batch_runtime_threshold_seconds', 60, 1, 3600)
+        );
+    }
+
+    protected function getBoundedMonitoringOption(string $name, int $default, int $minimum, int $maximum): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $value = is_array($options) ? (int)($options['monitoring_' . $name] ?? $default) : $default;
+
+        return max($minimum, min($maximum, $value));
     }
 
     public function getMonitoringUserAgent(): string {

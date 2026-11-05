@@ -47,8 +47,18 @@ class ShortcodeBlockMonitoringWidget extends Widgets {
                     'accent' => 'warning',
                 ],
                 [
-                    'label' => __('Shared batch', 'rrze-multisite-manager'),
-                    'value' => $counts['batch'],
+                    'label' => __('Small shared batch', 'rrze-multisite-manager'),
+                    'value' => $counts['small-batch'],
+                    'accent' => 'info',
+                ],
+                [
+                    'label' => __('Medium shared batch', 'rrze-multisite-manager'),
+                    'value' => $counts['medium-batch'],
+                    'accent' => 'info',
+                ],
+                [
+                    'label' => __('Large shared batch', 'rrze-multisite-manager'),
+                    'value' => $counts['large-batch'],
                     'accent' => 'info',
                 ],
                 [

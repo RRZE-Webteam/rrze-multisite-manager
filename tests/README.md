@@ -39,3 +39,11 @@ php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/worker-coordinati
 This standalone harness executes the real lock/budget services and scheduler admission paths with simulated named-lock and WordPress boundaries. It covers owner tokens, stale markers, unsupported single-lock servers, exhausted capacity across process types, nested calls, network isolation, database unavailability, bounded/deduplicated retries, initial versus continuation arguments, and exception cleanup. It does **not** prove MySQL/MariaDB concurrency semantics. The storage harness also simulates named locks at its DB boundary.
 
 `tests/Unit/WorkerCoordinationTest.php` requires the disposable WordPress test database and opens a second real database connection. It verifies cross-connection exclusion, foreign-release rejection, simultaneous named locks, capacity exhaustion, release on disconnect and nested budget reuse. Run it with the integration suite before deployment; production credentials must not be used.
+
+## Plugin source index regression
+
+```sh
+php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/plugin-source-index.php
+```
+
+This standalone test executes the real bounded directory scanner. It verifies continuation after the per-step file limit, literal shortcode registrations, PHP and `block.json` block registrations, and isolation of single-file plugins. WordPress transient storage, database locks, update-hook invalidation and real plugin trees still require the integration and load tests.

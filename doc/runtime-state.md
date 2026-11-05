@@ -247,12 +247,16 @@ Hook `rrze_msm_storage_resource_maintenance` is registered on load but first sch
 | Legacy hook | `rrze_msm_run_shortcode_block_analysis` |
 | Frequency migration | `rrze_msm_reschedule_shortcode_block_analysis_frequency` |
 | Obsolete removal hook | `rrze_msm_remove_shortcode_block_analysis_tasks` |
-| Batch continuation argument | `['rrze_msm_shortcode_block_batch' => true]` |
+| Recurring batch arguments | `['small-batch']`, `['medium-batch']`, `['large-batch']` |
+| Batch continuation arguments | `['small-batch', true]`, `['medium-batch', true]`, `['large-batch', true]` |
 | Site lock | `rrze_msm_shortcode_block_analysis_lock_<site-id>` |
+| Batch locks | `rrze_msm_shortcode_block_analysis_batch_lock`, `..._medium_batch_lock`, `..._large_batch_lock` |
 
-Scheduler data remains in network options, including `rrze_msm_shortcode_block_analysis_assignments`, `rrze_msm_shortcode_block_analysis_batch_site_ids`, `rrze_msm_shortcode_block_analysis_batch_offset`, `rrze_msm_shortcode_block_analysis_batch_lock`, and `rrze_msm_shortcode_block_analysis_schedule_initialization_state`. Small per-site status is stored in `rrze_msm_shortcode_block_analysis_status`. The old result/state options and state transient are removed on upgrade. See [Central analysis tables](#central-analysis-tables) for new persistence and limits.
+Scheduler data remains in network options, including `rrze_msm_shortcode_block_analysis_assignments`, the small/medium/large `*_batch_site_ids`, `*_batch_offset`, and `*_batch_lock` options, and `rrze_msm_shortcode_block_analysis_schedule_initialization_state`. All three batches use the same central hook with distinct Cron arguments and therefore retain independent recurring events and continuations. Small per-site status is stored in `rrze_msm_shortcode_block_analysis_status`. The old result/state options and state transient are removed on upgrade. See [Central analysis tables](#central-analysis-tables) for new persistence and limits.
 
-A collective-batch site gets at most ten content sub-batches and 20 seconds per Cron request; an individual site gets at most twenty sub-batches and 60 seconds. Each checkpoint is persisted before reporting progress and scheduling the continuation. Missing individual continuations are recreated from durable state; a shared-batch site with no continuation or no progress for two hours fails and restarts fresh on its next regular run. Interrupted or expired generations are never published.
+Assignment modes are `small-batch`, `medium-batch`, `large-batch`, and `site`. Before a completed result exists, classification uses the combined post/page count. Afterwards it takes the more expensive class from count and accumulated active runtime. Default count boundaries are 100, 1,000, and 5,000; default runtime boundaries are 3, 15, and 60 seconds. Exceeding the large boundary creates an individual schedule. Existing legacy `batch` assignments and argument-less batch events remain readable as the small batch and are rewritten during normal rescheduling.
+
+A collective-batch site gets at most twelve content sub-batches and 20 seconds per Cron request; an individual site gets at most twenty sub-batches and 60 seconds. Each checkpoint is persisted before reporting progress and scheduling the continuation. Missing continuations are recreated from durable state in the website's current assignment class. A run without progress for two hours fails explicitly. Interrupted or expired generations are never published.
 
 ## Admin AJAX and maintenance
 

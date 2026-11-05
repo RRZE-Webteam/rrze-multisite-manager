@@ -22,14 +22,18 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const ASSIGNMENTS_OPTION = 'rrze_msm_shortcode_block_analysis_assignments';
     protected const BATCH_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_batch_offset';
     protected const BATCH_LOCK_OPTION = 'rrze_msm_shortcode_block_analysis_batch_lock';
+    protected const MEDIUM_BATCH_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_medium_batch_site_ids';
+    protected const MEDIUM_BATCH_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_medium_batch_offset';
+    protected const MEDIUM_BATCH_LOCK_OPTION = 'rrze_msm_shortcode_block_analysis_medium_batch_lock';
+    protected const LARGE_BATCH_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_large_batch_site_ids';
+    protected const LARGE_BATCH_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_large_batch_offset';
+    protected const LARGE_BATCH_LOCK_OPTION = 'rrze_msm_shortcode_block_analysis_large_batch_lock';
     protected const REMOVED_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_removed_site_ids';
     protected const FREQUENCY_RESCHEDULE_HOOK = 'rrze_msm_reschedule_shortcode_block_analysis_frequency';
     protected const TASK_REMOVAL_HOOK = 'rrze_msm_remove_shortcode_block_analysis_tasks';
     protected const TASK_REMOVAL_STATE_OPTION = 'rrze_msm_shortcode_block_analysis_task_removal_state';
     protected const FREQUENCY_RESCHEDULE_STATE_OPTION = 'rrze_msm_shortcode_block_analysis_frequency_reschedule_state';
-    protected const BATCH_CONTINUATION_ARGS = ['rrze_msm_shortcode_block_batch' => true];
-    protected const SMALL_SITE_MAX_POSTS = 100;
-    protected const FAST_RUN_MAX_SECONDS = 3;
+    protected const BATCH_MODES = ['small-batch', 'medium-batch', 'large-batch'];
     // A database checkpoint is written after every slice. The request and
     // finding-byte budgets below remain the hard limits for large websites.
     protected const BATCH_SIZE = 50;
@@ -52,6 +56,9 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected SafeSerializedValue $serializedValue;
     /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
     protected array $activeSiteShortcodeRegistrations = [];
+    /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
+    protected array $activeSiteBlockRegistrations = [];
+    protected bool $scanPluginSources = false;
     /** @var array<string, string> */
     protected array $blockCategoryLabels = [];
     /** @var array<int, int>|null */
@@ -67,10 +74,16 @@ class ShortcodeBlockAnalysisSchedulerService {
     public function onLoaded(): void {
         add_action($this->getHook(), [$this, 'runScheduledAnalysis'], 10, 1);
         add_action($this->config->getLegacyShortcodeBlockAnalysisHook(), [$this, 'runScheduledAnalysis'], 10, 1);
-        add_action($this->config->getShortcodeBlockAnalysisBatchHook(), [$this, 'runBatchScheduledAnalysis'], 10, 1);
+        add_action($this->config->getShortcodeBlockAnalysisBatchHook(), [$this, 'runBatchScheduledAnalysis'], 10, 2);
         add_action(self::FREQUENCY_RESCHEDULE_HOOK, [$this, 'runFrequencyRescheduleBatch']);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action('init', [$this, 'ensureRecurringSchedules'], 20);
+        add_action('upgrader_process_complete', [$this, 'invalidatePluginSourceRegistrationIndex'], 10, 0);
+        add_action('deleted_plugin', [$this, 'invalidatePluginSourceRegistrationIndex'], 10, 0);
+    }
+
+    public function invalidatePluginSourceRegistrationIndex(): void {
+        Analysis\PluginSourceRegistrationIndex::invalidate();
     }
 
     public function registerSchedules(array $schedules): array {
@@ -254,9 +267,15 @@ class ShortcodeBlockAnalysisSchedulerService {
         delete_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION);
         delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         delete_site_option(self::BATCH_SITE_IDS_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_SITE_IDS_OPTION);
+        delete_site_option(self::LARGE_BATCH_SITE_IDS_OPTION);
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_OFFSET_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_OFFSET_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_LOCK_OPTION);
+        delete_site_option(self::LARGE_BATCH_OFFSET_OPTION);
+        delete_site_option(self::LARGE_BATCH_LOCK_OPTION);
         delete_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION);
         delete_site_option(self::TASK_REMOVAL_STATE_OPTION);
         // Removing tasks is an explicit administrator decision. Do not make the
@@ -318,9 +337,15 @@ class ShortcodeBlockAnalysisSchedulerService {
         delete_site_option(self::SCHEDULE_INITIALIZATION_STATE_OPTION);
         delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
         delete_site_option(self::BATCH_SITE_IDS_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_SITE_IDS_OPTION);
+        delete_site_option(self::LARGE_BATCH_SITE_IDS_OPTION);
         delete_site_option(self::ASSIGNMENTS_OPTION);
         delete_site_option(self::BATCH_OFFSET_OPTION);
         delete_site_option(self::BATCH_LOCK_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_OFFSET_OPTION);
+        delete_site_option(self::MEDIUM_BATCH_LOCK_OPTION);
+        delete_site_option(self::LARGE_BATCH_OFFSET_OPTION);
+        delete_site_option(self::LARGE_BATCH_LOCK_OPTION);
         delete_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION);
         update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
         update_site_option(self::TASK_REMOVAL_OPTION, 1);
@@ -367,7 +392,7 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         $assignment = $this->getSiteAssignmentMode($siteId);
 
-        if ($assignment === 'batch') {
+        if ($this->isBatchMode($assignment)) {
             return false;
         }
 
@@ -395,7 +420,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         $status = $this->getStatus($siteId);
 
         if ($this->isRunning($siteId)
-            || $this->getSiteAssignmentMode($siteId) !== 'batch'
+            || !$this->isBatchMode($this->getSiteAssignmentMode($siteId))
             || empty($status['last_error'])
         ) {
             return false;
@@ -447,8 +472,9 @@ class ShortcodeBlockAnalysisSchedulerService {
 
         $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
         if (!$budget->acquire()) {
-            if ($this->getSiteAssignmentMode($siteId) === 'batch') {
-                $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS);
+            $mode = $this->getSiteAssignmentMode($siteId);
+            if ($this->isBatchMode($mode)) {
+                $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $mode);
             } else {
                 $this->scheduleIndividualContinuation($siteId, MINUTE_IN_SECONDS);
             }
@@ -508,8 +534,8 @@ class ShortcodeBlockAnalysisSchedulerService {
 
             if ($completed) {
                 $this->reconcileSiteAssignmentAfterRun($siteId);
-            } elseif (!$failed && $this->getSiteAssignmentMode($siteId) === 'batch') {
-                $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS);
+            } elseif (!$failed && $this->isBatchMode($this->getSiteAssignmentMode($siteId))) {
+                $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS, $this->getSiteAssignmentMode($siteId));
             } elseif (!$failed) {
                 $this->scheduleIndividualContinuation($siteId);
             }
@@ -526,23 +552,28 @@ class ShortcodeBlockAnalysisSchedulerService {
      * continuation. This keeps the global batch hook bounded even when a
      * supposedly small website is unexpectedly expensive.
      */
-    public function runBatchScheduledAnalysis(...$args): void {
+    public function runBatchScheduledAnalysis(mixed $mode = 'small-batch', mixed $continuation = false): void {
+        if ($mode === true) {
+            $continuation = true;
+            $mode = 'small-batch';
+        }
+        $mode = $this->normalizeBatchMode((string)$mode);
         if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress()) {
             return;
         }
         $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
         if (!$budget->acquire()) {
-            $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS);
+            $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $mode);
             return;
         }
         try {
-            $this->runAdmittedBatchScheduledAnalysis(...$args);
+            $this->runAdmittedBatchScheduledAnalysis($mode, (bool)$continuation);
         } finally {
             $budget->release();
         }
     }
 
-    protected function runAdmittedBatchScheduledAnalysis(...$args): void {
+    protected function runAdmittedBatchScheduledAnalysis(string $mode, bool $continuation): void {
         if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress()) {
             return;
         }
@@ -550,27 +581,28 @@ class ShortcodeBlockAnalysisSchedulerService {
         // Older releases could create the shared hook in a site's local Cron
         // array. Move it to the main site's central Cron array when it runs.
         if (get_current_blog_id() !== $this->getBatchCronSiteId()) {
-            $this->scheduleBatchAnalysisAt(time());
-            wp_clear_scheduled_hook($this->config->getShortcodeBlockAnalysisBatchHook());
+            $this->scheduleBatchAnalysisAt(time(), $mode);
+            wp_clear_scheduled_hook($this->config->getShortcodeBlockAnalysisBatchHook(), $this->getBatchRecurringArgs($mode));
             return;
         }
 
-        if (!$this->acquireBatchLock()) {
+        if (!$this->acquireBatchLock($mode)) {
             return;
         }
 
         try {
-            $siteIds = $this->getActiveBatchSiteIds();
-            $offset = max(0, (int)get_site_option(self::BATCH_OFFSET_OPTION, 0));
+            $siteIds = $this->getActiveBatchSiteIds($mode);
+            $offsetOption = $this->getBatchOffsetOption($mode);
+            $offset = max(0, (int)get_site_option($offsetOption, 0));
 
             if (empty($siteIds)) {
                 return;
             }
 
             // A recurring trigger starts a fresh pass only when no continuation is active.
-            if (!in_array(true, $args, true) && $offset > 0) {
-                if ((int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getShortcodeBlockAnalysisBatchHook(), self::BATCH_CONTINUATION_ARGS)) <= 0) {
-                    $this->scheduleBatchContinuation(time() + 5);
+            if (!$continuation && $offset > 0) {
+                if ((int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getShortcodeBlockAnalysisBatchHook(), $this->getBatchContinuationArgs($mode))) <= 0) {
+                    $this->scheduleBatchContinuation(time() + 5, $mode);
                 }
                 return;
             }
@@ -588,39 +620,41 @@ class ShortcodeBlockAnalysisSchedulerService {
             // A completed run may have moved this website between the shared
             // queue and an individual task. Re-read the queue before choosing
             // the continuation so that no remaining website is skipped.
-            $siteIds = $this->getActiveBatchSiteIds();
+            $siteIds = $this->getActiveBatchSiteIds($mode);
             $currentIndex = array_search($siteId, $siteIds, true);
             $nextOffset = $currentIndex === false ? $offset : $currentIndex + 1;
 
             if ($nextOffset >= count($siteIds)) {
-                delete_site_option(self::BATCH_OFFSET_OPTION);
+                delete_site_option($offsetOption);
                 return;
             }
 
-            update_site_option(self::BATCH_OFFSET_OPTION, $nextOffset);
-            $this->scheduleBatchContinuation(time() + 5);
+            update_site_option($offsetOption, $nextOffset);
+            $this->scheduleBatchContinuation(time() + 5, $mode);
         } finally {
-            $this->releaseBatchLock();
+            $this->releaseBatchLock($mode);
         }
     }
 
-    public function canStartBatchNow(): bool {
-        return !\RRZE\MultisiteManager\Support\AtomicLock::isLocked(self::BATCH_LOCK_OPTION)
-            && !empty($this->getActiveBatchSiteIds())
-            && (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getShortcodeBlockAnalysisBatchHook())) > 0;
+    public function canStartBatchNow(string $mode = 'small-batch'): bool {
+        $mode = $this->normalizeBatchMode($mode);
+        return !\RRZE\MultisiteManager\Support\AtomicLock::isLocked($this->getBatchLockOption($mode))
+            && !empty($this->getActiveBatchSiteIds($mode))
+            && $this->getNextBatchScheduledTimestamp($mode) > 0;
     }
 
-    public function startBatchNow(): bool {
-        if (!$this->canStartBatchNow()) {
+    public function startBatchNow(string $mode = 'small-batch'): bool {
+        $mode = $this->normalizeBatchMode($mode);
+        if (!$this->canStartBatchNow($mode)) {
             return false;
         }
 
-        return (bool)$this->inBatchCronContext(function (): bool {
+        return (bool)$this->inBatchCronContext(function () use ($mode): bool {
             $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
-            $this->unscheduleBatchEvents();
-            $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey(), $hook);
+            $this->unscheduleBatchEvents($mode);
+            $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey($mode), $hook, $this->getBatchRecurringArgs($mode));
             if ($scheduled) {
-                LoggingService::info($this->config, 'RRZE-MSM: Shared shortcode and block analysis batch started early.', ['cron_site_id' => $this->getBatchCronSiteId(), 'batch_site_count' => count($this->getActiveBatchSiteIds())]);
+                LoggingService::info($this->config, 'RRZE-MSM: Shared shortcode and block analysis batch started early.', ['cron_site_id' => $this->getBatchCronSiteId(), 'batch_mode' => $mode, 'batch_site_count' => count($this->getActiveBatchSiteIds($mode))]);
             }
             return $scheduled;
         });
@@ -662,7 +696,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     /**
      * Returns the explicitly stored scheduler assignment for a website.
      *
-     * @return 'batch'|'site'|'unassigned'
+     * @return 'small-batch'|'medium-batch'|'large-batch'|'site'|'unassigned'
      */
     public function getSiteAssignmentMode(int $siteId): string {
         if ($siteId <= 0) {
@@ -678,11 +712,13 @@ class ShortcodeBlockAnalysisSchedulerService {
      * Returns the planning distribution for active websites without loading
      * any shortcode or block analysis results.
      *
-     * @return array{batch: int, site: int, unassigned: int}
+     * @return array{small-batch: int, medium-batch: int, large-batch: int, site: int, unassigned: int}
      */
     public function getActiveSiteAssignmentCounts(): array {
         $counts = [
-            'batch' => 0,
+            'small-batch' => 0,
+            'medium-batch' => 0,
+            'large-batch' => 0,
             'site' => 0,
             'unassigned' => 0,
         ];
@@ -706,7 +742,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     /**
      * Writes a site-specific information log entry in one consistent form.
      *
-     * @param 'batch'|'site'|'unassigned' $assignmentMode
+     * @param 'small-batch'|'medium-batch'|'large-batch'|'site'|'unassigned' $assignmentMode
      * @param array<string, mixed>         $context
      */
     protected function logSiteInfo(string $label, int $siteId, string $assignmentMode = 'unassigned', array $context = []): void {
@@ -714,7 +750,8 @@ class ShortcodeBlockAnalysisSchedulerService {
             $assignmentMode = $this->getSiteAssignmentMode($siteId);
         }
 
-        $assignment = $assignmentMode === 'batch' ? 'Batch' : 'Single';
+        $assignment = $assignmentMode === 'large-batch' ? 'Large batch'
+            : ($assignmentMode === 'medium-batch' ? 'Medium batch' : ($this->isBatchMode($assignmentMode) ? 'Small batch' : 'Single'));
         $context = array_merge($context, [
             'site_id' => $siteId,
             'assignment' => $assignment,
@@ -825,7 +862,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             // only inspecting the current Cron array.
             if ($mode === 'site') {
                 $scheduledSiteIds[] = $siteId;
-            } elseif ($mode === 'batch' && $this->getNextBatchScheduledTimestamp() > 0) {
+            } elseif ($this->isBatchMode($mode) && $this->getNextBatchScheduledTimestamp($mode) > 0) {
                 $scheduledSiteIds[] = $siteId;
             }
         }
@@ -890,7 +927,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             'last_runtime_seconds' => isset($status['last_runtime_seconds']) ? (float)$status['last_runtime_seconds'] : null,
             'next_run_timestamp' => $nextRun,
             'assignment_mode' => $this->getSiteAssignmentMode($siteId),
-            'cycle' => $isActive ? $this->getScheduleLabel() : '',
+            'cycle' => $isActive ? $this->getScheduleLabel($this->getSiteAssignmentMode($siteId)) : '',
             'processed_posts' => (int)($status['processed_posts'] ?? 0),
             'total_posts' => (int)($status['total_posts'] ?? 0),
             'last_error' => (string)($status['last_error'] ?? ''),
@@ -1210,10 +1247,10 @@ class ShortcodeBlockAnalysisSchedulerService {
         $state = $this->getAnalysisState($siteId);
         $processedBatches = 0;
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
-        $requestBudgetSeconds = $assignmentMode === 'batch'
+        $requestBudgetSeconds = $this->isBatchMode($assignmentMode)
             ? self::BATCH_REQUEST_BUDGET_SECONDS
             : self::INDIVIDUAL_REQUEST_BUDGET_SECONDS;
-        $maxBatchesPerRequest = $assignmentMode === 'batch'
+        $maxBatchesPerRequest = $this->isBatchMode($assignmentMode)
             ? self::BATCH_MAX_BATCHES_PER_REQUEST
             : self::INDIVIDUAL_MAX_BATCHES_PER_REQUEST;
         $deadline = microtime(true) + $requestBudgetSeconds;
@@ -1226,12 +1263,30 @@ class ShortcodeBlockAnalysisSchedulerService {
             $this->markStarted($siteId, $state);
         }
 
+        $pluginSourceScanningConfigured = $this->config->shouldScanPluginSourcesForShortcodesAndBlocks();
+        if (!$pluginSourceScanningConfigured) {
+            // Disabling the setting must stop source reads even for an analysis
+            // whose checkpoint was created while the option was enabled.
+            $state['scan_plugin_sources'] = false;
+        }
+
         $this->findingTotals = $state;
         $this->pendingFindingBytes = 0;
         $this->pendingFindingKeys = [];
+        $this->scanPluginSources = $pluginSourceScanningConfigured && !empty($state['scan_plugin_sources']);
         switch_to_blog($siteId);
 
         try {
+            if ($this->isTaskRemovalInProgress()) {
+                return false;
+            }
+
+            if ($this->scanPluginSources && !$this->preparePluginSourceRegistrations($state, $deadline)) {
+                $state['updated_at'] = current_time('mysql', true);
+                $this->saveAnalysisState($siteId, $state);
+                return false;
+            }
+
             while ($processedBatches < $maxBatchesPerRequest && microtime(true) < $deadline) {
                 if ($this->isTaskRemovalInProgress()) {
                     return false;
@@ -1371,6 +1426,10 @@ class ShortcodeBlockAnalysisSchedulerService {
             'total_posts' => $total,
             'shortcodes' => [],
             'blocks' => [],
+            'scan_plugin_sources' => $this->config->shouldScanPluginSourcesForShortcodesAndBlocks(),
+            'plugin_source_scan_truncated' => false,
+            'plugin_source_files_scanned' => 0,
+            'plugin_source_bytes_read' => 0,
             'updated_at' => current_time('mysql', true),
         ];
     }
@@ -1681,6 +1740,12 @@ class ShortcodeBlockAnalysisSchedulerService {
         $blockType = \WP_Block_Type_Registry::get_instance()->get_registered($blockName);
 
         if (!$blockType instanceof \WP_Block_Type) {
+            if ($this->scanPluginSources) {
+                $registration = $this->getActiveSiteBlockRegistrations()[$blockName] ?? [];
+                if ($registration) {
+                    $details['origin'] = (string)($registration['name'] ?? __('Plugin', 'rrze-multisite-manager'));
+                }
+            }
             return $details;
         }
 
@@ -1877,6 +1942,10 @@ class ShortcodeBlockAnalysisSchedulerService {
             ];
         }
 
+        if (!$this->scanPluginSources) {
+            return [];
+        }
+
         $registrations = $this->getActiveSiteShortcodeRegistrations();
 
         return $registrations[$tag] ?? [];
@@ -1888,96 +1957,94 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function getActiveSiteShortcodeRegistrations(): array {
         $siteId = get_current_blog_id();
 
-        if (isset($this->activeSiteShortcodeRegistrations[$siteId])) {
-            return $this->activeSiteShortcodeRegistrations[$siteId];
+        if (!isset($this->activeSiteShortcodeRegistrations[$siteId])) {
+            $this->loadActiveSitePluginRegistrations($siteId);
         }
 
+        return $this->activeSiteShortcodeRegistrations[$siteId] ?? [];
+    }
+
+    /**
+     * @return array<string, array{name: string, plugin_file: string}>
+     */
+    protected function getActiveSiteBlockRegistrations(): array {
+        $siteId = get_current_blog_id();
+        if (!isset($this->activeSiteBlockRegistrations[$siteId])) {
+            $this->loadActiveSitePluginRegistrations($siteId);
+        }
+
+        return $this->activeSiteBlockRegistrations[$siteId] ?? [];
+    }
+
+    protected function loadActiveSitePluginRegistrations(int $siteId): void {
+        $shortcodes = [];
+        $blocks = [];
+        $index = new Analysis\PluginSourceRegistrationIndex();
+
+        foreach ($this->getActivePluginData() as $pluginFile => $pluginData) {
+            $indexed = $index->registrations($pluginFile, $pluginData, microtime(true));
+            if (empty($indexed['complete'])) {
+                continue;
+            }
+            $provider = [
+                'name' => (string)($pluginData['Name'] ?? $pluginFile),
+                'plugin_file' => $pluginFile,
+            ];
+            foreach ((array)$indexed['shortcodes'] as $shortcodeTag) {
+                if (!isset($shortcodes[$shortcodeTag])) {
+                    $shortcodes[$shortcodeTag] = $provider;
+                }
+            }
+            foreach ((array)$indexed['blocks'] as $blockName) {
+                if (!isset($blocks[$blockName])) {
+                    $blocks[$blockName] = $provider;
+                }
+            }
+        }
+
+        $this->activeSiteShortcodeRegistrations[$siteId] = $shortcodes;
+        $this->activeSiteBlockRegistrations[$siteId] = $blocks;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    protected function getActivePluginData(): array {
         if (!function_exists('get_plugins')) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
 
-        $activePluginFiles = array_merge(
+        $activePluginFiles = array_unique(array_merge(
             array_values(array_filter((array)get_option('active_plugins', []), 'is_string')),
             array_keys((array)get_site_option('active_sitewide_plugins', []))
-        );
+        ));
         $availablePlugins = get_plugins();
-        $registrations = [];
-        $pluginFile = '';
-
-        foreach (array_unique($activePluginFiles) as $pluginFile) {
-            if (!isset($availablePlugins[$pluginFile]) || !is_array($availablePlugins[$pluginFile])) {
-                continue;
-            }
-
-            foreach ($this->getPluginShortcodeTags($pluginFile) as $shortcodeTag) {
-                if (!isset($registrations[$shortcodeTag])) {
-                    $registrations[$shortcodeTag] = [
-                        'name' => (string)($availablePlugins[$pluginFile]['Name'] ?? $pluginFile),
-                        'plugin_file' => $pluginFile,
-                    ];
-                }
-            }
-        }
-
-        $this->activeSiteShortcodeRegistrations[$siteId] = $registrations;
-
-        return $registrations;
+        return array_intersect_key($availablePlugins, array_fill_keys($activePluginFiles, true));
     }
 
-    /**
-     * @return string[]
-     */
-    protected function getPluginShortcodeTags(string $pluginFile): array {
-        $mainFilePath = trailingslashit(WP_PLUGIN_DIR) . ltrim($pluginFile, '/');
-        $pluginDirectory = is_file($mainFilePath) ? dirname($mainFilePath) : '';
-        $files = [];
-        $iterator = null;
-        $current = null;
-        $source = '';
-        $matches = [];
-        $tags = [];
+    /** @param array<string, mixed> $state */
+    protected function preparePluginSourceRegistrations(array &$state, float $deadline): bool {
+        $index = new Analysis\PluginSourceRegistrationIndex();
+        $filesScanned = 0;
+        $bytesRead = 0;
+        $truncated = false;
 
-        if ($mainFilePath === '' || !is_readable($mainFilePath)) {
-            return [];
-        }
+        foreach ($this->getActivePluginData() as $pluginFile => $pluginData) {
+            $result = $index->registrations((string)$pluginFile, $pluginData, $deadline);
+            $filesScanned += (int)$result['files_scanned'];
+            $bytesRead += (int)$result['bytes_read'];
+            $truncated = $truncated || !empty($result['truncated']);
 
-        $files[] = $mainFilePath;
-
-        if ($pluginDirectory !== '' && is_dir($pluginDirectory)) {
-            $iterator = new \RecursiveIteratorIterator(
-                new \RecursiveDirectoryIterator($pluginDirectory, \FilesystemIterator::SKIP_DOTS)
-            );
-
-            foreach ($iterator as $current) {
-                if (!$current instanceof \SplFileInfo || !$current->isFile() || strtolower($current->getExtension()) !== 'php') {
-                    continue;
-                }
-
-                $files[] = (string)$current->getPathname();
+            if (empty($result['complete'])) {
+                $state['plugin_source_scan_truncated'] = $truncated;
+                $state['plugin_source_files_scanned'] = $filesScanned;
+                $state['plugin_source_bytes_read'] = $bytesRead;
+                return false;
             }
         }
 
-        foreach (array_unique($files) as $file) {
-            if (!is_readable($file)) {
-                continue;
-            }
-
-            $source = (string)file_get_contents($file);
-
-            if ($source === '' || !preg_match_all('/\badd_shortcode\s*\(\s*[\'\"]([^\'\"]+)[\'\"]/m', $source, $matches)) {
-                continue;
-            }
-
-            foreach ((array)($matches[1] ?? []) as $tag) {
-                $tag = (string)$tag;
-
-                if ($tag !== '') {
-                    $tags[$tag] = $tag;
-                }
-            }
-        }
-
-        return array_values($tags);
+        $state['plugin_source_scan_truncated'] = $truncated;
+        $state['plugin_source_files_scanned'] = $filesScanned;
+        $state['plugin_source_bytes_read'] = $bytesRead;
+        return true;
     }
 
     protected function markStarted(int $siteId, array $state): void {
@@ -2166,14 +2233,16 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function unschedule(int $siteId): void {
         $this->unscheduleIndividualEvents($siteId);
 
-        $siteIds = array_values(array_filter(
-            array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
-            static fn(int $id): bool => $id > 0 && $id !== $siteId
-        ));
-        update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
-
-        if (empty($siteIds)) {
-            $this->unscheduleBatchEvents();
+        foreach (self::BATCH_MODES as $mode) {
+            $option = $this->getBatchSiteIdsOption($mode);
+            $siteIds = array_values(array_filter(
+                array_map('absint', (array)get_site_option($option, [])),
+                static fn(int $id): bool => $id > 0 && $id !== $siteId
+            ));
+            update_site_option($option, $siteIds);
+            if (empty($siteIds)) {
+                $this->unscheduleBatchEvents($mode);
+            }
         }
 
         $this->removeSiteAssignment($siteId);
@@ -2220,41 +2289,40 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         $this->unschedule($siteId);
-        $useBatch = $this->isSmallSite($siteId);
-
-        if ($useBatch) {
-            $scheduled = $this->scheduleBatchAnalysisAt($timestamp);
-        } else {
-            $scheduled = $this->scheduleIndividualAnalysisAt($siteId, $timestamp);
-        }
+        $assignmentMode = $this->getExpectedAssignmentMode($siteId);
+        $scheduled = $assignmentMode === 'site'
+            ? $this->scheduleIndividualAnalysisAt($siteId, $timestamp)
+            : $this->scheduleBatchAnalysisAt($timestamp, $assignmentMode);
 
         if (!$scheduled) {
             LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block analysis task could not be scheduled.', [
                 'site_id' => $siteId,
                 'site_url' => get_home_url($siteId, '/'),
-                'assignment_mode' => $useBatch ? 'batch' : 'site',
+                'assignment_mode' => $assignmentMode,
             ]);
 
             return false;
         }
 
-        if ($useBatch) {
+        if ($this->isBatchMode($assignmentMode)) {
+            $option = $this->getBatchSiteIdsOption($assignmentMode);
             $siteIds = array_values(array_unique(array_merge(
-                array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
+                array_map('absint', (array)get_site_option($option, [])),
                 [$siteId]
             )));
-            update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
-            $this->setSiteAssignment($siteId, 'batch');
+            update_site_option($option, $siteIds);
+            $this->setSiteAssignment($siteId, $assignmentMode);
             $status = $this->getStatus($siteId);
-            $status['schedule_mode'] = 'batch';
+            $status['schedule_mode'] = $assignmentMode;
             update_blog_option($siteId, self::STATUS_OPTION, $status);
 
             // The recurring shared batch may be days away. Explicitly adding
             // a site must not make its first analysis wait for that cycle.
-            if ($resetPreviousRun && !$this->scheduleBatchAnalysisSoon()) {
+            if ($resetPreviousRun && !$this->scheduleBatchAnalysisSoon($assignmentMode)) {
                 LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block shared-batch task could not be scheduled promptly.', [
                     'site_id' => $siteId,
                     'site_url' => get_home_url($siteId, '/'),
+                    'assignment_mode' => $assignmentMode,
                 ]);
             }
         }
@@ -2267,7 +2335,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block analysis task could not be verified after scheduling.', [
                 'site_id' => $siteId,
                 'site_url' => get_home_url($siteId, '/'),
-                'assignment_mode' => $useBatch ? 'batch' : 'site',
+                'assignment_mode' => $assignmentMode,
             ]);
 
             return false;
@@ -2280,7 +2348,7 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     protected function scheduleIndividualAnalysisAt(int $siteId, int $timestamp): bool {
         $scheduled = (bool)$this->inSiteCronContext($siteId, function () use ($siteId, $timestamp): bool {
-            return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $this->getHook(), [$siteId]);
+            return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey('site'), $this->getHook(), [$siteId]);
         });
 
         if (!$scheduled) {
@@ -2295,25 +2363,32 @@ class ShortcodeBlockAnalysisSchedulerService {
         return true;
     }
 
-    protected function scheduleBatchAnalysisAt(int $timestamp): bool {
-        return (bool)$this->inBatchCronContext(function () use ($timestamp): bool {
+    protected function scheduleBatchAnalysisAt(int $timestamp, string $mode = 'small-batch'): bool {
+        $mode = $this->normalizeBatchMode($mode);
+        return (bool)$this->inBatchCronContext(function () use ($timestamp, $mode): bool {
             $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
+            $args = $this->getBatchRecurringArgs($mode);
 
-            if ((int)wp_next_scheduled($hook) > 0) {
+            if ((int)wp_next_scheduled($hook, $args) > 0) {
+                return true;
+            }
+            if ($mode === 'small-batch' && (int)wp_next_scheduled($hook, []) > 0) {
                 return true;
             }
 
-            return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey(), $hook);
+            return (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey($mode), $hook, $args);
         });
     }
 
     /**
      * Adds one prompt pass without changing the established recurring cycle.
      */
-    protected function scheduleBatchAnalysisSoon(): bool {
-        return (bool)$this->inBatchCronContext(function (): bool {
+    protected function scheduleBatchAnalysisSoon(string $mode = 'small-batch'): bool {
+        $mode = $this->normalizeBatchMode($mode);
+        return (bool)$this->inBatchCronContext(function () use ($mode): bool {
             $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
-            $nextRun = (int)wp_next_scheduled($hook);
+            $args = $this->getBatchRecurringArgs($mode);
+            $nextRun = (int)wp_next_scheduled($hook, $args);
 
             if ($nextRun > 0 && $nextRun <= time() + (10 * MINUTE_IN_SECONDS)) {
                 return true;
@@ -2321,12 +2396,13 @@ class ShortcodeBlockAnalysisSchedulerService {
 
             return (bool)wp_schedule_single_event(
                 time() + MINUTE_IN_SECONDS,
-                $hook
+                $hook,
+                $args
             );
         });
     }
 
-    protected function isSmallSite(int $siteId): bool {
+    protected function getSitePostAndPageCount(int $siteId): int {
         switch_to_blog($siteId);
 
         try {
@@ -2337,11 +2413,35 @@ class ShortcodeBlockAnalysisSchedulerService {
             restore_current_blog();
         }
 
-        return $total <= self::SMALL_SITE_MAX_POSTS;
+        return $total;
+    }
+
+    /** @return 'small-batch'|'medium-batch'|'large-batch'|'site' */
+    protected function getExpectedAssignmentMode(int $siteId): string {
+        $count = $this->getSitePostAndPageCount($siteId);
+        $contentMode = $count <= $this->config->getShortcodeBlockSmallBatchPostThreshold()
+            ? 'small-batch'
+            : ($count <= $this->config->getShortcodeBlockMediumBatchPostThreshold()
+                ? 'medium-batch'
+                : ($count <= $this->config->getShortcodeBlockLargeBatchPostThreshold() ? 'large-batch' : 'site'));
+        $status = $this->getStatus($siteId);
+        if (($status['status'] ?? '') !== 'complete' || !isset($status['last_runtime_seconds'])) {
+            return $contentMode;
+        }
+
+        $runtime = (float)$status['last_runtime_seconds'];
+        $runtimeMode = $runtime > $this->config->getShortcodeBlockLargeBatchRuntimeThresholdSeconds()
+            ? 'site'
+            : ($runtime > $this->config->getShortcodeBlockMediumBatchRuntimeThresholdSeconds()
+                ? 'large-batch'
+                : ($runtime > $this->config->getShortcodeBlockSmallBatchRuntimeThresholdSeconds() ? 'medium-batch' : 'small-batch'));
+        $weights = ['small-batch' => 0, 'medium-batch' => 1, 'large-batch' => 2, 'site' => 3];
+
+        return $weights[$runtimeMode] > $weights[$contentMode] ? $runtimeMode : $contentMode;
     }
 
     /**
-     * @return array<int, 'batch'|'site'>
+     * @return array<int, 'small-batch'|'medium-batch'|'large-batch'|'site'>
      */
     protected function getSiteAssignments(): array {
         $assignments = get_site_option(self::ASSIGNMENTS_OPTION, []);
@@ -2351,8 +2451,8 @@ class ShortcodeBlockAnalysisSchedulerService {
         foreach ($assignments as $siteId => $mode) {
             $siteId = absint($siteId);
 
-            if ($siteId > 0 && in_array($mode, ['batch', 'site'], true)) {
-                $normalized[$siteId] = $mode;
+            if ($siteId > 0 && ($this->isBatchMode((string)$mode) || $mode === 'site')) {
+                $normalized[$siteId] = $this->isBatchMode((string)$mode) ? $this->normalizeBatchMode((string)$mode) : 'site';
             }
         }
 
@@ -2363,7 +2463,16 @@ class ShortcodeBlockAnalysisSchedulerService {
             $siteId = absint($siteId);
 
             if ($siteId > 0) {
-                $normalized[$siteId] = 'batch';
+                $normalized[$siteId] = 'small-batch';
+            }
+        }
+
+        foreach (['medium-batch' => self::MEDIUM_BATCH_SITE_IDS_OPTION, 'large-batch' => self::LARGE_BATCH_SITE_IDS_OPTION] as $mode => $option) {
+            foreach ((array)get_site_option($option, []) as $siteId) {
+                $siteId = absint($siteId);
+                if ($siteId > 0) {
+                    $normalized[$siteId] = $mode;
+                }
             }
         }
 
@@ -2388,9 +2497,10 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function setSiteAssignment(int $siteId, string $mode): void {
-        if ($siteId <= 0 || !in_array($mode, ['batch', 'site'], true)) {
+        if ($siteId <= 0 || (!$this->isBatchMode($mode) && $mode !== 'site')) {
             return;
         }
+        $mode = $this->isBatchMode($mode) ? $this->normalizeBatchMode($mode) : 'site';
 
         $assignments = get_site_option(self::ASSIGNMENTS_OPTION, []);
         $assignments = is_array($assignments) ? $assignments : [];
@@ -2414,14 +2524,16 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     /** @return array<int, int> */
-    protected function getActiveBatchSiteIds(): array {
+    protected function getActiveBatchSiteIds(string $mode = 'small-batch'): array {
+        $mode = $this->normalizeBatchMode($mode);
+        $option = $this->getBatchSiteIdsOption($mode);
         $batchSiteIds = array_values(array_unique(array_filter(
-            array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
+            array_map('absint', (array)get_site_option($option, [])),
             static fn(int $siteId): bool => $siteId > 0
         )));
 
         if (empty($batchSiteIds)) {
-            $this->unscheduleBatchEvents();
+            $this->unscheduleBatchEvents($mode);
             return [];
         }
 
@@ -2436,7 +2548,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         $activeSiteIds = array_map('absint', $activeSiteIds);
 
         if ($activeSiteIds !== $batchSiteIds) {
-            update_site_option(self::BATCH_SITE_IDS_OPTION, $activeSiteIds);
+            update_site_option($option, $activeSiteIds);
             $assignments = get_site_option(self::ASSIGNMENTS_OPTION, []);
             $assignments = is_array($assignments) ? $assignments : [];
 
@@ -2447,7 +2559,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             update_site_option(self::ASSIGNMENTS_OPTION, $assignments);
 
             if (empty($activeSiteIds)) {
-                $this->unscheduleBatchEvents();
+                $this->unscheduleBatchEvents($mode);
             }
         }
 
@@ -2465,52 +2577,50 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         $currentMode = $this->getSiteAssignmentMode($siteId);
-        $status = $this->getStatus($siteId);
-        $hasRuntime = ($status['status'] ?? '') === 'complete' && isset($status['last_runtime_seconds']);
-        $expectedMode = $hasRuntime
-            ? ((float)$status['last_runtime_seconds'] < self::FAST_RUN_MAX_SECONDS ? 'batch' : 'site')
-            : ($this->isSmallSite($siteId) ? 'batch' : 'site');
+        $expectedMode = $this->getExpectedAssignmentMode($siteId);
 
         if ($currentMode === $expectedMode || $this->isRunning($siteId)) {
             return;
         }
 
-        if ($expectedMode === 'batch') {
-            if (!$this->scheduleBatchAnalysisAt(time() + MINUTE_IN_SECONDS)) {
-                return;
-            }
+        $scheduled = $expectedMode === 'site'
+            ? $this->scheduleIndividualAnalysisAt($siteId, time() + MINUTE_IN_SECONDS)
+            : $this->scheduleBatchAnalysisAt(time() + MINUTE_IN_SECONDS, $expectedMode);
+        if (!$scheduled) {
+            return;
+        }
 
+        if ($expectedMode !== 'site') {
             $this->unscheduleIndividualEvents($siteId);
-            $this->markScheduled($siteId);
-            $siteIds = array_values(array_unique(array_merge(
-                array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
-                [$siteId]
-            )));
-            update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
-            $this->setSiteAssignment($siteId, 'batch');
-            $status = $this->getStatus($siteId);
-            $status['schedule_mode'] = 'batch';
-            update_blog_option($siteId, self::STATUS_OPTION, $status);
-        } elseif ($this->scheduleIndividualAnalysisAt($siteId, time() + MINUTE_IN_SECONDS)) {
+        }
+        foreach (self::BATCH_MODES as $mode) {
+            $option = $this->getBatchSiteIdsOption($mode);
             $siteIds = array_values(array_filter(
-                array_map('absint', (array)get_site_option(self::BATCH_SITE_IDS_OPTION, [])),
+                array_map('absint', (array)get_site_option($option, [])),
                 static fn(int $id): bool => $id > 0 && $id !== $siteId
             ));
-            update_site_option(self::BATCH_SITE_IDS_OPTION, $siteIds);
-
-            if (empty($siteIds)) {
-                $this->unscheduleBatchEvents();
+            if ($mode === $expectedMode && $expectedMode !== 'site') {
+                $siteIds[] = $siteId;
+                $siteIds = array_values(array_unique($siteIds));
             }
-
-            $this->markScheduled($siteId);
+            update_site_option($option, $siteIds);
+            if (empty($siteIds)) {
+                $this->unscheduleBatchEvents($mode);
+            }
         }
+        $this->setSiteAssignment($siteId, $expectedMode);
+        $status = $this->getStatus($siteId);
+        $status['schedule_mode'] = $expectedMode;
+        update_blog_option($siteId, self::STATUS_OPTION, $status);
+        $this->markScheduled($siteId);
 
         $this->clearRecurringScheduleCache();
     }
 
     protected function getNextRecurringScheduledTimestamp(int $siteId): int {
-        if ($this->getSiteAssignmentMode($siteId) === 'batch') {
-            return $this->getNextBatchScheduledTimestamp();
+        $mode = $this->getSiteAssignmentMode($siteId);
+        if ($this->isBatchMode($mode)) {
+            return $this->getNextBatchScheduledTimestamp($mode);
         }
 
         return (int)$this->inSiteCronContext($siteId, function () use ($siteId): int {
@@ -2550,7 +2660,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         $currentTimestamps = [];
         $siteIds = [];
         $cron = _get_cron_array();
-        $expectedSchedule = $this->getScheduleKey();
+        $expectedSchedule = $this->getScheduleKey('site');
 
         foreach ((array)$cron as $timestamp => $events) {
             foreach ((array)($events[$this->getHook()] ?? []) as $event) {
@@ -2591,20 +2701,32 @@ class ShortcodeBlockAnalysisSchedulerService {
         return false;
     }
 
-    protected function getScheduleKey(): string {
+    protected function getScheduleKey(string $mode = 'site'): string {
         $options = get_site_option($this->config->getOptionName(), []);
-        $frequency = is_array($options) ? (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
+        $option = $mode === 'large-batch' ? 'monitoring_shortcode_block_analysis_large_batch_frequency'
+            : ($mode === 'medium-batch' ? 'monitoring_shortcode_block_analysis_medium_batch_frequency'
+                : ($this->isBatchMode($mode) ? 'monitoring_shortcode_block_analysis_small_batch_frequency' : 'monitoring_shortcode_block_analysis_individual_frequency'));
+        $frequency = is_array($options) ? (string)($options[$option] ?? $options['monitoring_shortcode_block_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
 
         return $this->config->getShortcodeBlockAnalysisScheduleKey($frequency);
     }
 
     protected function getScheduleSignature(): string {
-        return $this->getScheduleKey() . ':continuation-v2';
+        return implode(':', [
+            $this->getScheduleKey('small-batch'),
+            $this->getScheduleKey('medium-batch'),
+            $this->getScheduleKey('large-batch'),
+            $this->getScheduleKey('site'),
+            'three-batches-v1',
+        ]);
     }
 
-    protected function getScheduleLabel(): string {
+    protected function getScheduleLabel(string $mode = 'site'): string {
         $options = get_site_option($this->config->getOptionName(), []);
-        $frequency = is_array($options) ? (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
+        $option = $mode === 'large-batch' ? 'monitoring_shortcode_block_analysis_large_batch_frequency'
+            : ($mode === 'medium-batch' ? 'monitoring_shortcode_block_analysis_medium_batch_frequency'
+                : ($this->isBatchMode($mode) ? 'monitoring_shortcode_block_analysis_small_batch_frequency' : 'monitoring_shortcode_block_analysis_individual_frequency'));
+        $frequency = is_array($options) ? (string)($options[$option] ?? $options['monitoring_shortcode_block_analysis_frequency'] ?? 'twiceweekly') : 'twiceweekly';
 
         return $this->config->getSchedulerFrequencyLabel($frequency);
     }
@@ -2705,7 +2827,7 @@ class ShortcodeBlockAnalysisSchedulerService {
                     'phase' => (string)($status['phase'] ?? self::SHORTCODE_PHASE),
                     'processed_posts' => (int)($status['processed_posts'] ?? 0),
                     'total_posts' => (int)($status['total_posts'] ?? 0),
-                    'was_stale' => $assignmentMode === 'batch' && $this->isBatchAnalysisStale($status),
+                    'was_stale' => $this->isBatchMode($assignmentMode) && $this->isBatchAnalysisStale($status),
                 ]
             );
 
@@ -2795,10 +2917,11 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function hasPendingContinuation(int $siteId): bool {
-        if ($this->getSiteAssignmentMode($siteId) === 'batch') {
+        $assignmentMode = $this->getSiteAssignmentMode($siteId);
+        if ($this->isBatchMode($assignmentMode)) {
             return (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled(
                 $this->config->getShortcodeBlockAnalysisBatchHook(),
-                self::BATCH_CONTINUATION_ARGS
+                $this->getBatchContinuationArgs($assignmentMode)
             )) > 0;
         }
 
@@ -2833,8 +2956,8 @@ class ShortcodeBlockAnalysisSchedulerService {
             return $this->scheduleRecurringAnalysisAt($siteId, time() + self::CONTINUATION_DELAY_SECONDS);
         }
 
-        if ($assignmentMode === 'batch') {
-            return $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS);
+        if ($this->isBatchMode($assignmentMode)) {
+            return $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS, $assignmentMode);
         }
 
         return $this->scheduleIndividualContinuation($siteId);
@@ -2848,19 +2971,31 @@ class ShortcodeBlockAnalysisSchedulerService {
         $this->releaseProcessLock(self::LOCK_OPTION_PREFIX . $siteId);
     }
 
-    protected function acquireBatchLock(): bool {
-        return $this->acquireProcessLock(self::BATCH_LOCK_OPTION) !== '';
+    protected function acquireBatchLock(string $mode = 'small-batch'): bool {
+        return $this->acquireProcessLock($this->getBatchLockOption($mode)) !== '';
     }
 
-    protected function releaseBatchLock(): void {
-        $this->releaseProcessLock(self::BATCH_LOCK_OPTION);
+    protected function releaseBatchLock(string $mode = 'small-batch'): void {
+        $this->releaseProcessLock($this->getBatchLockOption($mode));
     }
 
-    protected function unscheduleBatchEvents(): void {
-        $this->inBatchCronContext(function (): void {
-            wp_clear_scheduled_hook($this->config->getShortcodeBlockAnalysisBatchHook());
+    protected function unscheduleBatchEvents(?string $onlyMode = null): void {
+        $modes = $onlyMode === null ? self::BATCH_MODES : [$this->normalizeBatchMode($onlyMode)];
+        $this->inBatchCronContext(function () use ($modes, $onlyMode): void {
+            foreach ($modes as $mode) {
+                wp_clear_scheduled_hook($this->config->getShortcodeBlockAnalysisBatchHook(), $this->getBatchRecurringArgs($mode));
+                wp_clear_scheduled_hook($this->config->getShortcodeBlockAnalysisBatchHook(), $this->getBatchContinuationArgs($mode));
+            }
+            if ($onlyMode === null || in_array('small-batch', $modes, true)) {
+                // Remove recurring/continuation events written by releases that
+                // had no explicit batch-mode argument.
+                wp_clear_scheduled_hook($this->config->getShortcodeBlockAnalysisBatchHook(), []);
+                wp_clear_scheduled_hook($this->config->getShortcodeBlockAnalysisBatchHook(), [true]);
+            }
         });
-        delete_site_option(self::BATCH_OFFSET_OPTION);
+        foreach ($modes as $mode) {
+            delete_site_option($this->getBatchOffsetOption($mode));
+        }
     }
 
     protected function getBatchCronSiteId(): int {
@@ -2875,26 +3010,74 @@ class ShortcodeBlockAnalysisSchedulerService {
         return $network instanceof \WP_Network ? (int)$network->site_id : 1;
     }
 
-    protected function getNextBatchScheduledTimestamp(): int {
-        return (int)$this->inBatchCronContext(function (): int {
-            return (int)wp_next_scheduled($this->config->getShortcodeBlockAnalysisBatchHook());
+    protected function getNextBatchScheduledTimestamp(string $mode = 'small-batch'): int {
+        $mode = $this->normalizeBatchMode($mode);
+        return (int)$this->inBatchCronContext(function () use ($mode): int {
+            $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
+            $timestamp = (int)wp_next_scheduled($hook, $this->getBatchRecurringArgs($mode));
+            if ($timestamp <= 0 && $mode === 'small-batch') {
+                $timestamp = (int)wp_next_scheduled($hook, []);
+            }
+            return $timestamp;
         });
     }
 
-    protected function scheduleBatchContinuation(int $timestamp): bool {
+    protected function scheduleBatchContinuation(int $timestamp, string $mode = 'small-batch'): bool {
         if ($this->isTaskRemovalInProgress()) {
             return false;
         }
+        $mode = $this->normalizeBatchMode($mode);
 
-        return (bool)$this->inBatchCronContext(function () use ($timestamp): bool {
+        return (bool)$this->inBatchCronContext(function () use ($timestamp, $mode): bool {
             $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
+            $args = $this->getBatchContinuationArgs($mode);
 
-            if ((int)wp_next_scheduled($hook, self::BATCH_CONTINUATION_ARGS) <= 0) {
-                return (bool)wp_schedule_single_event($timestamp, $hook, self::BATCH_CONTINUATION_ARGS);
+            if ((int)wp_next_scheduled($hook, $args) <= 0) {
+                return (bool)wp_schedule_single_event($timestamp, $hook, $args);
             }
 
             return true;
         });
+    }
+
+    protected function normalizeBatchMode(string $mode): string {
+        if ($mode === 'batch') {
+            return 'small-batch';
+        }
+
+        return in_array($mode, self::BATCH_MODES, true) ? $mode : 'small-batch';
+    }
+
+    protected function isBatchMode(string $mode): bool {
+        return $mode === 'batch' || in_array($mode, self::BATCH_MODES, true);
+    }
+
+    protected function getBatchSiteIdsOption(string $mode): string {
+        $mode = $this->normalizeBatchMode($mode);
+        return $mode === 'large-batch' ? self::LARGE_BATCH_SITE_IDS_OPTION
+            : ($mode === 'medium-batch' ? self::MEDIUM_BATCH_SITE_IDS_OPTION : self::BATCH_SITE_IDS_OPTION);
+    }
+
+    protected function getBatchOffsetOption(string $mode): string {
+        $mode = $this->normalizeBatchMode($mode);
+        return $mode === 'large-batch' ? self::LARGE_BATCH_OFFSET_OPTION
+            : ($mode === 'medium-batch' ? self::MEDIUM_BATCH_OFFSET_OPTION : self::BATCH_OFFSET_OPTION);
+    }
+
+    protected function getBatchLockOption(string $mode): string {
+        $mode = $this->normalizeBatchMode($mode);
+        return $mode === 'large-batch' ? self::LARGE_BATCH_LOCK_OPTION
+            : ($mode === 'medium-batch' ? self::MEDIUM_BATCH_LOCK_OPTION : self::BATCH_LOCK_OPTION);
+    }
+
+    /** @return array{0: string} */
+    protected function getBatchRecurringArgs(string $mode): array {
+        return [$this->normalizeBatchMode($mode)];
+    }
+
+    /** @return array{0: string, 1: bool} */
+    protected function getBatchContinuationArgs(string $mode): array {
+        return [$this->normalizeBatchMode($mode), true];
     }
 
     protected function scheduleIndividualContinuation(int $siteId, int $delay = self::CONTINUATION_DELAY_SECONDS): bool {
