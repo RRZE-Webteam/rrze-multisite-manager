@@ -8,6 +8,7 @@ use RRZE\MultisiteManager\Support\NetworkCronCleanupQueue;
 defined('ABSPATH') || exit;
 
 class ShortcodeBlockAnalysisSchedulerService {
+    use \RRZE\MultisiteManager\Support\ProcessLocks;
     protected const HOOK_FALLBACK = 'rrze_msm_run_shortcode_block_analysis';
     protected const STATUS_OPTION = 'rrze_msm_shortcode_block_analysis_status';
     protected const LOCK_OPTION_PREFIX = 'rrze_msm_shortcode_block_analysis_lock_';
@@ -444,10 +445,35 @@ class ShortcodeBlockAnalysisSchedulerService {
             return;
         }
 
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            if ($this->getSiteAssignmentMode($siteId) === 'batch') {
+                $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS);
+            } else {
+                $this->scheduleIndividualContinuation($siteId, MINUTE_IN_SECONDS);
+            }
+            return;
+        }
+        try {
+            $this->runAdmittedScheduledAnalysis($siteId);
+        } finally {
+            $budget->release();
+        }
+    }
+
+    protected function runAdmittedScheduledAnalysis(int $siteId): void {
         if (!$this->acquireLock($siteId)) {
             return;
         }
 
+        try {
+            $this->executeScheduledAnalysis($siteId);
+        } finally {
+            $this->releaseLock($siteId);
+        }
+    }
+
+    protected function executeScheduledAnalysis(int $siteId): void {
         $runStartedAt = microtime(true);
 
         $completed = false;
@@ -501,6 +527,22 @@ class ShortcodeBlockAnalysisSchedulerService {
      * supposedly small website is unexpectedly expensive.
      */
     public function runBatchScheduledAnalysis(...$args): void {
+        if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress()) {
+            return;
+        }
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS);
+            return;
+        }
+        try {
+            $this->runAdmittedBatchScheduledAnalysis(...$args);
+        } finally {
+            $budget->release();
+        }
+    }
+
+    protected function runAdmittedBatchScheduledAnalysis(...$args): void {
         if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress()) {
             return;
         }
@@ -563,7 +605,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     public function canStartBatchNow(): bool {
-        return (int)get_site_option(self::BATCH_LOCK_OPTION, 0) <= 0
+        return !\RRZE\MultisiteManager\Support\AtomicLock::isLocked(self::BATCH_LOCK_OPTION)
             && !empty($this->getActiveBatchSiteIds())
             && (int)$this->inBatchCronContext(fn(): int => (int)wp_next_scheduled($this->config->getShortcodeBlockAnalysisBatchHook())) > 0;
     }
@@ -1072,53 +1114,22 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     /** Returns an exclusive lock token, or an empty string while setup is busy. */
     protected function acquireScheduleInitializationLock(string $runId): string {
-        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-
-        if (is_array($lock) && (int)($lock['expires_at'] ?? 0) < time()) {
-            delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
-        }
-
-        $token = wp_generate_uuid4();
-        $acquired = add_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
+        return $this->acquireProcessLock(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, [
             'run_id' => $runId,
-            'token' => $token,
             'expires_at' => time() + (5 * MINUTE_IN_SECONDS),
         ]);
-
-        return $acquired ? $token : '';
     }
 
-    /** Renews the lease only while this request still owns it. */
+    /** Verifies ownership before checkpointing schedule initialization. */
     protected function refreshScheduleInitializationLock(string $runId, string $token): bool {
         $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-
-        if (!is_array($lock)
-            || !hash_equals((string)($lock['run_id'] ?? ''), $runId)
-            || !hash_equals((string)($lock['token'] ?? ''), $token)
-        ) {
-            return false;
-        }
-
-        $lock['expires_at'] = time() + (5 * MINUTE_IN_SECONDS);
-        update_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $lock);
-
-        return true;
+        return is_array($lock) && (string)($lock['run_id'] ?? '') === $runId
+            && \RRZE\MultisiteManager\Support\AtomicLock::owns(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $token);
     }
 
-    /** Releases only a lease that belongs to this exact request. */
+    /** Releases only a lock that belongs to this exact request. */
     protected function releaseScheduleInitializationLock(string $runId, string $token): void {
-        if ($token === '') {
-            return;
-        }
-
-        $lock = get_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, []);
-
-        if (is_array($lock)
-            && hash_equals((string)($lock['run_id'] ?? ''), $runId)
-            && hash_equals((string)($lock['token'] ?? ''), $token)
-        ) {
-            delete_site_option(self::SCHEDULE_INITIALIZATION_LOCK_OPTION);
-        }
+        $this->releaseProcessLock(self::SCHEDULE_INITIALIZATION_LOCK_OPTION, $token);
     }
 
     /** @return array{run_id: string, initialized: int, processed: int, total: int, complete: bool} */
@@ -2650,9 +2661,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function hasActiveLock(int $siteId): bool {
-        $startedAt = (int)get_site_option(self::LOCK_OPTION_PREFIX . $siteId, 0);
-
-        return $startedAt > 0 && (time() - $startedAt) <= $this->getLockTtl();
+        return \RRZE\MultisiteManager\Support\AtomicLock::isLocked(self::LOCK_OPTION_PREFIX . $siteId);
     }
 
     protected function recoverInterruptedAnalysis(int $siteId, array $status = []): bool {
@@ -2832,32 +2841,19 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function acquireLock(int $siteId): bool {
-        $key = self::LOCK_OPTION_PREFIX . $siteId;
-        $existing = (int)get_site_option($key, 0);
-
-        if ($existing > 0 && (time() - $existing) > $this->getLockTtl()) {
-            delete_site_option($key);
-        }
-
-        return add_site_option($key, time());
+        return $this->acquireProcessLock(self::LOCK_OPTION_PREFIX . $siteId) !== '';
     }
 
     protected function releaseLock(int $siteId): void {
-        delete_site_option(self::LOCK_OPTION_PREFIX . $siteId);
+        $this->releaseProcessLock(self::LOCK_OPTION_PREFIX . $siteId);
     }
 
     protected function acquireBatchLock(): bool {
-        $existing = (int)get_site_option(self::BATCH_LOCK_OPTION, 0);
-
-        if ($existing > 0 && (time() - $existing) > $this->getLockTtl()) {
-            delete_site_option(self::BATCH_LOCK_OPTION);
-        }
-
-        return add_site_option(self::BATCH_LOCK_OPTION, time());
+        return $this->acquireProcessLock(self::BATCH_LOCK_OPTION) !== '';
     }
 
     protected function releaseBatchLock(): void {
-        delete_site_option(self::BATCH_LOCK_OPTION);
+        $this->releaseProcessLock(self::BATCH_LOCK_OPTION);
     }
 
     protected function unscheduleBatchEvents(): void {
@@ -2901,12 +2897,12 @@ class ShortcodeBlockAnalysisSchedulerService {
         });
     }
 
-    protected function scheduleIndividualContinuation(int $siteId): bool {
+    protected function scheduleIndividualContinuation(int $siteId, int $delay = self::CONTINUATION_DELAY_SECONDS): bool {
         if ($siteId <= 0 || $this->isTaskRemovalInProgress()) {
             return false;
         }
 
-        return (bool)$this->inSiteCronContext($siteId, function () use ($siteId): bool {
+        return (bool)$this->inSiteCronContext($siteId, function () use ($siteId, $delay): bool {
             $hook = $this->getHook();
             $cron = _get_cron_array();
 
@@ -2920,7 +2916,7 @@ class ShortcodeBlockAnalysisSchedulerService {
                 }
             }
 
-            return (bool)wp_schedule_single_event(time() + self::CONTINUATION_DELAY_SECONDS, $hook, [$siteId]);
+            return (bool)wp_schedule_single_event(time() + max(5, $delay), $hook, [$siteId]);
         });
     }
 

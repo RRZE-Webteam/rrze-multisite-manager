@@ -18,6 +18,18 @@ The plugin registers WordPress Cron events; it does not require visitor traffic 
 
 Do not delete or recreate individual continuation, composition, or watchdog events merely because a site batch already shows 100 percent. The Monitoring page distinguishes the collection phase from the following composition phase and displays the next composition-related event. Manual actions should be limited to an explicit reset after a reported final failure or to the documented task-removal tools.
 
+## Shared background capacity and atomic locks
+
+`monitoring_max_concurrent_workers` in the `rrze-multisite-manager` network option limits concurrently executing heavy requests to **2 by default**, configurable from **1 to 8** under **Settings > Monitoring > Background process capacity**. Storage analysis (including shared batches and browser/metadata execution), individual/shared shortcode and block analysis, dashboard collection/composition/statistics, and availability checks share this budget. Pending checkpoints and temporary indexes do not consume execution slots. Nested calls within one request reuse its slot until the outermost operation finishes.
+
+`Support/WorkerBudget` reserves slots through `Support/AtomicLock`. Named locks are scoped by database, installation prefix and network ID; acquisition uses `GET_LOCK(..., 0)` and never waits for another worker. Token-checked release prevents a different service instance or a stale owner from releasing a replacement lock. Process and mutex locks use the same primitive. Legacy network-option lock values are informational markers, not admission authorities; deleting them does not unlock a running request. Locks have no takeover TTL: they end on explicit release, PHP shutdown or database disconnection. The database must support multiple named locks on the same connection; a runtime probe rejects work on servers without that capability. A database connection/proxy must keep these session-bound statements on the same primary server. An unavailable lock service does not fall back to unlocked execution.
+
+When capacity is full, work exits before changing its analysis cursor and requests a continuation after at least one minute. No worker sleeps while waiting. Dashboard and availability retries use distinct arguments `['rrze_msm_worker_retry' => <run-already-in-progress>]`, so a denied initial run remains a start request rather than a discarded stale continuation. Admitted dashboard/availability work clears pending capacity retries to prevent an obsolete start retry from starting another pass. Existing composition, statistics, storage and content retry hooks remain in use. Disabled/removed processes retain their normal entrypoint guards.
+
+A lower configured limit applies to new admissions; requests already executing finish their current slice. This limit is per network, not a total across all networks in one installation. Small bounded maintenance jobs and report generation are outside this analysis budget. It does not shorten individual queries/filesystem operations or replace server-side timeouts.
+
+During rollout, drain old Cron workers before starting workers with the new code: old requests using option-based locks cannot participate in the new coordination protocol. Checkpoints and recurring schedules do not need a schema migration or reset. Test two independent MySQL/MariaDB connections and normal editing under concurrent analysis before production rollout.
+
 ## Central dashboard metrics
 
 | Element | Name |
@@ -33,8 +45,8 @@ Do not delete or recreate individual continuation, composition, or watchdog even
 | Cache | Network option `rrze_multisite_manager_dashboard_metrics_v7_<network-id>` |
 | Batch progress | `rrze_msm_dashboard_metrics_batch_offset`, `rrze_msm_dashboard_metrics_batch_total`, `rrze_msm_dashboard_metrics_batch_state` |
 | Per-batch intermediate state | Network option `rrze_msm_dashboard_metrics_batch_partial_<run-hash>_<offset>` |
-| Refresh lock | `rrze_msm_dashboard_metrics_refresh_lock_state`, TTL 900 seconds |
-| Composition lock | `rrze_msm_dashboard_metrics_composition_lock`, TTL 900 seconds |
+| Refresh lock | `rrze_msm_dashboard_metrics_refresh_lock_state`, connection-owned lock |
+| Composition lock | `rrze_msm_dashboard_metrics_composition_lock`, connection-owned lock |
 | Dirty marker | `rrze_msm_dashboard_metrics_dirty` |
 
 Detail-cache maintenance runs hourly on the central network site through `rrze_msm_maintain_detail_cache`. It deletes at most 100 value keys per invocation from obsolete detail-cache versions, together with their matching timeout rows, and schedules one bounded continuation when further keys remain.
@@ -43,7 +55,7 @@ Detail-cache maintenance runs hourly on the central network site through `rrze_m
 
 ![Dashboard metrics scheduler flow](dashboard-metrics-scheduler-flow.svg)
 
-The master batch state records the run ID, offsets, phase, composition attempt count, and any composition error; it does not contain the growing aggregate. The `composing` phase prevents another metrics run from starting. The composition event is scheduled after at least five seconds; the watchdog is scheduled after the 900-second lock TTL, reschedules a composition that no longer holds a valid lock, and marks the run failed after three attempts. Successful and finally failed runs remove their own composition and watchdog events. A failed composition stays visible as stale state and requires a reset; reset removes all intermediate states, locks, and scheduled composition events.
+The master batch state records the run ID, offsets, phase, composition attempt count, and any composition error; it does not contain the growing aggregate. The `composing` phase prevents another metrics run from starting. The composition event is scheduled after at least five seconds; the watchdog is scheduled after the 900-second watchdog interval, reschedules a composition that no longer holds a valid lock, and marks the run failed after three attempts. Successful and finally failed runs remove their own composition and watchdog events. A failed composition stays visible as stale state and requires a reset; reset removes intermediate states and scheduled composition events, but cannot release another request’s active lock.
 
 After a completed run, transient batch progress is intentionally reset. The Monitoring progress is derived from the published cache in that state and therefore displays the completed `site_count / site_count` rather than `0 / site_count`.
 
@@ -62,7 +74,7 @@ The statistics compaction hook runs only in the network main site's Cron context
 | Run state | `rrze_msm_monitoring_run_state` |
 | Batch progress | `rrze_msm_monitoring_batch_offset`, `rrze_msm_monitoring_batch_total` |
 | Log | `rrze_msm_monitoring_run_log` |
-| Lock | `rrze_msm_monitoring_lock_state`, fallback transient `rrze_msm_monitoring_lock`, TTL 900 seconds |
+| Lock | `rrze_msm_monitoring_lock_state`, connection-owned lock (old transient is cleanup-only) |
 
 `MonitoringService` registers the hook on `init` only in the main site's Cron context. A continuation event is scheduled with a minimum five-second delay. HTTP checks use the WordPress HTTP API; static defaults are five sites per monitoring batch, a 45-second request budget, a four-second HTTP timeout, and a two-second fallback timeout.
 
@@ -220,9 +232,9 @@ Resource contention is recorded on the scheduler status without marking a phase 
 Continuation hooks left in a subsite's Cron table by an older installation switch to the network's main site before processing the central queue. Normal scheduler updates retain the run identity; the central-storage migration is an explicit exception and requires fresh analyses.
 The storage monitoring row shows the current wait reason and the next scheduled continuation or individual retry. A site waiting behind other sites in an active small or medium shared batch is labelled **Current shared batch** instead of showing only the later regular cycle; that regular timestamp remains visible as the next regular cycle. A paused maintenance or schedule migration reschedules the continuation after one minute.
 
-The `monitoring_storage_analysis_max_concurrent_runs` option limits concurrently executing storage slices across the network; its default and minimum are four and its hard maximum is eight, including previously saved values outside that range. Independent atomic main-site worker options cover browser and metadata requests too. The central continuation queue processes one website per invocation. Runtime helpers retain their old method signatures for compatibility, but the cache-version argument no longer changes active state keys. Legacy `rrze_msm_site_storage_analysis_v3_<cache-version>_<site-id>` result caches and `rrze_msm_site_storage_attachment_index_v2_<cache-version>_<site-id>` monolithic indexes are only relevant to compatibility cleanup.
+The `monitoring_storage_analysis_max_concurrent_runs` option retains the per-type storage/index reservation limit (default/minimum four, maximum eight). All actually executing storage slices additionally share `monitoring_max_concurrent_workers` with the other analysis types, including browser and metadata requests. The central continuation queue processes one website per invocation. Runtime helpers retain their old method signatures for compatibility, but the cache-version argument no longer changes active state keys. Legacy `rrze_msm_site_storage_analysis_v3_<cache-version>_<site-id>` result caches and `rrze_msm_site_storage_attachment_index_v2_<cache-version>_<site-id>` monolithic indexes are only relevant to compatibility cleanup.
 
-Resource reservations use non-autoloaded main-site options `rrze_msm_storage_resource_slot_0` through `_7`, guarded by `rrze_msm_storage_resource_mutex`. Limits are 32 MiB per temporary index, 128 KiB per segment and 1 MiB per state. The active worker options are `rrze_msm_storage_worker_0` through `_7`. Tokens, host and PID prevent expiry alone from overbooking a still-blocked worker. Only verified stopped local processes or a reused non-threaded current PID without a live token can be reclaimed. Unverifiable remote/stale reservations fail closed and log once after 24 hours; operator verification is required before clearing them.
+Resource reservations use non-autoloaded main-site options `rrze_msm_storage_resource_slot_0` through `_7`, guarded by the connection-owned `rrze_msm_storage_resource_mutex` lock. Limits are 32 MiB per temporary index, 128 KiB per segment and 1 MiB per state. The active worker options are `rrze_msm_storage_worker_0` through `_7`. Tokens, host and PID prevent expiry alone from overbooking a still-blocked worker. Only verified stopped local processes or a reused non-threaded current PID without a live token can be reclaimed. Unverifiable remote/stale reservations fail closed and log once after 24 hours; operator verification is required before clearing them.
 
 Hook `rrze_msm_storage_resource_maintenance` is registered on load but first scheduled hourly after explicit analysis activity. It deletes only owned runtime values/timeout keys in the current network, selecting at most 250 timeout keys per invocation without loading payloads. It also size-checks and repairs the three derived result options for at most 25 sites per invocation. Cursor `rrze_msm_storage_resource_maintenance_offset` tracks traversal; argument `[true]` schedules bounded continuations after at least 60 seconds. Old runtime formats are removed regardless of their old TTL; expired current-format values are removed even with an external object cache. Completed bounded results remain available. See [Storage analysis](storage-analysis.md) for caps, legacy reanalysis and operational limits.
 

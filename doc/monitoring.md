@@ -16,7 +16,7 @@ Displays dashboard metrics and site availability monitoring. Both processes can 
 
 Availability checks use DNS and HTTP checks. HTTP timeouts and the request time budget are bounded. DNS calls are no longer started when fewer than five seconds remain in the batch budget; [Runtime state and scheduler](runtime-state.md#server-operation-dns-timeouts) describes the unavoidable server-side resolver configuration.
 
-Dashboard metric batches keep only bounded partial results until a separate composition task publishes the completed cache record. Once the site loop is at 100 percent, the row changes to **Composition pending** and states that all individual sites are complete; the next-run column names the composition or its watchdog check. The composition task has an expiring lock and watchdog. A failed composition is shown as a stale process state and must be reset before a new run can start. Completed cache data displays complete progress even though the transient batch offset has already been cleared. The separate **Dashboard metric statistics** task copies current snapshot rows into the history at the configured daily, weekly, or monthly cadence; it never recalculates sites.
+Dashboard metric batches keep only bounded partial results until a separate composition task publishes the completed cache record. Once the site loop is at 100 percent, the row changes to **Composition pending** and states that all individual sites are complete; the next-run column names the composition or its watchdog check. The composition task has a connection-owned lock and watchdog; the watchdog cannot evict a still-running worker. A failed composition is shown as a stale process state and must be reset before a new run can start. Completed cache data displays complete progress even though the transient batch offset has already been cleared. The separate **Dashboard metric statistics** task copies current snapshot rows into the history at the configured daily, weekly, or monthly cadence; it never recalculates sites.
 
 ### Storage analyses
 
@@ -53,3 +53,7 @@ All recurring network processes are registered in the Cron context of the main s
 ## AJAX interfaces
 
 The dialogs for schedule initialisation, task removal, and old central Cron cleanup call `admin-ajax.php`. Their registered hooks start with `wp_ajax_rrze_msm_`; they are protected by nonce and super-admin checks. Queue state is stored as network options and uses a 15-minute lease for browser-driven runs, so an abandoned dialog does not leave a permanent lock.
+
+## Shared background capacity
+
+Under **Settings > Monitoring > Background process capacity**, the network-wide limit defaults to two executing analysis processes and accepts values from one to eight. Storage, shortcode/block, dashboard/statistics and availability processes share it. A full budget delays work; it does not discard its saved progress. This also limits shared storage batches, independently of their per-type storage reservation setting. See [Runtime state and scheduler](runtime-state.md#shared-background-capacity-and-atomic-locks) for scope, retries and rollout requirements.

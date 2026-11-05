@@ -9,6 +9,7 @@ use RRZE\MultisiteManager\Metrics\StorageAnalysisService;
 defined('ABSPATH') || exit;
 
 class MonitoringService {
+    use \RRZE\MultisiteManager\Support\ProcessLocks;
     protected const META_OPERATIONAL_STATUS = 'rrze_msm_operational_status';
     protected const META_OPERATIONAL_STATUS_SOURCE = 'rrze_msm_operational_status_source';
     protected const META_PREVIOUS_OPERATIONAL_STATUS = 'rrze_msm_previous_operational_status';
@@ -421,9 +422,21 @@ class MonitoringService {
 
     /** @return array{complete: bool, checked_sites: int, duration_seconds: int, failed_sites: int, dns_issues: int, http_issues: int} */
     protected function runMonitoringBatch(bool $manual = false): array {
+        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
+        if (!$budget->acquire()) {
+            \RRZE\MultisiteManager\Support\WorkerBudget::retry($this->config->getMonitoringHook(), ['rrze_msm_worker_retry' => $this->isMonitoringRunInProgress()]);
+            return ['complete' => false, 'checked_sites' => 0, 'duration_seconds' => 0, 'failed_sites' => 0, 'dns_issues' => 0, 'http_issues' => 0];
+        }
+        try {
+            \RRZE\MultisiteManager\Support\WorkerBudget::clearRetries($this->config->getMonitoringHook());
+            return $this->runAdmittedMonitoringBatch($manual);
+        } finally {
+            $budget->release();
+        }
+    }
+
+    protected function runAdmittedMonitoringBatch(bool $manual): array {
         $siteIds = [];
-        $offset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
-        $totalSites = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
         $siteId = 0;
         $timestamp = current_time('mysql', true);
         $lastRun = '';
@@ -431,88 +444,93 @@ class MonitoringService {
         $batchSize = $this->getBatchSize();
         $deadline = microtime(true) + $this->config->getAvailabilityMonitoringRequestBudgetSeconds();
         $processedSiteCount = 0;
-        $runState = $this->getRunState();
         $result = [];
 
         if (!$this->acquireMonitoringLock()) {
             return ['complete' => false, 'checked_sites' => 0, 'duration_seconds' => 0, 'failed_sites' => 0, 'dns_issues' => 0, 'http_issues' => 0];
         }
 
-        if (empty($runState)) {
-            $this->initializeRunState($manual ? 'manual' : 'scheduled');
+        try {
+            $offset = (int)get_site_option(self::OPTION_BATCH_OFFSET, 0);
+            $totalSites = (int)get_site_option(self::OPTION_BATCH_TOTAL, 0);
             $runState = $this->getRunState();
-        }
 
-        if ($offset <= 0 || $totalSites <= 0) {
-            $totalSites = (int)get_sites($this->getActiveSiteQueryArgs([
-                'count' => true,
-                'number' => 1,
+            if (empty($runState)) {
+                $this->initializeRunState($manual ? 'manual' : 'scheduled');
+                $runState = $this->getRunState();
+            }
+
+            if ($offset <= 0 || $totalSites <= 0) {
+                $totalSites = (int)get_sites($this->getActiveSiteQueryArgs([
+                    'count' => true,
+                    'number' => 1,
+                ]));
+                update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
+                $runState['total_sites'] = $totalSites;
+                $this->saveRunState($runState);
+                $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
+
+                if ($lastRun !== '') {
+                    update_site_option(self::OPTION_PREVIOUS_RUN, $lastRun);
+                }
+            }
+
+            $siteIds = get_sites($this->getActiveSiteQueryArgs([
+                'fields' => 'ids',
+                'number' => $batchSize,
+                'offset' => max(0, $offset),
+                'orderby' => 'id',
+                'order' => 'ASC',
             ]));
-            update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
-            $runState['total_sites'] = $totalSites;
+
+            foreach ($siteIds as $siteId) {
+                if ($processedSiteCount > 0 && microtime(true) >= $deadline) {
+                    break;
+                }
+
+                $result = $this->checkSiteAvailability((int)$siteId, $deadline);
+                $runState = $this->applyCheckResultToRunState($runState, $result);
+                $processedSiteCount++;
+            }
+
             $this->saveRunState($runState);
-            $lastRun = (string)get_site_option(self::OPTION_LAST_RUN, '');
+            $nextOffset = $offset + $processedSiteCount;
 
-            if ($lastRun !== '') {
-                update_site_option(self::OPTION_PREVIOUS_RUN, $lastRun);
+            if (empty($siteIds) || $nextOffset >= $totalSites) {
+                update_site_option(self::OPTION_LAST_RUN, $timestamp);
+                update_site_option(self::OPTION_LAST_SITE_COUNT, $totalSites);
+                $durationSeconds = $this->calculateRunDurationSeconds((string)($runState['started_at'] ?? ''), $timestamp);
+                $completedResult = [
+                    'complete' => true,
+                    'checked_sites' => (int)($runState['checked_sites'] ?? 0),
+                    'duration_seconds' => $durationSeconds,
+                    'failed_sites' => (int)($runState['failed_sites'] ?? 0),
+                    'dns_issues' => (int)($runState['dns_issues'] ?? 0),
+                    'http_issues' => (int)($runState['http_issues'] ?? 0),
+                ];
+                $this->finalizeRunState($timestamp);
+                $this->resetBatchState();
+                $metrics = new MetricsService(null, $this->config);
+                $metrics->refreshDashboardOperationalStatusTimestamp(strtotime($timestamp . ' GMT'));
+                $metrics->invalidateCaches();
+                return $completedResult;
             }
-        }
 
-        $siteIds = get_sites($this->getActiveSiteQueryArgs([
-            'fields' => 'ids',
-            'number' => $batchSize,
-            'offset' => max(0, $offset),
-            'orderby' => 'id',
-            'order' => 'ASC',
-        ]));
+            update_site_option(self::OPTION_BATCH_OFFSET, $nextOffset);
+            update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
+            $this->scheduleNextBatch($manual ? 5 : 30);
 
-        foreach ($siteIds as $siteId) {
-            if ($processedSiteCount > 0 && microtime(true) >= $deadline) {
-                break;
-            }
-
-            $result = $this->checkSiteAvailability((int)$siteId, $deadline);
-            $runState = $this->applyCheckResultToRunState($runState, $result);
-            $processedSiteCount++;
-        }
-
-        $this->saveRunState($runState);
-        $nextOffset = $offset + $processedSiteCount;
-
-        if (empty($siteIds) || $nextOffset >= $totalSites) {
-            update_site_option(self::OPTION_LAST_RUN, $timestamp);
-            update_site_option(self::OPTION_LAST_SITE_COUNT, $totalSites);
-            $durationSeconds = $this->calculateRunDurationSeconds((string)($runState['started_at'] ?? ''), $timestamp);
-            $completedResult = [
-                'complete' => true,
+            return [
+                'complete' => false,
                 'checked_sites' => (int)($runState['checked_sites'] ?? 0),
-                'duration_seconds' => $durationSeconds,
+                'duration_seconds' => 0,
                 'failed_sites' => (int)($runState['failed_sites'] ?? 0),
                 'dns_issues' => (int)($runState['dns_issues'] ?? 0),
                 'http_issues' => (int)($runState['http_issues'] ?? 0),
             ];
-            $this->finalizeRunState($timestamp);
-            $this->resetBatchState();
+        } finally {
             $this->releaseMonitoringLock();
-            $metrics = new MetricsService(null, $this->config);
-            $metrics->refreshDashboardOperationalStatusTimestamp(strtotime($timestamp . ' GMT'));
-            $metrics->invalidateCaches();
-            return $completedResult;
         }
-
-        update_site_option(self::OPTION_BATCH_OFFSET, $nextOffset);
-        update_site_option(self::OPTION_BATCH_TOTAL, $totalSites);
-        $this->releaseMonitoringLock();
-        $this->scheduleNextBatch($manual ? 5 : 30);
-
-        return [
-            'complete' => false,
-            'checked_sites' => (int)($runState['checked_sites'] ?? 0),
-            'duration_seconds' => 0,
-            'failed_sites' => (int)($runState['failed_sites'] ?? 0),
-            'dns_issues' => (int)($runState['dns_issues'] ?? 0),
-            'http_issues' => (int)($runState['http_issues'] ?? 0),
-        ];
     }
 
     protected function getBatchSize(): int {
@@ -683,41 +701,17 @@ class MonitoringService {
     }
 
     protected function acquireMonitoringLock(): bool {
-        $timestamp = time();
-
-        if (add_site_option(self::LOCK_OPTION, $timestamp)) {
-            return true;
-        }
-
-        $existingLock = (int)get_site_option(self::LOCK_OPTION, 0);
-
-        if ($existingLock > 0 && ($timestamp - $existingLock) < self::LOCK_TTL) {
-            return false;
-        }
-
-        delete_site_option(self::LOCK_OPTION);
-
-        return add_site_option(self::LOCK_OPTION, $timestamp);
+        return $this->acquireProcessLock(self::LOCK_OPTION, null, [
+            self::OPTION_BATCH_OFFSET, self::OPTION_BATCH_TOTAL, self::OPTION_RUN_STATE,
+        ]) !== '';
     }
 
     protected function releaseMonitoringLock(): void {
-        delete_site_option(self::LOCK_OPTION);
-        delete_site_transient(self::LOCK_KEY);
+        $this->releaseProcessLock(self::LOCK_OPTION);
     }
 
     protected function isMonitoringLocked(): bool {
-        $timestamp = (int)get_site_option(self::LOCK_OPTION, 0);
-
-        if ($timestamp <= 0) {
-            return false;
-        }
-
-        if ((time() - $timestamp) >= self::LOCK_TTL) {
-            delete_site_option(self::LOCK_OPTION);
-            return false;
-        }
-
-        return true;
+        return \RRZE\MultisiteManager\Support\AtomicLock::isLocked(self::LOCK_OPTION);
     }
 
     public function isMonitoringRunInProgress(): bool {

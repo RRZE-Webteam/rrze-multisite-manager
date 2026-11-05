@@ -436,9 +436,18 @@ class Config {
                         'max' => 256,
                     ],
                     [
+                        'name' => 'max_concurrent_workers',
+                        'label' => __('Maximum concurrent background processes', 'rrze-multisite-manager'),
+                        'desc' => __('Shared network-wide limit for storage analyses, shortcode and block analyses, dashboard metrics and availability checks. Default: 2. Allowed values: 1 to 8. Waiting tasks resume automatically.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 2,
+                        'min' => 1,
+                        'max' => 8,
+                    ],
+                    [
                         'name' => 'storage_analysis_max_concurrent_runs',
                         'label' => __('Maximum concurrent storage analyses per task type', 'rrze-multisite-manager'),
-                        'desc' => __('Allows four concurrent individual storage analyses and temporary indexes by default. Small, medium and large shared batches each process their fixed queue sequentially; one website from each batch can run at the same time. The multisite Cron runner must provide sufficient workers for the intended parallelism.', 'rrze-multisite-manager'),
+                        'desc' => __('Per-type limit for individual storage analyses and temporary indexes. The shared background process limit also applies. Small, medium and large shared batches each process one website at a time.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 4,
                         'min' => 4,
@@ -781,6 +790,12 @@ class Config {
         }
 
         return $isIndividual || $isLarge ? max(8, min(256, $size)) : ($isMedium ? max(8, min(192, $size)) : max(4, min(128, $size)));
+    }
+
+    public function getMaxConcurrentWorkers(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $limit = is_array($options) ? (int)($options['monitoring_max_concurrent_workers'] ?? 2) : 2;
+        return max(1, min(8, $limit));
     }
 
     public function getStorageAnalysisMaxConcurrentRuns(): int {

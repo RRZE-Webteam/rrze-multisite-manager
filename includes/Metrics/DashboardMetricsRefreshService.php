@@ -11,6 +11,7 @@ defined('ABSPATH') || exit;
  * Persists and coordinates dashboard refresh state for the current network.
  */
 class DashboardMetricsRefreshService {
+    use \RRZE\MultisiteManager\Support\ProcessLocks;
     protected const CACHE_KEY_PREFIX = 'rrze_multisite_manager_dashboard_metrics_v7_';
     protected const LOCK_OPTION = 'rrze_msm_dashboard_metrics_refresh_lock_state';
     protected const LEGACY_LOCK_KEY = 'rrze_msm_dashboard_metrics_refresh_lock';
@@ -66,41 +67,17 @@ class DashboardMetricsRefreshService {
     }
 
     public function acquireLock(): bool {
-        $timestamp = time();
-
-        if (add_site_option(self::LOCK_OPTION, $timestamp)) {
-            return true;
-        }
-
-        $existingLock = (int)get_site_option(self::LOCK_OPTION, 0);
-
-        if ($existingLock > 0 && ($timestamp - $existingLock) < $this->lockTtl) {
-            return false;
-        }
-
-        delete_site_option(self::LOCK_OPTION);
-
-        return add_site_option(self::LOCK_OPTION, $timestamp);
+        return $this->acquireProcessLock(self::LOCK_OPTION, null, [
+            self::BATCH_OFFSET_OPTION, self::BATCH_TOTAL_OPTION, self::BATCH_STATE_OPTION,
+        ]) !== '';
     }
 
     public function releaseLock(): void {
-        delete_site_option(self::LOCK_OPTION);
-        delete_site_transient(self::LEGACY_LOCK_KEY);
+        $this->releaseProcessLock(self::LOCK_OPTION);
     }
 
     public function isLocked(): bool {
-        $timestamp = (int)get_site_option(self::LOCK_OPTION, 0);
-
-        if ($timestamp <= 0) {
-            return false;
-        }
-
-        if ((time() - $timestamp) >= $this->lockTtl) {
-            delete_site_option(self::LOCK_OPTION);
-            return false;
-        }
-
-        return true;
+        return \RRZE\MultisiteManager\Support\AtomicLock::isLocked(self::LOCK_OPTION);
     }
 
     public function isInProgress(): bool {
@@ -176,7 +153,7 @@ class DashboardMetricsRefreshService {
 
     public function resetBatchState(): void {
         $this->deleteBatchPartialStates($this->getBatchState());
-        delete_site_option(self::COMPOSITION_LOCK_OPTION);
+        $this->releaseProcessLock(self::COMPOSITION_LOCK_OPTION);
         update_site_option(self::BATCH_OFFSET_OPTION, 0);
         update_site_option(self::BATCH_TOTAL_OPTION, 0);
         delete_site_option(self::BATCH_STATE_OPTION);
@@ -190,43 +167,18 @@ class DashboardMetricsRefreshService {
         if ($runId === '') {
             return false;
         }
-
-        $lock = get_site_option(self::COMPOSITION_LOCK_OPTION, []);
-
-        if (!is_array($lock)
-            || (int)($lock['started_at'] ?? 0) <= 0
-            || (time() - (int)$lock['started_at']) >= $this->lockTtl
-        ) {
-            delete_site_option(self::COMPOSITION_LOCK_OPTION);
-        }
-
-        return add_site_option(self::COMPOSITION_LOCK_OPTION, [
-            'run_id' => $runId,
-            'started_at' => time(),
-        ]);
+        return $this->acquireProcessLock(self::COMPOSITION_LOCK_OPTION, ['run_id' => $runId, 'started_at' => time()]) !== '';
     }
 
     public function releaseCompositionLock(string $runId): void {
         $lock = get_site_option(self::COMPOSITION_LOCK_OPTION, []);
-
-        if (!is_array($lock) || (string)($lock['run_id'] ?? '') === $runId) {
-            delete_site_option(self::COMPOSITION_LOCK_OPTION);
+        if (is_array($lock) && (string)($lock['run_id'] ?? '') === $runId) {
+            $this->releaseProcessLock(self::COMPOSITION_LOCK_OPTION);
         }
     }
 
     public function isCompositionLocked(): bool {
-        $lock = get_site_option(self::COMPOSITION_LOCK_OPTION, []);
-
-        if (!is_array($lock) || (int)($lock['started_at'] ?? 0) <= 0) {
-            return false;
-        }
-
-        if ((time() - (int)$lock['started_at']) >= $this->lockTtl) {
-            delete_site_option(self::COMPOSITION_LOCK_OPTION);
-            return false;
-        }
-
-        return true;
+        return \RRZE\MultisiteManager\Support\AtomicLock::isLocked(self::COMPOSITION_LOCK_OPTION);
     }
 
     /**

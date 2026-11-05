@@ -85,6 +85,7 @@ class Dashboard {
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAdminBarStyles']);
         add_action('admin_bar_menu', [$this, 'addAdminBarMenu'], 35);
+        add_filter('wp_redirect', [$this, 'redirectNetworkUsersDeleteToMsm'], 10, 2);
         add_filter('user_has_cap', [$this, 'filterUserHasCap'], 20, 4);
         add_filter('admin_body_class', [$this, 'filterAdminBodyClass']);
         add_action('wp_ajax_rrze_msm_save_widget_order', [$this, 'ajaxSaveWidgetOrder']);
@@ -650,6 +651,9 @@ class Dashboard {
         $table->prepare_items();
 
         echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
+        if (isset($_GET['rrze_msm_users_deleted']) && $_GET['rrze_msm_users_deleted'] === '1') {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The selected users have been deleted.', 'rrze-multisite-manager') . '</p></div>';
+        }
         echo '<div class="rrze-msm-page-shell">';
         echo '<div class="rrze-msm-page-header"><div>';
         echo '<h1>' . esc_html__('Users', 'rrze-multisite-manager') . '</h1>';
@@ -759,11 +763,46 @@ class Dashboard {
             '$1"' . esc_url(network_admin_url('users.php?action=dodelete')) . '"',
             $confirmationMarkup
         );
+        $confirmationMarkup = (string)preg_replace(
+            '#</form>#i',
+            wp_nonce_field('rrze_msm_network_users_delete_return', 'rrze_msm_network_users_delete_return_nonce', true, false) . '</form>',
+            $confirmationMarkup,
+            1
+        );
 
         echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
         // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Core confirmation markup is escaped by confirm_delete_users().
         echo $confirmationMarkup;
         echo '</div>';
+    }
+
+    /** Redirects a Core user-deletion completion back to the MSM user overview. */
+    public function redirectNetworkUsersDeleteToMsm(string $location, int $status): string {
+        unset($status);
+
+        if (!is_admin()
+            || !isset($_POST['rrze_msm_network_users_delete_return_nonce'])
+            || !wp_verify_nonce(
+                sanitize_text_field(wp_unslash($_POST['rrze_msm_network_users_delete_return_nonce'])),
+                'rrze_msm_network_users_delete_return'
+            )
+            || !current_user_can('manage_network_users')
+            || !current_user_can('delete_users')
+        ) {
+            return $location;
+        }
+
+        $coreUsersUrl = network_admin_url('users.php');
+        if (strpos($location, $coreUsersUrl) !== 0) {
+            return $location;
+        }
+
+        return add_query_arg(
+            [
+                'rrze_msm_users_deleted' => '1',
+            ],
+            $this->getNetworkUsersUrl()
+        );
     }
 
     /** Registers native Screen Options for the MSM network user table. */
