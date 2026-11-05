@@ -710,7 +710,7 @@ class PluginUsageWidget extends Widgets {
         }
 
         if (!$networkAuditState['available']) {
-            return '<span class="screen-reader-text">' . esc_html__('RRZE Netzwerk-Audit is not active.', 'rrze-multisite-manager') . '</span>&mdash;';
+            return '<span class="screen-reader-text">' . esc_html__('Plugin enablement is not available (neither RRZE Netzwerk-Audit nor RRZE Settings provides it).', 'rrze-multisite-manager') . '</span>&mdash;';
         }
 
         if ($networkAuditState['enabled']) {

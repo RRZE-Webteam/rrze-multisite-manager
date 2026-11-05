@@ -10,7 +10,7 @@ In addition to name, version, description, author, and technical requirements, t
 
 Where WordPress provides the information, update information and appropriate management links are also displayed. Network-wide changes are available only to super admins.
 
-When RRZE Netzwerk-Audit is network-active, the action area also contains its Enable or Disable action for manageable plugins. The action is shown only to super admins. Multisite Manager updates the shared `enabled_plugins` state through its own protected endpoint and redirects back to the same detail page.
+When the plugin enablement is available (RRZE Netzwerk-Audit network-active, otherwise RRZE Settings), the action area also contains its Enable or Disable action for manageable plugins. The action is shown only to super admins. Multisite Manager updates the shared `enabled_plugins` state through its own protected endpoint and redirects back to the same detail page.
 
 ## Source-code analysis
 
