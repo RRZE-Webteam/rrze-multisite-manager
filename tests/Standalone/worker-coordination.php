@@ -140,9 +140,26 @@ class ContentProbe extends RRZE\MultisiteManager\ShortcodeBlockAnalysisScheduler
     public function isSiteActive(int $siteId): bool { return true; }
     public function getSiteAssignmentMode(int $siteId): string { return 'site'; }
     protected function scheduleIndividualContinuation(int $siteId, int $delay = 5): bool { $this->retries[] = [$siteId, $delay]; return true; }
-    protected function scheduleBatchContinuation(int $timestamp): bool { $this->retries[] = ['batch', $timestamp]; return true; }
-    protected function runAdmittedBatchScheduledAnalysis(...$args): void { $this->executed++; $this->runScheduledAnalysis(5); }
+    protected function scheduleBatchContinuation(int $timestamp, string $mode = 'small-batch'): bool { $this->retries[] = [$mode, $timestamp]; return true; }
+    protected function runAdmittedBatchScheduledAnalysis(string $mode, bool $continuation): void { $this->executed++; $this->runScheduledAnalysis(5); }
     protected function executeScheduledAnalysis(int $siteId): void { $this->executed++; if ($this->fail) { throw new RuntimeException('Injected failure'); } }
+}
+class ContentClassificationProbe extends RRZE\MultisiteManager\ShortcodeBlockAnalysisSchedulerService {
+    public int $contentCount = 0;
+    public array $status = [];
+    public function __construct() {
+        $this->config = new class extends Config {
+            public function getShortcodeBlockSmallBatchPostThreshold(): int { return 100; }
+            public function getShortcodeBlockMediumBatchPostThreshold(): int { return 1000; }
+            public function getShortcodeBlockLargeBatchPostThreshold(): int { return 5000; }
+            public function getShortcodeBlockSmallBatchRuntimeThresholdSeconds(): int { return 3; }
+            public function getShortcodeBlockMediumBatchRuntimeThresholdSeconds(): int { return 15; }
+            public function getShortcodeBlockLargeBatchRuntimeThresholdSeconds(): int { return 60; }
+        };
+    }
+    protected function getSitePostAndPageCount(int $siteId): int { return $this->contentCount; }
+    public function getStatus(int $siteId): array { return $this->status; }
+    public function classify(): string { return $this->getExpectedAssignmentMode(5); }
 }
 class StorageProbe extends RRZE\MultisiteManager\StorageAnalysisSchedulerService {
     public int $executed = 0;
@@ -177,6 +194,20 @@ class MonitoringProbe extends RRZE\MultisiteManager\MonitoringService {
     protected function runAdmittedMonitoringBatch(bool $manual): array { $this->executed++; return []; }
 }
 $content = new ContentProbe();
+$classification = new ContentClassificationProbe();
+$classification->contentCount = 100;
+check($classification->classify() === 'small-batch', 'Small content inventory was assigned to the wrong batch.');
+$classification->contentCount = 101;
+check($classification->classify() === 'medium-batch', 'Medium content inventory was assigned to the wrong batch.');
+$classification->contentCount = 1001;
+check($classification->classify() === 'large-batch', 'Large content inventory was assigned to the wrong batch.');
+$classification->contentCount = 5001;
+check($classification->classify() === 'site', 'Oversized content inventory was not assigned individually.');
+$classification->contentCount = 10;
+$classification->status = ['status' => 'complete', 'last_runtime_seconds' => 16.0];
+check($classification->classify() === 'large-batch', 'Completed runtime did not promote the website to the large batch.');
+$classification->status = ['status' => 'complete', 'last_runtime_seconds' => 61.0];
+check($classification->classify() === 'site', 'Completed runtime did not promote the website to an individual task.');
 $storage = new StorageProbe();
 $metrics = new MetricsProbe();
 $monitoring = new MonitoringProbe();

@@ -38,4 +38,54 @@ class ConfigTest extends \WP_UnitTestCase {
             }
         }
     }
+
+    public function testPluginSourceScanningIsDisabledByDefaultAndCanBeEnabled(): void {
+        $config = new Config();
+        $optionName = $config->getOptionName();
+        $previous = get_site_option($optionName, false);
+
+        try {
+            delete_site_option($optionName);
+            self::assertFalse($config->shouldScanPluginSourcesForShortcodesAndBlocks());
+
+            update_site_option($optionName, ['monitoring_shortcode_block_scan_plugin_sources' => 1]);
+            self::assertTrue($config->shouldScanPluginSourcesForShortcodesAndBlocks());
+        } finally {
+            if ($previous === false) {
+                delete_site_option($optionName);
+            } else {
+                update_site_option($optionName, $previous);
+            }
+        }
+    }
+
+    public function testShortcodeBlockBatchThresholdsAreOrderedAndBounded(): void {
+        $config = new Config();
+        $optionName = $config->getOptionName();
+        $previous = get_site_option($optionName, false);
+
+        try {
+            update_site_option($optionName, [
+                'monitoring_shortcode_block_analysis_small_batch_post_threshold' => 200,
+                'monitoring_shortcode_block_analysis_medium_batch_post_threshold' => 100,
+                'monitoring_shortcode_block_analysis_large_batch_post_threshold' => 50,
+                'monitoring_shortcode_block_analysis_small_batch_runtime_threshold_seconds' => 20,
+                'monitoring_shortcode_block_analysis_medium_batch_runtime_threshold_seconds' => 10,
+                'monitoring_shortcode_block_analysis_large_batch_runtime_threshold_seconds' => 5,
+            ]);
+
+            self::assertSame(200, $config->getShortcodeBlockSmallBatchPostThreshold());
+            self::assertSame(200, $config->getShortcodeBlockMediumBatchPostThreshold());
+            self::assertSame(200, $config->getShortcodeBlockLargeBatchPostThreshold());
+            self::assertSame(20, $config->getShortcodeBlockSmallBatchRuntimeThresholdSeconds());
+            self::assertSame(20, $config->getShortcodeBlockMediumBatchRuntimeThresholdSeconds());
+            self::assertSame(20, $config->getShortcodeBlockLargeBatchRuntimeThresholdSeconds());
+        } finally {
+            if ($previous === false) {
+                delete_site_option($optionName);
+            } else {
+                update_site_option($optionName, $previous);
+            }
+        }
+    }
 }

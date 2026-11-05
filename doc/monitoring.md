@@ -24,9 +24,9 @@ Displays scheduled individual tasks and collective batches for storage analyses.
 
 ### Shortcodes and blocks
 
-This corresponds to the Storage analyses tab for shortcode/block analysis: scheduled tasks, collective batches, status, start actions, and bulk actions are centrally managed.
+This corresponds to the Storage analyses tab for shortcode/block analysis: scheduled tasks, three collective batches, individual tasks, status, start actions, and bulk actions are centrally managed. Initial assignment uses the combined post and page count. After the first successful run, active runtime can promote a website to a higher batch or an individual schedule. Content count and runtime never demote one another: the more expensive of both classifications wins.
 
-While an analysis is being continued, a released request lock together with a queued one-time continuation is an expected handover state. Monitoring must not report this as an interruption. If no lock and no continuation remain, an individual task recreates the continuation from its saved checkpoint and records a warning. A collective-batch task instead ends as an error, deletes its checkpoint, and starts again from the beginning with the next regular collective batch. The same applies after two hours without progress, even if the shared batch is still processing other websites. This prevents an isolated lost batch continuation from leaving a website permanently marked as running. The row shows the failed phase, its last checkpoint progress and the diagnostic message; the error log records the corresponding site, phase and post counters.
+While an analysis is being continued, a released request lock together with a queued one-time continuation is an expected handover state. Monitoring must not report this as an interruption. If no lock and no continuation remain, both individual and collective tasks recreate the appropriate continuation from the saved checkpoint and record a warning. After two hours without progress, the run fails explicitly. This prevents an isolated lost continuation from leaving a website permanently marked as running. The row shows the failed phase, its last checkpoint progress and the diagnostic message; the error log records the corresponding site, phase and post counters.
 
 ### Database usage
 

@@ -245,6 +245,14 @@ class Settings {
             $options['monitoring_storage_analysis_individual_timeout_minutes'] = $timeout;
         }
 
+        if (is_array($storedOptions) && !array_key_exists('monitoring_shortcode_block_analysis_small_batch_frequency', $storedOptions)) {
+            $frequency = (string)($storedOptions['monitoring_shortcode_block_analysis_frequency'] ?? 'twiceweekly');
+            $options['monitoring_shortcode_block_analysis_small_batch_frequency'] = $frequency;
+            $options['monitoring_shortcode_block_analysis_medium_batch_frequency'] = $frequency;
+            $options['monitoring_shortcode_block_analysis_large_batch_frequency'] = $frequency;
+            $options['monitoring_shortcode_block_analysis_individual_frequency'] = $frequency;
+        }
+
         // Raise only the former shipped defaults. Deliberately changed values
         // remain untouched, while existing installations benefit from fewer
         // Cron continuations immediately after the update.
@@ -334,7 +342,24 @@ class Settings {
             || (string)($previousOptions['monitoring_storage_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_medium_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_large_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_large_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_individual_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_individual_frequency'] ?? '');
-        $shortcodeAnalysisFrequencyChanged = (string)($previousOptions['monitoring_shortcode_block_analysis_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_frequency'] ?? '');
+        $shortcodeAnalysisFrequencyChanged = (string)($previousOptions['monitoring_shortcode_block_analysis_small_batch_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_small_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_shortcode_block_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_medium_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_shortcode_block_analysis_large_batch_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_large_batch_frequency'] ?? '')
+            || (string)($previousOptions['monitoring_shortcode_block_analysis_individual_frequency'] ?? '') !== (string)($options['monitoring_shortcode_block_analysis_individual_frequency'] ?? '');
+        $shortcodeAnalysisAssignmentChanged = false;
+        foreach ([
+            'monitoring_shortcode_block_analysis_small_batch_post_threshold',
+            'monitoring_shortcode_block_analysis_medium_batch_post_threshold',
+            'monitoring_shortcode_block_analysis_large_batch_post_threshold',
+            'monitoring_shortcode_block_analysis_small_batch_runtime_threshold_seconds',
+            'monitoring_shortcode_block_analysis_medium_batch_runtime_threshold_seconds',
+            'monitoring_shortcode_block_analysis_large_batch_runtime_threshold_seconds',
+        ] as $optionKey) {
+            if ((int)($previousOptions[$optionKey] ?? 0) !== (int)($options[$optionKey] ?? 0)) {
+                $shortcodeAnalysisAssignmentChanged = true;
+                break;
+            }
+        }
         $websiteStatusReportChanged = false;
         foreach ([
             'reporting_website_status_report_enabled',
@@ -368,7 +393,7 @@ class Settings {
             (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->queueFrequencyReschedule();
         }
 
-        if ($shortcodeAnalysisFrequencyChanged) {
+        if ($shortcodeAnalysisFrequencyChanged || $shortcodeAnalysisAssignmentChanged) {
             (new ShortcodeBlockAnalysisSchedulerService($this->config))->queueFrequencyReschedule();
         }
 
@@ -1189,7 +1214,7 @@ class Settings {
         }
         $started = $type === 'storage'
             ? (new StorageAnalysisSchedulerService(new StorageAnalysisService(new MetricsService($this, $this->config)), $this->config))->startBatchNow($batchMode)
-            : ($type === 'shortcode-block' ? (new ShortcodeBlockAnalysisSchedulerService($this->config))->startBatchNow() : false);
+            : ($type === 'shortcode-block' ? (new ShortcodeBlockAnalysisSchedulerService($this->config))->startBatchNow($batchMode) : false);
         wp_safe_redirect(add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => $type, 'shared-batch-started' => $started ? 'true' : 'false'], admin_url('admin.php')));
         exit;
     }
@@ -1411,6 +1436,16 @@ class Settings {
         $options[$largeMediaKey] = max((int)$options[$mediumMediaKey], (int)$options[$largeMediaKey]);
         $options[$mediumRuntimeKey] = max((int)$options[$smallRuntimeKey], (int)$options[$mediumRuntimeKey]);
         $options[$largeRuntimeKey] = max((int)$options[$mediumRuntimeKey], (int)$options[$largeRuntimeKey]);
+        $shortcodeSmallPostsKey = 'monitoring_shortcode_block_analysis_small_batch_post_threshold';
+        $shortcodeMediumPostsKey = 'monitoring_shortcode_block_analysis_medium_batch_post_threshold';
+        $shortcodeLargePostsKey = 'monitoring_shortcode_block_analysis_large_batch_post_threshold';
+        $shortcodeSmallRuntimeKey = 'monitoring_shortcode_block_analysis_small_batch_runtime_threshold_seconds';
+        $shortcodeMediumRuntimeKey = 'monitoring_shortcode_block_analysis_medium_batch_runtime_threshold_seconds';
+        $shortcodeLargeRuntimeKey = 'monitoring_shortcode_block_analysis_large_batch_runtime_threshold_seconds';
+        $options[$shortcodeMediumPostsKey] = max((int)$options[$shortcodeSmallPostsKey], (int)$options[$shortcodeMediumPostsKey]);
+        $options[$shortcodeLargePostsKey] = max((int)$options[$shortcodeMediumPostsKey], (int)$options[$shortcodeLargePostsKey]);
+        $options[$shortcodeMediumRuntimeKey] = max((int)$options[$shortcodeSmallRuntimeKey], (int)$options[$shortcodeMediumRuntimeKey]);
+        $options[$shortcodeLargeRuntimeKey] = max((int)$options[$shortcodeMediumRuntimeKey], (int)$options[$shortcodeLargeRuntimeKey]);
 
         return $options;
     }
@@ -1612,10 +1647,20 @@ class Settings {
         $this->renderMonitoringFieldGroup(__('Local administrator access', 'rrze-multisite-manager'), [
             'show_local_analysis_request_notice',
         ]);
-        $this->renderMonitoringFieldGroup(__('Shortcodes and Blocks', 'rrze-multisite-manager'), [
-            'shortcode_block_analysis_frequency',
+        $this->renderMonitoringFieldGroup(__('Shortcode and block analysis batches', 'rrze-multisite-manager'), [
+            'shortcode_block_analysis_small_batch_frequency',
+            'shortcode_block_analysis_medium_batch_frequency',
+            'shortcode_block_analysis_large_batch_frequency',
+            'shortcode_block_analysis_individual_frequency',
+            'shortcode_block_analysis_small_batch_post_threshold',
+            'shortcode_block_analysis_medium_batch_post_threshold',
+            'shortcode_block_analysis_large_batch_post_threshold',
+            'shortcode_block_analysis_small_batch_runtime_threshold_seconds',
+            'shortcode_block_analysis_medium_batch_runtime_threshold_seconds',
+            'shortcode_block_analysis_large_batch_runtime_threshold_seconds',
             'shortcode_block_analysis_timeout_minutes',
             'shortcode_block_analysis_value_max_kilobytes',
+            'shortcode_block_scan_plugin_sources',
         ]);
         submit_button();
         echo '</form>';
@@ -2721,10 +2766,10 @@ class Settings {
                 echo '<th scope="row" class="check-column"><input type="checkbox" name="site_ids[]" value="' . esc_attr((string)$siteId) . '" form="' . esc_attr($selectionFormId) . '"></th>';
                 echo '<td class="rrze-msm-monitoring-site-url">';
                 echo '<div class="rrze-msm-monitoring-site-identity"><strong>' . esc_html((string)($process['name'] ?? ($process['url'] ?? ''))) . '</strong><br><span>' . esc_html((string)($process['url'] ?? '')) . '</span>';
-                $cronSiteId = ($process['assignment_mode'] ?? '') === 'batch'
+                $cronSiteId = in_array(($process['assignment_mode'] ?? ''), ['small-batch', 'medium-batch', 'large-batch', 'batch'], true)
                     ? (int)get_main_site_id(get_current_network_id())
                     : $siteId;
-                $cronHook = ($process['assignment_mode'] ?? '') === 'batch'
+                $cronHook = in_array(($process['assignment_mode'] ?? ''), ['small-batch', 'medium-batch', 'large-batch', 'batch'], true)
                     ? $this->config->getShortcodeBlockAnalysisBatchHook()
                     : $this->config->getShortcodeBlockAnalysisHook();
                 $this->renderMonitoringSiteHoverLinks($siteId, $this->getSiteShortcodeBlockAnalysisPageUrl($siteId), __('Shortcodes and Blocks', 'rrze-multisite-manager'), $cronSiteId, $cronHook);
@@ -2736,11 +2781,15 @@ class Settings {
                 }
                 echo '</td>';
                 $assignmentMode = (string)($process['assignment_mode'] ?? 'unassigned');
-                $assignmentLabel = $assignmentMode === 'batch'
-                    ? __('Shared batch', 'rrze-multisite-manager')
-                    : ($assignmentMode === 'site'
-                        ? __('Individual schedule', 'rrze-multisite-manager')
-                        : __('Not assigned', 'rrze-multisite-manager'));
+                $assignmentLabel = $assignmentMode === 'small-batch'
+                    ? __('Small shared batch', 'rrze-multisite-manager')
+                    : ($assignmentMode === 'medium-batch'
+                        ? __('Medium shared batch', 'rrze-multisite-manager')
+                        : ($assignmentMode === 'large-batch'
+                            ? __('Large shared batch', 'rrze-multisite-manager')
+                            : ($assignmentMode === 'site'
+                                ? __('Individual schedule', 'rrze-multisite-manager')
+                                : __('Not assigned', 'rrze-multisite-manager'))));
                 echo '<td>' . esc_html($assignmentLabel) . '</td>';
                 echo '<td>' . esc_html($this->formatMonitoringTimestamp((string)($process['last_started_at'] ?? ''))) . '</td>';
                 echo $this->renderAnalysisPhaseCell((array)($process['phases'] ?? []), 'shortcodes', true);
@@ -2767,7 +2816,7 @@ class Settings {
                     wp_nonce_field('rrze_msm_request_shortcode_block_analysis_' . $siteId);
                     echo '<button type="submit" class="button button-secondary">' . esc_html($hasSuccessfulRun ? __('Start now', 'rrze-multisite-manager') : __('Start', 'rrze-multisite-manager')) . '</button>';
                     echo '</form>';
-                } elseif ($assignmentMode === 'batch' && ($statusKey === 'error' || !empty($process['last_error']))) {
+                } elseif (in_array($assignmentMode, ['small-batch', 'medium-batch', 'large-batch', 'batch'], true) && ($statusKey === 'error' || !empty($process['last_error']))) {
                     echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_request_shortcode_block_analysis')) . '">';
                     echo '<input type="hidden" name="site_id" value="' . esc_attr((string)$siteId) . '">';
                     echo '<input type="hidden" name="redirect_to" value="' . esc_url($monitoringUrl) . '">';
@@ -2792,8 +2841,10 @@ class Settings {
             $this->renderMonitoringTablePagination('shortcode_monitoring_page', $currentPage, $totalItems, $perPage, 'shortcode-block');
             echo '</div>';
             echo '<div class="rrze-msm-site-actions">';
-            if ($scheduler->canStartBatchNow()) {
-                $this->renderStartSharedBatchForm('shortcode-block');
+            foreach (['small-batch', 'medium-batch', 'large-batch'] as $batchMode) {
+                if ($scheduler->canStartBatchNow($batchMode)) {
+                    $this->renderStartSharedBatchForm('shortcode-block', $batchMode);
+                }
             }
             $this->renderWebsiteAnalysisTaskRemovalForm('shortcode-block');
             echo '</div>';
@@ -2815,7 +2866,7 @@ class Settings {
 
         echo '<section class="rrze-msm-widget rrze-msm-widget-span-12">';
         echo '<header class="rrze-msm-widget-header"><h2>' . esc_html__('Websites without a scheduled shortcode or block analysis', 'rrze-multisite-manager') . '</h2></header>';
-        echo '<p>' . esc_html__('These active websites have no scheduled shortcode or block analysis. Setting up an analysis assigns small websites to the shared batch and starts a separate task for larger websites.', 'rrze-multisite-manager') . '</p>';
+        echo '<p>' . esc_html__('These active websites have no scheduled shortcode or block analysis. Setup assigns them to the small, medium, or large shared batch, or to an individual schedule, based on their post and page count; a completed runtime can move them to a higher class later.', 'rrze-multisite-manager') . '</p>';
 
         if (empty($processes)) {
             echo '<div class="tablenav top"><div class="alignright">';
@@ -2937,13 +2988,13 @@ class Settings {
 
     protected function renderStartSharedBatchForm(string $analysisType, string $batchMode = ''): void {
         $modalId = wp_unique_id('rrze-msm-start-shared-batch-');
-        $isStorageBatch = $analysisType === 'storage' && in_array($batchMode, ['small-batch', 'medium-batch', 'large-batch'], true);
-        $label = $isStorageBatch
+        $isClassifiedBatch = in_array($batchMode, ['small-batch', 'medium-batch', 'large-batch'], true);
+        $label = $isClassifiedBatch
             ? ($batchMode === 'large-batch'
                 ? __('Start large shared batch', 'rrze-multisite-manager')
                 : ($batchMode === 'medium-batch' ? __('Start medium shared batch', 'rrze-multisite-manager') : __('Start small shared batch', 'rrze-multisite-manager')))
             : __('Start shared batches early', 'rrze-multisite-manager');
-        $warning = $isStorageBatch
+        $warning = $isClassifiedBatch
             ? ($batchMode === 'large-batch'
                 ? __('Start the large shared batch now for all websites assigned to it?', 'rrze-multisite-manager')
                 : ($batchMode === 'medium-batch' ? __('Start the medium shared batch now for all websites assigned to it?', 'rrze-multisite-manager') : __('Start the small shared batch now for all websites assigned to it?', 'rrze-multisite-manager')))

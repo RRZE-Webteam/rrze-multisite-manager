@@ -73,7 +73,16 @@ class ContentAnalysisStore {
         if (!$run || (!empty($state['run_id']) && $state['run_id'] !== $run->run_id)) {
             throw new \RuntimeException(__('The analysis checkpoint expired. Start a new analysis.', 'rrze-multisite-manager'));
         }
-        $summary = ['generated_at' => current_time('mysql', true), 'total_posts' => (int)$state['total_posts'], 'processed_posts' => (int)$state['block_processed_posts'], 'truncated' => !empty($state['shortcode_truncated']) || !empty($state['block_truncated'])];
+        $summary = [
+            'generated_at' => current_time('mysql', true),
+            'total_posts' => (int)$state['total_posts'],
+            'processed_posts' => (int)$state['block_processed_posts'],
+            'truncated' => !empty($state['shortcode_truncated']) || !empty($state['block_truncated']) || !empty($state['plugin_source_scan_truncated']),
+            'plugin_source_scan_enabled' => !empty($state['scan_plugin_sources']),
+            'plugin_source_scan_truncated' => !empty($state['plugin_source_scan_truncated']),
+            'plugin_source_files_scanned' => (int)($state['plugin_source_files_scanned'] ?? 0),
+            'plugin_source_bytes_read' => (int)($state['plugin_source_bytes_read'] ?? 0),
+        ];
         foreach (['shortcodes', 'blocks'] as $kind) {
             $table = $this->store->table($kind);
             $counts = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS entries, COUNT(DISTINCT name) AS names, COUNT(DISTINCT CASE WHEN registered = 0 THEN name END) AS unregistered FROM $table WHERE network_id = %d AND blog_id = %d AND run_id = %s AND post_id > 0", get_current_network_id(), $siteId, $run->run_id));
