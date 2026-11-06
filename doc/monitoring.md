@@ -8,7 +8,7 @@ The **Monitoring** page is the central operations interface for dashboard metric
 
 ### Network-wide
 
-Displays dashboard metrics, plugin/theme usage indexing and site availability monitoring. The usage index is a separate bounded process, runs twice weekly by default, and is the only source for website lists on plugin and theme detail pages. Once it has completed, local plugin activation/deactivation and theme changes update the affected website's rows immediately. The processes can be scheduled, started, reset, or removed. Status pills consistently mean:
+Displays dashboard metrics, plugin/theme usage indexing and site availability monitoring. The usage index is a separate bounded process, runs twice weekly by default, and is the only source for website lists on plugin and theme detail pages. Once it has completed, local plugin activation/deactivation and theme changes update the affected website's rows immediately. The processes can be scheduled, started, reset, or removed. A running usage-index pass can additionally be cancelled (**Cancel**, **Cancel and restart**); the last completely published index remains in use. The optional static source analysis of plugins and themes is part of this pass only when it is enabled under **Settings > Monitoring > Plugin and theme usage index** (disabled by default). Status pills consistently mean:
 
 * **Not scheduled** in grey: no next run, regardless of whether a result already exists.
 * **Scheduled** in yellow/orange: no result yet, but a future run is scheduled.
@@ -44,7 +44,7 @@ For collective batches, links to WP Crontrol always point to the main network si
 
 ## Technical execution
 
-`Settings::renderMonitoringPage()` is exclusively a control and status interface. The actual runners are `MetricsImplementationService`, `MonitoringService`, `StorageAnalysisSchedulerService`, and `ShortcodeBlockAnalysisSchedulerService`.
+`Settings::renderMonitoringPage()` is exclusively a control and status interface. The actual runners are `MetricsImplementationService`, `PluginThemeUsageMetricsService`, `MonitoringService`, `StorageAnalysisSchedulerService`, and `ShortcodeBlockAnalysisSchedulerService`. The list of completed availability runs keeps the number configured as **Retained monitoring runs**; lowering it shortens the stored log on the next page load.
 
 All recurring network processes are registered in the Cron context of the main site. Individual storage and shortcode/block analysis tasks, however, run in the Cron table of their respective site. Collective batches verify their execution context and move or remove central events incorrectly registered on a subsite. In production, an external Cron service executes due WordPress events; the configured service cadence determines how closely a due event follows its scheduled timestamp.
 
@@ -56,4 +56,4 @@ The dialogs for schedule initialisation, task removal, and old central Cron clea
 
 ## Shared background capacity
 
-Under **Settings > Monitoring > Background process capacity**, the network-wide limit defaults to two executing analysis processes and accepts values from one to eight. Storage, shortcode/block, dashboard/statistics and availability processes share it. A full budget delays work; it does not discard its saved progress. This also limits shared storage batches, independently of their per-type storage reservation setting. See [Runtime state and scheduler](runtime-state.md#shared-background-capacity-and-atomic-locks) for scope, retries and rollout requirements.
+Under **Settings > Monitoring > Background process capacity**, the network-wide limit defaults to three executing heavy processes and accepts values from 1 to 16. Storage, shortcode/block, plugin/theme usage index and dashboard/statistics processes share it; availability checks are not counted. The **Environment** page shows the configured limit, the slots occupied right now and the parallelism and postponements actually observed by the background runs. A full budget delays work; it does not discard its saved progress. This also limits shared storage batches, independently of their per-type storage reservation setting. See [Runtime state and scheduler](runtime-state.md#shared-background-capacity-and-atomic-locks) for scope, retries and rollout requirements.

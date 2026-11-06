@@ -341,13 +341,15 @@ class MonitoringService {
             return [];
         }
 
-        $deduplicatedHistory = $this->deduplicateRunHistory($history);
+        // Apply the configured retention also to entries stored before the
+        // setting was lowered, not only when the next run is finalized.
+        $retainedHistory = array_slice($this->deduplicateRunHistory($history), 0, $this->getRunLogEntryLimit());
 
-        if (count($deduplicatedHistory) !== count($history)) {
-            update_site_option(self::OPTION_RUN_LOG, $deduplicatedHistory);
+        if (count($retainedHistory) !== count($history)) {
+            update_site_option(self::OPTION_RUN_LOG, $retainedHistory);
         }
 
-        return $deduplicatedHistory;
+        return $retainedHistory;
     }
 
     public function getSiteHistory(int $siteId): array {
