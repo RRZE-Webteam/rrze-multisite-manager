@@ -32,10 +32,8 @@ The Manager may be visible to authorised web support users. Network-wide adminis
 
 ## Operational notes
 
-Dashboard metrics, monitoring, and scheduled analyses run in bounded batches. Loading the user interface never starts a synchronous scan of the entire network. WordPress Cron must be triggered reliably for timely execution. This installation uses an external Cron service; its cadence must be considered when interpreting scheduled timestamps and continuation delays.
+Dashboard metrics, monitoring, and scheduled analyses run in bounded batches. Loading the user interface never starts a synchronous scan of the entire network. WordPress Cron must be triggered reliably for timely execution. When an external Cron service is used, its cadence must be considered when interpreting scheduled timestamps and continuation delays.
 
 The pages store analysis and status data, not fully rendered admin pages. After changing relevant settings or updating the plugin, a background refresh may be required before aggregate metrics reflect the new state.
 
 Implementation plan and validation scope: [Central analysis storage](analysis-storage-plan.md).
-
-Open tasks, performance principles, completed measures and rejected approaches: [Todo](Todo.md).

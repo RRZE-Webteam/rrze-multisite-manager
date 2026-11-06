@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The **Users** page is a network-wide user list based on the WordPress network administration. It adds a view of users without any website assignment, so that orphaned accounts can be found and removed. It is visible only to super admins. The page is a first step; further functions for orphaned users are planned (see [Todo](Todo.md)).
+The **Users** page is a network-wide user list based on the WordPress network administration. It adds a view of users without any website assignment, so that orphaned accounts can be found and removed. It is visible only to super admins.
 
 ## Views and search
 

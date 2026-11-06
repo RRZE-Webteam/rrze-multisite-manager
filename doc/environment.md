@@ -28,7 +28,7 @@ Three sections answer questions that can only be checked on the production syste
 
 **Cron on the main site** shows `DISABLE_WP_CRON`, `ALTERNATE_WP_CRON`, `WP_CRON_LOCK_TIMEOUT`, the number of scheduled events of the main site and how many are overdue by more than five minutes. Individual website analyses run in each website's own Cron table and are not counted here.
 
-Interpretation: if no run was ever postponed and the highest parallelism stays at 1, the Cron script executes the heavy work serially and the worker limit never applies. Postponements show that the limit actively throttles. Duration and peak memory per hook are the basis for the measurement tasks in [Todo](Todo.md).
+Interpretation: if no run was ever postponed and the highest parallelism stays at 1, the Cron script executes the heavy work serially and the worker limit never applies. Postponements show that the limit actively throttles. Duration and peak memory per hook support operational performance measurements. Keep actual measurements and infrastructure details in private operational records outside version control.
 
 ## Implementation
 

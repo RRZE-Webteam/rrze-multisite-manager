@@ -57,3 +57,6 @@ nbproject
 *.map
 
 *.po~
+
+# Local planning and operational notes; never publish.
+/doc/Todo.md

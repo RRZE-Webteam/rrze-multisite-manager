@@ -14,7 +14,7 @@ Global plugin configuration is stored as the network option `rrze-multisite-mana
 
 ## Cron operation
 
-The plugin registers WordPress Cron events; it does not require visitor traffic to execute them. The production setup uses an external Cron service to trigger due WordPress events. Its cadence must be short enough for the intended continuation delays. A due timestamp is therefore the earliest execution time, not a guarantee that PHP starts at that exact second.
+The plugin registers WordPress Cron events; it does not require visitor traffic to execute them. An external Cron service can trigger due WordPress events independently of visitor traffic. Its cadence must be short enough for the intended continuation delays. A due timestamp is therefore the earliest execution time, not a guarantee that PHP starts at that exact second.
 
 Do not delete or recreate individual continuation, composition, or watchdog events merely because a site batch already shows 100 percent. The Monitoring page distinguishes the collection phase from the following composition phase and displays the next composition-related event. Manual actions should be limited to an explicit reset after a reported final failure or to the documented task-removal tools.
 

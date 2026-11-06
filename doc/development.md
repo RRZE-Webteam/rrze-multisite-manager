@@ -77,3 +77,7 @@ When changing this schema:
 3. Preserve separate `shortcodes` and `blocks` tables and their phase checkpoints. Do not move large findings back to options, post types, or object-cache payloads.
 4. Add or update isolated persistence regressions and, where possible, WordPress/MySQL integration coverage for upgrades and cleanup.
 5. Document new columns, indexes, retention, and deletion behaviour in the central-schema section before shipping.
+
+### Private operational records
+
+Do not commit database-monitoring exports, internal hostnames or addresses, server identifiers, credentials, or installation-specific topology and capacity measurements. Public documentation describes the diagnostic functions and measurement procedures without actual infrastructure values. `doc/Todo.md` is a local-only planning file excluded by `.gitignore`; do not force-add it or link to it from published documentation.
