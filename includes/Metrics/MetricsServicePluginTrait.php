@@ -124,6 +124,7 @@ trait MetricsServicePluginTrait {
                 'metadata_sources' => (array)($supplementary['sources'] ?? []),
                 'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
                 'source_analysis_completed' => $sourceAnalysisCompleted,
+                'source_analysis_truncated' => !empty($analysis['truncated']),
                 'shortcodes' => (array)($analysis['shortcodes'] ?? []),
                 'blocks' => (array)($analysis['blocks'] ?? []),
                 'block_patterns' => (array)($analysis['block_patterns'] ?? []),

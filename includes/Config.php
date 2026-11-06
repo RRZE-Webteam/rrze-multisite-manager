@@ -5,6 +5,14 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 class Config {
+    // Shared limit for heavy background requests. Each one occupies a PHP
+    // worker and a database connection; 16 keeps the upper bound well below
+    // typical PHP-FPM pool and max_connections sizes.
+    public const DEFAULT_MAX_CONCURRENT_WORKERS = 3;
+    public const MAX_CONCURRENT_WORKERS_LIMIT = 16;
+    // Static plugin/theme source analysis scope.
+    public const DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH = 3;
+    public const DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES = 100;
     public const STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS = 8;
 
     private array $config = [];
@@ -268,6 +276,24 @@ class Config {
                         'choices' => $schedulerFrequencyChoices,
                     ],
                     [
+                        'name' => 'source_analysis_max_depth',
+                        'label' => __('Source analysis: subdirectory depth', 'rrze-multisite-manager'),
+                        'desc' => __('How many subdirectory levels below a plugin or theme directory the static source analysis reads. 0 reads only the main directory, 1 also its direct subdirectories. Registrations in deeper directories are not found; the default of 3 still covers block metadata in build/blocks/*/block.json. Default: 3. Allowed values: 0 to 10.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => self::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH,
+                        'min' => 0,
+                        'max' => 10,
+                    ],
+                    [
+                        'name' => 'source_analysis_max_php_files',
+                        'label' => __('Source analysis: maximum PHP files', 'rrze-multisite-manager'),
+                        'desc' => __('Maximum number of PHP files read per plugin or theme. Files in the main directory are read first, then each subdirectory level in alphabetical order. A plugin or theme with more PHP files within the configured depth is marked as incompletely analysed. Default: 100. Allowed values: 10 to 5000.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => self::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES,
+                        'min' => 10,
+                        'max' => 5000,
+                    ],
+                    [
                         'name' => 'batch_size',
                         'label' => __('Dashboard metrics batch size', 'rrze-multisite-manager'),
                         'desc' => __('Number of websites processed in each dashboard-metrics batch. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
@@ -446,11 +472,11 @@ class Config {
                     [
                         'name' => 'max_concurrent_workers',
                         'label' => __('Maximum concurrent background processes', 'rrze-multisite-manager'),
-                        'desc' => __('Shared network-wide limit for storage analyses, shortcode and block analyses, dashboard metrics and availability checks. Default: 2. Allowed values: 1 to 8. Waiting tasks resume automatically.', 'rrze-multisite-manager'),
+                        'desc' => __('Shared network-wide limit for storage analyses, shortcode and block analyses, plugin and theme usage collection and dashboard metrics. Availability checks are not counted. Each process uses one PHP worker and one database connection. Default: 3. Allowed values: 1 to 16. Waiting tasks resume automatically.', 'rrze-multisite-manager'),
                         'type' => 'number',
-                        'default' => 2,
+                        'default' => self::DEFAULT_MAX_CONCURRENT_WORKERS,
                         'min' => 1,
-                        'max' => 8,
+                        'max' => self::MAX_CONCURRENT_WORKERS_LIMIT,
                     ],
                     [
                         'name' => 'storage_analysis_max_concurrent_runs',
@@ -548,13 +574,6 @@ class Config {
                         'max' => 3600,
                     ],
                     [
-                        'name' => 'shortcode_block_scan_plugin_sources',
-                        'label' => __('Search plugin sources for shortcode and block registrations', 'rrze-multisite-manager'),
-                        'desc' => __('Disabled by default: the analysis searches posts and pages only. When enabled, active plugin sources are indexed centrally and reused across websites to identify registrations that are not loaded in the current process.', 'rrze-multisite-manager'),
-                        'type' => 'checkbox',
-                        'default' => false,
-                    ],
-                    [
                         'name' => 'show_local_analysis_request_notice',
                         'label' => __('Show analysis request notice to local administrators', 'rrze-multisite-manager'),
                         'desc' => __('When a website has neither a saved result nor a planned storage or shortcode-and-block analysis, show local administrators a request notice under Tools. When disabled, the relevant Tools page is hidden instead.', 'rrze-multisite-manager'),
@@ -623,6 +642,15 @@ class Config {
                         'default' => 256,
                         'min' => 64,
                         'max' => 1024,
+                    ],
+                    [
+                        'name' => 'shortcode_block_result_entry_limit',
+                        'label' => __('Maximum stored findings per website and type', 'rrze-multisite-manager'),
+                        'desc' => __('Cumulative limit for one website analysis, applied separately to shortcodes and blocks. A shortcode finding is one occurrence; a block finding is one block type in one post, regardless of how often it occurs there. Further findings are counted but not stored. Default: 1000. Allowed values: 100 to 5000.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 1000,
+                        'min' => 100,
+                        'max' => 5000,
                     ],
                     [
                         'name' => 'monitoring_frequency',
@@ -704,6 +732,13 @@ class Config {
                         'name' => 'logging',
                         'label' => __('Logging', 'rrze-multisite-manager'),
                         'desc' => __('Send informational messages to the info channel.', 'rrze-multisite-manager'),
+                        'type' => 'checkbox',
+                        'default' => false,
+                    ],
+                    [
+                        'name' => 'fine_grained',
+                        'label' => __('Fine-grained debugging', 'rrze-multisite-manager'),
+                        'desc' => __('Also send intermediate steps of background runs to the info channel, such as analysis phases, Cron slices and batch queue handling. Without this option, only the start and end of each website analysis are logged. Requires logging.', 'rrze-multisite-manager'),
                         'type' => 'checkbox',
                         'default' => false,
                     ],
@@ -887,8 +922,8 @@ class Config {
 
     public function getMaxConcurrentWorkers(): int {
         $options = get_site_option($this->getOptionName(), []);
-        $limit = is_array($options) ? (int)($options['monitoring_max_concurrent_workers'] ?? 2) : 2;
-        return max(1, min(8, $limit));
+        $limit = is_array($options) ? (int)($options['monitoring_max_concurrent_workers'] ?? self::DEFAULT_MAX_CONCURRENT_WORKERS) : self::DEFAULT_MAX_CONCURRENT_WORKERS;
+        return max(1, min(self::MAX_CONCURRENT_WORKERS_LIMIT, $limit));
     }
 
     public function getStorageAnalysisMaxConcurrentRuns(): int {
@@ -929,8 +964,34 @@ class Config {
         return max(25, min(250, (int)($this->config['constants']['network_cron_cleanup_batch_size'] ?? 100)));
     }
 
+    /** Subdirectory levels below a plugin or theme directory read by the source analysis. */
+    public function getSourceAnalysisMaxDepth(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $depth = is_array($options)
+            ? (int)($options['monitoring_source_analysis_max_depth'] ?? self::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH)
+            : self::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH;
+
+        return max(0, min(10, $depth));
+    }
+
+    /** PHP files read per plugin or theme by the source analysis. */
+    public function getSourceAnalysisMaxPhpFiles(): int {
+        $options = get_site_option($this->getOptionName(), []);
+        $files = is_array($options)
+            ? (int)($options['monitoring_source_analysis_max_php_files'] ?? self::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES)
+            : self::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES;
+
+        return max(10, min(5000, $files));
+    }
+
     public function getShortcodeBlockResultEntryLimit(): int {
-        return max(100, min(5000, (int)($this->config['constants']['shortcode_block_result_entry_limit'] ?? 1000)));
+        $options = get_site_option($this->getOptionName(), []);
+        $default = (int)($this->config['constants']['shortcode_block_result_entry_limit'] ?? 1000);
+        $limit = is_array($options)
+            ? (int)($options['monitoring_shortcode_block_result_entry_limit'] ?? $default)
+            : $default;
+
+        return max(100, min(5000, $limit));
     }
 
     public function getStorageAnalysisContentUsageMatchesLimit(): int {
@@ -992,12 +1053,6 @@ class Config {
             : $default;
 
         return min(1024, max(64, $kilobytes)) * KB_IN_BYTES;
-    }
-
-    public function shouldScanPluginSourcesForShortcodesAndBlocks(): bool {
-        $options = get_site_option($this->getOptionName(), []);
-
-        return is_array($options) && !empty($options['monitoring_shortcode_block_scan_plugin_sources']);
     }
 
     public function getShortcodeBlockSmallBatchPostThreshold(): int {

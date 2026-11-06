@@ -4,7 +4,7 @@
  * Plugin Name:     RRZE Multisite Manager
  * Plugin URI:
  * Description:     Multisite management for WordPress 
- * Version:         1.3.36
+ * Version:         1.3.37
  * Requires at least: 6.9.4
  * Requires PHP:      8.3
  * Author:          RRZE-Webteam
@@ -53,6 +53,13 @@ register_deactivation_hook(__FILE__, __NAMESPACE__ . '\deactivate');
 
 function loadTextdomain(): void {
     $domain = 'rrze-multisite-manager';
+
+    // Anonymous frontend requests on the network's websites never render
+    // plugin strings. Skip eager loading there; the mofile filter below still
+    // selects the bundled catalog if a string is translated just in time.
+    if (!is_admin() && !wp_doing_cron() && !wp_doing_ajax() && !(defined('WP_CLI') && WP_CLI) && !is_user_logged_in()) {
+        return;
+    }
     $bundledMofile = plugin_dir_path(__FILE__) . 'languages/' . $domain . '-' . determine_locale() . '.mo';
 
     if (is_readable($bundledMofile)) {

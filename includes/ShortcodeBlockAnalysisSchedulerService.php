@@ -44,7 +44,9 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const CONTINUATION_DELAY_SECONDS = 5;
     protected const BATCH_RUN_STALE_AFTER_SECONDS = 2 * HOUR_IN_SECONDS;
     protected const META_VALUES_PER_POST_LIMIT = 10;
-    protected const RESULT_MAX_BYTES = 1048576;
+    // Cumulative stored finding payload per phase. Sized so that the
+    // configurable entry limit (up to 5,000) remains the effective bound.
+    protected const RESULT_MAX_BYTES = 4194304;
     protected const OMITTED_SOURCE_LIMIT = 10;
     protected array $findingTotals = [];
     protected int $pendingFindingBytes = 0;
@@ -58,7 +60,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected array $activeSiteShortcodeRegistrations = [];
     /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
     protected array $activeSiteBlockRegistrations = [];
-    protected bool $scanPluginSources = false;
+    protected ?Metrics\PluginThemeUsageMetricsService $pluginThemeUsage = null;
     /** @var array<string, string> */
     protected array $blockCategoryLabels = [];
     /** @var array<int, int>|null */
@@ -78,12 +80,6 @@ class ShortcodeBlockAnalysisSchedulerService {
         add_action(self::FREQUENCY_RESCHEDULE_HOOK, [$this, 'runFrequencyRescheduleBatch']);
         add_filter('cron_schedules', [$this, 'registerSchedules']);
         add_action('init', [$this, 'ensureRecurringSchedules'], 20);
-        add_action('upgrader_process_complete', [$this, 'invalidatePluginSourceRegistrationIndex'], 10, 0);
-        add_action('deleted_plugin', [$this, 'invalidatePluginSourceRegistrationIndex'], 10, 0);
-    }
-
-    public function invalidatePluginSourceRegistrationIndex(): void {
-        Analysis\PluginSourceRegistrationIndex::invalidate();
     }
 
     public function registerSchedules(array $schedules): array {
@@ -1263,27 +1259,13 @@ class ShortcodeBlockAnalysisSchedulerService {
             $this->markStarted($siteId, $state);
         }
 
-        $pluginSourceScanningConfigured = $this->config->shouldScanPluginSourcesForShortcodesAndBlocks();
-        if (!$pluginSourceScanningConfigured) {
-            // Disabling the setting must stop source reads even for an analysis
-            // whose checkpoint was created while the option was enabled.
-            $state['scan_plugin_sources'] = false;
-        }
-
         $this->findingTotals = $state;
         $this->pendingFindingBytes = 0;
         $this->pendingFindingKeys = [];
-        $this->scanPluginSources = $pluginSourceScanningConfigured && !empty($state['scan_plugin_sources']);
         switch_to_blog($siteId);
 
         try {
             if ($this->isTaskRemovalInProgress()) {
-                return false;
-            }
-
-            if ($this->scanPluginSources && !$this->preparePluginSourceRegistrations($state, $deadline)) {
-                $state['updated_at'] = current_time('mysql', true);
-                $this->saveAnalysisState($siteId, $state);
                 return false;
             }
 
@@ -1426,10 +1408,6 @@ class ShortcodeBlockAnalysisSchedulerService {
             'total_posts' => $total,
             'shortcodes' => [],
             'blocks' => [],
-            'scan_plugin_sources' => $this->config->shouldScanPluginSourcesForShortcodesAndBlocks(),
-            'plugin_source_scan_truncated' => false,
-            'plugin_source_files_scanned' => 0,
-            'plugin_source_bytes_read' => 0,
             'updated_at' => current_time('mysql', true),
         ];
     }
@@ -1440,7 +1418,7 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     protected function saveAnalysisState(int $siteId, array &$state): void {
         foreach ($this->findingTotals as $key => $value) {
-            if (preg_match('/^(shortcode|block)_(bytes|count|truncated|unregistered|omitted_count|omitted_sources)$/', (string)$key)) {
+            if (preg_match('/^(shortcode|block)_(bytes|count|truncated|unregistered|omitted_count|omitted_sources|limit_omitted)$/', (string)$key)) {
                 $state[$key] = $value;
             }
         }
@@ -1458,8 +1436,9 @@ class ShortcodeBlockAnalysisSchedulerService {
     /** Bound each row and each phase before it can enter a persisted checkpoint. */
     protected function appendFinding(string $kind, array $entry, array &$entries): void {
         $prefix = $kind === 'blocks' ? 'block_' : 'shortcode_';
-        if ((int)($this->findingTotals[$prefix . 'count'] ?? 0) >= $this->config->getShortcodeBlockResultEntryLimit()) {
-            $this->recordOmittedSource($kind, 'finding_count_limit', (int)($entry['post_id'] ?? 0), (string)($entry['post_title'] ?? ''));
+        $limit = $this->config->getShortcodeBlockResultEntryLimit();
+        if ((int)($this->findingTotals[$prefix . 'count'] ?? 0) >= $limit) {
+            $this->recordResultLimitOmission($kind, (int)($entry['post_id'] ?? 0), (string)($entry['post_title'] ?? ''), $limit);
             return;
         }
         // Preserve identities separately; shortening display text must not merge two findings.
@@ -1496,12 +1475,31 @@ class ShortcodeBlockAnalysisSchedulerService {
         $this->findingTotals[$prefix . 'count'] = (int)($this->findingTotals[$prefix . 'count'] ?? 0) + 1;
     }
 
-    /** Records a bounded explanation for content deliberately excluded by the input cap. */
-    protected function recordOmittedSource(string $kind, string $reason, int $postId, string $postTitle = '', string $metadataKey = '', string $field = ''): void {
+    /**
+     * Records a bounded explanation for content deliberately excluded by an
+     * input or result cap. The same reason for the same post and field is
+     * recorded once; repeated hits do not count as separate events.
+     */
+    protected function recordOmittedSource(string $kind, string $reason, int $postId, string $postTitle = '', string $metadataKey = '', string $field = '', int $limit = 0): void {
         $prefix = $kind === 'blocks' ? 'block_' : 'shortcode_';
-        $this->findingTotals[$prefix . 'truncated'] = true;
-        $this->findingTotals[$prefix . 'omitted_count'] = (int)($this->findingTotals[$prefix . 'omitted_count'] ?? 0) + 1;
         $sources = (array)($this->findingTotals[$prefix . 'omitted_sources'] ?? []);
+        $source = [];
+        $metadataKey = substr($metadataKey, 0, 512);
+        $field = substr($field, 0, 128);
+
+        $this->findingTotals[$prefix . 'truncated'] = true;
+
+        foreach ($sources as $source) {
+            if (is_array($source)
+                && (string)($source['reason'] ?? '') === $reason
+                && (int)($source['post_id'] ?? 0) === $postId
+                && (string)($source['metadata_key'] ?? '') === $metadataKey
+                && (string)($source['field'] ?? '') === $field) {
+                return;
+            }
+        }
+
+        $this->findingTotals[$prefix . 'omitted_count'] = (int)($this->findingTotals[$prefix . 'omitted_count'] ?? 0) + 1;
 
         if (count($sources) >= self::OMITTED_SOURCE_LIMIT) {
             return;
@@ -1511,10 +1509,26 @@ class ShortcodeBlockAnalysisSchedulerService {
             'reason' => $reason,
             'post_id' => $postId,
             'post_title' => substr($postTitle, 0, 512),
-            'metadata_key' => substr($metadataKey, 0, 512),
-            'field' => substr($field, 0, 128),
+            'metadata_key' => $metadataKey,
+            'field' => $field,
+            'limit' => $limit,
         ];
         $this->findingTotals[$prefix . 'omitted_sources'] = $sources;
+    }
+
+    /**
+     * The result limit is cumulative for one website. It is recorded once,
+     * with the first post whose findings could no longer be stored; every
+     * later finding is only counted.
+     */
+    protected function recordResultLimitOmission(string $kind, int $postId, string $postTitle, int $limit): void {
+        $prefix = $kind === 'blocks' ? 'block_' : 'shortcode_';
+
+        if ((int)($this->findingTotals[$prefix . 'limit_omitted'] ?? 0) === 0) {
+            $this->recordOmittedSource($kind, 'finding_count_limit', $postId, $postTitle, '', '', $limit);
+        }
+
+        $this->findingTotals[$prefix . 'limit_omitted'] = (int)($this->findingTotals[$prefix . 'limit_omitted'] ?? 0) + 1;
     }
 
     protected function getBoundedAnalysisPost(int $postId): ?\WP_Post {
@@ -1716,16 +1730,29 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
     }
 
+    /**
+     * Stores one finding per block name and post with its number of
+     * occurrences. Individual paragraphs or headings are not stored as
+     * separate findings, so the result limit counts distinct uses.
+     */
     protected function collectBlocks(string $content, array $location, array &$blocks): void {
-        foreach ($this->flattenBlocks(parse_blocks($content)) as $occurrence => $block) {
+        $occurrences = [];
+        $block = [];
+        $blockName = '';
+        $count = 0;
 
+        foreach ($this->flattenBlocks(parse_blocks($content)) as $block) {
             $blockName = (string)($block['blockName'] ?? '');
 
             if ($blockName === '') {
                 continue;
             }
 
-            $this->appendFinding('blocks', array_merge(['block' => $blockName, 'occurrence' => $occurrence], $this->getBlockDetails($blockName), $location), $blocks);
+            $occurrences[$blockName] = (int)($occurrences[$blockName] ?? 0) + 1;
+        }
+
+        foreach ($occurrences as $blockName => $count) {
+            $this->appendFinding('blocks', array_merge(['block' => (string)$blockName, 'occurrence' => 0, 'occurrences' => $count], $this->getBlockDetails((string)$blockName), $location), $blocks);
         }
     }
 
@@ -1740,11 +1767,9 @@ class ShortcodeBlockAnalysisSchedulerService {
         $blockType = \WP_Block_Type_Registry::get_instance()->get_registered($blockName);
 
         if (!$blockType instanceof \WP_Block_Type) {
-            if ($this->scanPluginSources) {
-                $registration = $this->getActiveSiteBlockRegistrations()[$blockName] ?? [];
-                if ($registration) {
-                    $details['origin'] = (string)($registration['name'] ?? __('Plugin', 'rrze-multisite-manager'));
-                }
+            $registration = $this->getActiveSiteBlockRegistrations()[$blockName] ?? [];
+            if ($registration) {
+                $details['origin'] = (string)($registration['name'] ?? __('Plugin', 'rrze-multisite-manager'));
             }
             return $details;
         }
@@ -1925,10 +1950,11 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     /**
-     * Checks the runtime registry and shortcode declarations of plugins active on the current site.
+     * Checks the runtime registry and the stored source findings of plugins and the theme active on the current site.
      *
-     * switch_to_blog() does not load plugins that are active only on the target site. Inspecting
-     * their add_shortcode() declarations prevents those shortcodes from being reported as missing.
+     * switch_to_blog() does not load plugins that are active only on the target site. The plugin
+     * and theme usage index has already analysed their add_shortcode() declarations; reusing those
+     * results prevents such shortcodes from being reported as missing without reading any source file.
      *
      * @return array{name: string, plugin_file: string}
      */
@@ -1940,10 +1966,6 @@ class ShortcodeBlockAnalysisSchedulerService {
                 'name' => (string)($provider['name'] ?? __('Unknown', 'rrze-multisite-manager')),
                 'plugin_file' => (string)($provider['plugin_file'] ?? ''),
             ];
-        }
-
-        if (!$this->scanPluginSources) {
-            return [];
         }
 
         $registrations = $this->getActiveSiteShortcodeRegistrations();
@@ -1976,34 +1998,81 @@ class ShortcodeBlockAnalysisSchedulerService {
         return $this->activeSiteBlockRegistrations[$siteId] ?? [];
     }
 
+    /**
+     * Builds the provider lookup for one website from the stored static
+     * source analysis of the plugin and theme usage index. Before that
+     * index has completed a run, unknown registrations stay unattributed.
+     */
     protected function loadActiveSitePluginRegistrations(int $siteId): void {
         $shortcodes = [];
         $blocks = [];
-        $index = new Analysis\PluginSourceRegistrationIndex();
+        $activePlugins = $this->getActivePluginData();
+        $usage = $this->getPluginThemeUsage();
+        $analyses = $usage->getPluginSourceAnalyses(array_keys($activePlugins));
+        $pluginFile = '';
+        $analysis = [];
+        $provider = [];
+        $theme = wp_get_theme();
+        $themeAnalysis = [];
 
-        foreach ($this->getActivePluginData() as $pluginFile => $pluginData) {
-            $indexed = $index->registrations($pluginFile, $pluginData, microtime(true));
-            if (empty($indexed['complete'])) {
-                continue;
-            }
+        foreach ($activePlugins as $pluginFile => $pluginData) {
+            $analysis = (array)($analyses[$pluginFile] ?? []);
             $provider = [
                 'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                'plugin_file' => $pluginFile,
+                'plugin_file' => (string)$pluginFile,
             ];
-            foreach ((array)$indexed['shortcodes'] as $shortcodeTag) {
-                if (!isset($shortcodes[$shortcodeTag])) {
-                    $shortcodes[$shortcodeTag] = $provider;
-                }
-            }
-            foreach ((array)$indexed['blocks'] as $blockName) {
-                if (!isset($blocks[$blockName])) {
-                    $blocks[$blockName] = $provider;
-                }
-            }
+            $this->addSourceRegistrations($shortcodes, $blocks, $analysis, $provider);
+        }
+
+        if ($theme instanceof \WP_Theme && $theme->exists()) {
+            $themeAnalysis = $usage->getThemeSourceAnalysis((string)$theme->get_stylesheet());
+            $provider = [
+                'name' => sprintf(
+                    /* translators: %s: theme name. */
+                    __('Theme: %s', 'rrze-multisite-manager'),
+                    (string)$theme->get('Name')
+                ),
+                'plugin_file' => '',
+            ];
+            $this->addSourceRegistrations($shortcodes, $blocks, $themeAnalysis, $provider);
         }
 
         $this->activeSiteShortcodeRegistrations[$siteId] = $shortcodes;
         $this->activeSiteBlockRegistrations[$siteId] = $blocks;
+    }
+
+    /**
+     * @param array<string, array{name: string, plugin_file: string}> $shortcodes
+     * @param array<string, array{name: string, plugin_file: string}> $blocks
+     * @param array<string, mixed> $analysis
+     * @param array{name: string, plugin_file: string} $provider
+     */
+    protected function addSourceRegistrations(array &$shortcodes, array &$blocks, array $analysis, array $provider): void {
+        $shortcodeTag = '';
+        $block = null;
+        $blockName = '';
+
+        foreach ((array)($analysis['shortcodes'] ?? []) as $shortcodeTag) {
+            $shortcodeTag = (string)$shortcodeTag;
+            if ($shortcodeTag !== '' && !isset($shortcodes[$shortcodeTag])) {
+                $shortcodes[$shortcodeTag] = $provider;
+            }
+        }
+
+        foreach ((array)($analysis['blocks'] ?? []) as $block) {
+            $blockName = is_array($block) ? (string)($block['name'] ?? '') : (string)$block;
+            if ($blockName !== '' && !isset($blocks[$blockName])) {
+                $blocks[$blockName] = $provider;
+            }
+        }
+    }
+
+    protected function getPluginThemeUsage(): Metrics\PluginThemeUsageMetricsService {
+        if ($this->pluginThemeUsage === null) {
+            $this->pluginThemeUsage = new Metrics\PluginThemeUsageMetricsService(null, $this->config);
+        }
+
+        return $this->pluginThemeUsage;
     }
 
     /** @return array<string, array<string, mixed>> */
@@ -2018,33 +2087,6 @@ class ShortcodeBlockAnalysisSchedulerService {
         ));
         $availablePlugins = get_plugins();
         return array_intersect_key($availablePlugins, array_fill_keys($activePluginFiles, true));
-    }
-
-    /** @param array<string, mixed> $state */
-    protected function preparePluginSourceRegistrations(array &$state, float $deadline): bool {
-        $index = new Analysis\PluginSourceRegistrationIndex();
-        $filesScanned = 0;
-        $bytesRead = 0;
-        $truncated = false;
-
-        foreach ($this->getActivePluginData() as $pluginFile => $pluginData) {
-            $result = $index->registrations((string)$pluginFile, $pluginData, $deadline);
-            $filesScanned += (int)$result['files_scanned'];
-            $bytesRead += (int)$result['bytes_read'];
-            $truncated = $truncated || !empty($result['truncated']);
-
-            if (empty($result['complete'])) {
-                $state['plugin_source_scan_truncated'] = $truncated;
-                $state['plugin_source_files_scanned'] = $filesScanned;
-                $state['plugin_source_bytes_read'] = $bytesRead;
-                return false;
-            }
-        }
-
-        $state['plugin_source_scan_truncated'] = $truncated;
-        $state['plugin_source_files_scanned'] = $filesScanned;
-        $state['plugin_source_bytes_read'] = $bytesRead;
-        return true;
     }
 
     protected function markStarted(int $siteId, array $state): void {

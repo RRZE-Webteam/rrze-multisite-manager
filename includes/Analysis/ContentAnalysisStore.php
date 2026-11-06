@@ -77,11 +77,7 @@ class ContentAnalysisStore {
             'generated_at' => current_time('mysql', true),
             'total_posts' => (int)$state['total_posts'],
             'processed_posts' => (int)$state['block_processed_posts'],
-            'truncated' => !empty($state['shortcode_truncated']) || !empty($state['block_truncated']) || !empty($state['plugin_source_scan_truncated']),
-            'plugin_source_scan_enabled' => !empty($state['scan_plugin_sources']),
-            'plugin_source_scan_truncated' => !empty($state['plugin_source_scan_truncated']),
-            'plugin_source_files_scanned' => (int)($state['plugin_source_files_scanned'] ?? 0),
-            'plugin_source_bytes_read' => (int)($state['plugin_source_bytes_read'] ?? 0),
+            'truncated' => !empty($state['shortcode_truncated']) || !empty($state['block_truncated']),
         ];
         foreach (['shortcodes', 'blocks'] as $kind) {
             $table = $this->store->table($kind);
@@ -99,6 +95,7 @@ class ContentAnalysisStore {
             $summary[$kind . '_truncated'] = !empty($checkpoint[$prefix . 'truncated']);
             $summary[$kind . '_omitted_count'] = (int)($checkpoint[$prefix . 'omitted_count'] ?? 0);
             $summary[$kind . '_omitted_sources'] = array_slice((array)($checkpoint[$prefix . 'omitted_sources'] ?? []), 0, 10);
+            $summary[$kind . '_limit_omitted'] = (int)($checkpoint[$prefix . 'limit_omitted'] ?? 0);
         }
         $this->store->publish($siteId, $run->run_id, $summary);
         AnalysisLifecycle::completed($siteId, 'content');

@@ -31,11 +31,19 @@ class WorkerBudget {
             $key = 'background_worker_' . $slot;
             $token = AtomicLock::acquire($key, $this->networkId);
             if ($token !== '') {
-                self::$reservations[$this->networkId] = ['key' => $key, 'token' => $token, 'depth' => 1];
+                self::$reservations[$this->networkId] = [
+                    'key' => $key,
+                    'token' => $token,
+                    'depth' => 1,
+                    'hook' => WorkerRuntimeStats::currentHook(),
+                    'started' => microtime(true),
+                    'concurrent' => self::countOccupiedSlots($limit, $this->networkId),
+                ];
                 $this->acquired = true;
                 return true;
             }
         }
+        WorkerRuntimeStats::recordDenial(WorkerRuntimeStats::currentHook());
         return false;
     }
 
@@ -48,7 +56,25 @@ class WorkerBudget {
             $reservation = self::$reservations[$this->networkId];
             AtomicLock::release($reservation['key'], $reservation['token'], $this->networkId);
             unset(self::$reservations[$this->networkId]);
+            WorkerRuntimeStats::recordCompletion(
+                (string)$reservation['hook'],
+                (int)$reservation['concurrent'],
+                microtime(true) - (float)$reservation['started']
+            );
         }
+    }
+
+    /** Number of occupied execution slots, including the caller's own slot. */
+    public static function countOccupiedSlots(int $limit, ?int $networkId = null): int {
+        $occupied = 0;
+
+        for ($slot = 0; $slot < $limit; $slot++) {
+            if (AtomicLock::isLocked('background_worker_' . $slot, $networkId)) {
+                $occupied++;
+            }
+        }
+
+        return $occupied;
     }
 
     public static function clearRetries(string $hook): void {

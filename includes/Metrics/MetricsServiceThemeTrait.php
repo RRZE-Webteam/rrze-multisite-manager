@@ -74,6 +74,7 @@ trait MetricsServiceThemeTrait {
                     'theme'
                 ),
                 'source_analysis_completed' => $sourceAnalysisCompleted,
+                'source_analysis_truncated' => !empty($analysis['truncated']),
                 'shortcodes' => (array)($analysis['shortcodes'] ?? []),
                 'blocks' => (array)($analysis['blocks'] ?? []),
                 'block_patterns' => (array)($analysis['block_patterns'] ?? []),

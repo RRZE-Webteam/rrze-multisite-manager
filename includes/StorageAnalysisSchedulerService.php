@@ -34,6 +34,9 @@ class StorageAnalysisSchedulerService {
     protected const MEDIUM_BATCH_SITE_IDS_OPTION = 'rrze_msm_storage_analysis_medium_batch_site_ids';
     protected const LARGE_BATCH_SITE_IDS_OPTION = 'rrze_msm_storage_analysis_large_batch_site_ids';
     protected const ASSIGNMENTS_OPTION = 'rrze_msm_storage_analysis_assignments';
+    // Compact per-site record of the last completed run: [site_id => ['t' => timestamp, 'd' => seconds]].
+    protected const PERFORMANCE_RUNS_OPTION = 'rrze_msm_storage_analysis_performance_runs';
+    protected const PERFORMANCE_RUNS_LOCK_KEY = 'storage_analysis_performance_runs';
     protected const BATCH_LAST_SITE_ID_OPTION = 'rrze_msm_storage_analysis_batch_last_site_id';
     protected const MEDIUM_BATCH_LAST_SITE_ID_OPTION = 'rrze_msm_storage_analysis_medium_batch_last_site_id';
     protected const LARGE_BATCH_LAST_SITE_ID_OPTION = 'rrze_msm_storage_analysis_large_batch_last_site_id';
@@ -1555,7 +1558,7 @@ class StorageAnalysisSchedulerService {
         }
 
         $processedSiteId = 0;
-        LoggingService::info(
+        LoggingService::debug(
             $this->config,
             'RRZE-MSM: Shared storage-analysis batch started.',
             ['cron_site_id' => $this->getBatchCronSiteId()]
@@ -1578,7 +1581,7 @@ class StorageAnalysisSchedulerService {
             if ($assignedMode !== 'batch' && $assignedMode !== $batchMode) {
                 $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch überspringt veraltete Queue-Site', $siteId, $batchMode, [
                     'current_assignment' => $assignedMode,
-                ]);
+                ], true);
                 $this->advanceBatchQueue($batchMode, $siteId);
                 return;
             }
@@ -1610,7 +1613,7 @@ class StorageAnalysisSchedulerService {
                 $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch setzt abgeschlossene Queue-Site fort', $siteId, $batchMode, [
                     'queue_started_at' => $queueStartedAt,
                     'last_completed_at' => $lastCompletedAt,
-                ]);
+                ], true);
                 $this->advanceBatchQueue($batchMode, $siteId);
                 return;
             }
@@ -1619,7 +1622,7 @@ class StorageAnalysisSchedulerService {
                 $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch verarbeitet Site', $siteId, $batchMode, [
                     'queue_position' => (int)($queue['position'] ?? 0) + 1,
                     'batch_site_count' => count((array)($queue['site_ids'] ?? [])),
-                ]);
+                ], true);
                 $this->runScheduledAnalysis($siteId, self::SCHEDULED_PHASE, true);
             } else {
                 $this->deactivateIneligibleSite($siteId);
@@ -1633,9 +1636,9 @@ class StorageAnalysisSchedulerService {
             ];
 
             if ($processedSiteId > 0) {
-                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch beendet', $processedSiteId, $batchMode, $context);
+                $this->logSiteInfo('Speicherplatzanalyse-Sammelbatch beendet', $processedSiteId, $batchMode, $context, true);
             } else {
-                LoggingService::info($this->config, 'RRZE-MSM: Speicherplatzanalyse-Sammelbatch beendet.', $context);
+                LoggingService::debug($this->config, 'RRZE-MSM: Speicherplatzanalyse-Sammelbatch beendet.', $context);
             }
         }
     }
@@ -1867,6 +1870,8 @@ class StorageAnalysisSchedulerService {
         $assignmentBySiteId = [];
         $assignments = get_site_option(self::ASSIGNMENTS_OPTION, []);
         $assignments = is_array($assignments) ? $assignments : [];
+        $performanceRuns = $this->getPerformanceRuns();
+        $run = [];
 
         foreach ($modes as $mode) {
             $summary[$mode] = [
@@ -1901,6 +1906,8 @@ class StorageAnalysisSchedulerService {
         ]);
         $runsByMode = array_fill_keys($modes, []);
 
+        // The per-site completion records live in one network option. The
+        // summary therefore never reads the status option of every website.
         foreach ($activeSiteIds as $siteId) {
             $siteId = absint($siteId);
             $mode = $assignmentBySiteId[$siteId] ?? '';
@@ -1909,22 +1916,15 @@ class StorageAnalysisSchedulerService {
             }
 
             $summary[$mode]['site_count']++;
-            $status = get_blog_option($siteId, self::OPTION_STATUS, []);
-            $status = is_array($status) ? $status : [];
-            $completedAt = (string)($status['last_completed_at'] ?? '');
-            if ($completedAt === '' && empty($status['last_error']) && empty($status['last_was_aborted'])) {
-                $completedAt = (string)($status['last_finished_at'] ?? '');
-            }
-
-            $completedTimestamp = $completedAt !== '' ? (int)strtotime($completedAt . ' UTC') : 0;
+            $run = is_array($performanceRuns[$siteId] ?? null) ? $performanceRuns[$siteId] : [];
+            $completedTimestamp = (int)($run['t'] ?? 0);
             if ($completedTimestamp <= 0) {
                 continue;
             }
 
-            $duration = max(0, (int)($status['last_duration_seconds'] ?? 0));
             $runsByMode[$mode][] = [
                 'timestamp' => $completedTimestamp,
-                'duration' => $duration,
+                'duration' => max(0, (int)($run['d'] ?? 0)),
             ];
             $summary[$mode]['last_execution_timestamp'] = max($summary[$mode]['last_execution_timestamp'], $completedTimestamp);
         }
@@ -1934,8 +1934,8 @@ class StorageAnalysisSchedulerService {
                 continue;
             }
 
-            usort($runs, static fn(array $left, array $right): int => $right['timestamp'] <=> $left['timestamp']);
-            $durations = array_map(static fn(array $run): int => (int)$run['duration'], $runs);
+            usort($runs, [self::class, 'comparePerformanceRunsByTimestamp']);
+            $durations = array_map('intval', array_column($runs, 'duration'));
             $summary[$mode]['latest_durations'] = array_slice($durations, 0, 5);
             $summary[$mode]['average_duration_seconds'] = array_sum($durations) / count($durations);
             $summary[$mode]['fastest_duration_seconds'] = min($durations);
@@ -1945,6 +1945,95 @@ class StorageAnalysisSchedulerService {
         wp_cache_set($cacheKey, $summary, 'rrze-msm', 5 * MINUTE_IN_SECONDS);
 
         return $summary;
+    }
+
+    protected static function comparePerformanceRunsByTimestamp(array $left, array $right): int {
+        return $right['timestamp'] <=> $left['timestamp'];
+    }
+
+    /**
+     * Returns the compact completion records. Installations upgraded from an
+     * older release build them once from the per-site status options; every
+     * later read uses the single network option.
+     *
+     * @return array<int, array{t: int, d: int}>
+     */
+    protected function getPerformanceRuns(): array {
+        $runs = get_site_option(self::PERFORMANCE_RUNS_OPTION, null);
+
+        if (is_array($runs)) {
+            return $runs;
+        }
+
+        $runs = [];
+        $siteIds = get_sites([
+            'fields' => 'ids',
+            'number' => 0,
+            'archived' => 0,
+            'spam' => 0,
+            'deleted' => 0,
+        ]);
+
+        foreach ($siteIds as $siteId) {
+            $siteId = absint($siteId);
+            $status = get_blog_option($siteId, self::OPTION_STATUS, []);
+            $status = is_array($status) ? $status : [];
+            $completedAt = (string)($status['last_completed_at'] ?? '');
+            if ($completedAt === '' && empty($status['last_error']) && empty($status['last_was_aborted'])) {
+                $completedAt = (string)($status['last_finished_at'] ?? '');
+            }
+
+            $completedTimestamp = $completedAt !== '' ? (int)strtotime($completedAt . ' UTC') : 0;
+            if ($completedTimestamp > 0) {
+                $runs[$siteId] = ['t' => $completedTimestamp, 'd' => max(0, (int)($status['last_duration_seconds'] ?? 0))];
+            }
+        }
+
+        update_site_option(self::PERFORMANCE_RUNS_OPTION, $runs);
+
+        return $runs;
+    }
+
+    /**
+     * Updates one website's completion record. Concurrent completions are
+     * serialized by a short non-blocking lock with a few retries; a sample
+     * that still cannot be written is dropped and replaced by the next run.
+     */
+    protected function recordPerformanceRun(int $siteId, int $completedTimestamp, int $durationSeconds): void {
+        $token = '';
+        $attempt = 0;
+        $runs = [];
+
+        if ($siteId <= 0) {
+            return;
+        }
+
+        for ($attempt = 0; $attempt < 5 && $token === ''; $attempt++) {
+            $token = \RRZE\MultisiteManager\Support\AtomicLock::acquire(self::PERFORMANCE_RUNS_LOCK_KEY);
+            if ($token === '') {
+                usleep(100000);
+            }
+        }
+
+        if ($token === '') {
+            return;
+        }
+
+        try {
+            wp_cache_delete(get_current_network_id() . ':' . self::PERFORMANCE_RUNS_OPTION, 'site-options');
+            $runs = get_site_option(self::PERFORMANCE_RUNS_OPTION, null);
+
+            // Without existing records the first summary request builds them
+            // from all status options, including this completed run.
+            if (!is_array($runs)) {
+                return;
+            }
+
+            $runs[$siteId] = ['t' => $completedTimestamp, 'd' => max(0, $durationSeconds)];
+            update_site_option(self::PERFORMANCE_RUNS_OPTION, $runs);
+        } finally {
+            \RRZE\MultisiteManager\Support\AtomicLock::release(self::PERFORMANCE_RUNS_LOCK_KEY, $token);
+        }
     }
 
     protected function clearPerformanceSummaryCache(): void {
@@ -1957,7 +2046,7 @@ class StorageAnalysisSchedulerService {
      * @param 'small-batch'|'medium-batch'|'site'|'unassigned' $assignmentMode
      * @param array<string, mixed>         $context
      */
-    protected function logSiteInfo(string $label, int $siteId, string $assignmentMode = 'unassigned', array $context = []): void {
+    protected function logSiteInfo(string $label, int $siteId, string $assignmentMode = 'unassigned', array $context = [], bool $fineGrained = false): void {
         if ($assignmentMode === 'unassigned') {
             $assignmentMode = $this->getSiteAssignmentMode($siteId);
         }
@@ -1968,16 +2057,19 @@ class StorageAnalysisSchedulerService {
             'assignment' => $assignment,
         ]);
 
-        LoggingService::info(
-            $this->config,
-            sprintf('RRZE-MSM: %s (Site Id: %d, Assignment: %s)', $label, $siteId, $assignment),
-            $context
-        );
+        $message = sprintf('RRZE-MSM: %s (Site Id: %d, Assignment: %s)', $label, $siteId, $assignment);
+
+        if ($fineGrained) {
+            LoggingService::debug($this->config, $message, $context);
+            return;
+        }
+
+        LoggingService::info($this->config, $message, $context);
     }
 
-    /** Keep continuation diagnostics available even when general info logging is disabled. */
+    /** Per-slice continuation details belong to fine-grained debugging. */
     protected function logContinuationDiagnostic(string $event, int $siteId, string $runId, array $context = []): void {
-        do_action('rrze.log.info', __('Storage analysis continuation diagnostic.', 'rrze-multisite-manager'), array_merge([
+        LoggingService::debug($this->config, __('Storage analysis continuation diagnostic.', 'rrze-multisite-manager'), array_merge([
             'event' => $event,
             'site_id' => $siteId,
             'run_id' => $runId,
@@ -2087,7 +2179,7 @@ class StorageAnalysisSchedulerService {
             $scheduled = (bool)wp_schedule_event(max(time(), $timestamp), $this->getScheduleKey($mode), $hook);
 
             if ($scheduled) {
-                LoggingService::info(
+                LoggingService::debug(
                     $this->config,
                     'RRZE-MSM: Central shared storage-analysis batch scheduled.',
                     [
@@ -2743,7 +2835,7 @@ class StorageAnalysisSchedulerService {
                 'next_run_timestamp' => $timestamp,
                 'small_media_threshold' => $this->config->getStorageAnalysisSmallBatchMediaThreshold(),
                 'medium_media_threshold' => $this->config->getStorageAnalysisMediumBatchMediaThreshold(),
-            ]);
+            ], true);
             if ($prioritizeFirstRun) {
                 if (!$this->scheduleTargetedBatchSite($siteId, time() + MINUTE_IN_SECONDS, $mode)) {
                     // Keep the site in the recurring batch even if the
@@ -2779,7 +2871,7 @@ class StorageAnalysisSchedulerService {
             $this->logSiteInfo('Speicherplatzanalyse dem Einzelauftrag zugeordnet', $siteId, 'site', [
                 'next_run_timestamp' => $timestamp,
                 'media_threshold' => $this->config->getStorageAnalysisBatchMediaThreshold(),
-            ]);
+            ], true);
         }
 
         return $scheduled;
@@ -3488,12 +3580,17 @@ class StorageAnalysisSchedulerService {
     }
 
     protected function logPhaseEvent(int $siteId, string $phase, string $event, string $message = ''): void {
+        // The start of the first phase marks the start of a website analysis;
+        // failures and aborts are always relevant. Other phase transitions
+        // are intermediate steps.
+        $isStart = $event === 'started' && $phase === self::BASE_PHASE;
+        $isProblem = $event === 'failed' || $event === 'aborted';
         $this->logSiteInfo(sprintf('Speicherplatzanalyse: Phase %s %s', $phase, $event), $siteId, 'unassigned', [
             'site_url' => get_home_url($siteId, '/'),
             'phase' => $phase,
             'event' => $event,
             'message' => $message,
-        ]);
+        ], !$isStart && !$isProblem);
     }
 
     protected function markMediaMetadataStarted(int $siteId): void {
@@ -3533,6 +3630,7 @@ class StorageAnalysisSchedulerService {
             ]
         );
         update_blog_option($siteId, self::OPTION_STATUS, $status);
+        $this->recordPerformanceRun($siteId, time(), $duration);
         $this->clearPerformanceSummaryCache();
         $this->clearIndividualRetry($siteId);
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
@@ -3570,7 +3668,7 @@ class StorageAnalysisSchedulerService {
                 'media_count' => $mediaCount,
                 'small_runtime_threshold_seconds' => $this->config->getStorageAnalysisSmallBatchRuntimeThresholdSeconds(),
                 'medium_runtime_threshold_seconds' => $this->config->getStorageAnalysisMediumBatchRuntimeThresholdSeconds(),
-            ]);
+            ], true);
             return;
         }
 
@@ -3597,7 +3695,7 @@ class StorageAnalysisSchedulerService {
                     'small_runtime_threshold_seconds' => $this->config->getStorageAnalysisSmallBatchRuntimeThresholdSeconds(),
                     'medium_runtime_threshold_seconds' => $this->config->getStorageAnalysisMediumBatchRuntimeThresholdSeconds(),
                     'next_run_timestamp' => $nextRunTimestamp,
-                ]);
+                ], true);
                 return;
             }
         } elseif ($this->scheduleIndividualAnalysisAt($siteId, $nextRunTimestamp)) {
@@ -3608,7 +3706,7 @@ class StorageAnalysisSchedulerService {
                 'duration_seconds' => $durationSeconds,
                 'medium_runtime_threshold_seconds' => $this->config->getStorageAnalysisMediumBatchRuntimeThresholdSeconds(),
                 'next_run_timestamp' => $nextRunTimestamp,
-            ]);
+            ], true);
             return;
         }
 

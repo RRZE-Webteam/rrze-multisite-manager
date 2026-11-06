@@ -422,17 +422,13 @@ class MonitoringService {
 
     /** @return array{complete: bool, checked_sites: int, duration_seconds: int, failed_sites: int, dns_issues: int, http_issues: int} */
     protected function runMonitoringBatch(bool $manual = false): array {
-        $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
-        if (!$budget->acquire()) {
-            \RRZE\MultisiteManager\Support\WorkerBudget::retry($this->config->getMonitoringHook(), ['rrze_msm_worker_retry' => $this->isMonitoringRunInProgress()]);
-            return ['complete' => false, 'checked_sites' => 0, 'duration_seconds' => 0, 'failed_sites' => 0, 'dns_issues' => 0, 'http_issues' => 0];
-        }
-        try {
-            \RRZE\MultisiteManager\Support\WorkerBudget::clearRetries($this->config->getMonitoringHook());
-            return $this->runAdmittedMonitoringBatch($manual);
-        } finally {
-            $budget->release();
-        }
+        // Availability checks mostly wait for HTTP responses and are
+        // time-critical for alerts. They do not take a slot of the shared
+        // analysis budget; their own process lock keeps them serialized.
+        // Retries scheduled by older releases while capacity was full are
+        // obsolete once a batch runs.
+        \RRZE\MultisiteManager\Support\WorkerBudget::clearRetries($this->config->getMonitoringHook());
+        return $this->runAdmittedMonitoringBatch($manual);
     }
 
     protected function runAdmittedMonitoringBatch(bool $manual): array {
