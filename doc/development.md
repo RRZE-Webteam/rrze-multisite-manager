@@ -17,13 +17,15 @@ Key rules for this plugin:
 | Path | Contents |
 | --- | --- |
 | `includes/` | PHP classes, services, schedulers, and widgets |
-| `includes/Metrics/` | Metrics facade, implementation, caches, detail, and storage-analysis services |
+| `includes/Metrics/` | Metrics facade, implementation, caches, detail, storage-analysis, plugin/theme usage-index and runtime-diagnostics services |
+| `includes/Analysis/` | Central analysis tables, content-analysis store and upgrade/maintenance lifecycle |
+| `includes/Support/` | Atomic locks, worker budget, worker runtime statistics and other shared helpers |
 | `templates/` | PHP templates for pages and widgets |
 | `src/js/` | JavaScript source files |
 | `src/sass/` | Sass source files |
 | `build/` | Generated JavaScript and CSS assets |
 | `languages/` | POT, PO, and MO language files |
-| `tests/` | WordPress PHPUnit tests and test bootstrap |
+| `tests/` | WordPress PHPUnit tests (`tests/Unit/`) and isolated standalone regressions (`tests/Standalone/`) |
 | `doc/` | Developer documentation |
 
 ## Build
@@ -44,7 +46,7 @@ Additional scripts:
 
 ## Tests
 
-Tests use the official WordPress PHPUnit test framework and require a disposable test database. `WP_TESTS_DIR` must point to the WordPress test library. Details are in [tests/README.md](../tests/README.md).
+Unit tests use the official WordPress PHPUnit test framework and require a disposable test database. `WP_TESTS_DIR` must point to the WordPress test library. The standalone regressions in `tests/Standalone/` run with plain PHP CLI (`php -d memory_limit=64M tests/Standalone/<file>.php`) and simulate WordPress and database boundaries; they do not replace integration tests against MySQL/MariaDB. Details are in [tests/README.md](../tests/README.md).
 
 Never run tests against a production WordPress installation or database. New calculation, cache, scheduler, and cleanup logic should receive at least one regression test. If the local PHPUnit dependency is missing, document that the test was not run instead of presenting it as a successful test run.
 
@@ -62,11 +64,11 @@ PO files can then be maintained, for example, with Loco Translate and compiled t
 
 ## Documentation maintenance
 
-For new or renamed menu pages, create or update a file in `doc/` and link it from [doc/README.md](README.md). Document new persistent options, meta keys, transients, Cron hooks, locks, and AJAX endpoints additionally in [Runtime state and scheduler](runtime-state.md). When a background workflow or its state transitions change, update the matching Mermaid flow diagram there or in [Storage analysis](storage-analysis.md) as well.
+For new or renamed menu pages, create or update a file in `doc/` and link it from [doc/README.md](README.md). Document new persistent options, meta keys, transients, Cron hooks, locks, and AJAX endpoints additionally in [Runtime state and scheduler](runtime-state.md). When a background workflow or its state transitions change, update the matching flow diagram as well. Flow diagrams are standalone SVG files in `doc/` (for example `plugin-theme-usage-index-flow.svg`, `worker-budget-admission.svg`, `analysis-storage-lifecycle.svg`) and are embedded with Markdown image syntax; do not use Mermaid blocks. Keep the existing visual style (box colours for normal, phase, warning and stop states, 1240 px width) and include `<title>` and `<desc>` for accessibility.
 
 ### Central analysis schema changes
 
-The four central analysis tables are specified in [Runtime state and scheduler](runtime-state.md#central-analysis-tables). They use `$wpdb->base_prefix`, not a website prefix; every database operation must therefore constrain `network_id`, `blog_id`, and the relevant `run_id`.
+The thirteen central analysis tables are specified in [Runtime state and scheduler](runtime-state.md#central-analysis-tables). They use `$wpdb->base_prefix`, not a website prefix; every database operation must therefore constrain `network_id`, `blog_id`, and the relevant `run_id`.
 
 When changing this schema:
 

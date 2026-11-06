@@ -25,13 +25,14 @@ Hook bedeuten verschiedene Callbacks mit unterschiedlichen Aufgaben.
 
 | Hook | Art | Callback/Komponente | Priorität / Argumente | Wirkung im Plugin |
 | --- | --- | --- | --- | --- |
-| `init` | Action | Plugin-Bootstrap `loadTextdomain()` | 0 | Lädt die Übersetzungen des Plugins. |
-| `init` | Action | Plugin-Bootstrap `loaded()` | 5 | Prüft die netzwerkweite Aktivierung und Systemvoraussetzungen und initialisiert die Plugin-Dienste. |
+| `init` | Action | Plugin-Bootstrap `loadTextdomain()` | 0 | Lädt die Übersetzungen des Plugins; bei anonymen Frontend-Aufrufen (nicht Admin, Cron, AJAX, WP-CLI, nicht angemeldet) übersprungen. |
+| `init` | Action | Plugin-Bootstrap `loaded()` | 5 | Prüft die netzwerkweite Aktivierung und Systemvoraussetzungen und initialisiert die Plugin-Dienste. Darin prüft `AnalysisLifecycle::register()` das Analyseschema und – nur auf der Hauptwebsite, ohne `switch_to_blog()` – die Planung der stündlichen Analysewartung. |
 | `init` | Action | `MonitoringService::ensureScheduledEvent()` | 10 / 1 | Stellt die zentrale Planung der Erreichbarkeitsprüfung sicher. |
 | `init` | Action | `StorageAnalysisSchedulerService::ensureRecurringSchedules()` | 20 / 1 | Stellt die Planung der Speicheranalysen sicher. |
 | `init` | Action | `ShortcodeBlockAnalysisSchedulerService::ensureRecurringSchedules()` | 20 / 1 | Stellt die Planung der Shortcode- und Blockanalysen sicher. |
 | `init` | Action | `MetricsImplementationService::ensureDashboardRefreshContinuation()` | 24 / 1 | Stellt die Fortsetzung der Dashboard-Metrik-Ermittlung sicher. |
 | `init` | Action | `MetricsImplementationService::ensureDetailCacheMaintenance()` | 24 / 1 | Stellt die regelmäßige Pflege des Detail-Caches sicher. |
+| `init` | Action | `PluginThemeUsageMetricsService::ensureSchedule()` | 25 / 1 | Stellt auf der Hauptwebsite die Planung des Plugin-/Theme-Nutzungsindex sicher und setzt einen laufenden Lauf mit fehlender Fortsetzung fort. |
 | `init` | Action | `WebsiteStatusReportService::ensureScheduledReport()` | 30 / 1 | Prüft und plant den Website-Statusbericht auf der zentralen Website, sofern aktiviert. |
 | `admin_init` | Action | Plugin-Bootstrap `loadTextdomain()` | 0 | Lädt Übersetzungen auch im Administrationskontext frühzeitig. |
 | `admin_init` | Action | Plugin-Bootstrap `registerSystemRequirementNotice()` | 10 / 1 | Bereitet bei nicht erfüllten Systemvoraussetzungen die passende Admin-Meldung vor. |
@@ -48,6 +49,12 @@ Hook bedeuten verschiedene Callbacks mit unterschiedlichen Aufgaben.
 | `admin_bar_menu` | Action | `Dashboard::addAdminBarMenu()` | 35 / 1 | Ergänzt das MSM-Menü in der Admin-Bar. |
 | `admin_body_class` | Filter | `Dashboard::filterAdminBodyClass()` | 10 / 1 | Ergänzt eine CSS-Klasse für Plugin-Adminseiten. |
 | `user_has_cap` | Filter | `Dashboard::filterUserHasCap()` | 20 / 4 | Passt die Capability-Prüfung für die vorgesehenen Verwaltungsansichten an. |
+| `load-<Seiten-Hook>` | Action | `Dashboard::configureNetworkUsersScreen()` | 10 / 1 | Registriert beim Laden der Benutzerseite die Spalten-Filter für die Netzwerk-Benutzerliste. |
+| `manage_<Screen-ID>_columns` | Filter | `Dashboard::getNetworkUsersScreenColumns()` | 10 / 1 | Liefert die Spalten der Netzwerk-Benutzerliste (nur Benutzerseite). |
+| `default_hidden_columns` | Filter | `Dashboard::filterNetworkUsersDefaultHiddenColumns()` | 10 / 2 | Blendet nach der Einstellung `users_default_visible_columns` Spalten standardmäßig aus (nur Benutzerseite). |
+| `pre_user_query` | Action | `NetworkUsersListTable::excludeUsersWithWebsiteMembership()` | 10 / 1 | Nur während der Ansicht „Benutzer ohne Website-Zuordnung“: schließt Benutzer mit Rolle auf einer Website aus. Wird danach wieder entfernt. |
+| `wp_redirect` | Filter | `Dashboard::redirectNetworkUsersDeleteToMsm()` | 10 / 2 | Leitet nach der Core-Benutzerlöschung zurück zur Benutzerliste des Multisite Managers, nur mit gültiger Nonce. |
+| `admin_action_rrze_multisite_manager_enable_selected_network_audit_plugins`, `admin_action_rrze_multisite_manager_disable_selected_network_audit_plugins` | Action | `Dashboard::handleNetworkAuditPluginBulkToggle()` | 10 / 1 | Massenaktion „Freigeben“/„Sperren“ in der Plugin-Übersicht (Plugin-Freigabe über RRZE Netzwerk-Audit bzw. RRZE Settings). |
 
 ## Multisite-Lebenszyklus und Website-Status
 
@@ -59,6 +66,7 @@ einer Änderung wieder konsistent aufgebaut.
 | Hook | Callback/Komponente | Priorität / Argumente | Wirkung im Plugin |
 | --- | --- | --- | --- |
 | `wpmu_new_blog` | `MetricsImplementationService::invalidateSiteAndGlobalCachesFromHook()` | 20 / 6 | Invalidiert Website- und Netzwerk-Caches nach Anlage einer Website. |
+| `wpmu_new_blog` | `PluginThemeUsageMetricsService::syncNewSite()` | 30 / 6 | Trägt Plugin- und Theme-Nutzung der neuen Website in den Nutzungsindex ein (und in die Staging-Tabellen eines laufenden Laufs). |
 | `archive_blog` | `Dashboard::recordArchivedSiteTimestamp()` | 10 / 1 | Speichert `rrze_msm_archived_at` als Zeitpunkt der Archivierung. |
 | `archive_blog` | `MetricsImplementationService::invalidateSiteCachesFromHook()` | 20 / 1 | Invalidiert die Caches der archivierten Website. |
 | `unarchive_blog` | `Dashboard::clearArchivedSiteTimestamp()` | 10 / 1 | Entfernt `rrze_msm_archived_at`. |
@@ -66,8 +74,10 @@ einer Änderung wieder konsistent aufgebaut.
 | `make_delete_blog` | `Dashboard::recordDeletedSiteTimestamp()` | 10 / 1 | Speichert `rrze_msm_deleted_at` als Zeitpunkt der Löschmarkierung. |
 | `make_undelete_blog` | `Dashboard::clearDeletedSiteTimestamp()` | 10 / 1 | Entfernt `rrze_msm_deleted_at`. |
 | `delete_blog` | `MetricsImplementationService::invalidateSiteAndGlobalCachesFromHook()` | 20 / 2 | Invalidiert Website- und Netzwerk-Caches bei einer Löschmarkierung. |
+| `delete_blog` | `PluginThemeUsageMetricsService::removeSite()` | 30 / 2 | Entfernt die Website aus dem Plugin-/Theme-Nutzungsindex. |
 | `undelete_blog` | `MetricsImplementationService::invalidateSiteAndGlobalCachesFromHook()` | 20 / 1 | Invalidiert Website- und Netzwerk-Caches nach Aufhebung der Löschmarkierung. |
 | `wp_delete_site` | `AnalysisLifecycle::deleteSite()` | 10 / 1 | Entfernt alle zentral gespeicherten Analyse- und Laufdaten einer endgültig gelöschten Website. |
+| `wp_delete_site` | `PluginThemeUsageMetricsService::removeDeletedSite()` | 30 / 1 | Entfernt die endgültig gelöschte Website aus dem Nutzungsindex. |
 | `make_spam_blog` | `MetricsImplementationService::invalidateSiteCachesFromHook()` | 20 / 1 | Invalidiert Caches nach Sperrung einer Website. |
 | `make_ham_blog` | `MetricsImplementationService::invalidateSiteCachesFromHook()` | 20 / 1 | Invalidiert Caches nach Entsperrung einer Website. |
 | `mature_blog` | `MetricsImplementationService::invalidateSiteCachesFromHook()` | 20 / 1 | Invalidiert Caches nach Kennzeichnung als reife/öffentliche Website. |
@@ -89,11 +99,17 @@ einer Änderung wieder konsistent aufgebaut.
 | `update_option_blogname` | `MetricsImplementationService::invalidateCurrentSiteCaches()` | 20 / 3 | Invalidiert Caches nach Änderung des Website-Titels. |
 | `update_option_admin_email` | `MetricsImplementationService::invalidateCurrentSiteCaches()` | 20 / 3 | Invalidiert Caches nach Änderung der Administrator-E-Mail-Adresse. |
 | `update_option_stylesheet` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 3 | Invalidiert Website- und Netzwerk-Caches nach Theme-Wechsel über die Option. |
+| `update_option_stylesheet` | `PluginThemeUsageMetricsService::syncCurrentSiteAfterThemeChange()` | 30 / 3 | Ersetzt die Theme-Zuordnung der Website im Nutzungsindex. |
 | `update_option_template` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 3 | Invalidiert Website- und Netzwerk-Caches nach Änderung des Theme-Templates. |
+| `update_option_template` | `PluginThemeUsageMetricsService::syncCurrentSiteAfterThemeChange()` | 30 / 3 | Ersetzt die Theme-Zuordnung der Website im Nutzungsindex. |
 | `update_option_active_plugins` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 3 | Invalidiert Website- und Netzwerk-Caches nach Änderung aktiver Plugins. |
+| `update_option_active_plugins` | `PluginThemeUsageMetricsService::syncCurrentSiteAfterPluginChange()` | 30 / 3 | Ersetzt die Plugin-Zuordnungen der Website im Nutzungsindex. |
 | `add_option_active_plugins` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 2 | Deckt die erstmalige Anlage der Option aktiver Plugins ab. |
+| `add_option_active_plugins` | `PluginThemeUsageMetricsService::syncCurrentSiteAfterPluginChange()` | 30 / 2 | Ersetzt die Plugin-Zuordnungen der Website im Nutzungsindex. |
 | `delete_option_active_plugins` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 1 | Deckt das Entfernen der Option aktiver Plugins ab. |
+| `delete_option_active_plugins` | `PluginThemeUsageMetricsService::syncCurrentSiteAfterPluginChange()` | 30 / 1 | Ersetzt die Plugin-Zuordnungen der Website im Nutzungsindex. |
 | `update_site_option_active_sitewide_plugins` | `MetricsImplementationService::invalidateCaches()` | 20 / 4 | Invalidiert Caches nach Änderung netzwerkweit aktiver Plugins. |
+| `update_site_option_active_sitewide_plugins` | `PluginThemeUsageMetricsService::startRun()` | 30 / 4 | Startet einen neuen, begrenzten Lauf des Nutzungsindex, weil die Änderung jede Website betrifft. |
 | `update_site_option_allowedthemes` | `MetricsImplementationService::invalidateCaches()` | 20 / 4 | Invalidiert Caches nach Änderung der netzwerkweit erlaubten Themes. |
 | `update_site_option_blog_upload_space` | `MetricsImplementationService::invalidateCaches()` | 20 / 4 | Invalidiert Caches nach Änderung des Speicherplatzlimits. |
 
@@ -104,6 +120,7 @@ einer Änderung wieder konsistent aufgebaut.
 | `activated_plugin` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 2 | Invalidiert Caches nach Plugin-Aktivierung. |
 | `deactivated_plugin` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 2 | Invalidiert Caches nach Plugin-Deaktivierung. |
 | `switch_theme` | `MetricsImplementationService::invalidateCurrentSiteAndGlobalCaches()` | 20 / 3 | Invalidiert Caches beim regulären Theme-Wechsel. |
+| `switch_theme` | `PluginThemeUsageMetricsService::syncCurrentSiteAfterThemeChange()` | 30 / 3 | Ersetzt die Theme-Zuordnung der Website im Nutzungsindex. |
 | `upgrader_process_complete` | `MetricsImplementationService::invalidateCaches()` | 20 / 2 | Invalidiert Caches nach einem Core-, Plugin- oder Theme-Update. |
 
 ## Zeitplanung und Versand
@@ -114,6 +131,7 @@ einer Änderung wieder konsistent aufgebaut.
 | `cron_schedules` | Filter | `StorageAnalysisSchedulerService::registerSchedules()` | 10 / 1 | Ergänzt Intervalle für Speicheranalyse und ihre Batches. |
 | `cron_schedules` | Filter | `ShortcodeBlockAnalysisSchedulerService::registerSchedules()` | 10 / 1 | Ergänzt Intervalle für Shortcode- und Blockanalyse. |
 | `cron_schedules` | Filter | `MetricsImplementationService::registerSchedules()` | 10 / 1 | Ergänzt Intervalle für Dashboard-Metriken, Historienverdichtung und Cache-Pflege. |
+| `cron_schedules` | Filter | `PluginThemeUsageMetricsService::registerSchedules()` | 10 / 1 | Ergänzt das Intervall des Plugin-/Theme-Nutzungsindex. |
 | `phpmailer_init` | Action | temporärer Callback in `WebsiteStatusReportService::sendReport()` | 10 / 1 | Schaltet ausschließlich während des Website-Statusberichts den HTML-Versand ein und setzt die Plain-Text-Alternative (`AltBody`). Der Callback wird danach wieder entfernt. |
 
 ## Hinweise für Wartung und Erweiterungen

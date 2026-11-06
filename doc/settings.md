@@ -23,14 +23,15 @@ Multiple-choice settings (for example **Ignore websites** for availability check
 
 The tab configures:
 
-* intervals for dashboard metrics, their historical statistics (daily, weekly, monthly, or disabled while retaining existing data; weekly by default), plugin/theme usage indexing (twice weekly by default), and availability checks
+* intervals for dashboard metrics, their historical statistics (daily, weekly, monthly, or disabled while retaining existing data; weekly by default), and availability checks
+* the plugin and theme usage index: cycle (twice weekly by default), optional static source analysis (disabled by default), subdirectory depth (default 3) and maximum PHP files per plugin or theme (default 100)
 * batch size for network-wide processes
 * grace period for new sites and DNS/HTTP failure thresholds
 * intervals, execution limits, and assignment criteria for storage analyses
 * separate cycles and assignment thresholds for small, medium, and large shortcode/block batches plus individual tasks
 * the maximum number of stored shortcode/block findings per website and type (default 1,000, range 100–5,000; a block finding is one block type per post)
 * a shared network-wide background process limit (default 3, range 1–16) for storage/content analyses, dashboard metrics/statistics and plugin/theme usage indexing; availability checks are not counted
-* number of retained log and event entries
+* number of retained monitoring runs (applied immediately to the stored log) and visible anomaly entries
 
 Larger batches shorten the entire run but increase the load and execution time of an individual Cron request. Values should therefore match PHP limits, the Cron cadence, and network size.
 

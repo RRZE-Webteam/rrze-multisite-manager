@@ -22,4 +22,4 @@ The website list uses the rows of the last completed dashboard metrics run. Webs
 
 ## Implementation
 
-`Dashboard::renderPluginDetailsPage()` verifies the request with the nonce namespace `rrze_msm_source_analysis_plugin_<plugin-file>`. The detail cache uses the pattern `rrze_msm_plugin_details_<detail-version>_<hash>`; the hash contains the plugin file, analysis mode, and plugin fingerprint. Thus, a relevant file or mode change invalidates the detail cache without building a global source-code index.
+`Dashboard::renderPluginDetailsPage()` renders `templates/plugin-details-page.php`. Stored source findings are shown whenever they exist; the former nonce-protected `source_analysis` URL parameter only still distinguishes cache keys and starts no analysis. The detail cache uses the pattern `rrze_msm_plugin_details_<detail-version>_<hash>`; the hash contains the plugin file, that flag and the plugin fingerprint (source-analysis version, configured limits, main-file and directory timestamps). Each completed usage-index pass increases the global detail-cache version.

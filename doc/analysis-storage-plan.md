@@ -1,5 +1,7 @@
 # Central analysis storage implementation plan
 
+Historical implementation plan for the first five central tables. The current schema (thirteen tables, including the plugin/theme usage index and its staging tables) is documented in [Runtime state and scheduler](runtime-state.md#central-analysis-tables); the lifecycle is shown in [analysis-storage-lifecycle.svg](analysis-storage-lifecycle.svg).
+
 1. Create installation-wide tables using `base_prefix`: analysis_runs, analysis_shortcodes, analysis_blocks, analysis_mediaindex and dashboard_metrics (all prefixed `rrze_msm_`). Scope all operations by network and website; use run identities for isolation.
 2. Write bounded shortcode/block findings incrementally into separate tables, including unfinished results. Persist only bounded checkpoints; publish a completed generation after both phases succeed. Read small monitoring summaries and paginated details.
 3. Move storage checkpoints and bounded media-index segments out of evictable transients. Keep existing byte budgets, worker admission and conservative missing-segment handling.

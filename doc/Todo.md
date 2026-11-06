@@ -1,6 +1,6 @@
 # Todo
 
-Stand: 06.11.2026, Pluginversion 1.3.37-1. Offene Aufgaben des RRZE Multisite Managers, die zugrunde liegenden Performance-Grundsätze, bereits umgesetzte Maßnahmen und bewusst verworfene Ansätze. Ersetzt die früheren Dateien `performance-review-2026-11-05.md`, `performance-tasks.md` und `performance.md`.
+Stand: 06.11.2026, Pluginversion 1.3.38-2. Offene Aufgaben des RRZE Multisite Managers, die zugrunde liegenden Performance-Grundsätze, bereits umgesetzte Maßnahmen und bewusst verworfene Ansätze. Ersetzt die früheren Dateien `performance-review-2026-11-05.md`, `performance-tasks.md` und `performance.md`.
 
 ## 1. Einstellungen, Tab „Monitoring“ neu gliedern
 
@@ -41,6 +41,8 @@ Ausgangslage: 13 sichtbare Gruppen mit rund 60 Feldern in einem einzigen Formula
 ## 5. Nachrangig
 
 - [ ] **Plugin-/Theme-Detailseiten:** Websiteliste serverseitig paginieren. Die Zeilen kommen bereits aus dem gespeicherten Dashboard-Lauf; die Restkosten sind reine HTML-Ausgabe.
+- [ ] **Toter URL-Parameter:** `source_analysis` (Nonce `rrze_msm_source_analysis_<type>_<id>`) auf den Plugin-/Theme-Detailseiten startet keine Analyse mehr und ändert nur noch den Cache-Schlüssel. `Dashboard::isSourceAnalysisRequested()`, `getSourceAnalysisUrl()` und das Template-Argument `source_analysis_url` entfernen.
+- [ ] **Benutzerseite:** Die Anzahl der Benutzer ohne Website-Zuordnung wird bei jedem Seitenaufruf mit einer `NOT EXISTS`-Abfrage über `usermeta` (`meta_key LIKE '<prefix>%capabilities'`) gezählt. Bei sehr vielen Benutzern messen und gegebenenfalls zwischenspeichern.
 
 ## Performance-Grundsätze
 

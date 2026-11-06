@@ -26,6 +26,7 @@ The Manager may be visible to authorised web support users. Network-wide adminis
 | [Theme details](theme-details.md) | Details and usage of a theme | Authorised Manager users |
 | [Storage analysis](storage-analysis.md) | Upload, media, and metadata analysis for one site | Authorised local users or super admins |
 | [Shortcodes and blocks](shortcodes-and-blocks.md) | Shortcodes and blocks used per site | Authorised local users or super admins |
+| [Users](network-users.md) | Network-wide user list, users without website assignment, bulk deletion | Super admin |
 | [Monitoring](monitoring.md) | Background processes, schedules, and maintenance | Super admin |
 | [Settings](settings.md) | Global configuration, views, and logging | Super admin |
 
