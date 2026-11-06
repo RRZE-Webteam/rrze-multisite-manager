@@ -446,6 +446,13 @@ class PluginThemeUsageMetricsService {
                 $this->scheduleContinuation(60);
                 return;
             }
+            if ($phase === 'theme_usage' && !$this->isSourceAnalysisEnabled()) {
+                // Usage relations are complete. The optional static source
+                // analysis is skipped; previously stored findings remain.
+                $this->notifyDetailsChanged();
+                $this->completeRun($state);
+                return;
+            }
             $state['offset'] = 0;
             $state['phase'] = $phase === 'plugin_usage' ? 'theme_usage' : 'plugin_sources';
             $state['source_offset'] = 0;
@@ -471,6 +478,12 @@ class PluginThemeUsageMetricsService {
     protected function runSourceBatch(array $state): void {
         if (!function_exists('get_plugins')) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        if (!$this->isSourceAnalysisEnabled()) {
+            // The option was disabled while a run was in its source phase:
+            // end the run without publishing unfinished source findings.
+            $this->completeRun($state);
+            return;
         }
         $phase = (string)($state['phase'] ?? 'plugin_sources');
         $isPlugin = $phase === 'plugin_sources';
@@ -547,7 +560,11 @@ class PluginThemeUsageMetricsService {
             return;
         }
         $this->notifyDetailsChanged();
+        $this->completeRun($state);
+    }
 
+    /** @param array<string, mixed> $state */
+    protected function completeRun(array $state): void {
         if (!$this->isActiveRun($state)) {
             return;
         }
@@ -558,7 +575,12 @@ class PluginThemeUsageMetricsService {
             'started_at' => (int)($state['started_at'] ?? time()),
             'finished_at' => time(),
             'phase' => 'complete',
+            'source_analysis' => $this->isSourceAnalysisEnabled(),
         ]);
+    }
+
+    protected function isSourceAnalysisEnabled(): bool {
+        return isset($this->config) && $this->config->isSourceAnalysisEnabled();
     }
 
     protected function syncSite(int $siteId, bool $staging = false): void {

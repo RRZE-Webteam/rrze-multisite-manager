@@ -1658,6 +1658,7 @@ class Settings {
             __('Plugin and theme usage index', 'rrze-multisite-manager'),
             [
                 'plugin_theme_usage_frequency',
+                'source_analysis_enabled',
                 'source_analysis_max_depth',
                 'source_analysis_max_php_files',
             ],

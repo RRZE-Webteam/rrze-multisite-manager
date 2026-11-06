@@ -276,6 +276,13 @@ class Config {
                         'choices' => $schedulerFrequencyChoices,
                     ],
                     [
+                        'name' => 'source_analysis_enabled',
+                        'label' => __('Static source analysis', 'rrze-multisite-manager'),
+                        'desc' => __('Disabled by default. When enabled, each run of the usage index additionally analyses the source code of every installed plugin and theme for shortcodes, blocks and other registrations, one plugin or theme per Cron step. Detail pages and the shortcode and block analysis then show providers that are not loaded in the current process. When disabled, only plugin and theme usage is collected and previously stored findings remain unchanged.', 'rrze-multisite-manager'),
+                        'type' => 'checkbox',
+                        'default' => false,
+                    ],
+                    [
                         'name' => 'source_analysis_max_depth',
                         'label' => __('Source analysis: subdirectory depth', 'rrze-multisite-manager'),
                         'desc' => __('How many subdirectory levels below a plugin or theme directory the static source analysis reads. 0 reads only the main directory, 1 also its direct subdirectories. Registrations in deeper directories are not found; the default of 3 still covers block metadata in build/blocks/*/block.json. Default: 3. Allowed values: 0 to 10.', 'rrze-multisite-manager'),
@@ -962,6 +969,13 @@ class Config {
 
     public function getNetworkCronCleanupBatchSize(): int {
         return max(25, min(250, (int)($this->config['constants']['network_cron_cleanup_batch_size'] ?? 100)));
+    }
+
+    /** Whether the plugin and theme usage index also runs the static source analysis. */
+    public function isSourceAnalysisEnabled(): bool {
+        $options = get_site_option($this->getOptionName(), []);
+
+        return is_array($options) && !empty($options['monitoring_source_analysis_enabled']);
     }
 
     /** Subdirectory levels below a plugin or theme directory read by the source analysis. */
