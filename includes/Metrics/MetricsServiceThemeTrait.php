@@ -41,7 +41,8 @@ trait MetricsServiceThemeTrait {
         $activeSites = $this->getActiveSitesForTheme($stylesheet);
 
         $supplementary = $this->getThemeSupplementaryData($stylesheet);
-        $analysis = $includeSourceAnalysis ? $this->analyzeThemeCode($stylesheet) : [];
+        $analysis = $this->pluginThemeUsageMetrics->getThemeSourceAnalysis($stylesheet);
+        $sourceAnalysisCompleted = $this->pluginThemeUsageMetrics->hasThemeSourceAnalysis($stylesheet);
         $installTimestamp = $this->getThemeInstallTimestamp($stylesheet);
         $modifiedTimestamp = $this->getThemeModifiedTimestamp($stylesheet);
 
@@ -72,7 +73,7 @@ trait MetricsServiceThemeTrait {
                     (string)($themeItem['text_domain'] ?? ''),
                     'theme'
                 ),
-                'source_analysis_completed' => $includeSourceAnalysis,
+                'source_analysis_completed' => $sourceAnalysisCompleted,
                 'shortcodes' => (array)($analysis['shortcodes'] ?? []),
                 'blocks' => (array)($analysis['blocks'] ?? []),
                 'block_patterns' => (array)($analysis['block_patterns'] ?? []),
@@ -84,6 +85,8 @@ trait MetricsServiceThemeTrait {
                 'site_count' => count($activeSites),
                 'active_sites' => $activeSites,
                 'active_sites_truncated' => false,
+                'usage_data_available' => $this->pluginThemeUsageMetrics->hasCompletedSnapshot(),
+                'usage_monitoring_url' => admin_url('admin.php?page=rrze-multisite-manager-monitoring&monitoring_tab=network'),
             ]
         );
 
@@ -157,37 +160,7 @@ trait MetricsServiceThemeTrait {
      * dashboard metrics cache.
      */
     protected function getActiveSitesForTheme(string $stylesheet): array {
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-            'orderby' => 'id',
-            'order' => 'ASC',
-        ]);
-        $activeSiteIds = [];
-        $siteId = 0;
-        $siteStylesheet = '';
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if ($siteId <= 0) {
-                continue;
-            }
-
-            $siteStylesheet = (string)get_blog_option($siteId, 'stylesheet', '');
-
-            if ($siteStylesheet === '') {
-                $siteStylesheet = (string)get_blog_option($siteId, 'template', '');
-            }
-
-            if ($siteStylesheet !== $stylesheet) {
-                continue;
-            }
-
-            $activeSiteIds[] = $siteId;
-        }
-
-        return $this->getSiteOverviewRowsForIds($activeSiteIds);
+        return $this->getSiteOverviewRowsForIds($this->pluginThemeUsageMetrics->getThemeSiteIds($stylesheet));
     }
 
     protected function getInactiveThemes(): array {

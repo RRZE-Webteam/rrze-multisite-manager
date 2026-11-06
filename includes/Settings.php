@@ -70,6 +70,7 @@ class Settings {
         if (is_admin()) {
             add_action('admin_post_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('admin_post_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
+            add_action('admin_post_rrze_multisite_manager_refresh_plugin_theme_usage', [$this, 'refreshPluginThemeUsage']);
             add_action('admin_post_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
             add_action('admin_post_rrze_multisite_manager_run_dashboard_metric_statistics', [$this, 'runDashboardMetricStatisticsNow']);
             add_action('admin_post_rrze_multisite_manager_send_website_status_report', [$this, 'sendWebsiteStatusReport']);
@@ -99,6 +100,7 @@ class Settings {
             add_action('wp_ajax_rrze_msm_run_analysis_task_removal_batch', [$this, 'ajaxRunAnalysisTaskRemovalBatch']);
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
+            add_action('network_admin_edit_rrze_multisite_manager_refresh_plugin_theme_usage', [$this, 'refreshPluginThemeUsage']);
             add_action('network_admin_edit_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
             add_action('network_admin_edit_rrze_multisite_manager_run_dashboard_metric_statistics', [$this, 'runDashboardMetricStatisticsNow']);
             add_action('network_admin_edit_rrze_multisite_manager_send_website_status_report', [$this, 'sendWebsiteStatusReport']);
@@ -338,6 +340,7 @@ class Settings {
         $monitoringFrequencyChanged = (string)($previousOptions['monitoring_monitoring_frequency'] ?? '') !== (string)($options['monitoring_monitoring_frequency'] ?? '');
         $metricsFrequencyChanged = (string)($previousOptions['monitoring_metrics_frequency'] ?? '') !== (string)($options['monitoring_metrics_frequency'] ?? '');
         $dashboardMetricsHistoryFrequencyChanged = (string)($previousOptions['monitoring_dashboard_metrics_history_frequency'] ?? '') !== (string)($options['monitoring_dashboard_metrics_history_frequency'] ?? '');
+        $pluginThemeUsageFrequencyChanged = (string)($previousOptions['monitoring_plugin_theme_usage_frequency'] ?? '') !== (string)($options['monitoring_plugin_theme_usage_frequency'] ?? '');
         $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_small_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_small_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_medium_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_large_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_large_batch_frequency'] ?? '')
@@ -387,6 +390,10 @@ class Settings {
 
         if ($dashboardMetricsHistoryFrequencyChanged) {
             (new MetricsService($this, $this->config))->rescheduleDashboardHistoryCompactionCycle();
+        }
+
+        if ($pluginThemeUsageFrequencyChanged) {
+            (new MetricsService($this, $this->config))->reschedulePluginThemeUsageCycle();
         }
 
         if ($storageAnalysisFrequencyChanged) {
@@ -573,6 +580,18 @@ class Settings {
         );
 
         wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function refreshPluginThemeUsage(): void {
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+        check_admin_referer('rrze_multisite_manager_refresh_plugin_theme_usage');
+        $action = (new MetricsService($this, $this->config))->startPluginThemeUsageRunFromNow();
+        $redirectUrl = $redirectTo !== '' ? $redirectTo : $this->getMonitoringPageUrl();
+        wp_safe_redirect(add_query_arg('plugin-theme-usage-action', $action, $redirectUrl));
         exit;
     }
 
@@ -1590,6 +1609,7 @@ class Settings {
             [
             'metrics_frequency',
             'dashboard_metrics_history_frequency',
+            'plugin_theme_usage_frequency',
             'batch_size',
             'run_log_entries',
             'recent_event_entries',
@@ -1809,13 +1829,19 @@ class Settings {
         $monitoringAction = isset($_GET['monitoring-schedule-action'])
             ? sanitize_key((string)wp_unslash($_GET['monitoring-schedule-action']))
             : '';
+        $pluginThemeUsageAction = isset($_GET['plugin-theme-usage-action'])
+            ? sanitize_key((string)wp_unslash($_GET['plugin-theme-usage-action']))
+            : '';
         $messages = [
             'metrics-created' => __('The metrics task was created.', 'rrze-multisite-manager'),
             'metrics-rescheduled' => __('The metrics task was rescheduled to start now.', 'rrze-multisite-manager'),
             'monitoring-created' => __('The website availability task was created.', 'rrze-multisite-manager'),
             'monitoring-rescheduled' => __('The website availability task was rescheduled to start now.', 'rrze-multisite-manager'),
+            'plugin-theme-usage-started' => __('The plugin and theme usage task was started.', 'rrze-multisite-manager'),
         ];
-        $messageKey = $metricsAction !== '' ? 'metrics-' . $metricsAction : 'monitoring-' . $monitoringAction;
+        $messageKey = $metricsAction !== ''
+            ? 'metrics-' . $metricsAction
+            : ($pluginThemeUsageAction !== '' ? 'plugin-theme-usage-' . $pluginThemeUsageAction : 'monitoring-' . $monitoringAction);
 
         if (!isset($messages[$messageKey])) {
             return;
@@ -3636,6 +3662,15 @@ class Settings {
         $progressPercent = (int)($process['progress_percent'] ?? 0);
 
         if ($batchTotal > 0) {
+            if (empty($process['is_running']) && !empty($process['hide_completed_progress_bar'])) {
+                return sprintf(
+                    /* translators: 1: checked websites, 2: total websites. */
+                    __('%1$s / %2$s', 'rrze-multisite-manager'),
+                    number_format_i18n($checkedSites),
+                    number_format_i18n($batchTotal)
+                );
+            }
+
             return sprintf(
                 /* translators: 1: checked websites, 2: total websites, 3: completion percentage. */
                 __('%1$s / %2$s (%3$d%%)', 'rrze-multisite-manager'),
@@ -3813,7 +3848,9 @@ class Settings {
         $html = '<div class="rrze-msm-process-progress">';
         $html .= '<div class="rrze-msm-process-progress-label">' . esc_html($label) . '</div>';
 
-        if ((int)($process['batch_total'] ?? 0) > 0) {
+        $showProgressBar = (int)($process['batch_total'] ?? 0) > 0
+            && (!empty($process['is_running']) || empty($process['hide_completed_progress_bar']));
+        if ($showProgressBar) {
             $html .= '<div class="rrze-msm-process-progress-bar" aria-hidden="true">';
             $html .= '<span class="rrze-msm-process-progress-fill" style="width:' . esc_attr((string)$progressPercent) . '%;"></span>';
             $html .= '</div>';
@@ -3866,6 +3903,14 @@ class Settings {
                 $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Reset and restart', 'rrze-multisite-manager') . '</button>';
                 $html .= '</form>';
             }
+        } elseif ($processId === 'plugin-theme-usage') {
+            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_plugin_theme_usage')) . '">';
+            if ($redirectTo !== '') {
+                $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
+            }
+            $html .= wp_nonce_field('rrze_multisite_manager_refresh_plugin_theme_usage', '_wpnonce', true, false);
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html($actionLabel) . '</button>';
+            $html .= '</form>';
         } elseif ($processId === 'dashboard-metrics-history') {
             $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_run_dashboard_metric_statistics')) . '">';
             if ($redirectTo !== '') {

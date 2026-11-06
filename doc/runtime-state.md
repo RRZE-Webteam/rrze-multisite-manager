@@ -63,6 +63,10 @@ The cache has its own data-version number. It is checked when read and schedules
 
 The statistics compaction hook runs only in the network main site's Cron context and only while dashboard scheduling and the configured statistics cycle are enabled. It copies current rows from the central metrics table after the configured daily, weekly, or monthly interval. A first completed current row is copied immediately; current rows are never removed by this job. Choosing the disabled cycle removes its Cron events but preserves existing statistic rows. Every invocation records its start, completion, duration, copied-row count and failures in the small network option `rrze_msm_dashboard_metrics_history_run_state`; Monitoring can therefore distinguish a successful run that copied no rows from a job that never ran. The **Start early now** action queues the same one-time Cron hook as the regular process.
 
+## Plugin and theme usage index
+
+The independent `rrze_msm_collect_plugin_theme_usage_metrics` process records active plugin files and the active theme stylesheet per website in `plugin_metrics` and `theme_metrics`. It then processes one installed plugin or theme source per continuation and stores the static findings in `plugin_source_metrics` and `theme_source_metrics`. Each table has a private staging counterpart: a new run writes only there and promotes one fully collected table at a time in a short database transaction. The prior complete snapshot therefore remains visible on plugin and theme detail pages until its replacement is ready; a restarted or failed run never empties those pages. Unchanged sources are skipped by fingerprint. Its default cadence is twice weekly and it uses the same central worker budget as the other monitoring processes. Dashboard-metrics batches do not read `active_plugins`, `stylesheet`, or `template` any more. Plugin/theme detail views use narrow indexed lookups and stored source findings; they never start a source scan during a page request. Before the first completed index pass they show an explicit link to Monitoring instead of falling back to a live network scan. After a completed pass, changes to a website's local active-plugin option and theme immediately replace that one website's relation rows. A change to network-active plugins starts a new bounded complete pass because it affects every website.
+
 ## Availability monitoring
 
 | Element | Name |
@@ -90,7 +94,7 @@ The following site-meta keys are written per site: `rrze_msm_operational_status`
 
 ## Central analysis tables
 
-Five InnoDB tables use `$wpdb->base_prefix`, independently of the currently selected website. They are created or upgraded by `AnalysisStore::install()` during plugin activation and whenever the network option `rrze_msm_analysis_schema` differs from `AnalysisStore::SCHEMA_VERSION`. `dbDelta()` creates missing columns; `verifySchema()` then requires the InnoDB engine and every listed column before the version is saved. A failed validation leaves the schema version unchanged, so a later request retries the repair.
+Thirteen InnoDB tables use `$wpdb->base_prefix`, independently of the currently selected website. They are created or upgraded by `AnalysisStore::install()` during plugin activation and whenever the network option `rrze_msm_analysis_schema` differs from `AnalysisStore::SCHEMA_VERSION`. `dbDelta()` creates missing columns; `verifySchema()` then requires the InnoDB engine and every listed column before the version is saved. A failed validation leaves the schema version unchanged, so a later request retries the repair.
 
 | Table suffix (after `rrze_msm_analysis_`) | Contents |
 | --- | --- |
@@ -99,6 +103,14 @@ Five InnoDB tables use `$wpdb->base_prefix`, independently of the currently sele
 | `blocks` | Incremental block findings and the separate block checkpoint (`entry_key = checkpoint`, `post_id = 0`) |
 | `mediaindex` | Bounded attachment-path segments (`00`–`ff`) and media-usage ID segments (`u00`–`uff`) |
 | `dashboard_metrics` | Current website and network dashboard snapshots plus cadence-limited historical statistics |
+| `plugin_metrics` | Indexed relation between an active plugin file and a website |
+| `theme_metrics` | Indexed relation between the active theme stylesheet and a website |
+| `plugin_source_metrics` | One persisted static source-analysis result per installed plugin |
+| `theme_source_metrics` | One persisted static source-analysis result per installed theme |
+| `plugin_metrics_staging` | Unpublished complete-run replacement for `plugin_metrics` |
+| `theme_metrics_staging` | Unpublished complete-run replacement for `theme_metrics` |
+| `plugin_source_metrics_staging` | Unpublished complete-run replacement for plugin source findings |
+| `theme_source_metrics_staging` | Unpublished complete-run replacement for theme source findings |
 
 The base prefix means that one physical table set serves every network that shares the WordPress database prefix. Every query is therefore scoped by `network_id`, `blog_id`, and, where applicable, `run_id`. Table names do not change with `switch_to_blog()`. Only plugin-owned table identifiers are accepted; existing dashboard capability checks protect result pages.
 
@@ -173,7 +185,7 @@ The shortcode and block phases share a generation, but their findings, cursors a
 
 Checkpoints expire explicitly after 24 hours of inactivity; media-index runs have a seven-day expiry. No running analysis depends on an evictable transient. Storage states are limited to 1 MiB; each content checkpoint row to 8 KiB. Findings have an 8-KiB row limit, a 256-KiB pending-buffer limit, and a 1-MiB cumulative payload budget **per phase**, plus the existing configured entry limit. Input content and individual meta values are size-gated in SQL at 256 KiB. Post metadata is traversed in pages of ten with a resumable meta cursor. Display strings are bounded before persistence; truncation or omitted input is explicitly reported as incomplete results.
 
-Schema version: network option `rrze_msm_analysis_schema` (currently 4). The independent `AnalysisStore::DATA_VERSION` stays at 1, so additive schema repairs do not repeat the destructive legacy-data migration. Site upgrade marker: non-autoloaded option `rrze_msm_analysis_storage_version`. The upgrade intentionally discards all previous analysis results and working states, without reading their large payloads. Network cursor `rrze_msm_analysis_upgrade_cursor` traverses ten sites per maintenance invocation (`-1` means done). The same per-site preparation runs before a site's first new analysis. It preserves schedules/settings and sets `rrze_msm_analysis_reanalysis` flags for previously analysed sites. Successful new storage/content results clear their respective flag. Existing live-worker protection applies when clearing legacy reservations. MySQL connection-scoped named locks serialize schema creation and each site's upgrade; failed writes do not mark the site migrated.
+Schema version: network option `rrze_msm_analysis_schema` (currently 6). The independent `AnalysisStore::DATA_VERSION` stays at 1, so additive schema repairs do not repeat the destructive legacy-data migration. Site upgrade marker: non-autoloaded option `rrze_msm_analysis_storage_version`. The upgrade intentionally discards all previous analysis results and working states, without reading their large payloads. Network cursor `rrze_msm_analysis_upgrade_cursor` traverses ten sites per maintenance invocation (`-1` means done). The same per-site preparation runs before a site's first new analysis. It preserves schedules/settings and sets `rrze_msm_analysis_reanalysis` flags for previously analysed sites. Successful new storage/content results clear their respective flag. Existing live-worker protection applies when clearing legacy reservations. MySQL connection-scoped named locks serialize schema creation and each site's upgrade; failed writes do not mark the site migrated.
 
 Maintenance hook `rrze_msm_analysis_maintenance` runs on the network's main site, first after one minute and then hourly. Continuations with `[true]` run after at least one minute while work remains. It deletes at most 250 legacy network transient rows and handles at most ten expired runs per invocation, deleting at most 250 child rows per table/run before deleting an empty run. Website deletion marks its runs obsolete. The existing full-data cleanup also removes central data in network-scoped batches. Completed current content results have no expiry; the last successful result is retained until a replacement or explicit cleanup.
 

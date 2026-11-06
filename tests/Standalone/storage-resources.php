@@ -66,7 +66,7 @@ function restore_current_blog() { $GLOBALS['test_blog'] = array_pop($GLOBALS['te
 function wp_get_upload_dir() { return ['basedir' => $GLOBALS['test_uploads'], 'baseurl' => 'https://example.org/uploads']; }
 function is_multisite() { return true; }
 function is_main_site() { return get_current_blog_id() === 1; }
-class WP_Post { public int $ID = 7; public string $post_type = 'attachment'; public string $post_mime_type = 'application/pdf'; public string $post_title = 'Document'; public string $post_excerpt = ''; public string $post_content = ''; }
+class WP_Post { public int $ID = 7; public int $post_author = 21; public string $post_type = 'attachment'; public string $post_mime_type = 'application/pdf'; public string $post_title = 'Document'; public string $post_excerpt = ''; public string $post_content = ''; }
 function get_post($id) { check($id === 7, 'Debug loaded an unrelated post.'); return new WP_Post(); }
 function get_post_meta($id, $key, $single = false) { check($id === 7, 'Debug loaded unrelated metadata.'); return $key === '_wp_attached_file' ? 'document.pdf' : []; }
 function get_post_types($args = [], $output = 'names') {
@@ -275,6 +275,7 @@ final class AttachmentPageRows {
 final class AttachmentRows {
     public string $posts = 'posts';
     public string $postmeta = 'postmeta';
+    public string $users = 'users';
     public string $sitemeta = 'sitemeta';
     public string $options = 'options';
     private array $parameters = [];
@@ -313,6 +314,15 @@ final class AttachmentRows {
     public array $rows = [];
     public function prepare(string $query, ...$args): string { $this->parameters = $args; return vsprintf($query, $args); }
     public function get_results(string $query): array {
+        if (str_contains($query, 'p.post_author')) {
+            return array_map(static fn($id) => (object)[
+                'ID' => (int)$id,
+                'post_author' => 21,
+                'display_name' => 'Test uploader',
+                'user_login' => 'test-uploader',
+            ], $this->parameters);
+        }
+
         check((bool)preg_match('/p.ID > (\d+)/', $query, $match), 'Index query must use an ID cursor.');
         check((bool)preg_match('/LIMIT (\d+)/', $query, $limit), 'Index query must be paginated.');
         return array_slice(array_values(array_filter($this->rows, static fn($row) => $row->ID > (int)$match[1])), 0, (int)$limit[1]);
@@ -593,6 +603,7 @@ try {
     check($pipeline->cacheSize() <= 32, 'Base finalization retained more than the bounded index cache for orphan analysis.');
     $debug = $metrics->getSiteStorageAttachmentDebug(1, 7);
     check($debug['attachment_id'] === 7 && $debug['in_attachment_index'], 'Single-ID debug did not produce its local metadata.');
+    check(($debug['upload_author']['label'] ?? '') === 'Test uploader', 'Single-ID debug did not resolve the upload author.');
     (new RRZE\MultisiteManager\Metrics\StorageAnalysisResourceService())->clearSite(1);
 
     $states = new RRZE\MultisiteManager\Metrics\StorageAnalysisStateService();

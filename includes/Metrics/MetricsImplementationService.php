@@ -60,7 +60,7 @@ class MetricsImplementationService {
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const DETAIL_OPTION_VALUE_MAX_BYTES = 16384;
-    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 4;
+    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 6;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE = 250;
@@ -91,6 +91,7 @@ class MetricsImplementationService {
     protected DashboardMetricsRefreshService $dashboardRefresh;
     protected DashboardMetricsBatchService $dashboardBatch;
     protected DashboardMetricsHistoryStore $dashboardHistory;
+    protected PluginThemeUsageMetricsService $pluginThemeUsageMetrics;
     protected StorageUploadScannerService $storageUploadScanner;
     protected StorageAnalysisBatchService $storageAnalysisBatch;
     protected MetricsCacheService $metricsCache;
@@ -146,6 +147,14 @@ class MetricsImplementationService {
         );
         $this->dashboardBatch = new DashboardMetricsBatchService($this->dashboardRefresh);
         $this->dashboardHistory = new DashboardMetricsHistoryStore();
+        $this->pluginThemeUsageMetrics = new PluginThemeUsageMetricsService($this->settings, $this->config);
+        $this->pluginThemeUsageMetrics->setSourceAnalysisProviders(
+            fn(string $pluginFile): array => $this->analyzePluginCode($pluginFile),
+            fn(string $stylesheet): array => $this->analyzeThemeCode($stylesheet),
+            fn(string $pluginFile): string => $this->getPluginCacheFingerprint($pluginFile),
+            fn(string $stylesheet): string => $this->getThemeCacheFingerprint($stylesheet),
+            fn(): int => $this->bumpDetailCacheVersion()
+        );
         $this->storageUploadScanner = new StorageUploadScannerService();
         $this->storageAnalysisBatch = new StorageAnalysisBatchService();
         $this->siteDetailMetrics = new SiteDetailMetricsService();
@@ -179,6 +188,7 @@ class MetricsImplementationService {
         add_action(self::DETAIL_CACHE_MAINTENANCE_HOOK, [$this, 'maintainDetailCache']);
         add_action('init', [$this, 'ensureDashboardRefreshContinuation'], 24);
         add_action('init', [$this, 'ensureDetailCacheMaintenance'], 24);
+        $this->pluginThemeUsageMetrics->register();
         $this->storageResources->register();
         $this->registerInvalidationHooks();
     }
@@ -194,6 +204,14 @@ class MetricsImplementationService {
         ];
 
         return $schedules;
+    }
+
+    public function reschedulePluginThemeUsageCycle(): void {
+        $this->pluginThemeUsageMetrics->reschedule();
+    }
+
+    public function startPluginThemeUsageRunFromNow(): string {
+        return $this->pluginThemeUsageMetrics->startRunFromNow();
     }
 
     public function ensureDetailCacheMaintenance(): void {
@@ -517,6 +535,7 @@ class MetricsImplementationService {
                 $this->clearDashboardDataCaches();
                 delete_site_transient('rrze_msm_database_usage_aggregation_v1');
                 delete_site_option(self::DASHBOARD_HISTORY_RUN_STATE_OPTION);
+                delete_site_option('rrze_msm_plugin_theme_usage_metrics_state');
                 $state['status'] = 'complete';
                 $state['finished_at'] = current_time('mysql', true);
                 $state['message'] = __('Cleanup completed. Storage, shortcode and block analyses, and dashboard metrics can now be started manually again.', 'rrze-multisite-manager');
@@ -640,6 +659,11 @@ class MetricsImplementationService {
         $monitoringState = get_site_option('rrze_msm_monitoring_run_state', []);
 
         if (is_array($monitoringState) && !empty($monitoringState)) {
+            return true;
+        }
+
+        $pluginThemeUsageState = get_site_option('rrze_msm_plugin_theme_usage_metrics_state', []);
+        if (is_array($pluginThemeUsageState) && (string)($pluginThemeUsageState['status'] ?? '') === 'running') {
             return true;
         }
 
@@ -1807,23 +1831,12 @@ class MetricsImplementationService {
     protected function buildDashboardDataPayloadFromBatchState(array $state): array {
         $siteOverview = is_array($state['site_overview'] ?? null) ? (array)$state['site_overview'] : [];
         $networkStorageUsage = $this->finalizeDashboardBatchStorageUsage((array)($state['network_storage_usage'] ?? []));
-        $pluginUsage = $this->finalizePluginUsageStats(
-            (array)($state['plugin_usage']['stats'] ?? []),
-            (array)($state['plugin_usage']['missing_plugins'] ?? []),
-            (int)($state['plugin_usage']['total_sites'] ?? 0)
-        );
         $editorUsage = $this->finalizeDashboardBatchEditorUsage((array)($state['editor_usage'] ?? []));
         $recentSites = array_slice($siteOverview, 0, $this->getSiteTableMaxRows());
         $recentlyUpdatedSites = $this->sortFormattedSitesByActivity($siteOverview, 'DESC');
         $inactiveSites = $this->sortFormattedSitesByActivity($siteOverview, 'ASC');
 
-        $this->themeSiteAggregate = is_array($state['theme_aggregate'] ?? null)
-            ? (array)$state['theme_aggregate']
-            : [
-                'counts' => [],
-                'usage_map' => [],
-                'truncated' => [],
-            ];
+        $this->themeSiteAggregate = null;
 
         return [
             'summary' => $this->getSummary($networkStorageUsage),
@@ -1844,7 +1857,7 @@ class MetricsImplementationService {
             'themes' => $this->getThemes(),
             'theme_usage' => $this->getThemeUsage(),
             'editor_usage' => $editorUsage,
-            'plugin_usage' => $pluginUsage,
+            'plugin_usage' => $this->getPluginUsage(),
             'inactive_themes' => $this->getInactiveThemes(),
             'recently_updated_sites' => array_slice($recentlyUpdatedSites, 0, $this->getSiteTableMaxRows()),
             'inactive_sites' => array_slice($inactiveSites, 0, $this->getSiteTableMaxRows()),
@@ -1934,6 +1947,31 @@ class MetricsImplementationService {
 
     public function getProcessesOverview(): array {
         $status = $this->getDashboardDataStatus();
+        $usageStatus = $this->pluginThemeUsageMetrics->getStatus();
+        $usagePhase = (string)($usageStatus['phase'] ?? '');
+        $usageBatchOffset = (int)($usageStatus['batch_offset'] ?? 0);
+        $usageBatchTotal = (int)($usageStatus['batch_total'] ?? 0);
+        $usageStatusMessage = '';
+
+        if ($usagePhase === 'plugin_sources' || $usagePhase === 'theme_sources') {
+            $usageBatchOffset = (int)($usageStatus['source_offset'] ?? 0);
+            $usageBatchTotal = (int)($usageStatus['source_total'] ?? 0);
+            $usageStatusMessage = $usagePhase === 'plugin_sources'
+                ? __('Static plugin source analysis is running.', 'rrze-multisite-manager')
+                : __('Static theme source analysis is running.', 'rrze-multisite-manager');
+        } elseif ($usagePhase === 'plugin_usage') {
+            $usageStatusMessage = __('Plugin usage is being collected.', 'rrze-multisite-manager');
+        } elseif ($usagePhase === 'theme_usage') {
+            $usageStatusMessage = __('Theme usage is being collected.', 'rrze-multisite-manager');
+        }
+
+        if ((int)($usageStatus['source_errors'] ?? 0) > 0) {
+            $usageStatusMessage = sprintf(
+                /* translators: %d: number of source analyses that could not be completed. */
+                _n('%d source analysis could not be completed.', '%d source analyses could not be completed.', (int)$usageStatus['source_errors'], 'rrze-multisite-manager'),
+                number_format_i18n((int)$usageStatus['source_errors'])
+            );
+        }
         $isComposing = !empty($status['is_composing']);
         $nextCompositionRunTimestamp = (int)($status['next_composition_run_timestamp'] ?? 0);
         $nextCompositionWatchdogTimestamp = (int)($status['next_composition_watchdog_timestamp'] ?? 0);
@@ -1950,7 +1988,6 @@ class MetricsImplementationService {
         $historyRunState = $this->getDashboardHistoryRunState();
         $historyStartedAt = max(0, (int)($historyRunState['started_at'] ?? 0));
         $historyFinishedAt = max(0, (int)($historyRunState['finished_at'] ?? 0));
-        $historyCreatedCount = max(0, (int)($historyRunState['created_count'] ?? 0));
         $historySiteCount = max(0, (int)($historyRunState['site_count'] ?? 0));
         $historyIsRunning = (string)($historyRunState['status'] ?? '') === 'running';
         $historyHasError = (string)($historyRunState['status'] ?? '') === 'error';
@@ -1959,19 +1996,44 @@ class MetricsImplementationService {
 
         if ($historyHasError) {
             $historyStatusMessage = __('Dashboard metric statistics could not be completed. Check the error log and run the task again.', 'rrze-multisite-manager');
-        } elseif ($historyFinishedAt > 0 && $historyCreatedCount === 0) {
-            $historyStatusMessage = $historySiteCount > 0
-                ? __('No new dashboard metric statistics were due for this run.', 'rrze-multisite-manager')
-                : __('No completed dashboard snapshot was available for this run.', 'rrze-multisite-manager');
-        } elseif ($historyFinishedAt > 0) {
-            $historyStatusMessage = sprintf(
-                /* translators: %d: number of created metric statistic snapshots. */
-                _n('%d dashboard metric statistic was created.', '%d dashboard metric statistics were created.', $historyCreatedCount, 'rrze-multisite-manager'),
-                number_format_i18n($historyCreatedCount)
-            );
         }
 
         return [
+            [
+                'id' => 'plugin-theme-usage',
+                'title' => __('Plugin and theme usage', 'rrze-multisite-manager'),
+                'description' => __('Builds the central index of websites using each plugin and theme. Plugin and theme detail pages use this index and no longer scan all websites live.', 'rrze-multisite-manager'),
+                'cron_hook' => PluginThemeUsageMetricsService::HOOK,
+                'interval_hours' => $this->pluginThemeUsageMetrics->getIntervalHours(),
+                'interval_label' => $this->pluginThemeUsageMetrics->getIntervalLabel(),
+                'last_run' => (int)($usageStatus['last_run_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$usageStatus['last_run_timestamp']) : '',
+                'started_at' => (int)($usageStatus['started_at_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$usageStatus['started_at_timestamp']) : '',
+                'finished_at' => !empty($usageStatus['is_running']) ? '' : ((int)($usageStatus['last_run_timestamp'] ?? 0) > 0 ? gmdate('Y-m-d H:i:s', (int)$usageStatus['last_run_timestamp']) : ''),
+                'last_site_count' => (int)($usageStatus['last_site_count'] ?? 0),
+                'next_run_timestamp' => (int)($usageStatus['next_run_timestamp'] ?? 0),
+                'is_running' => !empty($usageStatus['is_running']),
+                'schedule_action_state' => !empty($usageStatus['is_running']) ? 'running' : 'start',
+                'batch_offset' => $usageBatchOffset,
+                'batch_total' => $usageBatchTotal,
+                'checked_sites' => $usageBatchOffset,
+                'remaining_sites' => max(0, $usageBatchTotal - $usageBatchOffset),
+                'progress_percent' => $usageBatchTotal > 0 ? (int)round(($usageBatchOffset / $usageBatchTotal) * 100) : 0,
+                'hide_completed_progress_bar' => true,
+                'batch_size' => $this->config->getMonitoringBatchSize(),
+                'current_duration_seconds' => !empty($usageStatus['is_running']) ? max(0, time() - (int)($usageStatus['started_at_timestamp'] ?? time())) : 0,
+                'last_duration_seconds' => 0,
+                'status_message' => $usageStatusMessage !== ''
+                    ? $usageStatusMessage
+                    : (!empty($usageStatus['has_data']) ? '' : __('No plugin and theme usage index has been collected yet.', 'rrze-multisite-manager')),
+                'next_step_label' => '',
+                'run_state' => [
+                    'has_data' => !empty($usageStatus['has_data']),
+                    'needs_refresh' => false,
+                    'is_dirty' => false,
+                    'has_composition_error' => false,
+                    'is_composing' => false,
+                ],
+            ],
             [
                 'id' => 'dashboard-metrics',
                 'title' => __('Dashboard metrics', 'rrze-multisite-manager'),
@@ -2096,8 +2158,6 @@ class MetricsImplementationService {
         );
 
         $this->mergeDashboardStorageUsageState($state['network_storage_usage'], (array)($partialState['network_storage_usage'] ?? []));
-        $this->mergeDashboardThemeAggregate($state['theme_aggregate'], (array)($partialState['theme_aggregate'] ?? []));
-        $this->mergeDashboardPluginUsageState($state['plugin_usage'], (array)($partialState['plugin_usage'] ?? []));
         $state['editor_usage']['classic_sites'] = (int)($state['editor_usage']['classic_sites'] ?? 0) + (int)($partialState['editor_usage']['classic_sites'] ?? 0);
         $state['editor_usage']['block_sites'] = (int)($state['editor_usage']['block_sites'] ?? 0) + (int)($partialState['editor_usage']['block_sites'] ?? 0);
     }
@@ -2160,26 +2220,8 @@ class MetricsImplementationService {
         $siteName = (string)($formattedSite['name'] ?? $this->getSiteName($site));
         $siteUrl = (string)($formattedSite['url'] ?? get_home_url($siteId, '/'));
         $storage = is_array($formattedSite['storage'] ?? null) ? $formattedSite['storage'] : [];
-        $stylesheet = (string)get_blog_option($siteId, 'stylesheet', '');
-        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
-        $activePlugins = get_blog_option($siteId, 'active_plugins', []);
-
-        if ($stylesheet === '') {
-            $stylesheet = (string)get_blog_option($siteId, 'template', '');
-        }
-
-        if (!is_array($activePlugins)) {
-            $activePlugins = [];
-        }
-
-        $sitePluginFiles = array_unique(array_merge(
-            array_keys($networkActivePlugins),
-            array_values(array_filter($activePlugins, 'is_string'))
-        ));
 
         $this->accumulateDashboardBatchStorageUsage($state['network_storage_usage'], $siteId, $siteName, $storage);
-        $this->accumulateDashboardBatchThemeUsage($state['theme_aggregate'], $siteId, $siteName, $siteUrl, $stylesheet);
-        $this->accumulateDashboardBatchPluginUsage($state['plugin_usage'], $siteId, $siteName, $siteUrl, $sitePluginFiles);
         $this->accumulateDashboardBatchEditorUsage($state['editor_usage'], $siteId);
     }
 
@@ -4346,7 +4388,6 @@ class MetricsImplementationService {
         ];
         $cached = get_site_transient($cacheKey);
         $userData = [];
-        $networkActivePlugins = array_keys((array)get_site_option('active_sitewide_plugins', []));
 
         if (is_array($cached) && !empty($cached)) {
             return $cached;
@@ -4361,7 +4402,6 @@ class MetricsImplementationService {
         $contentCounts['posts'] = $this->countContentItems('post');
         $contentCounts['media'] = $this->countContentItems('attachment');
         $storage = $this->getSiteStorageUsage();
-        $activePlugins = get_option('active_plugins', []);
         $customPostTypes = get_post_types(['_builtin' => false], 'names');
         $databaseBytes = $this->getSiteDatabaseSizeBytes($siteId);
 
@@ -4372,10 +4412,7 @@ class MetricsImplementationService {
             'role_counts' => $roleCounts,
             'content_counts' => $contentCounts,
             'storage' => $storage,
-            'plugin_count' => count(array_unique(array_merge(
-                $networkActivePlugins,
-                is_array($activePlugins) ? array_filter($activePlugins, 'is_string') : []
-            ))),
+            'plugin_count' => $this->pluginThemeUsageMetrics->getPluginCountForSite($siteId),
             // Installed themes are shared by the WordPress installation, but
             // this count documents the set available to each website.
             'theme_count' => count(wp_get_themes()),
@@ -4411,6 +4448,14 @@ class MetricsImplementationService {
         $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('blocks');
         $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('mediaindex');
         $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('dashboard_metrics');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_metrics');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_metrics');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_source_metrics');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_source_metrics');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_metrics_staging');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_metrics_staging');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_source_metrics_staging');
+        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_source_metrics_staging');
         $globalTables = array_values(array_unique(array_filter($globalTables, 'is_string')));
         $where = ['table_schema = DATABASE()', 'table_name LIKE %s'];
         $arguments = [$wpdb->esc_like($prefix) . '%'];
@@ -4773,12 +4818,13 @@ class MetricsImplementationService {
         return wp_nonce_url(
             add_query_arg(
                 [
-                    'action' => 'deactivate',
+                    'action' => 'rrze_multisite_manager_deactivate_site_plugin',
+                    'site_id' => $siteId,
                     'plugin' => $pluginFile,
                 ],
-                get_admin_url($siteId, 'plugins.php')
+                admin_url('admin-post.php')
             ),
-            'deactivate-plugin_' . $pluginFile
+            'rrze_multisite_manager_deactivate_site_plugin_' . $siteId . '_' . $pluginFile
         );
     }
 
@@ -5353,6 +5399,117 @@ class MetricsImplementationService {
         }
 
         return $this->getCachedSiteStorageAnalysis($siteId);
+    }
+
+    /**
+     * Adds upload-author labels only for the rows rendered in the admin. The
+     * stored analysis deliberately keeps no user data and needs no new Cron
+     * collection for this presentation detail.
+     *
+     * @param array<string, mixed> $analysis
+     * @return array<string, mixed>
+     */
+    public function addSiteStorageAttachmentAuthors(int $siteId, array $analysis): array {
+        if ($siteId <= 0 || empty($analysis)) {
+            return $analysis;
+        }
+
+        $keys = [
+            'largest_files',
+            'largest_orphan_files',
+            'largest_unregistered_image_size_variants',
+            'used_attachment_files',
+            'unused_attachment_files',
+            'unregistered_image_size_variants',
+            'unregistered_image_size_variants_found_in_content',
+            'unregistered_image_size_variants_without_content_matches',
+            'orphan_files_found_in_content',
+            'orphan_files_without_content_matches',
+        ];
+        $attachmentIds = [];
+
+        foreach ($keys as $key) {
+            foreach ((array)($analysis[$key] ?? []) as $row) {
+                if (is_array($row) && !empty($row['attachment_id'])) {
+                    $attachmentIds[] = absint($row['attachment_id']);
+                }
+            }
+        }
+
+        $authors = $this->getSiteStorageAttachmentAuthors($siteId, $attachmentIds);
+
+        foreach ($keys as $key) {
+            if (!is_array($analysis[$key] ?? null)) {
+                continue;
+            }
+
+            foreach ($analysis[$key] as $index => $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $attachmentId = absint($row['attachment_id'] ?? 0);
+                $analysis[$key][$index]['upload_author'] = $authors[$attachmentId] ?? [];
+            }
+        }
+
+        return $analysis;
+    }
+
+    /** @param array<int, int> $attachmentIds @return array<int, array{id:int,label:string}> */
+    protected function getSiteStorageAttachmentAuthors(int $siteId, array $attachmentIds): array {
+        global $wpdb;
+
+        $attachmentIds = array_values(array_unique(array_filter(array_map('absint', $attachmentIds))));
+        if ($siteId <= 0 || empty($attachmentIds)) {
+            return [];
+        }
+
+        $authors = [];
+        switch_to_blog($siteId);
+
+        try {
+            foreach (array_chunk($attachmentIds, 250) as $ids) {
+                $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One bounded display-only bulk lookup for attachment authors.
+                $rows = $wpdb->get_results($wpdb->prepare(
+                    "SELECT p.ID, p.post_author, u.display_name, u.user_login
+                    FROM {$wpdb->posts} p
+                    LEFT JOIN {$wpdb->users} u ON u.ID = p.post_author
+                    WHERE p.post_type = 'attachment' AND p.ID IN ($placeholders)",
+                    ...$ids
+                ));
+
+                foreach ((array)$rows as $row) {
+                    $attachmentId = (int)($row->ID ?? 0);
+                    $userId = (int)($row->post_author ?? 0);
+                    if ($attachmentId <= 0) {
+                        continue;
+                    }
+
+                    $label = trim((string)($row->display_name ?? ''));
+                    if ($label === '') {
+                        $label = trim((string)($row->user_login ?? ''));
+                    }
+                    if ($label === '' && $userId > 0) {
+                        $label = sprintf(
+                            /* translators: %d: deleted WordPress user ID. */
+                            __('Deleted user (ID %d)', 'rrze-multisite-manager'),
+                            $userId
+                        );
+                    }
+
+                    $authors[$attachmentId] = [
+                        'id' => $userId,
+                        'label' => $label,
+                    ];
+                }
+            }
+        } finally {
+            restore_current_blog();
+        }
+
+        return $authors;
     }
 
     public function resetSiteStorageAnalysis(int $siteId): void {
@@ -8298,6 +8455,7 @@ class MetricsImplementationService {
 
     protected function getCurrentSiteStorageAttachmentDebug(int $attachmentId): array {
         $attachment = get_post($attachmentId);
+        $author = $this->getSiteStorageAttachmentAuthors(get_current_blog_id(), [$attachmentId]);
         $attachedFile = (string)get_post_meta($attachmentId, '_wp_attached_file', true);
         $mimeType = $attachment instanceof \WP_Post ? (string)$attachment->post_mime_type : '';
         $isImage = str_starts_with($mimeType, 'image/');
@@ -8368,6 +8526,7 @@ class MetricsImplementationService {
         return [
             'attachment_id' => $attachmentId,
             'exists' => $attachment instanceof \WP_Post,
+            'upload_author' => $author[$attachmentId] ?? [],
             'title' => $attachment instanceof \WP_Post ? (string)$attachment->post_title : '',
             'attached_file' => $attachedFile,
             'normalized_path' => $normalizedPath,
@@ -10101,51 +10260,11 @@ class MetricsImplementationService {
         if (is_array($this->themeSiteAggregate)) {
             return $this->themeSiteAggregate;
         }
-
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-            'orderby' => 'id',
-            'order' => 'ASC',
-        ]);
         $aggregate = [
-            'counts' => [],
+            'counts' => $this->pluginThemeUsageMetrics->getThemeCounts(),
             'usage_map' => [],
             'truncated' => [],
         ];
-        $siteId = 0;
-        $site = null;
-        $stylesheet = '';
-        $siteName = '';
-        $siteUrl = '';
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if ($siteId <= 0) {
-                continue;
-            }
-
-            $site = get_site($siteId);
-
-            if (!$site instanceof \WP_Site) {
-                continue;
-            }
-
-            $siteName = $this->getSiteName($site);
-            $siteUrl = get_home_url($siteId, '/');
-
-            switch_to_blog($siteId);
-            $stylesheet = (string)get_option('stylesheet', '');
-
-            if ($stylesheet === '') {
-                $stylesheet = (string)get_option('template', '');
-            }
-
-            restore_current_blog();
-
-            $this->accumulateDashboardBatchThemeUsage($aggregate, $siteId, $siteName, $siteUrl, $stylesheet);
-        }
 
         $this->themeSiteAggregate = $aggregate;
 
@@ -11067,11 +11186,11 @@ class MetricsImplementationService {
     }
 
     protected function getPluginDetailsCacheKey(string $pluginFile, bool $includeSourceAnalysis = false): string {
-        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5('site-overview-rows-v1|' . $pluginFile . '|' . (int)$includeSourceAnalysis . '|' . $this->getPluginCacheFingerprint($pluginFile));
+        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5('usage-index-v2|' . $pluginFile . '|' . (int)$includeSourceAnalysis . '|' . $this->getPluginCacheFingerprint($pluginFile));
     }
 
     protected function getThemeDetailsCacheKey(string $stylesheet, bool $includeSourceAnalysis = false): string {
-        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5('site-overview-rows-v1|' . $stylesheet . '|' . (int)$includeSourceAnalysis . '|' . $this->getThemeCacheFingerprint($stylesheet));
+        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5('usage-index-v1|' . $stylesheet . '|' . (int)$includeSourceAnalysis . '|' . $this->getThemeCacheFingerprint($stylesheet));
     }
 
     protected function getPluginCacheFingerprint(string $pluginFile): string {
@@ -11125,16 +11244,6 @@ class MetricsImplementationService {
                 'total_used_bytes' => 0,
                 'total_max_bytes' => 0,
                 'has_unlimited_site' => false,
-            ],
-            'theme_aggregate' => [
-                'counts' => [],
-                'usage_map' => [],
-                'truncated' => [],
-            ],
-            'plugin_usage' => [
-                'total_sites' => $siteCount,
-                'stats' => $this->createBasePluginUsageStats(),
-                'missing_plugins' => [],
             ],
             'editor_usage' => [
                 'total_sites' => $siteCount,

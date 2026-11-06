@@ -17,3 +17,5 @@ An optional source-code analysis is only an explicitly requested detail function
 ## Implementation
 
 `Dashboard::renderThemeDetailsPage()` uses the nonce namespace `rrze_msm_source_analysis_theme_<stylesheet>`. The cache key follows the pattern `rrze_msm_theme_details_<detail-version>_<hash>` and combines stylesheet, analysis mode, and theme fingerprint.
+
+The list of websites using the theme comes from the central theme-usage index. It never scans every website live. Before the first completed index run, the detail page links to Monitoring, where the index task can be started.

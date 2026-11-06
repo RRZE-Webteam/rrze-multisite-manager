@@ -42,7 +42,8 @@ trait MetricsServicePluginTrait {
         $pluginUsage = is_array($dashboardData['plugin_usage']['plugins'] ?? null) ? $dashboardData['plugin_usage']['plugins'] : [];
         $pluginUsageItem = $this->findPluginUsageItem($pluginUsage, $pluginFile);
         $updateItem = $this->getPluginUpdateItem($pluginFile);
-        $analysis = $includeSourceAnalysis ? $this->analyzePluginCode($pluginFile) : [];
+        $analysis = $this->pluginThemeUsageMetrics->getPluginSourceAnalysis($pluginFile);
+        $sourceAnalysisCompleted = $this->pluginThemeUsageMetrics->hasPluginSourceAnalysis($pluginFile);
         $supplementary = $this->getPluginSupplementaryData($pluginFile);
         $installTimestamp = $this->getPluginInstallTimestamp($pluginFile);
         $modifiedTimestamp = $this->getPluginModifiedTimestamp($pluginFile);
@@ -80,12 +81,20 @@ trait MetricsServicePluginTrait {
             $status = $this->getPluginStatus($pluginUsageItem);
         }
 
-        // The dashboard stores only a bounded preview for each plugin to keep
-        // the network-wide metrics payload manageable. Detail pages, however,
-        // must show every website currently using this plugin.
+        // Usage-index rows intentionally contain only relation data. Complete
+        // the detail header from WordPress' plugin header even when a row was
+        // already found, otherwise the visible plugin name can be empty.
+        if (trim((string)($pluginUsageItem['name'] ?? '')) === '') {
+            $pluginUsageItem['name'] = (string)($pluginData['Name'] ?? $pluginFile);
+        }
+
+        // Detail pages read the central relation index. They never iterate
+        // over all websites or read every site's active_plugins option.
         $pluginUsageItem['active_sites'] = $this->getActiveSitesForPlugin($pluginFile);
         $pluginUsageItem['site_count'] = count($pluginUsageItem['active_sites']);
         $pluginUsageItem['active_sites_truncated'] = false;
+        $pluginUsageItem['usage_data_available'] = $this->pluginThemeUsageMetrics->hasCompletedSnapshot();
+        $pluginUsageItem['usage_monitoring_url'] = admin_url('admin.php?page=rrze-multisite-manager-monitoring&monitoring_tab=network');
         $status = $this->getPluginStatus($pluginUsageItem);
 
         if ((string)($pluginUsageItem['author'] ?? '') === '' && !empty($supplementary['author']['name'])) {
@@ -114,7 +123,7 @@ trait MetricsServicePluginTrait {
                 'extended_description' => (string)($supplementary['description'] ?? ''),
                 'metadata_sources' => (array)($supplementary['sources'] ?? []),
                 'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
-                'source_analysis_completed' => $includeSourceAnalysis,
+                'source_analysis_completed' => $sourceAnalysisCompleted,
                 'shortcodes' => (array)($analysis['shortcodes'] ?? []),
                 'blocks' => (array)($analysis['blocks'] ?? []),
                 'block_patterns' => (array)($analysis['block_patterns'] ?? []),
@@ -134,46 +143,24 @@ trait MetricsServicePluginTrait {
     }
 
     protected function getPluginUsage(): array {
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-
-        $networkActivePlugins = get_site_option('active_sitewide_plugins', []);
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
         $pluginStats = $this->createBasePluginUsageStats();
         $missingPlugins = [];
-        $siteId = 0;
-        $activePlugins = [];
-        $totalSites = count($siteIds);
-        $sitePluginFiles = [];
+        $counts = $this->pluginThemeUsageMetrics->getPluginCounts();
 
-        foreach ($siteIds as $siteId) {
-            $activePlugins = get_blog_option((int)$siteId, 'active_plugins', []);
-
-            if (!is_array($activePlugins)) {
-                $activePlugins = [];
+        foreach ($counts as $pluginFile => $count) {
+            if (isset($pluginStats[$pluginFile])) {
+                $pluginStats[$pluginFile]['site_count'] = $count;
+                continue;
             }
-
-            $sitePluginFiles = array_unique(
-                array_merge(
-                    array_keys($networkActivePlugins),
-                    array_values(array_filter($activePlugins, 'is_string'))
-                )
-            );
-
-            $this->accumulatePluginUsageStats(
-                $pluginStats,
-                $missingPlugins,
-                (int)$siteId,
-                $this->getSiteNameById((int)$siteId),
-                get_home_url((int)$siteId, '/'),
-                $sitePluginFiles,
-                is_array($networkActivePlugins) ? $networkActivePlugins : []
-            );
+            $missingPlugins[$pluginFile] = [
+                'file' => $pluginFile,
+                'site_count' => $count,
+                'active_sites' => [],
+                'active_sites_truncated' => $count > 0,
+            ];
         }
 
-        return $this->finalizePluginUsageStats($pluginStats, $missingPlugins, $totalSites);
+        return $this->finalizePluginUsageStats($pluginStats, $missingPlugins, $this->getDashboardSiteCount());
     }
 
     /**
@@ -184,35 +171,7 @@ trait MetricsServicePluginTrait {
      * network-wide payload disproportionately on large multisites.
      */
     protected function getActiveSitesForPlugin(string $pluginFile): array {
-        $networkActivePlugins = (array)get_site_option('active_sitewide_plugins', []);
-        $networkActive = isset($networkActivePlugins[$pluginFile]);
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-            'orderby' => 'id',
-            'order' => 'ASC',
-        ]);
-        $activeSiteIds = [];
-        $siteId = 0;
-        $activePlugins = [];
-
-        foreach ($siteIds as $siteId) {
-            $siteId = (int)$siteId;
-
-            if ($siteId <= 0) {
-                continue;
-            }
-
-            $activePlugins = get_blog_option($siteId, 'active_plugins', []);
-
-            if (!$networkActive && (!is_array($activePlugins) || !in_array($pluginFile, $activePlugins, true))) {
-                continue;
-            }
-
-            $activeSiteIds[] = $siteId;
-        }
-
-        return $this->getSiteOverviewRowsForIds($activeSiteIds);
+        return $this->getSiteOverviewRowsForIds($this->pluginThemeUsageMetrics->getPluginSiteIds($pluginFile));
     }
 
     protected function findPluginUsageItem(array $plugins, string $pluginFile): array {

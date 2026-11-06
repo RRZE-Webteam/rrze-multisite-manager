@@ -235,7 +235,9 @@ defined('ABSPATH') || exit;
                             (int)($plugin_details['site_count'] ?? 0)
                         )); ?></p>
                     </header>
-                    <?php if (!empty($plugin_details['active_sites']) && is_array($plugin_details['active_sites'])) { ?>
+                    <?php if (empty($plugin_details['usage_data_available'])) { ?>
+                        <p><?php echo esc_html__('The central plugin and theme usage index has not run yet.', 'rrze-multisite-manager'); ?> <a href="<?php echo esc_url((string)($plugin_details['usage_monitoring_url'] ?? '')); ?>"><?php echo esc_html__('Open monitoring and start or review the task.', 'rrze-multisite-manager'); ?></a></p>
+                    <?php } elseif (!empty($plugin_details['active_sites']) && is_array($plugin_details['active_sites'])) { ?>
                         <?php echo $site_overview_widget->renderSiteOverviewTable((array)$plugin_details['active_sites'], ['table_id' => 'plugin-details-sites', 'default_per_page' => 20, 'sort_key' => 'registered', 'sort_direction' => 'desc']); ?>
                     <?php } else { ?>
                         <p><?php echo esc_html__('This plugin is currently not used actively on any website.', 'rrze-multisite-manager'); ?></p>
@@ -476,9 +478,8 @@ defined('ABSPATH') || exit;
                     <section class="rrze-msm-widget rrze-msm-widget-span-12">
                         <header class="rrze-msm-widget-header">
                             <h2><?php echo esc_html__('Source code analysis', 'rrze-multisite-manager'); ?></h2>
-                            <p><?php echo esc_html__('The optional static analysis searches the plugin source for shortcodes, blocks, post types, taxonomies, image sizes, and provided hooks. It can take time for large plugins.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('The central plugin and theme usage process performs this static analysis in the background. Results appear here after its next completed run.', 'rrze-multisite-manager'); ?></p>
                         </header>
-                        <a class="button button-secondary" href="<?php echo esc_url($source_analysis_url); ?>"><?php echo esc_html__('Analyze source code', 'rrze-multisite-manager'); ?></a>
                     </section>
                 <?php } ?>
             </div>

@@ -2,13 +2,13 @@
 
 ## Purpose
 
-The **Monitoring** page is the central operations interface for dashboard metrics, availability checks, storage analyses, shortcode/block analyses, and maintenance tools. It is visible only to super admins.
+The **Monitoring** page is the central operations interface for dashboard metrics, plugin/theme usage indexing, availability checks, storage analyses, shortcode/block analyses, and maintenance tools. It is visible only to super admins.
 
 ## Tabs
 
 ### Network-wide
 
-Displays dashboard metrics and site availability monitoring. Both processes can be scheduled, started, reset, or removed. Status pills consistently mean:
+Displays dashboard metrics, plugin/theme usage indexing and site availability monitoring. The usage index is a separate bounded process, runs twice weekly by default, and is the only source for website lists on plugin and theme detail pages. Once it has completed, local plugin activation/deactivation and theme changes update the affected website's rows immediately. The processes can be scheduled, started, reset, or removed. Status pills consistently mean:
 
 * **Not scheduled** in grey: no next run, regardless of whether a result already exists.
 * **Scheduled** in yellow/orange: no result yet, but a future run is scheduled.

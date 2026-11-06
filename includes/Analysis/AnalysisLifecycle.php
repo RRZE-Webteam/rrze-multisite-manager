@@ -247,7 +247,7 @@ class AnalysisLifecycle {
         global $wpdb;
         $store = new AnalysisStore();
         $remaining = false;
-        foreach (['shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
+        foreach (['plugin_source_metrics_staging', 'theme_source_metrics_staging', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics', 'theme_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
             $table = $store->table($kind);
             $store->check($wpdb->query($wpdb->prepare("DELETE FROM $table WHERE network_id = %d LIMIT 250", get_current_network_id())));
             $exists = $wpdb->get_var($wpdb->prepare("SELECT 1 FROM $table WHERE network_id = %d LIMIT 1", get_current_network_id()));

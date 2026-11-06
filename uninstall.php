@@ -9,7 +9,7 @@ defined('WP_UNINSTALL_PLUGIN') || exit;
 
 global $wpdb;
 
-foreach (['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics'] as $kind) {
+foreach (['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics', 'plugin_metrics', 'theme_metrics', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'] as $kind) {
     // The base prefix is supplied by the active WordPress installation. Quote
     // the identifier because prepared statements cannot bind table names.
     $table = str_replace('`', '``', $wpdb->base_prefix . 'rrze_msm_analysis_' . $kind);

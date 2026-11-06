@@ -314,14 +314,17 @@ defined('ABSPATH') || exit;
                 <?php } ?>
 
                 <?php if ($site_detail_current_section === 'plugins') { ?>
-                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                <section id="rrze-msm-site-plugins" class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Active plugins', 'rrze-multisite-manager'); ?></h2>
                         <p><?php echo esc_html__('Network-active plugins appear first, followed by locally active plugins.', 'rrze-multisite-manager'); ?></p>
                     </header>
+                    <?php if (!empty($site_plugin_deactivated)) { ?>
+                        <div class="notice notice-success inline"><p><?php echo esc_html__('The plugin was deactivated for this website.', 'rrze-multisite-manager'); ?></p></div>
+                    <?php } ?>
                     <p><a class="button button-secondary" href="<?php echo esc_url($site_plugins_url); ?>"><?php echo esc_html__('Go to site plugin management', 'rrze-multisite-manager'); ?></a></p>
                     <?php if (!empty($site_details['plugins']) && is_array($site_details['plugins'])) { ?>
-                        <?php echo $site_plugin_widget->renderTable((array)$site_details['plugins'], ['table_id' => 'site-details-plugins', 'default_per_page' => 20, 'sort_key' => 'name', 'sort_direction' => 'asc', 'only_provided_plugins' => true, 'show_bulk_actions' => false, 'show_network_actions' => false, 'show_active_sites' => true, 'show_active_site_list' => false]); ?>
+                        <?php echo $site_plugin_widget->renderTable((array)$site_details['plugins'], ['table_id' => 'site-details-plugins', 'default_per_page' => 20, 'sort_key' => 'name', 'sort_direction' => 'asc', 'only_provided_plugins' => true, 'show_bulk_actions' => false, 'show_network_actions' => false, 'show_status_columns' => false, 'show_site_deactivate_action' => true, 'show_active_sites' => true, 'show_active_site_list' => false]); ?>
                     <?php } else { ?>
                         <p><?php echo esc_html__('No active plugins were detected for this website.', 'rrze-multisite-manager'); ?></p>
                     <?php } ?>

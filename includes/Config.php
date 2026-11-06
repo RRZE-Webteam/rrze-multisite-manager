@@ -260,6 +260,14 @@ class Config {
                         ],
                     ],
                     [
+                        'name' => 'plugin_theme_usage_frequency',
+                        'label' => __('Plugin and theme usage cycle', 'rrze-multisite-manager'),
+                        'desc' => __('How often the central index records which websites use each plugin and theme. Detail pages read this index instead of checking every website live.', 'rrze-multisite-manager'),
+                        'type' => 'select',
+                        'default' => 'twiceweekly',
+                        'choices' => $schedulerFrequencyChoices,
+                    ],
+                    [
                         'name' => 'batch_size',
                         'label' => __('Dashboard metrics batch size', 'rrze-multisite-manager'),
                         'desc' => __('Number of websites processed in each dashboard-metrics batch. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
