@@ -36,3 +36,5 @@ Dashboard metrics, monitoring, and scheduled analyses run in bounded batches. Lo
 The pages store analysis and status data, not fully rendered admin pages. After changing relevant settings or updating the plugin, a background refresh may be required before aggregate metrics reflect the new state.
 
 Implementation plan and validation scope: [Central analysis storage](analysis-storage-plan.md).
+
+Open tasks, performance principles, completed measures and rejected approaches: [Todo](Todo.md).

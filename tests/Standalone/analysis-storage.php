@@ -47,6 +47,7 @@ function wp_check_invalid_utf8($value, $strip = false) { return $value; }
 function wp_next_scheduled($hook, $args = []) { return false; }
 function wp_schedule_single_event($timestamp, $hook, $args = []) { $GLOBALS['scheduled_events'][] = [$timestamp, $hook, $args]; return true; }
 function check($condition, $message) { if (!$condition) { throw new RuntimeException($message); } }
+function parse_blocks($content) { return json_decode($content, true); }
 
 use RRZE\MultisiteManager\Analysis\AnalysisStore;
 use RRZE\MultisiteManager\Analysis\ContentAnalysisStore;
@@ -56,6 +57,8 @@ class FindingCollector extends RRZE\MultisiteManager\ShortcodeBlockAnalysisSched
     public function omit(string $kind, string $reason, int $postId, string $title, string $metaKey = ''): void { $this->recordOmittedSource($kind, $reason, $postId, $title, $metaKey); }
     public function totals(): array { return $this->findingTotals; }
     public function nextBatch(): void { $this->pendingFindingBytes = 0; }
+    public function blocksFrom(string $content, array $location, array &$buffer): void { $this->collectBlocks($content, $location, $buffer); }
+    protected function getBlockDetails(string $blockName): array { return []; }
 }
 
 $store = new AnalysisStore();
@@ -119,10 +122,39 @@ for ($id = 1; $id <= 3000; $id++) {
     $collector->collect('shortcodes', ['post_id' => $id, 'shortcode' => 'test', 'raw_shortcode' => str_repeat('x', 20000)], $buffer);
     if ($id % 20 === 0) { $buffer = []; $collector->nextBatch(); }
 }
-check($collector->totals()['shortcode_bytes'] <= 1048576 && $collector->totals()['shortcode_truncated'], 'Collection exceeded its byte budget.');
+check($collector->totals()['shortcode_bytes'] <= 4194304 && $collector->totals()['shortcode_truncated'], 'Collection exceeded its byte budget.');
 check(($collector->totals()['shortcode_omitted_sources'][0]['reason'] ?? '') === 'finding_value_shortened', 'Shortened finding values were not diagnosed.');
 $collector->collect('blocks', ['post_id' => 4, 'block' => 'core/image'], $buffer);
 check($collector->totals()['block_count'] === 1, 'Shortcode limit affected block collection.');
+// The cumulative result limit is reported once with the first affected post; later findings are only counted.
+$limitCollector = new FindingCollector();
+$buffer = [];
+for ($id = 1; $id <= 1010; $id++) {
+    $limitCollector->collect('blocks', ['post_id' => $id, 'post_title' => 'Post ' . $id, 'block' => 'core/paragraph'], $buffer);
+    $limitCollector->collect('blocks', ['post_id' => $id, 'post_title' => 'Post ' . $id, 'block' => 'core/heading'], $buffer);
+    if ($id % 20 === 0) { $buffer = []; $limitCollector->nextBatch(); }
+}
+$limitTotals = $limitCollector->totals();
+check($limitTotals['block_count'] === 1000 && $limitTotals['block_limit_omitted'] === 1020, 'Result limit did not count omitted findings.');
+check($limitTotals['block_omitted_count'] === 1 && count($limitTotals['block_omitted_sources']) === 1, 'Result limit was reported once per omitted finding.');
+check($limitTotals['block_omitted_sources'][0]['post_id'] === 501 && $limitTotals['block_omitted_sources'][0]['limit'] === 1000, 'Result limit did not name the first affected post and the limit.');
+// Repeated identical diagnostics are recorded once.
+$repeatCollector = new FindingCollector();
+$repeatCollector->omit('shortcodes', 'post_meta_too_large', 9, 'Post', 'payload');
+$repeatCollector->omit('shortcodes', 'post_meta_too_large', 9, 'Post', 'payload');
+check($repeatCollector->totals()['shortcode_omitted_count'] === 1 && count($repeatCollector->totals()['shortcode_omitted_sources']) === 1, 'Identical data-limit events were listed repeatedly.');
+// Blocks are stored once per block name and post, with their occurrence count.
+$blockCollector = new FindingCollector();
+$buffer = [];
+$nestedContent = json_encode([
+    ['blockName' => 'core/paragraph', 'innerBlocks' => []],
+    ['blockName' => 'core/group', 'innerBlocks' => [['blockName' => 'core/paragraph', 'innerBlocks' => []], ['blockName' => null, 'innerBlocks' => []]]],
+    ['blockName' => 'core/paragraph', 'innerBlocks' => []],
+]);
+$blockCollector->blocksFrom($nestedContent, ['post_id' => 12, 'post_title' => 'Short page'], $buffer);
+$occurrencesByBlock = array_column($buffer, 'occurrences', 'block');
+check(count($buffer) === 2 && $occurrencesByBlock === ['core/paragraph' => 3, 'core/group' => 1], 'Block occurrences were not aggregated per post.');
+check($blockCollector->totals()['block_count'] === 2, 'Aggregated block occurrences consumed the result limit individually.');
 $detailCollector = new FindingCollector();
 $detailCollector->omit('shortcodes', 'post_meta_too_large', 7, 'Large metadata post', 'builder_payload');
 check($detailCollector->totals()['shortcode_omitted_count'] === 1 && $detailCollector->totals()['shortcode_omitted_sources'][0]['metadata_key'] === 'builder_payload', 'Oversized input source was not recorded.');

@@ -16,7 +16,9 @@ When the plugin enablement is available (RRZE Netzwerk-Audit network-active, oth
 
 ## Source-code analysis
 
-An optional detail analysis can collect source-code information for a plugin. It runs only on explicit request and is not part of regular dashboard metrics or a recurring full scan.
+Static source findings (shortcodes, blocks, patterns, post types, taxonomies, image sizes, hooks) are collected by the plugin and theme usage index, one plugin or theme per Cron request, and stored in `plugin_source_metrics`. A detail page only reads that stored result. Each analysis is bounded. Two limits are configurable under **Settings > Monitoring > Plugin and theme usage index**: the subdirectory depth below the plugin or theme directory (`monitoring_source_analysis_max_depth`, default 3: the main directory and three subdirectory levels, which covers block metadata in `build/blocks/*/block.json`) and the number of PHP files read (`monitoring_source_analysis_max_php_files`, default 100). Files are read breadth-first and alphabetically, so the main directory comes first. The depth defines the scope and does not mark a result as incomplete; registrations in deeper directories are then not found. Fixed technical limits apply in addition: at most 20 seconds, 2,000 directories, 5,000 files, 1 MiB per file and 32 MiB in total. Both configurable values are part of the stored fingerprint, so changing them analyses every plugin and theme again in the next run. Hidden directories, `node_modules`, `bower_components` and symlinked directories are not entered; a single-file plugin in `WP_PLUGIN_DIR` is analysed as that one file. When a limit is reached, the stored result is marked incomplete and the detail page shows a warning. An analysis that ends its request twice (timeout or memory) is skipped for the current run and counted as a source error.
+
+The website list uses the rows of the last completed dashboard metrics run. Websites created afterwards are shown with their basic data until the next run; the page never measures website metrics itself.
 
 ## Implementation
 

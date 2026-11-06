@@ -370,7 +370,7 @@ class SliceScheduler extends RRZE\MultisiteManager\StorageAnalysisSchedulerServi
     protected function isTaskRemovalInProgress(): bool { return false; }
     protected function isSiteSchedulingRemoved(int $id): bool { return parent::isSiteSchedulingRemoved($id); }
     protected function updateCompletedRunAssignment(int $id, float $duration): void {}
-    protected function logSiteInfo(string $label, int $id, string $mode = 'unassigned', array $context = []): void {}
+    protected function logSiteInfo(string $label, int $id, string $mode = 'unassigned', array $context = [], bool $fineGrained = false): void {}
     protected function logStorageAnalysisError(int $id, string $phase, string $message, array $status = []): void {}
 }
 
@@ -416,7 +416,7 @@ final class BatchSliceScheduler extends RRZE\MultisiteManager\StorageAnalysisSch
     protected function isTaskRemovalInProgress(): bool { return false; }
     protected function isSiteSchedulingRemoved(int $id): bool { return parent::isSiteSchedulingRemoved($id); }
     protected function updateCompletedRunAssignment(int $id, float $duration): void {}
-    protected function logSiteInfo(string $label, int $id, string $mode = 'unassigned', array $context = []): void {}
+    protected function logSiteInfo(string $label, int $id, string $mode = 'unassigned', array $context = [], bool $fineGrained = false): void {}
     protected function logStorageAnalysisError(int $id, string $phase, string $message, array $status = []): void {}
 }
 
@@ -609,6 +609,17 @@ try {
     $states = new RRZE\MultisiteManager\Metrics\StorageAnalysisStateService();
     check($states->getBaseStateKey(1, 10) === $states->getBaseStateKey(1, 11), 'Detail cache invalidation must not lose an active storage run.');
     check($states->getAttachmentIndexBucketKey(1, 10, 'aa') === $states->getAttachmentIndexBucketKey(1, 11, 'aa'), 'Index keys must remain stable during a run.');
+
+    // Continuation diagnostics are fine-grained debugging output.
+    $GLOBALS['test_actions'] = [];
+    $silentAnalysis = new SliceAnalysis();
+    $silentAnalysis->baseBatchesUntilComplete = 2;
+    (new SliceScheduler($silentAnalysis))->runSlice(3);
+    check(array_filter($GLOBALS['test_actions'], static fn($action) => ($action[0] ?? '') === 'rrze.log.info') === [], 'Continuation diagnostics were logged without fine-grained debugging.');
+    $GLOBALS['test_network_options']['rrze-multisite-manager'] = array_merge(
+        (array)($GLOBALS['test_network_options']['rrze-multisite-manager'] ?? []),
+        ['debugging_logging' => 1, 'debugging_fine_grained' => 1]
+    );
 
     $analysis = new SliceAnalysis();
     $analysis->baseBatchesUntilComplete = 1020;

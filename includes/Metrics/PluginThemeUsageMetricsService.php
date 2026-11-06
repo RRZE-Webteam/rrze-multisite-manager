@@ -23,8 +23,10 @@ class PluginThemeUsageMetricsService {
     public const SCHEDULE = 'rrze_msm_plugin_theme_usage_metrics_cycle';
     protected const STATE_OPTION = 'rrze_msm_plugin_theme_usage_metrics_state';
     protected const LOCK_OPTION = 'rrze_msm_plugin_theme_usage_metrics_lock';
-    protected const LOCK_TTL = 900;
     protected const CONTINUATION_ARGS = ['rrze_msm_plugin_theme_usage_metrics_batch' => true];
+    // A source analysis that ends the PHP request (timeout, memory) is
+    // retried once; afterwards the asset is skipped for this run.
+    protected const MAX_SOURCE_ATTEMPTS = 2;
 
     protected Config $config;
     protected ?Settings $settings;
@@ -116,6 +118,7 @@ class PluginThemeUsageMetricsService {
         $previousState = is_array($previousState) ? $previousState : [];
         update_site_option(self::STATE_OPTION, [
             'status' => 'running',
+            'run_id' => wp_generate_uuid4(),
             'offset' => 0,
             'total' => (int)get_sites(['count' => true, 'number' => 1]),
             'started_at' => time(),
@@ -144,6 +147,35 @@ class PluginThemeUsageMetricsService {
         return 'started';
     }
 
+    /**
+     * Cancels a running collection. The last completely published index
+     * stays visible; unpublished staging rows are discarded by the next run.
+     * A worker that is still executing its current step notices the changed
+     * state before it writes progress, publishes a table or schedules a
+     * continuation.
+     */
+    public function cancelRun(): string {
+        $state = [];
+
+        if (!$this->isCentralNetworkCronSite()) {
+            return 'unavailable';
+        }
+
+        $state = $this->readFreshState();
+
+        if ((string)($state['status'] ?? '') !== 'running') {
+            return 'not-running';
+        }
+
+        $state['status'] = 'cancelled';
+        $state['cancelled_at'] = time();
+        update_site_option(self::STATE_OPTION, $state);
+        $this->clearContinuationEvents();
+        WorkerBudget::clearRetries(self::HOOK);
+
+        return 'cancelled';
+    }
+
     public function handleScheduledRun(...$args): void {
         if (!$this->isCentralNetworkCronSite() || !$this->isEnabled()) {
             return;
@@ -162,7 +194,7 @@ class PluginThemeUsageMetricsService {
 
         $token = '';
         try {
-            $token = $this->acquireProcessLock(self::LOCK_OPTION, self::LOCK_TTL);
+            $token = $this->acquireProcessLock(self::LOCK_OPTION);
             if ($token === '') {
                 WorkerBudget::retry(self::HOOK, self::CONTINUATION_ARGS);
                 return;
@@ -205,6 +237,8 @@ class PluginThemeUsageMetricsService {
             'source_total' => $sourceTotal,
             'source_errors' => max(0, (int)($state['source_errors'] ?? 0)),
             'last_error' => (string)($state['last_error'] ?? ''),
+            'is_cancelled' => (string)($state['status'] ?? '') === 'cancelled',
+            'cancelled_at_timestamp' => max(0, (int)($state['cancelled_at'] ?? 0)),
         ];
     }
 
@@ -252,6 +286,42 @@ class PluginThemeUsageMetricsService {
 
     public function getPluginSourceAnalysis(string $pluginFile): array {
         return $this->getSourceAnalysis('plugin_source_metrics', 'plugin_file', $pluginFile);
+    }
+
+    /**
+     * Stored source findings of several plugins in one query.
+     *
+     * @param string[] $pluginFiles
+     * @return array<string, array<string, mixed>>
+     */
+    public function getPluginSourceAnalyses(array $pluginFiles): array {
+        global $wpdb;
+        $results = [];
+        $row = [];
+        $analysis = null;
+        $pluginFiles = array_values(array_unique(array_filter(array_map('strval', $pluginFiles))));
+
+        if (empty($pluginFiles) || !$this->hasCompletedSnapshot()) {
+            return [];
+        }
+
+        $table = $this->store->table('plugin_source_metrics');
+        $placeholders = implode(',', array_fill(0, count($pluginFiles), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Bounded lookup of stored source findings; placeholders are generated above.
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT plugin_file, payload FROM $table WHERE network_id = %d AND analysis_status = 'complete' AND plugin_file IN ($placeholders)",
+            get_current_network_id(),
+            ...$pluginFiles
+        ), ARRAY_A);
+
+        foreach ((array)$rows as $row) {
+            $analysis = json_decode((string)($row['payload'] ?? ''), true);
+            if (is_array($analysis)) {
+                $results[(string)$row['plugin_file']] = $analysis;
+            }
+        }
+
+        return $results;
     }
 
     public function getThemeSourceAnalysis(string $stylesheet): array {
@@ -335,7 +405,9 @@ class PluginThemeUsageMetricsService {
             $state['source_offset'] = 0;
             $state['source_total'] = 0;
             $state['last_activity_at'] = time();
-            update_site_option(self::STATE_OPTION, $state);
+            if (!$this->persistRunState($state)) {
+                return;
+            }
             $this->scheduleContinuation(5);
             return;
         }
@@ -364,6 +436,9 @@ class PluginThemeUsageMetricsService {
 
         $offset += count($siteIds);
         if (empty($siteIds) || $offset >= $total) {
+            if (!$this->isActiveRun($state)) {
+                return;
+            }
             if (!$this->publishStagingTable(
                 $phase === 'plugin_usage' ? 'plugin_metrics' : 'theme_metrics',
                 $phase === 'plugin_usage' ? 'plugin_metrics_staging' : 'theme_metrics_staging'
@@ -376,7 +451,9 @@ class PluginThemeUsageMetricsService {
             $state['source_offset'] = 0;
             $state['source_total'] = $phase === 'plugin_usage' ? 0 : count(get_plugins());
             $state['last_activity_at'] = time();
-            update_site_option(self::STATE_OPTION, $state);
+            if (!$this->persistRunState($state)) {
+                return;
+            }
             $this->notifyDetailsChanged();
             $this->scheduleContinuation(5);
             return;
@@ -384,7 +461,9 @@ class PluginThemeUsageMetricsService {
 
         $state['offset'] = $offset;
         $state['last_activity_at'] = time();
-        update_site_option(self::STATE_OPTION, $state);
+        if (!$this->persistRunState($state)) {
+            return;
+        }
         $this->scheduleContinuation(20);
     }
 
@@ -401,20 +480,49 @@ class PluginThemeUsageMetricsService {
         $asset = (string)($assets[$offset] ?? '');
 
         if ($asset !== '') {
-            try {
-                $this->storeSourceAnalysis($isPlugin, $asset, true);
-            } catch (\Throwable $error) {
+            $attempts = (string)($state['source_attempt_asset'] ?? '') === $asset
+                ? max(0, (int)($state['source_attempts'] ?? 0))
+                : 0;
+
+            if ($attempts >= self::MAX_SOURCE_ATTEMPTS) {
                 $state['source_errors'] = max(0, (int)($state['source_errors'] ?? 0)) + 1;
-                $state['last_error'] = substr(sanitize_text_field($error->getMessage()), 0, 500);
+                $state['last_error'] = substr(sprintf(
+                    /* translators: %s: plugin file or theme stylesheet. */
+                    __('The source analysis of %s was skipped after repeated aborted attempts.', 'rrze-multisite-manager'),
+                    $asset
+                ), 0, 500);
+            } else {
+                // Persist the attempt before scanning. A fatal error ends the
+                // request without reaching the offset update below; the
+                // restored continuation must not retry the same asset forever.
+                $state['source_attempt_asset'] = $asset;
+                $state['source_attempts'] = $attempts + 1;
+                $state['last_activity_at'] = time();
+                if (!$this->persistRunState($state)) {
+                    return;
+                }
+
+                try {
+                    $this->storeSourceAnalysis($isPlugin, $asset, true);
+                } catch (\Throwable $error) {
+                    $state['source_errors'] = max(0, (int)($state['source_errors'] ?? 0)) + 1;
+                    $state['last_error'] = substr(sanitize_text_field($error->getMessage()), 0, 500);
+                }
             }
+            unset($state['source_attempt_asset'], $state['source_attempts']);
             $state['source_offset'] = $offset + 1;
             $state['last_activity_at'] = time();
-            update_site_option(self::STATE_OPTION, $state);
+            if (!$this->persistRunState($state)) {
+                return;
+            }
             $this->scheduleContinuation(20);
             return;
         }
 
         if ($isPlugin) {
+            if (!$this->isActiveRun($state)) {
+                return;
+            }
             if (!$this->publishStagingTable('plugin_source_metrics', 'plugin_source_metrics_staging')) {
                 $this->scheduleContinuation(60);
                 return;
@@ -424,17 +532,25 @@ class PluginThemeUsageMetricsService {
             $state['source_offset'] = 0;
             $state['source_total'] = count(wp_get_themes());
             $state['last_activity_at'] = time();
-            update_site_option(self::STATE_OPTION, $state);
+            if (!$this->persistRunState($state)) {
+                return;
+            }
             $this->scheduleContinuation(5);
             return;
         }
 
+        if (!$this->isActiveRun($state)) {
+            return;
+        }
         if (!$this->publishStagingTable('theme_source_metrics', 'theme_source_metrics_staging')) {
             $this->scheduleContinuation(60);
             return;
         }
         $this->notifyDetailsChanged();
 
+        if (!$this->isActiveRun($state)) {
+            return;
+        }
         update_site_option(self::STATE_OPTION, [
             'status' => 'completed',
             'offset' => max(0, (int)($state['total'] ?? 0)),
@@ -682,6 +798,42 @@ class PluginThemeUsageMetricsService {
                 }
             }
         }
+    }
+
+    /** @return array<string, mixed> */
+    protected function readFreshState(): array {
+        // A cancellation written by another request must not be hidden by
+        // this request's option cache.
+        wp_cache_delete(get_current_network_id() . ':' . self::STATE_OPTION, 'site-options');
+        $state = get_site_option(self::STATE_OPTION, []);
+
+        return is_array($state) ? $state : [];
+    }
+
+    /** @param array<string, mixed> $state */
+    protected function isActiveRun(array $state): bool {
+        $current = $this->readFreshState();
+
+        // Runs started by older releases have no run ID; their start time
+        // identifies them instead.
+        return (string)($current['status'] ?? '') === 'running'
+            && (string)($current['run_id'] ?? '') === (string)($state['run_id'] ?? '')
+            && (int)($current['started_at'] ?? 0) === (int)($state['started_at'] ?? 0);
+    }
+
+    /**
+     * Writes run progress only while this run is still the active one.
+     *
+     * @param array<string, mixed> $state
+     */
+    protected function persistRunState(array $state): bool {
+        if (!$this->isActiveRun($state)) {
+            return false;
+        }
+
+        update_site_option(self::STATE_OPTION, $state);
+
+        return true;
     }
 
     protected function isRunning(): bool {

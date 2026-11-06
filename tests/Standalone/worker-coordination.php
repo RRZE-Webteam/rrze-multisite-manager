@@ -102,8 +102,8 @@ $owner->release($token);
 check(AtomicLock::isLocked('test-process'), 'Old owner released a replacement worker.');
 $other->release($replacement);
 
-check((new Config())->getMaxConcurrentWorkers() === 2, 'Unsafe default worker limit.');
-foreach ([0 => 1, 1 => 1, 100 => 8] as $input => $expected) {
+check((new Config())->getMaxConcurrentWorkers() === 3, 'Unexpected default worker limit.');
+foreach ([0 => 1, 1 => 1, 16 => 16, 100 => 16] as $input => $expected) {
     update_site_option('rrze-multisite-manager', ['monitoring_max_concurrent_workers' => $input]);
     check((new Config())->getMaxConcurrentWorkers() === $expected, 'Worker setting outside its supported bounds.');
 }
@@ -220,8 +220,9 @@ $metrics->run();
 $metrics->handleScheduledDashboardComposition('run-1');
 $metrics->handleScheduledDashboardHistoryCompaction();
 $monitoring->run();
-check($content->executed + $storage->executed + $metrics->executed + $monitoring->executed === 0, 'An entrypoint bypassed the common budget.');
-check(count($content->retries) === 2 && count($storage->retries) === 2 && count($GLOBALS['events']) === 4, 'Denied work lost its continuation.');
+check($content->executed + $storage->executed + $metrics->executed === 0, 'An entrypoint bypassed the common budget.');
+check($monitoring->executed === 1, 'Availability checks waited for analysis capacity.');
+check(count($content->retries) === 2 && count($storage->retries) === 2 && count($GLOBALS['events']) === 3, 'Denied work lost its continuation.');
 check($content->retries[0] === [5, 60], 'Capacity exhaustion caused a tight retry loop.');
 $events = $GLOBALS['events'];
 $metrics->run();
@@ -240,9 +241,14 @@ $metrics->run();
 $metrics->handleScheduledDashboardComposition('run-1');
 $metrics->handleScheduledDashboardHistoryCompaction();
 $monitoring->run();
-check($storage->executed === 2 && $metrics->executed === 3 && $monitoring->executed === 1 && $wpdb->owners === [], 'Deferred work could not run after capacity was released.');
+check($storage->executed === 2 && $metrics->executed === 3 && $monitoring->executed === 3 && $wpdb->owners === [], 'Deferred work could not run after capacity was released.');
 check(!isset($GLOBALS['events']['rrze_msm_refresh_dashboard_metrics' . serialize(['rrze_msm_worker_retry' => false])]), 'Admitted work left a stale start retry behind.');
+$runtimeStats = RRZE\MultisiteManager\Support\WorkerRuntimeStats::get();
+check($runtimeStats['admissions'] > 0 && $runtimeStats['denials'] > 0, 'Worker runtime diagnostics did not record admissions and postponements.');
+check($runtimeStats['max_concurrent'] >= 1 && count($runtimeStats['contexts']) === 1, 'Worker runtime diagnostics did not record parallelism or the runtime context.');
+check(isset($runtimeStats['hooks']['cli']['runs']) && (int)$runtimeStats['hooks']['cli']['runs'] > 0, 'Worker runtime diagnostics did not record the executing hook.');
+check($wpdb->owners === [], 'Worker runtime diagnostics left its lock behind.');
 AtomicLock::acquire('shutdown-lock');
 AtomicLock::releaseAll();
 check($wpdb->owners === [], 'Shutdown cleanup left connection-owned locks behind.');
-echo "PASS: owner-safe locks, shared capacity, nested scopes, network isolation, fail-closed admission, retries and exception cleanup.\n";
+echo "PASS: owner-safe locks, shared capacity, nested scopes, network isolation, fail-closed admission, retries, exception cleanup and runtime diagnostics.\n";

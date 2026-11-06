@@ -179,6 +179,12 @@ trait MetricsServiceEnvironmentTrait {
             ],
         ];
 
+        // Operational diagnostics for locks, background runtime and Cron. They
+        // answer questions that cannot be measured from outside production.
+        $diagnostics = (new RuntimeDiagnosticsService())->collect(is_array($dropins) ? $dropins : []);
+        $sections = array_merge($sections, $diagnostics['sections']);
+        $warnings = array_merge($warnings, $diagnostics['warnings']);
+
         if ((defined('WP_DEBUG') && WP_DEBUG) || (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG)) {
             $warnings[] = __('Debug mode or debug log is active. That is not ideal for a production network.', 'rrze-multisite-manager');
         }

@@ -225,6 +225,11 @@ defined('ABSPATH') || exit;
             <?php } ?>
 
             <div class="rrze-msm-grid">
+                <?php if (!empty($source_analysis_requested) && !empty($theme_details['source_analysis_truncated'])) { ?>
+                <div class="notice notice-warning inline rrze-msm-widget-span-12">
+                    <p><?php echo esc_html__('The source analysis reached its resource limits. The findings below may be incomplete.', 'rrze-multisite-manager'); ?></p>
+                </div>
+                <?php } ?>
                 <?php if (!empty($source_analysis_requested)) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">

@@ -21,3 +21,5 @@ The overview uses dashboard metrics. It is therefore an aggregated snapshot, not
 ## Implementation
 
 `Dashboard::renderSiteOverviewPage()` renders `templates/site-overview-page.php` using `site_overview` from the dashboard record. `MonitoringService` persists technical-status enrichment as site meta; [Runtime state and scheduler](runtime-state.md#availability-monitoring) lists these keys completely. Table interactions for sorting and page size stay in the browser and do not trigger server-side recalculation of the aggregate.
+
+The website search field (`MetricsService::searchSites()`) searches domain and path in `wp_blogs` by SQL and names and home URLs in the stored dashboard record. It reads no website options. Websites created after the last dashboard metrics run are found by domain or path until the next run.

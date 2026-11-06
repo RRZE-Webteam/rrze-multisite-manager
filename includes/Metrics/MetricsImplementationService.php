@@ -72,6 +72,15 @@ class MetricsImplementationService {
     protected const STORAGE_ANALYSIS_INDEX_CACHE_BUCKETS = 32;
     protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
     protected const STORAGE_MEDIA_METADATA_BATCH_SIZE = 50;
+    // Static plugin/theme source analysis runs in the Cron-driven usage index.
+    // One asset is analysed per request; these limits bound that request.
+    protected const SOURCE_ANALYSIS_VERSION = 2;
+    protected const SOURCE_ANALYSIS_MAX_SECONDS = 20;
+    protected const SOURCE_ANALYSIS_MAX_FILES = 5000;
+    protected const SOURCE_ANALYSIS_MAX_DIRECTORIES = 2000;
+    protected const SOURCE_ANALYSIS_MAX_FILE_BYTES = 1048576;
+    protected const SOURCE_ANALYSIS_MAX_TOTAL_BYTES = 33554432;
+    protected const SOURCE_ANALYSIS_SKIPPED_DIRECTORIES = ['node_modules', 'bower_components'];
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
     protected const STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES = 262144;
     protected const DASHBOARD_LOCK_TTL = 900;
@@ -92,6 +101,8 @@ class MetricsImplementationService {
     protected DashboardMetricsBatchService $dashboardBatch;
     protected DashboardMetricsHistoryStore $dashboardHistory;
     protected PluginThemeUsageMetricsService $pluginThemeUsageMetrics;
+    /** @var array<int, array<string, mixed>>|null Request-local site rows from the dashboard cache. */
+    protected ?array $dashboardSiteRowsById = null;
     protected StorageUploadScannerService $storageUploadScanner;
     protected StorageAnalysisBatchService $storageAnalysisBatch;
     protected MetricsCacheService $metricsCache;
@@ -212,6 +223,10 @@ class MetricsImplementationService {
 
     public function startPluginThemeUsageRunFromNow(): string {
         return $this->pluginThemeUsageMetrics->startRunFromNow();
+    }
+
+    public function cancelPluginThemeUsageRun(): string {
+        return $this->pluginThemeUsageMetrics->cancelRun();
     }
 
     public function ensureDetailCacheMaintenance(): void {
@@ -712,59 +727,6 @@ class MetricsImplementationService {
         $this->scheduleDashboardRefresh(5, true);
 
         return $this->getEmptyDashboardDataPayload();
-    }
-
-    public function rebuildDashboardData(bool $force = false): array {
-        $cached = $this->getStoredDashboardCache();
-        $siteOverview = [];
-        $networkStorageUsage = [];
-        $data = [];
-
-        if (!$force && $this->isDashboardRefreshLocked()) {
-            if ($this->hasCompleteDashboardCache($cached)) {
-                return $this->hydrateDashboardThemeRuntimeState(
-                    $this->hydrateDashboardMetricSnapshots((array)($cached['data'] ?? []))
-                );
-            }
-        }
-
-        if (!$this->acquireDashboardRefreshLock()) {
-            if ($this->hasCompleteDashboardCache($cached)) {
-                return $this->hydrateDashboardThemeRuntimeState(
-                    $this->hydrateDashboardMetricSnapshots((array)($cached['data'] ?? []))
-                );
-            }
-        }
-
-        $siteOverview = $this->getSiteOverview();
-        $networkStorageUsage = $this->getNetworkStorageUsage();
-
-        $data = $this->buildDashboardDataPayload($siteOverview, $networkStorageUsage);
-        $recordedAt = time();
-
-        try {
-            $this->dashboardHistory->saveCurrentSnapshots(
-                $this->buildDashboardHistorySnapshots($data),
-                $recordedAt
-            );
-            $this->scheduleDashboardHistoryCompaction(5);
-
-            update_site_option(
-                $this->getCacheKey(),
-                [
-                    'version' => self::DASHBOARD_CACHE_VERSION,
-                    'data' => $data,
-                    'generated_at' => time(),
-                    'started_at' => time(),
-                    'duration_seconds' => 0,
-                    'dirty' => false,
-                ]
-            );
-        } finally {
-            $this->releaseDashboardRefreshLock();
-        }
-
-        return $this->hydrateDashboardThemeRuntimeState($this->hydrateDashboardMetricSnapshots($data));
     }
 
     /**
@@ -1801,33 +1763,6 @@ class MetricsImplementationService {
         return $removed;
     }
 
-    protected function buildDashboardDataPayload(array $siteOverview, array $networkStorageUsage): array {
-        return [
-            'summary' => $this->getSummary($networkStorageUsage),
-            'site_table_default_limit' => $this->getActivitySiteLimit(),
-            'status_distribution' => $this->getStatusDistribution(),
-            'operational_status_distribution' => $this->getOperationalStatusDistribution(),
-            'network_storage_usage' => $networkStorageUsage,
-            'recent_sites' => $this->getRecentSites(),
-            'site_overview' => $siteOverview,
-            'archived_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_archived'),
-            'blocked_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_spam'),
-            'deleted_sites' => $this->filterFormattedSitesByFlag($siteOverview, 'is_deleted'),
-            'problem_sites' => $this->getProblemSites($siteOverview),
-            'new_monitoring_alerts' => $this->getNewMonitoringAlerts($siteOverview),
-            'provisioning_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'provisioning'),
-            'dns_missing_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'dns_missing'),
-            'unreachable_sites' => $this->filterFormattedSitesByOperationalStatus($siteOverview, 'unreachable'),
-            'themes' => $this->getThemes(),
-            'theme_usage' => $this->getThemeUsage(),
-            'editor_usage' => $this->getEditorUsage(),
-            'plugin_usage' => $this->getPluginUsage(),
-            'inactive_themes' => $this->getInactiveThemes(),
-            'recently_updated_sites' => $this->getRecentlyUpdatedSites(),
-            'inactive_sites' => $this->getInactiveSites(),
-        ];
-    }
-
     protected function buildDashboardDataPayloadFromBatchState(array $state): array {
         $siteOverview = is_array($state['site_overview'] ?? null) ? (array)$state['site_overview'] : [];
         $networkStorageUsage = $this->finalizeDashboardBatchStorageUsage((array)($state['network_storage_usage'] ?? []));
@@ -1953,6 +1888,15 @@ class MetricsImplementationService {
         $usageBatchTotal = (int)($usageStatus['batch_total'] ?? 0);
         $usageStatusMessage = '';
 
+        if (!empty($usageStatus['is_cancelled'])) {
+            $usageStatusMessage = sprintf(
+                /* translators: %s: date and time of the cancellation. */
+                __('The last run was cancelled on %s. The previously completed index remains in use.', 'rrze-multisite-manager'),
+                wp_date('d.m.Y H:i', (int)($usageStatus['cancelled_at_timestamp'] ?? 0))
+            );
+            $usagePhase = '';
+        }
+
         if ($usagePhase === 'plugin_sources' || $usagePhase === 'theme_sources') {
             $usageBatchOffset = (int)($usageStatus['source_offset'] ?? 0);
             $usageBatchTotal = (int)($usageStatus['source_total'] ?? 0);
@@ -1965,7 +1909,7 @@ class MetricsImplementationService {
             $usageStatusMessage = __('Theme usage is being collected.', 'rrze-multisite-manager');
         }
 
-        if ((int)($usageStatus['source_errors'] ?? 0) > 0) {
+        if (empty($usageStatus['is_cancelled']) && (int)($usageStatus['source_errors'] ?? 0) > 0) {
             $usageStatusMessage = sprintf(
                 /* translators: %d: number of source analyses that could not be completed. */
                 _n('%d source analysis could not be completed.', '%d source analyses could not be completed.', (int)$usageStatus['source_errors'], 'rrze-multisite-manager'),
@@ -2279,8 +2223,11 @@ class MetricsImplementationService {
 
 
     protected function analyzePluginCode(string $pluginFile): array {
-        $files = $this->getPluginAnalysisFiles($pluginFile);
-        $globalSymbols = $this->getSourceStringSymbolsFromFiles($files);
+        $deadline = microtime(true) + self::SOURCE_ANALYSIS_MAX_SECONDS;
+        $collection = $this->getPluginAnalysisFiles($pluginFile, $deadline);
+        $files = (array)$collection['files'];
+        $truncated = !empty($collection['truncated']);
+        $globalSymbols = $this->getSourceStringSymbolsFromFiles($files, $deadline, $truncated);
         $shortcodes = [];
         $blocks = [];
         $patterns = [];
@@ -2291,13 +2238,16 @@ class MetricsImplementationService {
         $filePath = '';
         $source = '';
         $extension = '';
+        $scannedFiles = 0;
 
         foreach ($files as $filePath) {
-            if (!is_readable($filePath)) {
-                continue;
+            if (microtime(true) >= $deadline) {
+                $truncated = true;
+                break;
             }
 
-            $source = (string)file_get_contents($filePath);
+            $source = $this->readSourceAnalysisFile((string)$filePath);
+            $scannedFiles++;
 
             if ($source === '') {
                 continue;
@@ -2336,11 +2286,17 @@ class MetricsImplementationService {
             'taxonomies' => $taxonomies,
             'image_sizes' => $imageSizes,
             'provided_hooks' => $hooks,
+            'truncated' => $truncated,
+            'files_scanned' => $scannedFiles,
+            'analysis_version' => self::SOURCE_ANALYSIS_VERSION,
         ];
     }
 
     protected function analyzeThemeCode(string $stylesheet): array {
-        $files = $this->getThemeAnalysisFiles($stylesheet);
+        $deadline = microtime(true) + self::SOURCE_ANALYSIS_MAX_SECONDS;
+        $collection = $this->getThemeAnalysisFiles($stylesheet, $deadline);
+        $files = (array)$collection['files'];
+        $truncated = !empty($collection['truncated']);
         $shortcodes = [];
         $blocks = [];
         $patterns = [];
@@ -2349,13 +2305,16 @@ class MetricsImplementationService {
         $filePath = '';
         $source = '';
         $extension = '';
+        $scannedFiles = 0;
 
         foreach ($files as $filePath) {
-            if (!is_readable($filePath)) {
-                continue;
+            if (microtime(true) >= $deadline) {
+                $truncated = true;
+                break;
             }
 
-            $source = (string)file_get_contents($filePath);
+            $source = $this->readSourceAnalysisFile((string)$filePath);
+            $scannedFiles++;
 
             if ($source === '') {
                 continue;
@@ -2388,51 +2347,163 @@ class MetricsImplementationService {
             'block_patterns' => $patterns,
             'image_sizes' => $imageSizes,
             'provided_hooks' => $hooks,
+            'truncated' => $truncated,
+            'files_scanned' => $scannedFiles,
+            'analysis_version' => self::SOURCE_ANALYSIS_VERSION,
         ];
     }
 
-    protected function getPluginAnalysisFiles(string $pluginFile): array {
+    /**
+     * @return array{files: string[], truncated: bool}
+     */
+    protected function getPluginAnalysisFiles(string $pluginFile, float $deadline): array {
         $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
-        $baseDir = is_file($mainFilePath) ? dirname($mainFilePath) : '';
-        $results = [];
-        $iterator = null;
-        $current = null;
-        $pathname = '';
 
-        if ($mainFilePath === '' || !file_exists($mainFilePath)) {
-            return [];
+        if ($mainFilePath === '' || !is_file($mainFilePath)) {
+            return ['files' => [], 'truncated' => false];
         }
 
-        $results[] = $mainFilePath;
+        // A single-file plugin lives directly in WP_PLUGIN_DIR. Its directory
+        // must never become the scan root, otherwise every plugin is read.
+        if (dirname(ltrim($pluginFile, '/')) === '.') {
+            if ((int)filesize($mainFilePath) > self::SOURCE_ANALYSIS_MAX_FILE_BYTES) {
+                return ['files' => [], 'truncated' => true];
+            }
 
-        if ($baseDir === '' || !is_dir($baseDir)) {
-            return $results;
+            return ['files' => [$mainFilePath], 'truncated' => false];
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator(
-                $baseDir,
-                \FilesystemIterator::SKIP_DOTS
-            )
-        );
+        return $this->collectSourceAnalysisFiles(dirname($mainFilePath), $deadline);
+    }
 
-        foreach ($iterator as $current) {
-            if (!$current instanceof \SplFileInfo || !$current->isFile()) {
+    /**
+     * Collects analysable source files below one plugin or theme directory.
+     *
+     * The traversal is breadth-first and alphabetical: the main directory is
+     * read first, then each subdirectory level up to the configured depth.
+     * It is bounded by the configured number of PHP files, directory and
+     * file counts, per-file and total bytes, and a deadline. Symlinked,
+     * hidden and JavaScript dependency directories are not entered. The
+     * configured depth defines the analysis scope and does not mark a result
+     * as incomplete; reaching any other limit does.
+     *
+     * @return array{files: string[], truncated: bool}
+     */
+    protected function collectSourceAnalysisFiles(string $root, float $deadline): array {
+        $files = [];
+        $truncated = false;
+        $totalBytes = 0;
+        $phpFiles = 0;
+        $maxDepth = $this->getSourceAnalysisMaxDepth();
+        $maxPhpFiles = $this->getSourceAnalysisMaxPhpFiles();
+        $pendingDirectories = [[$root, 0]];
+        $visitedDirectories = 0;
+        $directory = '';
+        $depth = 0;
+        $entries = [];
+        $entry = null;
+        $size = 0;
+        $isPhp = false;
+
+        if (!is_dir($root)) {
+            return ['files' => [], 'truncated' => false];
+        }
+
+        while (!empty($pendingDirectories)) {
+            if ($visitedDirectories >= self::SOURCE_ANALYSIS_MAX_DIRECTORIES || microtime(true) >= $deadline) {
+                $truncated = true;
+                break;
+            }
+
+            [$directory, $depth] = array_shift($pendingDirectories);
+            $visitedDirectories++;
+
+            try {
+                $entries = iterator_to_array(new \FilesystemIterator((string)$directory, \FilesystemIterator::SKIP_DOTS), false);
+            } catch (\RuntimeException $error) {
+                // Unreadable directories are reported as an incomplete result
+                // instead of aborting the whole analysis.
+                $truncated = true;
                 continue;
             }
 
-            $pathname = (string)$current->getPathname();
+            usort($entries, [self::class, 'compareSourceAnalysisEntries']);
 
-            if ($pathname === $mainFilePath || !$this->isPluginAnalysisFile($pathname)) {
-                continue;
+            foreach ($entries as $entry) {
+                if (!$entry instanceof \SplFileInfo) {
+                    continue;
+                }
+
+                if ($entry->isDir()) {
+                    if ($depth < $maxDepth && !$entry->isLink() && !$this->isSkippedSourceAnalysisDirectory($entry->getFilename())) {
+                        $pendingDirectories[] = [$entry->getPathname(), $depth + 1];
+                    }
+                    continue;
+                }
+
+                if (!$entry->isFile() || !$this->isPluginAnalysisFile($entry->getPathname())) {
+                    continue;
+                }
+
+                $isPhp = strtolower((string)pathinfo($entry->getFilename(), PATHINFO_EXTENSION)) === 'php';
+
+                if ($isPhp && $phpFiles >= $maxPhpFiles) {
+                    $truncated = true;
+                    continue;
+                }
+
+                $size = (int)$entry->getSize();
+
+                if ($size > self::SOURCE_ANALYSIS_MAX_FILE_BYTES) {
+                    $truncated = true;
+                    continue;
+                }
+
+                if (count($files) >= self::SOURCE_ANALYSIS_MAX_FILES || $totalBytes + $size > self::SOURCE_ANALYSIS_MAX_TOTAL_BYTES) {
+                    $truncated = true;
+                    break 2;
+                }
+
+                $files[] = $entry->getPathname();
+                $totalBytes += $size;
+
+                if ($isPhp) {
+                    $phpFiles++;
+                }
             }
-
-            $results[] = $pathname;
         }
 
-        sort($results, SORT_NATURAL | SORT_FLAG_CASE);
+        return ['files' => $files, 'truncated' => $truncated];
+    }
 
-        return array_values(array_unique($results));
+    protected static function compareSourceAnalysisEntries(\SplFileInfo $first, \SplFileInfo $second): int {
+        return strnatcasecmp($first->getFilename(), $second->getFilename());
+    }
+
+    protected function getSourceAnalysisMaxDepth(): int {
+        return isset($this->config) ? $this->config->getSourceAnalysisMaxDepth() : \RRZE\MultisiteManager\Config::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH;
+    }
+
+    protected function getSourceAnalysisMaxPhpFiles(): int {
+        return isset($this->config) ? $this->config->getSourceAnalysisMaxPhpFiles() : \RRZE\MultisiteManager\Config::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES;
+    }
+
+    protected function isSkippedSourceAnalysisDirectory(string $name): bool {
+        if ($name === '' || str_starts_with($name, '.')) {
+            return true;
+        }
+
+        return in_array(strtolower($name), self::SOURCE_ANALYSIS_SKIPPED_DIRECTORIES, true);
+    }
+
+    protected function readSourceAnalysisFile(string $filePath): string {
+        if ($filePath === '' || !is_readable($filePath)) {
+            return '';
+        }
+
+        $source = file_get_contents($filePath, false, null, 0, self::SOURCE_ANALYSIS_MAX_FILE_BYTES);
+
+        return is_string($source) ? $source : '';
     }
 
     protected function isPluginAnalysisFile(string $filePath): bool {
@@ -2519,39 +2590,17 @@ class MetricsImplementationService {
         return $results;
     }
 
-    protected function getThemeAnalysisFiles(string $stylesheet): array {
+    /**
+     * @return array{files: string[], truncated: bool}
+     */
+    protected function getThemeAnalysisFiles(string $stylesheet, float $deadline): array {
         $baseDir = $this->getThemeAbsolutePath($stylesheet);
-        $results = [];
-        $iterator = null;
-        $current = null;
-        $pathname = '';
 
         if ($baseDir === '' || !is_dir($baseDir)) {
-            return [];
+            return ['files' => [], 'truncated' => false];
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator(
-                $baseDir,
-                \FilesystemIterator::SKIP_DOTS
-            )
-        );
-
-        foreach ($iterator as $current) {
-            if (!$current instanceof \SplFileInfo || !$current->isFile()) {
-                continue;
-            }
-
-            $pathname = (string)$current->getPathname();
-
-            if (!$this->isPluginAnalysisFile($pathname)) {
-                continue;
-            }
-
-            $results[] = $pathname;
-        }
-
-        return $results;
+        return $this->collectSourceAnalysisFiles($baseDir, $deadline);
     }
 
     protected function getThemeAbsolutePath(string $stylesheet): string {
@@ -3103,17 +3152,22 @@ class MetricsImplementationService {
         return $symbols;
     }
 
-    protected function getSourceStringSymbolsFromFiles(array $files): array {
+    protected function getSourceStringSymbolsFromFiles(array $files, float $deadline, bool &$truncated): array {
         $symbols = [];
         $filePath = '';
         $source = '';
 
         foreach ($files as $filePath) {
-            if (!is_string($filePath) || $filePath === '' || !is_readable($filePath)) {
+            if (!is_string($filePath) || $filePath === '') {
                 continue;
             }
 
-            $source = (string)file_get_contents($filePath);
+            if (microtime(true) >= $deadline) {
+                $truncated = true;
+                break;
+            }
+
+            $source = $this->readSourceAnalysisFile($filePath);
 
             if ($source === '') {
                 continue;
@@ -4787,9 +4841,16 @@ class MetricsImplementationService {
     /**
      * Builds detail-table rows using the same data model as the Site overview
      * widget. The caller has already limited the IDs to a plugin or theme use.
+     *
+     * Rows come from the completed dashboard metrics run. A detail request
+     * never collects per-site metrics (users, content, storage, database
+     * size) itself, because a network-wide plugin would otherwise trigger
+     * that work for every website within one admin request.
      */
     protected function getSiteOverviewRowsForIds(array $siteIds): array {
-        $sites = [];
+        $storedRows = $this->getDashboardSiteRowsById();
+        $rows = [];
+        $missingSites = [];
         $seenSiteIds = [];
         $siteId = 0;
         $site = null;
@@ -4801,17 +4862,49 @@ class MetricsImplementationService {
                 continue;
             }
 
-            $site = get_site($siteId);
+            $seenSiteIds[$siteId] = true;
 
-            if (!$site instanceof \WP_Site) {
+            if (isset($storedRows[$siteId])) {
+                $rows[] = $storedRows[$siteId];
                 continue;
             }
 
-            $seenSiteIds[$siteId] = true;
-            $sites[] = $site;
+            $site = get_site($siteId);
+
+            if ($site instanceof \WP_Site) {
+                $missingSites[] = $site;
+            }
         }
 
-        return $this->sortPluginActiveSites($this->formatSites($sites, true));
+        // Websites created after the last completed metrics run have no
+        // stored metrics yet. Show their basic data without measuring them.
+        if (!empty($missingSites)) {
+            $rows = array_merge($rows, $this->formatSites($missingSites));
+        }
+
+        return $this->sortPluginActiveSites($rows);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    protected function getDashboardSiteRowsById(): array {
+        $row = [];
+        $siteId = 0;
+
+        if ($this->dashboardSiteRowsById !== null) {
+            return $this->dashboardSiteRowsById;
+        }
+
+        $this->dashboardSiteRowsById = [];
+
+        foreach ((array)($this->getDashboardData()['site_overview'] ?? []) as $row) {
+            $siteId = is_array($row) ? (int)($row['id'] ?? 0) : 0;
+
+            if ($siteId > 0) {
+                $this->dashboardSiteRowsById[$siteId] = $row;
+            }
+        }
+
+        return $this->dashboardSiteRowsById;
     }
 
     protected function getSitePluginDeactivateUrl(int $siteId, string $pluginFile): string {
@@ -9247,36 +9340,6 @@ class MetricsImplementationService {
         return $results;
     }
 
-    protected function getNetworkStorageUsage(): array {
-        $siteIds = get_sites([
-            'fields' => 'ids',
-            'number' => 0,
-        ]);
-        $siteId = 0;
-        $storage = [];
-        $state = [
-            'items' => [],
-            'total_used_bytes' => 0,
-            'total_max_bytes' => 0,
-            'has_unlimited_site' => false,
-        ];
-
-        foreach ($siteIds as $siteId) {
-            switch_to_blog((int)$siteId);
-            $storage = $this->getSiteStorageUsage();
-            restore_current_blog();
-
-            $this->accumulateDashboardBatchStorageUsage(
-                $state,
-                (int)$siteId,
-                $this->getSiteNameById((int)$siteId),
-                $storage
-            );
-        }
-
-        return $this->finalizeDashboardBatchStorageUsage($state);
-    }
-
     protected function getCurrentSiteOptionsGroupSummary(): array {
         $cached = $this->getCachedCurrentSiteDetailSection('options_summary');
 
@@ -11127,10 +11190,6 @@ class MetricsImplementationService {
         return $this->scheduleFrequency->fromHours($hours);
     }
 
-    protected function acquireDashboardRefreshLock(): bool {
-        return $this->dashboardRefresh->acquireLock();
-    }
-
     protected function releaseDashboardRefreshLock(): void {
         $this->dashboardRefresh->releaseLock();
     }
@@ -11195,10 +11254,15 @@ class MetricsImplementationService {
 
     protected function getPluginCacheFingerprint(string $pluginFile): string {
         $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
-        $baseDir = $mainFilePath !== '' ? dirname($mainFilePath) : '';
+        $mainFileExists = $mainFilePath !== '' && file_exists($mainFilePath);
+        // A single-file plugin shares WP_PLUGIN_DIR with every other plugin;
+        // that directory's timestamp says nothing about this plugin.
+        $baseDir = $mainFilePath !== '' && dirname(ltrim($pluginFile, '/')) !== '.' ? dirname($mainFilePath) : '';
         $fingerprint = [
+            'source-v' . self::SOURCE_ANALYSIS_VERSION . '-d' . $this->getSourceAnalysisMaxDepth() . '-p' . $this->getSourceAnalysisMaxPhpFiles(),
             $pluginFile,
-            $mainFilePath !== '' && file_exists($mainFilePath) ? (string)filemtime($mainFilePath) : '0',
+            $mainFileExists ? (string)filemtime($mainFilePath) : '0',
+            $mainFileExists ? (string)filesize($mainFilePath) : '0',
             $baseDir !== '' && file_exists($baseDir) ? (string)filemtime($baseDir) : '0',
         ];
 
@@ -11209,6 +11273,7 @@ class MetricsImplementationService {
         $themePath = $this->getThemeAbsolutePath($stylesheet);
         $mainPath = $this->getThemeMainFilePath($stylesheet);
         $fingerprint = [
+            'source-v' . self::SOURCE_ANALYSIS_VERSION . '-d' . $this->getSourceAnalysisMaxDepth() . '-p' . $this->getSourceAnalysisMaxPhpFiles(),
             $stylesheet,
             $themePath !== '' && file_exists($themePath) ? (string)filemtime($themePath) : '0',
             $mainPath !== '' && file_exists($mainPath) ? (string)filemtime($mainPath) : '0',
