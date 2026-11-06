@@ -40,10 +40,18 @@ This standalone harness executes the real lock/budget services and scheduler adm
 
 `tests/Unit/WorkerCoordinationTest.php` requires the disposable WordPress test database and opens a second real database connection. It verifies cross-connection exclusion, foreign-release rejection, simultaneous named locks, capacity exhaustion, release on disconnect and nested budget reuse. Run it with the integration suite before deployment; production credentials must not be used.
 
-## Plugin source index regression
+## Plugin and theme source analysis regression
 
 ```sh
-php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/plugin-source-index.php
+php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/plugin-source-analysis.php
 ```
 
-This standalone test executes the real bounded directory scanner. It verifies continuation after the per-step file limit, literal shortcode registrations, PHP and `block.json` block registrations, and isolation of single-file plugins. WordPress transient storage, database locks, update-hook invalidation and real plugin trees still require the integration and load tests.
+This standalone test executes the real file collection of the source analysis used by the plugin and theme usage index and the real source phase of `PluginThemeUsageMetricsService`. It verifies that a single-file plugin is analysed alone, that dependency, hidden and symlinked directories are not entered, that the configured depth limits the scope without marking it incomplete, that the PHP file limit reads the main directory first and is reported as incomplete, that a changed scope changes the fingerprint, that oversized files and an exhausted deadline mark the result as incomplete, that the single-file fingerprint ignores `WP_PLUGIN_DIR`, that an asset whose analysis repeatedly ended the request is skipped instead of being retried forever, and that the stored findings are returned per plugin only after a completed usage-index run and attributed as shortcode/block providers by the content analysis. Database access is a test double.
+
+## Settings multiselect regression
+
+```sh
+php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/settings-multiselect.php
+```
+
+This standalone test executes the real settings renderer and sanitizer for multiselect fields, which are rendered as checkbox groups. It verifies that a stored selection is shown as checked, that saving another settings tab keeps it, that a submitted selection is stored exactly, and that deselecting every entry is saved as an empty selection.

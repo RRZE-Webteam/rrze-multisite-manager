@@ -39,26 +39,6 @@ class ConfigTest extends \WP_UnitTestCase {
         }
     }
 
-    public function testPluginSourceScanningIsDisabledByDefaultAndCanBeEnabled(): void {
-        $config = new Config();
-        $optionName = $config->getOptionName();
-        $previous = get_site_option($optionName, false);
-
-        try {
-            delete_site_option($optionName);
-            self::assertFalse($config->shouldScanPluginSourcesForShortcodesAndBlocks());
-
-            update_site_option($optionName, ['monitoring_shortcode_block_scan_plugin_sources' => 1]);
-            self::assertTrue($config->shouldScanPluginSourcesForShortcodesAndBlocks());
-        } finally {
-            if ($previous === false) {
-                delete_site_option($optionName);
-            } else {
-                update_site_option($optionName, $previous);
-            }
-        }
-    }
-
     public function testShortcodeBlockBatchThresholdsAreOrderedAndBounded(): void {
         $config = new Config();
         $optionName = $config->getOptionName();

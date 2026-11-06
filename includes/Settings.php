@@ -70,6 +70,8 @@ class Settings {
         if (is_admin()) {
             add_action('admin_post_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('admin_post_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
+            add_action('admin_post_rrze_multisite_manager_refresh_plugin_theme_usage', [$this, 'refreshPluginThemeUsage']);
+            add_action('admin_post_rrze_multisite_manager_cancel_plugin_theme_usage', [$this, 'cancelPluginThemeUsage']);
             add_action('admin_post_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
             add_action('admin_post_rrze_multisite_manager_run_dashboard_metric_statistics', [$this, 'runDashboardMetricStatisticsNow']);
             add_action('admin_post_rrze_multisite_manager_send_website_status_report', [$this, 'sendWebsiteStatusReport']);
@@ -99,6 +101,8 @@ class Settings {
             add_action('wp_ajax_rrze_msm_run_analysis_task_removal_batch', [$this, 'ajaxRunAnalysisTaskRemovalBatch']);
             add_action('network_admin_edit_' . $this->optionName, [$this, 'saveNetworkOptions']);
             add_action('network_admin_edit_rrze_multisite_manager_refresh_metrics', [$this, 'refreshMetrics']);
+            add_action('network_admin_edit_rrze_multisite_manager_refresh_plugin_theme_usage', [$this, 'refreshPluginThemeUsage']);
+            add_action('network_admin_edit_rrze_multisite_manager_cancel_plugin_theme_usage', [$this, 'cancelPluginThemeUsage']);
             add_action('network_admin_edit_rrze_multisite_manager_run_monitoring', [$this, 'runMonitoringNow']);
             add_action('network_admin_edit_rrze_multisite_manager_run_dashboard_metric_statistics', [$this, 'runDashboardMetricStatisticsNow']);
             add_action('network_admin_edit_rrze_multisite_manager_send_website_status_report', [$this, 'sendWebsiteStatusReport']);
@@ -338,6 +342,7 @@ class Settings {
         $monitoringFrequencyChanged = (string)($previousOptions['monitoring_monitoring_frequency'] ?? '') !== (string)($options['monitoring_monitoring_frequency'] ?? '');
         $metricsFrequencyChanged = (string)($previousOptions['monitoring_metrics_frequency'] ?? '') !== (string)($options['monitoring_metrics_frequency'] ?? '');
         $dashboardMetricsHistoryFrequencyChanged = (string)($previousOptions['monitoring_dashboard_metrics_history_frequency'] ?? '') !== (string)($options['monitoring_dashboard_metrics_history_frequency'] ?? '');
+        $pluginThemeUsageFrequencyChanged = (string)($previousOptions['monitoring_plugin_theme_usage_frequency'] ?? '') !== (string)($options['monitoring_plugin_theme_usage_frequency'] ?? '');
         $storageAnalysisFrequencyChanged = (string)($previousOptions['monitoring_storage_analysis_small_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_small_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_medium_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_medium_batch_frequency'] ?? '')
             || (string)($previousOptions['monitoring_storage_analysis_large_batch_frequency'] ?? '') !== (string)($options['monitoring_storage_analysis_large_batch_frequency'] ?? '')
@@ -387,6 +392,10 @@ class Settings {
 
         if ($dashboardMetricsHistoryFrequencyChanged) {
             (new MetricsService($this, $this->config))->rescheduleDashboardHistoryCompactionCycle();
+        }
+
+        if ($pluginThemeUsageFrequencyChanged) {
+            (new MetricsService($this, $this->config))->reschedulePluginThemeUsageCycle();
         }
 
         if ($storageAnalysisFrequencyChanged) {
@@ -573,6 +582,40 @@ class Settings {
         );
 
         wp_safe_redirect($redirectUrl);
+        exit;
+    }
+
+    public function refreshPluginThemeUsage(): void {
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+        check_admin_referer('rrze_multisite_manager_refresh_plugin_theme_usage');
+        $action = (new MetricsService($this, $this->config))->startPluginThemeUsageRunFromNow();
+        $redirectUrl = $redirectTo !== '' ? $redirectTo : $this->getMonitoringPageUrl();
+        wp_safe_redirect(add_query_arg('plugin-theme-usage-action', $action, $redirectUrl));
+        exit;
+    }
+
+    public function cancelPluginThemeUsage(): void {
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+        $restart = !empty($_POST['restart']);
+        $action = '';
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_cancel_plugin_theme_usage');
+        $metricsService = new MetricsService($this, $this->config);
+        $action = $metricsService->cancelPluginThemeUsageRun();
+
+        if ($restart && $action === 'cancelled') {
+            $action = $metricsService->startPluginThemeUsageRunFromNow() === 'started' ? 'restarted' : $action;
+        }
+
+        $redirectUrl = $redirectTo !== '' ? $redirectTo : $this->getMonitoringPageUrl();
+        wp_safe_redirect(add_query_arg('plugin-theme-usage-action', $action, $redirectUrl));
         exit;
     }
 
@@ -1398,14 +1441,26 @@ class Settings {
 
         if ($type === 'multiselect') {
             $choices = is_array($field['choices'] ?? null) ? $field['choices'] : [];
-            $selectedValues = is_array($value) ? $value : [];
-            echo '<select id="' . esc_attr($fieldId) . '" name="' . esc_attr($inputName) . '[]" multiple size="' . esc_attr((string)max(3, count($choices))) . '">';
+            $selectedValues = array_map('strval', is_array($value) ? $value : []);
+            $choiceIndex = 0;
+
+            // A checkbox group shows the stored selection unambiguously and
+            // needs no Ctrl/Cmd click. The hidden empty value makes "nothing
+            // selected" a submitted value, so deselecting every entry is saved
+            // instead of silently keeping the previously stored selection.
+            echo '<fieldset id="' . esc_attr($fieldId) . '">';
+            echo '<input type="hidden" name="' . esc_attr($inputName) . '[]" value="">';
 
             foreach ($choices as $choiceValue => $choiceLabel) {
-                echo '<option value="' . esc_attr((string)$choiceValue) . '" ' . selected(in_array((string)$choiceValue, $selectedValues, true), true, false) . '>' . esc_html((string)$choiceLabel) . '</option>';
+                $choiceId = $fieldId . '-' . $choiceIndex;
+                echo '<label for="' . esc_attr($choiceId) . '" style="display:block;">';
+                echo '<input type="checkbox" id="' . esc_attr($choiceId) . '" name="' . esc_attr($inputName) . '[]" value="' . esc_attr((string)$choiceValue) . '" ' . checked(in_array((string)$choiceValue, $selectedValues, true), true, false) . '>';
+                echo ' ' . esc_html((string)$choiceLabel);
+                echo '</label>';
+                $choiceIndex++;
             }
 
-            echo '</select>';
+            echo '</fieldset>';
             return;
         }
 
@@ -1485,9 +1540,9 @@ class Settings {
         if ($type === 'multiselect') {
             $choices = is_array($field['choices'] ?? null) ? $field['choices'] : [];
             $values = is_array($value) ? $value : [];
-            $values = array_map('sanitize_key', $values);
+            $values = array_map('sanitize_key', array_map('strval', $values));
 
-            return array_values(array_intersect($values, array_keys($choices)));
+            return array_values(array_unique(array_intersect($values, array_map('strval', array_keys($choices)))));
         }
 
         if ($type === 'time') {
@@ -1572,7 +1627,7 @@ class Settings {
         $this->refreshNetworkUsersColumnField();
         $this->options = $this->getOptions();
 
-        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '" autocomplete="off">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="general">';
         $this->renderFields(['dashboard', 'users', 'debugging']);
@@ -1582,7 +1637,7 @@ class Settings {
     }
 
     protected function renderMonitoringTab(): void {
-        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '" autocomplete="off">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="monitoring">';
         $this->renderMonitoringFieldGroup(
@@ -1599,6 +1654,16 @@ class Settings {
         $this->renderMonitoringFieldGroup(__('Background process capacity', 'rrze-multisite-manager'), [
             'max_concurrent_workers',
         ]);
+        $this->renderMonitoringFieldGroup(
+            __('Plugin and theme usage index', 'rrze-multisite-manager'),
+            [
+                'plugin_theme_usage_frequency',
+                'source_analysis_enabled',
+                'source_analysis_max_depth',
+                'source_analysis_max_php_files',
+            ],
+            __('Records which websites use each plugin and theme and statically analyses their source code for shortcodes, blocks and other registrations. Changed limits take effect with the next run; every plugin and theme is then analysed again.', 'rrze-multisite-manager')
+        );
         $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
             'monitoring_frequency',
             'availability_batch_size',
@@ -1660,7 +1725,7 @@ class Settings {
             'shortcode_block_analysis_large_batch_runtime_threshold_seconds',
             'shortcode_block_analysis_timeout_minutes',
             'shortcode_block_analysis_value_max_kilobytes',
-            'shortcode_block_scan_plugin_sources',
+            'shortcode_block_result_entry_limit',
         ]);
         submit_button();
         echo '</form>';
@@ -1668,7 +1733,7 @@ class Settings {
     }
 
     protected function renderReportingTab(): void {
-        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '">';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '" autocomplete="off">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="reporting">';
         $this->renderFields(['reporting']);
@@ -1809,13 +1874,22 @@ class Settings {
         $monitoringAction = isset($_GET['monitoring-schedule-action'])
             ? sanitize_key((string)wp_unslash($_GET['monitoring-schedule-action']))
             : '';
+        $pluginThemeUsageAction = isset($_GET['plugin-theme-usage-action'])
+            ? sanitize_key((string)wp_unslash($_GET['plugin-theme-usage-action']))
+            : '';
         $messages = [
             'metrics-created' => __('The metrics task was created.', 'rrze-multisite-manager'),
             'metrics-rescheduled' => __('The metrics task was rescheduled to start now.', 'rrze-multisite-manager'),
             'monitoring-created' => __('The website availability task was created.', 'rrze-multisite-manager'),
             'monitoring-rescheduled' => __('The website availability task was rescheduled to start now.', 'rrze-multisite-manager'),
+            'plugin-theme-usage-started' => __('The plugin and theme usage task was started.', 'rrze-multisite-manager'),
+            'plugin-theme-usage-cancelled' => __('The plugin and theme usage task was cancelled. The previously completed index remains in use.', 'rrze-multisite-manager'),
+            'plugin-theme-usage-restarted' => __('The plugin and theme usage task was cancelled and started again.', 'rrze-multisite-manager'),
+            'plugin-theme-usage-not-running' => __('The plugin and theme usage task was not running.', 'rrze-multisite-manager'),
         ];
-        $messageKey = $metricsAction !== '' ? 'metrics-' . $metricsAction : 'monitoring-' . $monitoringAction;
+        $messageKey = $metricsAction !== ''
+            ? 'metrics-' . $metricsAction
+            : ($pluginThemeUsageAction !== '' ? 'plugin-theme-usage-' . $pluginThemeUsageAction : 'monitoring-' . $monitoringAction);
 
         if (!isset($messages[$messageKey])) {
             return;
@@ -3636,6 +3710,15 @@ class Settings {
         $progressPercent = (int)($process['progress_percent'] ?? 0);
 
         if ($batchTotal > 0) {
+            if (empty($process['is_running']) && !empty($process['hide_completed_progress_bar'])) {
+                return sprintf(
+                    /* translators: 1: checked websites, 2: total websites. */
+                    __('%1$s / %2$s', 'rrze-multisite-manager'),
+                    number_format_i18n($checkedSites),
+                    number_format_i18n($batchTotal)
+                );
+            }
+
             return sprintf(
                 /* translators: 1: checked websites, 2: total websites, 3: completion percentage. */
                 __('%1$s / %2$s (%3$d%%)', 'rrze-multisite-manager'),
@@ -3813,7 +3896,9 @@ class Settings {
         $html = '<div class="rrze-msm-process-progress">';
         $html .= '<div class="rrze-msm-process-progress-label">' . esc_html($label) . '</div>';
 
-        if ((int)($process['batch_total'] ?? 0) > 0) {
+        $showProgressBar = (int)($process['batch_total'] ?? 0) > 0
+            && (!empty($process['is_running']) || empty($process['hide_completed_progress_bar']));
+        if ($showProgressBar) {
             $html .= '<div class="rrze-msm-process-progress-bar" aria-hidden="true">';
             $html .= '<span class="rrze-msm-process-progress-fill" style="width:' . esc_attr((string)$progressPercent) . '%;"></span>';
             $html .= '</div>';
@@ -3828,6 +3913,27 @@ class Settings {
         $processId = (string)($process['id'] ?? '');
         $scheduleActionState = (string)($process['schedule_action_state'] ?? 'create');
         $html = '<div class="rrze-msm-process-actions">';
+
+        if ($processId === 'plugin-theme-usage' && (!empty($process['is_running']) || $scheduleActionState === 'running')) {
+            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_cancel_plugin_theme_usage')) . '">';
+            if ($redirectTo !== '') {
+                $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
+            }
+            $html .= wp_nonce_field('rrze_multisite_manager_cancel_plugin_theme_usage', '_wpnonce', true, false);
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button>';
+            $html .= '</form>';
+            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_cancel_plugin_theme_usage')) . '">';
+            $html .= '<input type="hidden" name="restart" value="1">';
+            if ($redirectTo !== '') {
+                $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
+            }
+            $html .= wp_nonce_field('rrze_multisite_manager_cancel_plugin_theme_usage', '_wpnonce', true, false);
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Cancel and restart', 'rrze-multisite-manager') . '</button>';
+            $html .= '</form>';
+            $html .= '</div>';
+
+            return $html;
+        }
 
         if (!empty($process['is_running']) || $scheduleActionState === 'running') {
             $html .= '<span aria-hidden="true">—</span>';
@@ -3866,6 +3972,14 @@ class Settings {
                 $html .= '<button type="submit" class="button button-secondary">' . esc_html__('Reset and restart', 'rrze-multisite-manager') . '</button>';
                 $html .= '</form>';
             }
+        } elseif ($processId === 'plugin-theme-usage') {
+            $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_refresh_plugin_theme_usage')) . '">';
+            if ($redirectTo !== '') {
+                $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
+            }
+            $html .= wp_nonce_field('rrze_multisite_manager_refresh_plugin_theme_usage', '_wpnonce', true, false);
+            $html .= '<button type="submit" class="button button-secondary">' . esc_html($actionLabel) . '</button>';
+            $html .= '</form>';
         } elseif ($processId === 'dashboard-metrics-history') {
             $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_run_dashboard_metric_statistics')) . '">';
             if ($redirectTo !== '') {

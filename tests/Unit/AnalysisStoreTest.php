@@ -63,6 +63,14 @@ class AnalysisStoreTest extends \WP_UnitTestCase {
             update_site_option('rrze_msm_analysis_schema', 2);
             $store->install();
             self::assertSame(AnalysisStore::SCHEMA_VERSION, (int)get_site_option('rrze_msm_analysis_schema'));
+            self::assertContains('plugin_file', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('plugin_metrics')));
+            self::assertContains('stylesheet', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('theme_metrics')));
+            self::assertContains('payload', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('plugin_source_metrics')));
+            self::assertContains('payload', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('theme_source_metrics')));
+            self::assertContains('plugin_file', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('plugin_metrics_staging')));
+            self::assertContains('stylesheet', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('theme_metrics_staging')));
+            self::assertContains('payload', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('plugin_source_metrics_staging')));
+            self::assertContains('payload', $wpdb->get_col('SHOW COLUMNS FROM ' . $store->table('theme_source_metrics_staging')));
             self::assertSame(AnalysisStore::DATA_VERSION, (int)get_blog_option($siteId, 'rrze_msm_analysis_storage_version'));
             self::assertSame(['preserved' => true], $store->checkpoint($siteId, 'schema-repair-test'));
             foreach (['shortcodes', 'blocks'] as $kind) {

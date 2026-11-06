@@ -54,25 +54,38 @@ trait MetricsServiceSiteTrait {
         return $formattedSites[0];
     }
 
+    /**
+     * Finds websites by domain, path, name or URL for the admin search field.
+     *
+     * Domain and path are searched in wp_blogs by SQL. Names and home URLs
+     * come from the stored dashboard cache, so a search request never reads
+     * options of hundreds of websites. Websites created after the last
+     * dashboard metrics run are found by domain or path until the next run.
+     */
     public function searchSites(string $searchTerm, int $limit = 20): array {
-        $sites = [];
         $results = [];
-        $siteMap = [];
+        $foundSiteIds = [];
         $site = null;
         $siteId = 0;
+        $row = [];
         $siteName = '';
         $siteUrl = '';
-        $haystack = '';
         $searchNeedle = trim(mb_strtolower($searchTerm));
-        $candidateSiteIds = [];
-        $fallbackScanLimit = 500;
+        $cachedRows = [];
 
         if ($searchNeedle === '' || mb_strlen($searchNeedle) < 3) {
             return [];
         }
 
+        $cache = $this->getStoredDashboardCache();
+        foreach ((array)($cache['data']['site_overview'] ?? []) as $row) {
+            if (is_array($row) && (int)($row['id'] ?? 0) > 0) {
+                $cachedRows[(int)$row['id']] = $row;
+            }
+        }
+
         $sites = get_sites([
-            'number' => max($limit * 3, 20),
+            'number' => $limit,
             'orderby' => 'domain',
             'order' => 'ASC',
             'search' => $searchNeedle,
@@ -84,54 +97,41 @@ trait MetricsServiceSiteTrait {
                 continue;
             }
 
-            $siteMap[(int)$site->blog_id] = $site;
-        }
-
-        if (count($siteMap) < $limit) {
-            $candidateSiteIds = get_sites([
-                'fields' => 'ids',
-                'number' => $fallbackScanLimit,
-                'orderby' => 'registered',
-                'order' => 'DESC',
-            ]);
-
-            foreach ($candidateSiteIds as $siteId) {
-                $siteId = (int)$siteId;
-
-                if ($siteId <= 0 || isset($siteMap[$siteId])) {
-                    continue;
-                }
-
-                $site = get_site($siteId);
-
-                if ($site instanceof \WP_Site) {
-                    $siteMap[$siteId] = $site;
-                }
-            }
-        }
-
-        foreach ($siteMap as $site) {
             $siteId = (int)$site->blog_id;
-            $siteName = $this->getSiteName($site);
-            $siteUrl = get_home_url($siteId, '/');
-            $haystack = mb_strtolower($siteName . ' ' . $siteUrl . ' ' . $site->domain . $site->path);
+            $siteName = (string)($cachedRows[$siteId]['name'] ?? '');
+            $siteUrl = (string)($cachedRows[$siteId]['url'] ?? '');
+            $foundSiteIds[$siteId] = true;
+            $results[] = [
+                'id' => $siteId,
+                'name' => $siteName !== '' ? $siteName : $this->getSiteName($site),
+                'url' => $siteUrl !== '' ? $siteUrl : get_home_url($siteId, '/'),
+            ];
+        }
 
-            if (mb_strpos($haystack, $searchNeedle) === false) {
+        foreach ($cachedRows as $siteId => $row) {
+            if (count($results) >= $limit) {
+                break;
+            }
+
+            if (isset($foundSiteIds[$siteId])) {
+                continue;
+            }
+
+            $siteName = (string)($row['name'] ?? '');
+            $siteUrl = (string)($row['url'] ?? '');
+
+            if (mb_strpos(mb_strtolower($siteName . ' ' . $siteUrl), $searchNeedle) === false) {
                 continue;
             }
 
             $results[] = [
-                'id' => $siteId,
+                'id' => (int)$siteId,
                 'name' => $siteName,
                 'url' => $siteUrl,
             ];
-
-            if (count($results) >= $limit) {
-                break;
-            }
         }
 
-        return $results;
+        return array_slice($results, 0, $limit);
     }
 
     protected function getSummary(array $networkStorageUsage = []): array {
@@ -304,16 +304,6 @@ trait MetricsServiceSiteTrait {
         ]);
 
         return $this->formatSites($sites);
-    }
-
-    protected function getSiteOverview(): array {
-        $sites = get_sites([
-            'number' => 0,
-            'orderby' => 'registered',
-            'order' => 'DESC',
-        ]);
-
-        return $this->formatSites($sites, true);
     }
 
     protected function filterFormattedSitesByFlag(array $sites, string $flagKey): array {

@@ -8,24 +8,36 @@ The **Settings** page configures Multisite Manager. It is visible only to super 
 
 This tab maintains defaults for dashboard tables, inactivity marking, and optional logging of background processes. The settings do not control WordPress core options outside Multisite Manager.
 
+### Logging
+
+The **Debugging** section has two independent switches, both disabled by default:
+
+* **Logging** (`debugging_logging`) sends informational messages to the `rrze.log.info` channel: start and end of network processes (dashboard metrics, availability checks) and the start and end of each website analysis, plus failures, aborts and recoveries.
+* **Fine-grained debugging** (`debugging_fine_grained`) additionally sends intermediate steps of background runs: storage-analysis phase transitions, per-slice continuation diagnostics, shared-batch invocations and queue handling, and assignment decisions. It has no effect while **Logging** is disabled.
+
+`LoggingService::info()` is used for the first group, `LoggingService::debug()` for the second. Errors and warnings (`rrze.log.error`, `rrze.log.warning`) are not affected by either switch.
+
+Multiple-choice settings (for example **Ignore websites** for availability checks or the default columns of the user list) are rendered as checkbox groups. A hidden empty value is submitted with each group, so deselecting every entry is stored as an empty selection; saving one tab never changes the fields of another tab. The settings forms use `autocomplete="off"` so that a browser reload shows the stored values instead of restoring unsaved form state.
+
 ## Monitoring
 
 The tab configures:
 
 * intervals for dashboard metrics, their historical statistics (daily, weekly, monthly, or disabled while retaining existing data; weekly by default), and availability checks
+* the plugin and theme usage index: cycle (twice weekly by default), optional static source analysis (disabled by default), subdirectory depth (default 3) and maximum PHP files per plugin or theme (default 100)
 * batch size for network-wide processes
 * grace period for new sites and DNS/HTTP failure thresholds
 * intervals, execution limits, and assignment criteria for storage analyses
 * separate cycles and assignment thresholds for small, medium, and large shortcode/block batches plus individual tasks
-* optional plugin-source indexing for shortcode and block registrations; it is disabled by default, so only post/page content and metadata are searched
-* a shared network-wide background process limit (default 2, range 1–8) for storage/content analyses, dashboard metrics/statistics and availability checks
-* number of retained log and event entries
+* the maximum number of stored shortcode/block findings per website and type (default 1,000, range 100–5,000; a block finding is one block type per post)
+* a shared network-wide background process limit (default 3, range 1–16) for storage/content analyses, dashboard metrics/statistics and plugin/theme usage indexing; availability checks are not counted
+* number of retained monitoring runs (applied immediately to the stored log) and visible anomaly entries
 
 Larger batches shorten the entire run but increase the load and execution time of an individual Cron request. Values should therefore match PHP limits, the Cron cadence, and network size.
 
 Shortcode/block scheduling initially classifies a website by its combined post and page count. Defaults are small up to 100, medium up to 1,000, large up to 5,000, and individual above that. After a successful complete run, the higher class from content count and active runtime is used: defaults are small up to 3 seconds, medium up to 15 seconds, large up to 60 seconds, and individual above that. Saving changed thresholds starts a bounded rescheduling pass; it does not synchronously scan the complete network.
 
-When plugin-source indexing is enabled, the index is built once per plugin version and network, then reused by all website analyses. The work is continued in bounded steps. Plugin updates invalidate the index; the plugin version, main-file metadata, plugin-directory timestamp, and a 30-day expiry provide additional invalidation without a full directory traversal on every cache lookup. A manual in-place edit of a subsidiary source file that changes neither the version nor the directory timestamp can therefore remain cached until expiry. Literal `add_shortcode()`, `register_block_type()` and `block.json` registrations are recognized. Dynamically assembled registration names cannot be derived reliably from source text.
+Shortcode and block providers of plugins and themes that are not loaded in the analysing process are taken from the static source analysis of the plugin and theme usage index. The former setting for a separate plugin-source scan in the shortcode/block analysis was removed in 1.3.36-4; a stored value is ignored.
 
 ## Views
 

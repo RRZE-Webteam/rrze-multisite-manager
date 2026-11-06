@@ -12,8 +12,10 @@ The configured default theme is determined live from `rrze_settings.general.defa
 
 ## Source-code analysis
 
-An optional source-code analysis is only an explicitly requested detail function. It is not started during plugin initialisation, when the dashboard loads, or by regular metric batches.
+Static source findings (shortcodes, blocks, patterns, image sizes, hooks) are read from `theme_source_metrics`. They are collected by the plugin and theme usage index only when **Static source analysis** is enabled (disabled by default), with the same limits as for plugins (see [Plugin details](plugin-details.md#source-code-analysis)). The detail page never analyses source code itself.
 
 ## Implementation
 
-`Dashboard::renderThemeDetailsPage()` uses the nonce namespace `rrze_msm_source_analysis_theme_<stylesheet>`. The cache key follows the pattern `rrze_msm_theme_details_<detail-version>_<hash>` and combines stylesheet, analysis mode, and theme fingerprint.
+`Dashboard::renderThemeDetailsPage()` renders `templates/theme-details-page.php`. The cache key follows the pattern `rrze_msm_theme_details_<detail-version>_<hash>` and combines stylesheet, the legacy analysis-mode flag and the theme fingerprint (source-analysis version, configured limits, file timestamps). The website rows come from the last completed dashboard metrics run; websites created afterwards are shown with basic data only.
+
+The list of websites using the theme comes from the central theme-usage index. It never scans every website live. Before the first completed index run, the detail page links to Monitoring, where the index task can be started.

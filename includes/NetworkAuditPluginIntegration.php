@@ -5,24 +5,46 @@ namespace RRZE\MultisiteManager;
 defined('ABSPATH') || exit;
 
 /**
- * Provides the optional RRZE Netzwerk-Audit plugin enablement integration.
+ * Provides the optional plugin enablement (allowlist) integration.
+ *
+ * Provider:
+ * - RRZE Netzwerk-Audit, as long as it is network-active.
+ * - Otherwise RRZE Settings (Governance\PluginAvailability), which has taken
+ *   over the allowlist with the same network option.
  */
 class NetworkAuditPluginIntegration {
+    public const PROVIDER_NONE = '';
+    public const PROVIDER_NETWORK_AUDIT = 'rrze-netzwerk-audit';
+    public const PROVIDER_SETTINGS = 'rrze-settings';
+
     private const PLUGIN_FILE = 'rrze-netzwerk-audit/rrze-netzwerk-audit.php';
     private const OPTION_NAME = 'rrze_netzwerk_audit';
+    private const SETTINGS_CLASS = 'RRZE\\Settings\\Governance\\PluginAvailability';
 
-    private ?bool $available = null;
+    private ?string $provider = null;
     private ?array $enabledPlugins = null;
 
     public function isAvailable(): bool {
-        if ($this->available !== null) {
-            return $this->available;
+        return $this->getProvider() !== self::PROVIDER_NONE;
+    }
+
+    /**
+     * Return the component that currently provides the allowlist.
+     */
+    public function getProvider(): string {
+        if ($this->provider !== null) {
+            return $this->provider;
         }
 
-        $this->available = function_exists('is_plugin_active_for_network')
-            && is_plugin_active_for_network(self::PLUGIN_FILE);
+        if (function_exists('is_plugin_active_for_network') && is_plugin_active_for_network(self::PLUGIN_FILE)) {
+            $this->provider = self::PROVIDER_NETWORK_AUDIT;
+        } elseif ($this->isSettingsProviderAvailable()) {
+            $this->provider = self::PROVIDER_SETTINGS;
+        } else {
+            $this->provider = self::PROVIDER_NONE;
+        }
 
-        return $this->available;
+        return $this->provider;
     }
 
     /**
@@ -79,14 +101,15 @@ class NetworkAuditPluginIntegration {
      * @param string[] $pluginFiles
      */
     public function setPluginsEnabled(array $pluginFiles, bool $enabled): int {
-        if (!$this->isAvailable()) {
+        $provider = $this->getProvider();
+
+        if ($provider === self::PROVIDER_NONE) {
             return 0;
         }
 
-        $options = get_site_option(self::OPTION_NAME, []);
-        $options = is_object($options) ? (array)$options : (is_array($options) ? $options : []);
         $enabledPlugins = $this->getEnabledPlugins();
-        $updated = 0;
+        $changes = [];
+
         foreach (array_unique($pluginFiles) as $pluginFile) {
             if (!is_string($pluginFile)) {
                 continue;
@@ -98,23 +121,38 @@ class NetworkAuditPluginIntegration {
                 continue;
             }
 
-            $isEnabled = in_array($pluginFile, $enabledPlugins, true);
-
-            if ($enabled === $isEnabled) {
+            if ($enabled === in_array($pluginFile, $enabledPlugins, true)) {
                 continue;
             }
 
-            if ($enabled) {
-                $enabledPlugins[] = $pluginFile;
-            } else {
-                $enabledPlugins = array_values(array_diff($enabledPlugins, [$pluginFile]));
-            }
-
-            $updated++;
+            $changes[] = $pluginFile;
         }
 
-        if ($updated === 0) {
+        if (empty($changes)) {
             return 0;
+        }
+
+        if ($provider === self::PROVIDER_SETTINGS) {
+            return $this->setPluginsEnabledViaSettings($changes, $enabled);
+        }
+
+        return $this->setPluginsEnabledInOption($changes, $enabled);
+    }
+
+    /**
+     * Write the allowlist directly (RRZE Netzwerk-Audit is active).
+     *
+     * @param string[] $pluginFiles Plugins whose state changes
+     */
+    private function setPluginsEnabledInOption(array $pluginFiles, bool $enabled): int {
+        $options = get_site_option(self::OPTION_NAME, []);
+        $options = is_object($options) ? (array)$options : (is_array($options) ? $options : []);
+        $enabledPlugins = $this->getEnabledPlugins();
+
+        if ($enabled) {
+            $enabledPlugins = array_merge($enabledPlugins, $pluginFiles);
+        } else {
+            $enabledPlugins = array_diff($enabledPlugins, $pluginFiles);
         }
 
         $options['enabled_plugins'] = array_values(array_unique($enabledPlugins));
@@ -125,7 +163,43 @@ class NetworkAuditPluginIntegration {
 
         $this->enabledPlugins = $options['enabled_plugins'];
 
+        return count($pluginFiles);
+    }
+
+    /**
+     * Change the allowlist through RRZE Settings.
+     *
+     * @param string[] $pluginFiles Plugins whose state changes
+     */
+    private function setPluginsEnabledViaSettings(array $pluginFiles, bool $enabled): int {
+        $updated = 0;
+
+        foreach ($pluginFiles as $pluginFile) {
+            if (call_user_func([self::SETTINGS_CLASS, 'setEnabled'], $pluginFile, $enabled)) {
+                $updated++;
+            }
+        }
+
+        $this->enabledPlugins = null;
+
         return $updated;
+    }
+
+    /**
+     * Whether RRZE Settings provides the allowlist on this network.
+     */
+    private function isSettingsProviderAvailable(): bool {
+        if (!class_exists(self::SETTINGS_CLASS)) {
+            return false;
+        }
+
+        foreach (['isConfigured', 'getEnabledPlugins', 'setEnabled'] as $method) {
+            if (!method_exists(self::SETTINGS_CLASS, $method)) {
+                return false;
+            }
+        }
+
+        return (bool)call_user_func([self::SETTINGS_CLASS, 'isConfigured']);
     }
 
     private function pluginFileExists(string $pluginFile): bool {
@@ -161,21 +235,28 @@ class NetworkAuditPluginIntegration {
             return $this->enabledPlugins;
         }
 
-        $options = get_site_option(self::OPTION_NAME, []);
-        $options = is_object($options) ? (array)$options : (is_array($options) ? $options : []);
-        $enabledPlugins = is_array($options['enabled_plugins'] ?? null)
-            ? $options['enabled_plugins']
-            : [];
+        if ($this->getProvider() === self::PROVIDER_SETTINGS) {
+            $enabledPlugins = (array)call_user_func([self::SETTINGS_CLASS, 'getEnabledPlugins']);
+        } else {
+            $options = get_site_option(self::OPTION_NAME, []);
+            $options = is_object($options) ? (array)$options : (is_array($options) ? $options : []);
+            $enabledPlugins = is_array($options['enabled_plugins'] ?? null)
+                ? $options['enabled_plugins']
+                : [];
+        }
 
-        $this->enabledPlugins = array_values(
-            array_filter(
-                array_map(
-                    'plugin_basename',
-                    array_filter($enabledPlugins, 'is_string')
-                ),
-                static fn(string $pluginFile): bool => $pluginFile !== ''
-            )
-        );
+        $normalized = [];
+        foreach ($enabledPlugins as $pluginFile) {
+            if (!is_string($pluginFile)) {
+                continue;
+            }
+            $pluginFile = plugin_basename($pluginFile);
+            if ($pluginFile !== '') {
+                $normalized[] = $pluginFile;
+            }
+        }
+
+        $this->enabledPlugins = $normalized;
 
         return $this->enabledPlugins;
     }

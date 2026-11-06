@@ -3,6 +3,21 @@ defined('ABSPATH') || exit;
 // phpcs:ignoreFile WordPress.Security.EscapeOutput.OutputNotEscaped -- Template outputs trusted internal admin markup fragments.
 ?>
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
+    <?php
+    $storageAttachmentAuthorLabel = static function (array $row): string {
+        $attachmentId = absint($row['attachment_id'] ?? 0);
+        $author = is_array($row['upload_author'] ?? null) ? $row['upload_author'] : [];
+        $label = trim((string)($author['label'] ?? ''));
+
+        if ($label !== '') {
+            return $label;
+        }
+
+        return $attachmentId > 0
+            ? __('No upload author', 'rrze-multisite-manager')
+            : __('Not registered in media library', 'rrze-multisite-manager');
+    };
+    ?>
     <div class="rrze-msm-page-shell">
         <?php if (!empty($storage_analysis['result_truncated'])) { ?>
             <div class="notice notice-warning"><p><?php echo !empty($storage_analysis['requires_reanalysis']) ? esc_html__('The stored analysis exceeded its storage limit. Run the analysis again to restore its details.', 'rrze-multisite-manager') : esc_html__('Some analysis details were shortened or omitted. Summary totals are unchanged.', 'rrze-multisite-manager'); ?></p></div>
@@ -406,6 +421,7 @@ defined('ABSPATH') || exit;
                                             <th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="author" data-sort-direction="asc"><span><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Last modified', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Actions', 'rrze-multisite-manager'); ?></th>
@@ -415,7 +431,7 @@ defined('ABSPATH') || exit;
                                         <?php foreach ((array)$storage_analysis['largest_files'] as $file_row) { ?>
                                             <?php $fileAttachmentId = (int)($file_row['attachment_id'] ?? 0); ?>
                                             <?php $fileAttachmentDetailsUrl = $fileAttachmentId > 0 ? add_query_arg('debug_attachment_id', $fileAttachmentId, $debugTabUrl) : ''; ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($file_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($file_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($file_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($file_row['modified_timestamp'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($file_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($file_row['type_label'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($file_row))); ?>" data-sort-size="<?php echo esc_attr((string)($file_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($file_row['modified_timestamp'] ?? 0)); ?>">
                                             <td class="rrze-msm-col-numeric">
                                                 <?php if ($fileAttachmentDetailsUrl !== '') { ?>
                                                     <a href="<?php echo esc_url($fileAttachmentDetailsUrl); ?>"><?php echo esc_html((string)$fileAttachmentId); ?></a>
@@ -431,6 +447,7 @@ defined('ABSPATH') || exit;
                                                 <?php } ?>
                                             </td>
                                             <td><?php echo esc_html((string)($file_row['type_label'] ?? '')); ?></td>
+                                            <td><?php echo esc_html($storageAttachmentAuthorLabel($file_row)); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($file_row['size_label'] ?? '')); ?></td>
                                             <td><?php echo esc_html((string)($file_row['modified_label'] ?? '')); ?></td>
                                             <td>
@@ -463,10 +480,10 @@ defined('ABSPATH') || exit;
                         </header>
                         <div class="rrze-msm-site-table-wrap" data-table-id="used-attachment-files" data-default-per-page="20" data-current-page="1" data-sort-key="size" data-sort-direction="desc">
                             <table class="widefat striped rrze-msm-table">
-                                <thead><tr><th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></th><th class="rrze-msm-col-numeric"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th></tr></thead>
+                                <thead><tr><th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></th><th class="rrze-msm-col-numeric"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></th><th><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th></tr></thead>
                                 <tbody>
                                     <?php foreach ((array)$storage_analysis['used_attachment_files'] as $orphan_row) { ?>
-                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($orphan_row))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
                                             <td class="rrze-msm-col-numeric">
                                                 <?php if (!empty($orphan_row['media_edit_url'])) { ?>
                                                     <a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a>
@@ -476,6 +493,7 @@ defined('ABSPATH') || exit;
                                             </td>
                                             <td><?php if (!empty($orphan_row['media_edit_url'])) { ?><a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></a><?php } else { ?><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code><?php } ?></td>
                                             <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
+                                            <td><?php echo esc_html($storageAttachmentAuthorLabel($orphan_row)); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                             <td><?php echo esc_html((string)($orphan_row['content_usage_label'] ?? '')); ?></td>
                                         </tr>
@@ -525,6 +543,7 @@ defined('ABSPATH') || exit;
                                     <tr>
                                         <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><?php echo esc_html__('File', 'rrze-multisite-manager'); ?><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                         <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="image-size" data-sort-direction="asc"><?php echo esc_html__('Former image size', 'rrze-multisite-manager'); ?><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                        <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="author" data-sort-direction="asc"><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                         <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                         <th class="rrze-msm-col-numeric"><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th>
                                     </tr>
@@ -537,7 +556,7 @@ defined('ABSPATH') || exit;
                                             ? $unregisteredImageSizeVariantResultsByPath[$unregisteredImageSizeVariantPath]
                                             : $unregisteredImageSizeVariant;
                                         ?>
-                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower($unregisteredImageSizeVariantPath)); ?>" data-sort-image-size="<?php echo esc_attr(mb_strtolower((string)($unregisteredImageSizeVariant['image_size_slug'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($unregisteredImageSizeVariant['size_bytes'] ?? 0)); ?>">
+                                        <tr data-sort-name="<?php echo esc_attr(mb_strtolower($unregisteredImageSizeVariantPath)); ?>" data-sort-image-size="<?php echo esc_attr(mb_strtolower((string)($unregisteredImageSizeVariant['image_size_slug'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($unregisteredImageSizeVariant))); ?>" data-sort-size="<?php echo esc_attr((string)($unregisteredImageSizeVariant['size_bytes'] ?? 0)); ?>">
                                             <td>
                                                 <?php if (!empty($unregisteredImageSizeVariant['media_edit_url'])) { ?>
                                                     <a href="<?php echo esc_url((string)$unregisteredImageSizeVariant['media_edit_url']); ?>"><code><?php echo esc_html($unregisteredImageSizeVariantPath); ?></code></a>
@@ -546,6 +565,7 @@ defined('ABSPATH') || exit;
                                                 <?php } ?>
                                             </td>
                                             <td><code><?php echo esc_html((string)($unregisteredImageSizeVariant['image_size_slug'] ?? '')); ?></code></td>
+                                            <td><?php echo esc_html($storageAttachmentAuthorLabel($unregisteredImageSizeVariant)); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($unregisteredImageSizeVariant['size_label'] ?? '')); ?></td>
                                             <td class="rrze-msm-col-numeric"><?php echo $orphanAnalysisComplete ? esc_html((string)($unregisteredImageSizeVariantResult['content_usage_label'] ?? '')) : esc_html__('Not checked yet', 'rrze-multisite-manager'); ?></td>
                                         </tr>
@@ -587,6 +607,7 @@ defined('ABSPATH') || exit;
                                         <tr>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="author" data-sort-direction="asc"><span><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th>
                                             <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Actions', 'rrze-multisite-manager'); ?></th>
@@ -594,9 +615,10 @@ defined('ABSPATH') || exit;
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['orphan_files_found_in_content'] as $orphan_row) { ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($orphan_row))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
                                                 <td><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
+                                                <td><?php echo esc_html($storageAttachmentAuthorLabel($orphan_row)); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['content_usage_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
@@ -675,6 +697,7 @@ defined('ABSPATH') || exit;
                                             <th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="author" data-sort-direction="asc"><span><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Last modified', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Actions', 'rrze-multisite-manager'); ?></th>
@@ -688,7 +711,7 @@ defined('ABSPATH') || exit;
                                                 ? get_admin_url((int)$site_id, 'post.php?post=' . $attachmentId . '&action=edit')
                                                 : '';
                                             ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($orphan_row))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
                                                 <td class="rrze-msm-col-numeric">
                                                     <?php if ($mediaEditUrl !== '') { ?>
                                                         <a href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a>
@@ -704,6 +727,7 @@ defined('ABSPATH') || exit;
                                                     <?php } ?>
                                                 </td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
+                                                <td><?php echo esc_html($storageAttachmentAuthorLabel($orphan_row)); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['modified_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
@@ -749,6 +773,7 @@ defined('ABSPATH') || exit;
                                             <th class="rrze-msm-col-numeric"><?php echo esc_html__('ID', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="author" data-sort-direction="asc"><span><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><?php echo esc_html__('References', 'rrze-multisite-manager'); ?></th>
                                             <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Actions', 'rrze-multisite-manager'); ?></th>
@@ -756,7 +781,7 @@ defined('ABSPATH') || exit;
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['used_attachment_files'] as $orphan_row) { ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($orphan_row))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>">
                                                 <td class="rrze-msm-col-numeric">
                                                     <?php if (!empty($orphan_row['media_edit_url'])) { ?>
                                                         <a href="<?php echo esc_url((string)$orphan_row['media_edit_url']); ?>"><?php echo esc_html((string)($orphan_row['attachment_id'] ?? '')); ?></a>
@@ -772,6 +797,7 @@ defined('ABSPATH') || exit;
                                                     <?php } ?>
                                                 </td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
+                                                <td><?php echo esc_html($storageAttachmentAuthorLabel($orphan_row)); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['content_usage_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
@@ -830,6 +856,7 @@ defined('ABSPATH') || exit;
                                             <th><?php echo esc_html__('Selection', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="author" data-sort-direction="asc"><span><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Last modified', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Actions', 'rrze-multisite-manager'); ?></th>
@@ -837,10 +864,11 @@ defined('ABSPATH') || exit;
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['orphan_files_without_content_matches'] as $orphan_row) { ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($orphan_row))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
                                                 <td><input type="checkbox" name="relative_paths[]" value="<?php echo esc_attr((string)($orphan_row['path'] ?? '')); ?>"></td>
                                                 <td><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
+                                                <td><?php echo esc_html($storageAttachmentAuthorLabel($orphan_row)); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['modified_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-actions rrze-msm-col-actions-text">
@@ -914,6 +942,7 @@ defined('ABSPATH') || exit;
                                             <th><?php echo esc_html__('Selection', 'rrze-multisite-manager'); ?></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="name" data-sort-direction="asc"><span><?php echo esc_html__('File', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="type" data-sort-direction="asc"><span><?php echo esc_html__('Type', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
+                                            <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="author" data-sort-direction="asc"><span><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-numeric"><button type="button" class="rrze-msm-site-table-sort" data-sort-key="size" data-sort-direction="desc"><span><?php echo esc_html__('Size', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th><button type="button" class="rrze-msm-site-table-sort" data-sort-key="modified" data-sort-direction="desc"><span><?php echo esc_html__('Last modified', 'rrze-multisite-manager'); ?></span><span class="rrze-msm-site-table-sort-indicator" aria-hidden="true"></span></button></th>
                                             <th class="rrze-msm-col-actions rrze-msm-col-actions-text"><?php echo esc_html__('Actions', 'rrze-multisite-manager'); ?></th>
@@ -921,10 +950,11 @@ defined('ABSPATH') || exit;
                                     </thead>
                                     <tbody>
                                         <?php foreach ((array)$storage_analysis['largest_orphan_files'] as $orphan_row) { ?>
-                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
+                                            <tr data-sort-name="<?php echo esc_attr(mb_strtolower((string)($orphan_row['path'] ?? ''))); ?>" data-sort-type="<?php echo esc_attr(mb_strtolower((string)($orphan_row['type_label'] ?? ''))); ?>" data-sort-author="<?php echo esc_attr(mb_strtolower($storageAttachmentAuthorLabel($orphan_row))); ?>" data-sort-size="<?php echo esc_attr((string)($orphan_row['size_bytes'] ?? 0)); ?>" data-sort-modified="<?php echo esc_attr((string)($orphan_row['modified_timestamp'] ?? 0)); ?>">
                                                 <td><input type="checkbox" name="relative_paths[]" value="<?php echo esc_attr((string)($orphan_row['path'] ?? '')); ?>"></td>
                                                 <td><code><?php echo esc_html((string)($orphan_row['path'] ?? '')); ?></code></td>
                                                 <td><?php echo esc_html((string)($orphan_row['type_label'] ?? '')); ?></td>
+                                                <td><?php echo esc_html($storageAttachmentAuthorLabel($orphan_row)); ?></td>
                                                 <td class="rrze-msm-col-numeric"><?php echo esc_html((string)($orphan_row['size_label'] ?? '')); ?></td>
                                                 <td><?php echo esc_html((string)($orphan_row['modified_label'] ?? '')); ?></td>
                                                 <td class="rrze-msm-col-actions rrze-msm-col-actions-text">

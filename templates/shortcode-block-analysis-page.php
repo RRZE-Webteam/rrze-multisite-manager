@@ -23,9 +23,9 @@ $foundShortcodeCount = (int)($analysis_result['shortcodes_distinct'] ?? 0);
 $foundBlockCount = (int)($analysis_result['blocks_distinct'] ?? 0);
 $unregisteredShortcodeCount = (int)($analysis_result['unregistered_shortcodes'] ?? 0);
 $analysisTruncated = !empty($analysis_result[$analysisTab . '_truncated']);
-$pluginSourceScanTruncated = !empty($analysis_result['plugin_source_scan_truncated']);
 $omittedSourceCount = (int)($analysis_result[$analysisTab . '_omitted_count'] ?? 0);
 $omittedSources = array_values(array_filter((array)($analysis_result[$analysisTab . '_omitted_sources'] ?? []), 'is_array'));
+$limitOmittedCount = (int)($analysis_result[$analysisTab . '_limit_omitted'] ?? 0);
 $analysedPostCount = max(
     (int)($analysis_status['total_posts'] ?? 0),
     (int)($analysis_status['processed_posts'] ?? 0),
@@ -292,6 +292,20 @@ $columnCount = $analysisTab === 'shortcodes'
                                                 esc_html($metadataKey),
                                                 esc_html($analysis_input_limit_label)
                                             )); ?>
+                                        <?php } elseif (($source['reason'] ?? '') === 'finding_count_limit' && $limitOmittedCount > 0) { ?>
+                                            <?php echo wp_kses_post(sprintf(
+                                                /* translators: 1: configured result limit, 2: post ID, 3: post title, 4: number of findings that were not stored. */
+                                                _n(
+                                                    'The result limit of %1$s findings was reached. From post #%2$d (%3$s) on, %4$s further finding was not stored.',
+                                                    'The result limit of %1$s findings was reached. From post #%2$d (%3$s) on, %4$s further findings were not stored.',
+                                                    $limitOmittedCount,
+                                                    'rrze-multisite-manager'
+                                                ),
+                                                esc_html(number_format_i18n(max(0, (int)($source['limit'] ?? 0)))),
+                                                $postId,
+                                                $postTitleLink,
+                                                esc_html(number_format_i18n($limitOmittedCount))
+                                            )); ?>
                                         <?php } elseif (($source['reason'] ?? '') === 'finding_count_limit') { ?>
                                             <?php echo wp_kses_post(sprintf(
                                                 /* translators: 1: post ID, 2: post title. */
@@ -327,11 +341,6 @@ $columnCount = $analysisTab === 'shortcodes'
                                 <?php } ?>
                             </ul>
                         <?php } ?>
-                    </div>
-                <?php } ?>
-                <?php if ($pluginSourceScanTruncated) { ?>
-                    <div class="notice notice-warning inline">
-                        <p><?php echo esc_html__('The optional plugin-source index reached a file, byte, directory, or file-size limit. Post and page findings are complete, but some plugin providers may be unknown.', 'rrze-multisite-manager'); ?></p>
                     </div>
                 <?php } ?>
                 <?php if (isset($analysis_list_table) && $analysis_list_table instanceof \WP_List_Table) { ?>

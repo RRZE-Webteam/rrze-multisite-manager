@@ -20,13 +20,17 @@ Do not delete or recreate individual continuation, composition, or watchdog even
 
 ## Shared background capacity and atomic locks
 
-`monitoring_max_concurrent_workers` in the `rrze-multisite-manager` network option limits concurrently executing heavy requests to **2 by default**, configurable from **1 to 8** under **Settings > Monitoring > Background process capacity**. Storage analysis (including shared batches and browser/metadata execution), individual/shared shortcode and block analysis, dashboard collection/composition/statistics, and availability checks share this budget. Pending checkpoints and temporary indexes do not consume execution slots. Nested calls within one request reuse its slot until the outermost operation finishes.
+`monitoring_max_concurrent_workers` in the `rrze-multisite-manager` network option limits concurrently executing heavy requests to **3 by default**, configurable from **1 to 16** (`Config::DEFAULT_MAX_CONCURRENT_WORKERS`, `Config::MAX_CONCURRENT_WORKERS_LIMIT`) under **Settings > Monitoring > Background process capacity**. Each admitted request occupies one PHP worker and one database connection; size the value against the PHP-FPM pool and `max_connections`. Storage analysis (including shared batches and browser/metadata execution), individual/shared shortcode and block analysis, the plugin and theme usage index, and dashboard collection/composition/statistics share this budget. Availability checks are not counted: they mostly wait for HTTP responses, are time-critical for alerts and are serialized by their own process lock. Pending checkpoints and temporary indexes do not consume execution slots. Nested calls within one request reuse its slot until the outermost operation finishes.
 
 `Support/WorkerBudget` reserves slots through `Support/AtomicLock`. Named locks are scoped by database, installation prefix and network ID; acquisition uses `GET_LOCK(..., 0)` and never waits for another worker. Token-checked release prevents a different service instance or a stale owner from releasing a replacement lock. Process and mutex locks use the same primitive. Legacy network-option lock values are informational markers, not admission authorities; deleting them does not unlock a running request. Locks have no takeover TTL: they end on explicit release, PHP shutdown or database disconnection. The database must support multiple named locks on the same connection; a runtime probe rejects work on servers without that capability. A database connection/proxy must keep these session-bound statements on the same primary server. An unavailable lock service does not fall back to unlocked execution.
 
 When capacity is full, work exits before changing its analysis cursor and requests a continuation after at least one minute. No worker sleeps while waiting. Dashboard and availability retries use distinct arguments `['rrze_msm_worker_retry' => <run-already-in-progress>]`, so a denied initial run remains a start request rather than a discarded stale continuation. Admitted dashboard/availability work clears pending capacity retries to prevent an obsolete start retry from starting another pass. Existing composition, statistics, storage and content retry hooks remain in use. Disabled/removed processes retain their normal entrypoint guards.
 
+![Shared background capacity: admission of heavy background requests](worker-budget-admission.svg)
+
 A lower configured limit applies to new admissions; requests already executing finish their current slice. This limit is per network, not a total across all networks in one installation. Small bounded maintenance jobs and report generation are outside this analysis budget. It does not shorten individual queries/filesystem operations or replace server-side timeouts.
+
+Every admission refusal and every released slot is recorded best effort in the bounded network option `rrze_msm_worker_runtime_stats` (see [Environment](environment.md)).
 
 During rollout, drain old Cron workers before starting workers with the new code: old requests using option-based locks cannot participate in the new coordination protocol. Checkpoints and recurring schedules do not need a schema migration or reset. Test two independent MySQL/MariaDB connections and normal editing under concurrent analysis before production rollout.
 
@@ -63,6 +67,23 @@ The cache has its own data-version number. It is checked when read and schedules
 
 The statistics compaction hook runs only in the network main site's Cron context and only while dashboard scheduling and the configured statistics cycle are enabled. It copies current rows from the central metrics table after the configured daily, weekly, or monthly interval. A first completed current row is copied immediately; current rows are never removed by this job. Choosing the disabled cycle removes its Cron events but preserves existing statistic rows. Every invocation records its start, completion, duration, copied-row count and failures in the small network option `rrze_msm_dashboard_metrics_history_run_state`; Monitoring can therefore distinguish a successful run that copied no rows from a job that never ran. The **Start early now** action queues the same one-time Cron hook as the regular process.
 
+## Plugin and theme usage index
+
+The independent `rrze_msm_collect_plugin_theme_usage_metrics` process records active plugin files and the active theme stylesheet per website in `plugin_metrics` and `theme_metrics`. If **Static source analysis** (`monitoring_source_analysis_enabled`, disabled by default) is enabled, it then processes one installed plugin or theme source per continuation and stores the static findings in `plugin_source_metrics` and `theme_source_metrics`. When it is disabled, the run completes after the usage phases and previously stored source findings remain unchanged; disabling it during a source phase ends the run without publishing unfinished findings. Each table has a private staging counterpart: a new run writes only there and promotes one fully collected table at a time in a short database transaction. The prior complete snapshot therefore remains visible on plugin and theme detail pages until its replacement is ready; a restarted or failed run never empties those pages. Unchanged sources are skipped by fingerprint; the fingerprint contains the source-analysis version and the configured depth and PHP-file limits, so a changed analysis or changed limits recalculate every result once. Source analysis is bounded per asset (see [Plugin details](plugin-details.md)); the attempt is persisted in the run state before scanning, and an asset whose scan ended the request twice is skipped for that run. Its default cadence is twice weekly (`monitoring_plugin_theme_usage_frequency`) and it uses the same central worker budget as the other heavy processes. Usage phases process `monitoring_batch_size` websites per step. Dashboard-metrics batches do not read `active_plugins`, `stylesheet`, or `template` any more. Plugin/theme detail views use narrow indexed lookups and stored source findings; they never start a source scan during a page request. Before the first completed index pass they show an explicit link to Monitoring instead of falling back to a live network scan. After a completed pass, changes to a website's local active-plugin option and theme immediately replace that one website's relation rows. A change to network-active plugins starts a new bounded complete pass because it affects every website.
+
+A running pass can be cancelled under **Monitoring > Network** (**Cancel** or **Cancel and restart**). Cancelling sets the run state to `cancelled`, removes pending continuations and retries, and keeps `finished_at`, so the last completely published index stays in use. Unpublished staging rows are left in place and cleared by the next run. Every run carries a `run_id`; a worker that is still executing its current step re-reads the state without the object cache before it writes progress, publishes a staging table or schedules a continuation, and stops when the run is no longer active. A source analysis that is already reading files finishes that one plugin or theme first.
+
+| Element | Name |
+| --- | --- |
+| Hook | `rrze_msm_collect_plugin_theme_usage_metrics` |
+| Schedule key | `rrze_msm_plugin_theme_usage_metrics_cycle` |
+| Continuation argument | `['rrze_msm_plugin_theme_usage_metrics_batch' => true]` |
+| Run state | Network option `rrze_msm_plugin_theme_usage_metrics_state` (`status` running/completed/cancelled, `run_id`, `phase`, offsets, `source_errors`, `last_error`, `finished_at`, `cancelled_at`) |
+| Process lock | `rrze_msm_plugin_theme_usage_metrics_lock`, connection-owned lock |
+| Settings | `monitoring_source_analysis_enabled` (default off), `monitoring_source_analysis_max_depth` (default 3), `monitoring_source_analysis_max_php_files` (default 100) |
+
+![Plugin and theme usage index flow](plugin-theme-usage-index-flow.svg)
+
 ## Availability monitoring
 
 | Element | Name |
@@ -76,7 +97,9 @@ The statistics compaction hook runs only in the network main site's Cron context
 | Log | `rrze_msm_monitoring_run_log` |
 | Lock | `rrze_msm_monitoring_lock_state`, connection-owned lock (old transient is cleanup-only) |
 
-`MonitoringService` registers the hook on `init` only in the main site's Cron context. A continuation event is scheduled with a minimum five-second delay. HTTP checks use the WordPress HTTP API; static defaults are five sites per monitoring batch, a 45-second request budget, a four-second HTTP timeout, and a two-second fallback timeout.
+`MonitoringService` registers the hook on `init` only in the main site's Cron context. A continuation event is scheduled with a minimum five-second delay. HTTP checks use the WordPress HTTP API. The batch size is configurable (`monitoring_availability_batch_size`, default 10 websites); static defaults are a 45-second request budget, a four-second HTTP timeout, and a two-second fallback timeout. Availability checks do not take a slot of the shared background capacity.
+
+The run log keeps the number of completed runs configured in `monitoring_run_log_entries` (default 20, range 5–200). `MonitoringService::getRunHistory()` applies this retention on every read and stores the shortened log, so lowering the setting takes effect immediately and not only when the next run finishes. The table of recently detected anomalies is built from these retained runs.
 
 PHP's native DNS functions (`dns_get_record()` and `checkdnsrr()`) have no timeout configurable per call. The plugin therefore no longer starts a DNS check when fewer than five seconds remain in the batch time budget. It stores the status as `unknown`; this does not count as a DNS failure and is checked again in the next regular run. This safeguard cannot prevent an already-started DNS call from blocking.
 
@@ -90,7 +113,7 @@ The following site-meta keys are written per site: `rrze_msm_operational_status`
 
 ## Central analysis tables
 
-Five InnoDB tables use `$wpdb->base_prefix`, independently of the currently selected website. They are created or upgraded by `AnalysisStore::install()` during plugin activation and whenever the network option `rrze_msm_analysis_schema` differs from `AnalysisStore::SCHEMA_VERSION`. `dbDelta()` creates missing columns; `verifySchema()` then requires the InnoDB engine and every listed column before the version is saved. A failed validation leaves the schema version unchanged, so a later request retries the repair.
+Thirteen InnoDB tables use `$wpdb->base_prefix`, independently of the currently selected website. They are created or upgraded by `AnalysisStore::install()` during plugin activation and whenever the network option `rrze_msm_analysis_schema` differs from `AnalysisStore::SCHEMA_VERSION`. `dbDelta()` creates missing columns; `verifySchema()` then requires the InnoDB engine and every listed column before the version is saved. A failed validation leaves the schema version unchanged, so a later request retries the repair.
 
 | Table suffix (after `rrze_msm_analysis_`) | Contents |
 | --- | --- |
@@ -99,6 +122,14 @@ Five InnoDB tables use `$wpdb->base_prefix`, independently of the currently sele
 | `blocks` | Incremental block findings and the separate block checkpoint (`entry_key = checkpoint`, `post_id = 0`) |
 | `mediaindex` | Bounded attachment-path segments (`00`–`ff`) and media-usage ID segments (`u00`–`uff`) |
 | `dashboard_metrics` | Current website and network dashboard snapshots plus cadence-limited historical statistics |
+| `plugin_metrics` | Indexed relation between an active plugin file and a website |
+| `theme_metrics` | Indexed relation between the active theme stylesheet and a website |
+| `plugin_source_metrics` | One persisted static source-analysis result per installed plugin |
+| `theme_source_metrics` | One persisted static source-analysis result per installed theme |
+| `plugin_metrics_staging` | Unpublished complete-run replacement for `plugin_metrics` |
+| `theme_metrics_staging` | Unpublished complete-run replacement for `theme_metrics` |
+| `plugin_source_metrics_staging` | Unpublished complete-run replacement for plugin source findings |
+| `theme_source_metrics_staging` | Unpublished complete-run replacement for theme source findings |
 
 The base prefix means that one physical table set serves every network that shares the WordPress database prefix. Every query is therefore scoped by `network_id`, `blog_id`, and, where applicable, `run_id`. Table names do not change with `switch_to_blog()`. Only plugin-owned table identifiers are accepted; existing dashboard capability checks protect result pages.
 
@@ -171,30 +202,17 @@ Indexes are `PRIMARY KEY (id)`, unique `entry (network_id, blog_id, entry_key)`,
 
 The shortcode and block phases share a generation, but their findings, cursors and counters remain in their own tables. Findings and checkpoints commit in one transaction. Publication replaces the retained completed generation atomically; a failed publication retains the previous result. Old generations are marked obsolete and removed in bounded batches. Removing a website's analysis marks every generation of that analysis obsolete immediately, hides it from all result views and schedules the same bounded deletion. Status and scheduling options remain small. Monitoring reads only the completed summary, never the findings. Detail views query at most 50 findings plus one continuation probe, applying filtering and sorting in SQL. Grouped locations describe the current page only.
 
-Checkpoints expire explicitly after 24 hours of inactivity; media-index runs have a seven-day expiry. No running analysis depends on an evictable transient. Storage states are limited to 1 MiB; each content checkpoint row to 8 KiB. Findings have an 8-KiB row limit, a 256-KiB pending-buffer limit, and a 1-MiB cumulative payload budget **per phase**, plus the existing configured entry limit. Input content and individual meta values are size-gated in SQL at 256 KiB. Post metadata is traversed in pages of ten with a resumable meta cursor. Display strings are bounded before persistence; truncation or omitted input is explicitly reported as incomplete results.
+Checkpoints expire explicitly after 24 hours of inactivity; media-index runs have a seven-day expiry. No running analysis depends on an evictable transient. Storage states are limited to 1 MiB; each content checkpoint row to 8 KiB. Findings have an 8-KiB row limit, a 256-KiB pending-buffer limit, and a 4-MiB cumulative payload budget **per phase**, plus the configurable entry limit `monitoring_shortcode_block_result_entry_limit` (default 1,000, range 100–5,000 per website and type). A shortcode finding is one occurrence; a block finding is one block type in one post with its `occurrences` count. When the entry limit is reached, the first affected post is recorded once and further findings are only counted (`<kind>_limit_omitted` in the summary). Input content and individual meta values are size-gated in SQL at the configured input size (`monitoring_shortcode_block_analysis_value_max_kilobytes`, default 256 KiB). Post metadata is traversed in pages of ten with a resumable meta cursor. Display strings are bounded before persistence; truncation or omitted input is explicitly reported as incomplete results.
 
-Schema version: network option `rrze_msm_analysis_schema` (currently 4). The independent `AnalysisStore::DATA_VERSION` stays at 1, so additive schema repairs do not repeat the destructive legacy-data migration. Site upgrade marker: non-autoloaded option `rrze_msm_analysis_storage_version`. The upgrade intentionally discards all previous analysis results and working states, without reading their large payloads. Network cursor `rrze_msm_analysis_upgrade_cursor` traverses ten sites per maintenance invocation (`-1` means done). The same per-site preparation runs before a site's first new analysis. It preserves schedules/settings and sets `rrze_msm_analysis_reanalysis` flags for previously analysed sites. Successful new storage/content results clear their respective flag. Existing live-worker protection applies when clearing legacy reservations. MySQL connection-scoped named locks serialize schema creation and each site's upgrade; failed writes do not mark the site migrated.
+Schema version: network option `rrze_msm_analysis_schema` (currently 6). The independent `AnalysisStore::DATA_VERSION` stays at 1, so additive schema repairs do not repeat the destructive legacy-data migration. Site upgrade marker: non-autoloaded option `rrze_msm_analysis_storage_version`. The upgrade intentionally discards all previous analysis results and working states, without reading their large payloads. Network cursor `rrze_msm_analysis_upgrade_cursor` traverses ten sites per maintenance invocation (`-1` means done). The same per-site preparation runs before a site's first new analysis. It preserves schedules/settings and sets `rrze_msm_analysis_reanalysis` flags for previously analysed sites. Successful new storage/content results clear their respective flag. Existing live-worker protection applies when clearing legacy reservations. MySQL connection-scoped named locks serialize schema creation and each site's upgrade; failed writes do not mark the site migrated.
 
 Maintenance hook `rrze_msm_analysis_maintenance` runs on the network's main site, first after one minute and then hourly. Continuations with `[true]` run after at least one minute while work remains. It deletes at most 250 legacy network transient rows and handles at most ten expired runs per invocation, deleting at most 250 child rows per table/run before deleting an empty run. Website deletion marks its runs obsolete. The existing full-data cleanup also removes central data in network-scoped batches. Completed current content results have no expiry; the last successful result is retained until a replacement or explicit cleanup.
 
-Network deactivation removes every plugin-owned Cron hook but keeps the central tables. WordPress plugin deletion runs `uninstall.php`, which removes all five central tables and the schema marker.
+Network deactivation removes every plugin-owned Cron hook but keeps the central tables. WordPress plugin deletion runs `uninstall.php`, which removes all thirteen central tables and the schema marker.
 
 Known legacy external-cache keys are invalidated in bulk. Old versioned keys that exist only in an external cache and cannot be enumerated expire under their original cache policy; they are never read by the new implementation. The plugin never flushes unrelated cache contents.
 
-```mermaid
-flowchart TD
-    A[First use or upgrade maintenance] --> B[Delete legacy analysis data for this site]
-    B --> C[Mark reanalysis required]
-    C --> D[Create isolated run]
-    D --> E[Shortcode findings and checkpoint]
-    E --> F[Block findings and checkpoint]
-    F --> G[Atomic publication of summary and generation]
-    G --> H[Bounded deletion of obsolete generation]
-    D --> I[Storage checkpoint and media-index segments]
-    I --> J[Publish bounded storage result]
-    J --> K[Retire temporary run and clear reanalysis flag]
-    K --> H
-```
+![Central analysis storage lifecycle](analysis-storage-lifecycle.svg)
 
 ## Storage analysis
 
@@ -203,14 +221,16 @@ flowchart TD
 | Individual-analysis hook | `rrze_msm_run_site_storage_analysis` |
 | Small collective-batch hook | `rrze_msm_run_site_storage_analysis_batch` |
 | Medium collective-batch hook | `rrze_msm_run_site_storage_analysis_medium_batch` |
+| Large collective-batch hook | `rrze_msm_run_site_storage_analysis_large_batch` |
 | Slice-continuation hook | `rrze_msm_continue_storage_analysis` |
 | Central FIFO queue | Network option `rrze_msm_storage_analysis_continuation_queue`, site IDs mapped to run IDs |
 | Frequency migration | `rrze_msm_reschedule_storage_analysis_frequency` |
 | Obsolete removal hook | `rrze_msm_remove_storage_analysis_tasks` |
 | Small-batch continuation argument | `['rrze_msm_storage_analysis_batch' => true]` |
 | Medium-batch continuation argument | `['rrze_msm_storage_analysis_medium_batch' => true]` |
+| Large-batch continuation argument | `['rrze_msm_storage_analysis_large_batch' => true]` |
 | Site lock | `rrze_msm_storage_analysis_lock_<site-id>` |
-| Small/medium collective-batch locks | `rrze_msm_storage_analysis_batch_lock`, `rrze_msm_storage_analysis_medium_batch_lock` |
+| Small/medium/large collective-batch locks | `rrze_msm_storage_analysis_batch_lock`, `rrze_msm_storage_analysis_medium_batch_lock`, `rrze_msm_storage_analysis_large_batch_lock` |
 | Network-wide execution slots | `rrze_msm_storage_analysis_run_slots` |
 | Lock for slot/queue updates | Non-autoloaded main-site option `rrze_msm_storage_analysis_run_slots_lock`; token and 60-second lease |
 
@@ -222,7 +242,7 @@ Storage runtime key strings remain internal adapter identifiers: `rrze_msm_site_
 
 A scheduled slice keeps processing until its five-second soft budget or memory budget is reached. A 1,000-step emergency cap prevents a faulty step from looping indefinitely; the ordinary stop is the time or memory budget. The incremental PHP memory budget is 32 MiB, with at least 16 MiB below 70% of PHP's configured memory limit. Central index reads/writes do not prime the WordPress object cache. The scanner keeps only its bounded in-process bucket cache. Blocking calls may exceed the soft budget. Site, batch and execution-slot leases last 120 seconds; the slot/queue mutex uses the unique main-site `wp_options.option_name` index and a token to protect release.
 
-The first batch of a slice runs even when reserving the next Cron event consumes the soft time budget. The scheduler emits `rrze.log.info` diagnostics with `event`, `site_id`, and `run_id`: `dispatched`, `slice_started`, `next_slice_reserved`, sampled `batch_started`/`batch_completed`, and `slice_yielded`. Batch samples are logged for the first and every sixteenth step, plus phase completion; the yielded event contains the final progress. A `batch_started` without `batch_completed` narrows a stalled run to the scanner or a fatal interruption. Completed base batches include the last attachment ID and pending index-bucket count in `progress`; no file paths or URLs are logged. These continuation diagnostics are emitted independently of general info-logging settings.
+The first batch of a slice runs even when reserving the next Cron event consumes the soft time budget. The scheduler emits `rrze.log.info` diagnostics with `event`, `site_id`, and `run_id`: `dispatched`, `slice_started`, `next_slice_reserved`, sampled `batch_started`/`batch_completed`, and `slice_yielded`. Batch samples are logged for the first and every sixteenth step, plus phase completion; the yielded event contains the final progress. A `batch_started` without `batch_completed` narrows a stalled run to the scanner or a fatal interruption. Completed base batches include the last attachment ID and pending index-bucket count in `progress`; no file paths or URLs are logged. These continuation diagnostics are fine-grained debugging output: they are emitted only when **Logging** and **Fine-grained debugging** are both enabled (see [Settings](settings.md#logging)).
 
 Batch numbers in those diagnostics start again at one for each Cron slice. The monitoring table displays the last indexed attachment ID and outstanding index-segment count while the file index is active. A stable attachment ID is expected while segments from the current attachment page are being written; the pending count should fall before the next attachment page is read.
 
@@ -230,7 +250,7 @@ The scheduler status stores `run_id`, `run_phase` and `active_duration_seconds`.
 
 Resource contention is recorded on the scheduler status without marking a phase as started before a successful slice. The capacity message names the site IDs holding network-wide temporary-index reservations. An individual assignment retries through a single event on its own site after about one minute, without occupying the central continuation queue; Monitoring displays that retry timestamp. A successful retry clears the waiting reason. If contention persists for more than 24 hours, the run stops with an explicit final error instead of continuing to promise a retry.
 Continuation hooks left in a subsite's Cron table by an older installation switch to the network's main site before processing the central queue. Normal scheduler updates retain the run identity; the central-storage migration is an explicit exception and requires fresh analyses.
-The storage monitoring row shows the current wait reason and the next scheduled continuation or individual retry. A site waiting behind other sites in an active small or medium shared batch is labelled **Current shared batch** instead of showing only the later regular cycle; that regular timestamp remains visible as the next regular cycle. A paused maintenance or schedule migration reschedules the continuation after one minute.
+The storage monitoring row shows the current wait reason and the next scheduled continuation or individual retry. A site waiting behind other sites in an active small, medium or large shared batch is labelled **Current shared batch** instead of showing only the later regular cycle; that regular timestamp remains visible as the next regular cycle. A paused maintenance or schedule migration reschedules the continuation after one minute.
 
 The `monitoring_storage_analysis_max_concurrent_runs` option retains the per-type storage/index reservation limit (default/minimum four, maximum eight). All actually executing storage slices additionally share `monitoring_max_concurrent_workers` with the other analysis types, including browser and metadata requests. The central continuation queue processes one website per invocation. Runtime helpers retain their old method signatures for compatibility, but the cache-version argument no longer changes active state keys. Legacy `rrze_msm_site_storage_analysis_v3_<cache-version>_<site-id>` result caches and `rrze_msm_site_storage_attachment_index_v2_<cache-version>_<site-id>` monolithic indexes are only relevant to compatibility cleanup.
 
@@ -286,3 +306,7 @@ Cookie values contain no credentials. The widget order is additionally stored as
 ### Analysis persistence diagnostics
 
 Persistence failures include an operation identifier and safe error category in the saved monitoring error. Examples are `shortcodes-entry-write`, `blocks-counts`, `source-postmeta-read`, `payload-decode`, and `checkpoint-write`. Categories distinguish missing columns/tables, SQL syntax, encoding/size errors, lock conflicts and invalid data. `rrze.log.error` receives these fields and a fingerprint before transaction rollback can clear the database error. SQL text, raw database errors and analysis payloads are not logged by this diagnostic path. A category of `validation-failed` means there was no database error text; it must not be interpreted as a confirmed SQL failure.
+
+## Storage-analysis runtime summary
+
+The dashboard widget for storage-analysis runtimes reads the network option `rrze_msm_storage_analysis_performance_runs` (`[site_id => ['t' => completed timestamp, 'd' => duration seconds]]`). Each completed run updates its website's entry under a short non-blocking lock (`storage_analysis_performance_runs`, up to five attempts); a sample that cannot be written is replaced by the next run. If the option does not exist yet (upgrade), the first summary request builds it once from the per-site status options. The summary is cached in the object cache for five minutes.

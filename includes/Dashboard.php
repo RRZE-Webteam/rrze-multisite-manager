@@ -108,6 +108,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
         add_action('admin_post_rrze_multisite_manager_network_users_bulk', [$this, 'handleNetworkUsersBulkAction']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
+        add_action('admin_post_rrze_multisite_manager_deactivate_site_plugin', [$this, 'handleSitePluginDeactivate']);
         add_action('admin_post_rrze_multisite_manager_toggle_network_audit_plugin', [$this, 'handleNetworkAuditPluginToggle']);
         add_action('admin_action_rrze_multisite_manager_enable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
         add_action('admin_action_rrze_multisite_manager_disable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
@@ -120,6 +121,7 @@ class Dashboard {
         add_action('network_admin_edit_rrze_multisite_manager_download_site_option', [$this, 'handleSiteOptionDownload']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_site_option_group', [$this, 'handleSiteOptionGroupDelete']);
         add_action('network_admin_edit_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
+        add_action('network_admin_edit_rrze_multisite_manager_deactivate_site_plugin', [$this, 'handleSitePluginDeactivate']);
         add_action('network_admin_edit_rrze_multisite_manager_request_shortcode_block_analysis', [$this, 'requestShortcodeBlockAnalysis']);
     }
 
@@ -1341,6 +1343,7 @@ class Dashboard {
                 'site_details' => $siteDetails,
                 'site_actions' => !empty($siteDetails) ? $siteWidget->renderActionsForSite($siteDetails, 'text') : '',
                 'site_plugin_widget' => $sitePluginWidget,
+                'site_plugin_deactivated' => !empty($_GET['plugin_deactivated']),
                 'site_plugins_url' => $siteId > 0 ? get_admin_url($siteId, 'plugins.php') : '',
                 'site_themes_url' => $siteId > 0 ? get_admin_url($siteId, 'themes.php') : '',
                 'site_storage_analysis_url' => $siteId > 0 ? $this->getSiteStorageAnalysisUrl($siteId) : '',
@@ -1473,6 +1476,9 @@ class Dashboard {
 
         $siteSummary = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisSite($siteId) : [];
         $storageAnalysis = $siteId > 0 ? $this->metrics->getCachedSiteStorageAnalysis($siteId) : [];
+        if ($siteId > 0 && !empty($storageAnalysis)) {
+            $storageAnalysis = $this->metrics->addSiteStorageAttachmentAuthors($siteId, $storageAnalysis);
+        }
         $storageAnalysisStatus = $siteId > 0 ? $this->metrics->getSiteStorageAnalysisProcessStatus($siteId, true) : [];
         $attachmentDebug = ($storageTab === 'debug' && $siteId > 0 && $debugAttachmentId > 0)
             ? $this->metrics->getSiteStorageAttachmentDebug($siteId, $debugAttachmentId)
@@ -1958,7 +1964,7 @@ class Dashboard {
                 'plugin_readme_html' => !empty($pluginDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$pluginDetails['readme_markdown'])
                     : '',
-                'source_analysis_requested' => $sourceAnalysisRequested,
+                'source_analysis_requested' => !empty($pluginDetails['source_analysis_completed']),
                 'source_analysis_url' => $pluginFile !== '' ? $this->getSourceAnalysisUrl('plugin', $pluginFile) : '',
             ],
             $this
@@ -2116,7 +2122,7 @@ class Dashboard {
                 'theme_readme_html' => !empty($themeDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$themeDetails['readme_markdown'])
                     : '',
-                'source_analysis_requested' => $sourceAnalysisRequested,
+                'source_analysis_requested' => !empty($themeDetails['source_analysis_completed']),
                 'source_analysis_url' => $stylesheet !== '' ? $this->getSourceAnalysisUrl('theme', $stylesheet) : '',
             ],
             $this
@@ -3044,6 +3050,57 @@ class Dashboard {
         exit;
     }
 
+    /** Deactivates one locally active plugin without loading the target site's plugin screen. */
+    public function handleSitePluginDeactivate(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $pluginFile = isset($_REQUEST['plugin']) ? plugin_basename(sanitize_text_field((string)wp_unslash($_REQUEST['plugin']))) : '';
+        $site = $siteId > 0 ? get_site($siteId) : null;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to deactivate plugins for websites.', 'rrze-multisite-manager'));
+        }
+
+        if (!$site instanceof \WP_Site || $pluginFile === '') {
+            wp_die(esc_html__('Invalid website or plugin.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_deactivate_site_plugin_' . $siteId . '_' . $pluginFile);
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        $availablePlugins = get_plugins();
+
+        if (!isset($availablePlugins[$pluginFile])) {
+            wp_die(esc_html__('The selected plugin is not installed.', 'rrze-multisite-manager'));
+        }
+
+        if (isset(((array)get_site_option('active_sitewide_plugins', []))[$pluginFile])) {
+            wp_die(esc_html__('A network-active plugin cannot be deactivated for only one website.', 'rrze-multisite-manager'));
+        }
+
+        if (!in_array($pluginFile, (array)get_blog_option($siteId, 'active_plugins', []), true)) {
+            wp_die(esc_html__('The selected plugin is not active for this website.', 'rrze-multisite-manager'));
+        }
+
+        switch_to_blog($siteId);
+        try {
+            deactivate_plugins($pluginFile, false, false);
+        } finally {
+            restore_current_blog();
+        }
+
+        $this->metrics->clearCache();
+        wp_safe_redirect(
+            add_query_arg(
+                [
+                    'site_id' => $siteId,
+                    'section' => 'plugins',
+                    'plugin_deactivated' => 1,
+                ],
+                $this->getSiteDetailsUrl()
+            ) . '#rrze-msm-site-plugins'
+        );
+        exit;
+    }
+
     public function maybeRefreshMetricsCache(): bool {
         $nonce = isset($_POST['rrze_msm_refresh_nonce']) ? sanitize_text_field((string)wp_unslash($_POST['rrze_msm_refresh_nonce'])) : '';
         $refresh = isset($_POST['rrze_msm_refresh']) ? sanitize_text_field((string)wp_unslash($_POST['rrze_msm_refresh'])) : '';
@@ -3402,7 +3459,7 @@ class Dashboard {
             $args['site_id'] = $siteId;
         }
 
-        return add_query_arg($args, $this->getAdminPageBaseUrl());
+        return add_query_arg($args, network_admin_url('admin.php'));
     }
 
     public function getSiteStorageAnalysisUrl(int $siteId = 0): string {
@@ -3451,7 +3508,9 @@ class Dashboard {
             [
                 'page' => (string)($this->config->getMenuSettings()['site_storage_analysis_media_slug'] ?? 'rrze-multisite-manager-media-storage-analysis'),
             ],
-            admin_url('upload.php')
+            // The local analysis page is registered with add_management_page()
+            // and must therefore remain under Tools, not Media Library.
+            admin_url('tools.php')
         );
     }
 

@@ -49,7 +49,9 @@ defined('ABSPATH') || exit;
                         (int)($theme_details['site_count'] ?? 0)
                     )); ?></p>
                 </header>
-                <?php if (!empty($theme_details['active_sites']) && is_array($theme_details['active_sites'])) { ?>
+                <?php if (empty($theme_details['usage_data_available'])) { ?>
+                    <p><?php echo esc_html__('The central plugin and theme usage index has not run yet.', 'rrze-multisite-manager'); ?> <a href="<?php echo esc_url((string)($theme_details['usage_monitoring_url'] ?? '')); ?>"><?php echo esc_html__('Open monitoring and start or review the task.', 'rrze-multisite-manager'); ?></a></p>
+                <?php } elseif (!empty($theme_details['active_sites']) && is_array($theme_details['active_sites'])) { ?>
                     <?php echo $site_overview_widget->renderSiteOverviewTable((array)$theme_details['active_sites'], ['table_id' => 'theme-details-sites', 'default_per_page' => 20, 'sort_key' => 'registered', 'sort_direction' => 'desc']); ?>
                 <?php } else { ?>
                     <p><?php echo esc_html__('This theme is currently not used actively on any website.', 'rrze-multisite-manager'); ?></p>
@@ -223,6 +225,11 @@ defined('ABSPATH') || exit;
             <?php } ?>
 
             <div class="rrze-msm-grid">
+                <?php if (!empty($source_analysis_requested) && !empty($theme_details['source_analysis_truncated'])) { ?>
+                <div class="notice notice-warning inline rrze-msm-widget-span-12">
+                    <p><?php echo esc_html__('The source analysis reached its resource limits. The findings below may be incomplete.', 'rrze-multisite-manager'); ?></p>
+                </div>
+                <?php } ?>
                 <?php if (!empty($source_analysis_requested)) { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
@@ -369,9 +376,8 @@ defined('ABSPATH') || exit;
                     <section class="rrze-msm-widget rrze-msm-widget-span-12">
                         <header class="rrze-msm-widget-header">
                             <h2><?php echo esc_html__('Source code analysis', 'rrze-multisite-manager'); ?></h2>
-                            <p><?php echo esc_html__('The optional static analysis searches the theme source for shortcodes, blocks, image sizes, and provided hooks. It can take time for large themes.', 'rrze-multisite-manager'); ?></p>
+                            <p><?php echo esc_html__('The central plugin and theme usage process performs this static analysis in the background. Results appear here after its next completed run.', 'rrze-multisite-manager'); ?></p>
                         </header>
-                        <a class="button button-secondary" href="<?php echo esc_url($source_analysis_url); ?>"><?php echo esc_html__('Analyze source code', 'rrze-multisite-manager'); ?></a>
                     </section>
                 <?php } ?>
             </div>

@@ -54,6 +54,7 @@ defined('ABSPATH') || exit;
         <table class="striped rrze-msm-datatable">
             <tbody>
                 <tr><th><?php echo esc_html__('Attachment ID', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)$attachmentId); ?><?php if ($mediaEditUrl !== '') { ?> <a class="button button-secondary button-small" href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html__('Edit', 'rrze-multisite-manager'); ?></a><?php } ?></td></tr>
+                <tr><th><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)($attachment_debug['upload_author']['label'] ?? __('No upload author', 'rrze-multisite-manager'))); ?></td></tr>
                 <tr><th><?php echo esc_html__('Media type', 'rrze-multisite-manager'); ?></th><td><code><?php echo esc_html((string)($attachment_debug['mime_type'] ?? '')); ?></code></td></tr>
                 <tr><th><?php echo esc_html__('Attachment exists', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html(!empty($attachment_debug['exists']) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')); ?></td></tr>
                 <tr><th><?php echo esc_html__('Title', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)($attachment_debug['title'] ?? '')); ?></td></tr>

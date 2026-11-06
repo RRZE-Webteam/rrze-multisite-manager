@@ -177,8 +177,11 @@ class ContentAnalysisListTable extends \WP_List_Table {
                 ? 'post-' . (int)$finding['post_id']
                 : 'url-' . md5((string)($finding['post_url'] ?? '') . (string)($finding['post_title'] ?? ''));
             if (!isset($groups[$key]['locations'][$locationKey])) {
-                $groups[$key]['locations'][$locationKey] = ['post_title' => (string)($finding['post_title'] ?? ''), 'post_url' => (string)($finding['post_url'] ?? ''), 'meta_keys' => []];
+                $groups[$key]['locations'][$locationKey] = ['post_title' => (string)($finding['post_title'] ?? ''), 'post_url' => (string)($finding['post_url'] ?? ''), 'meta_keys' => [], 'occurrences' => 0];
             }
+            // Block findings carry their per-post occurrence count. Results
+            // from older releases stored one finding per occurrence instead.
+            $groups[$key]['locations'][$locationKey]['occurrences'] += max(1, (int)($finding['occurrences'] ?? 1));
             if (!empty($finding['metadata_key'])) {
                 $groups[$key]['locations'][$locationKey]['meta_keys'][(string)$finding['metadata_key']] = (string)$finding['metadata_key'];
             }
@@ -200,6 +203,14 @@ class ContentAnalysisListTable extends \WP_List_Table {
         $output .= $url !== ''
             ? '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($title) . '</a>'
             : esc_html($title);
+        $occurrences = (int)($location['occurrences'] ?? 0);
+        if ($this->kind === 'blocks' && $occurrences > 1) {
+            $output .= ' <span class="description">' . esc_html(sprintf(
+                /* translators: %d: number of occurrences of a block in one post. */
+                _n('(%d occurrence)', '(%d occurrences)', $occurrences, 'rrze-multisite-manager'),
+                $occurrences
+            )) . '</span>';
+        }
         $metaKeys = array_values((array)($location['meta_keys'] ?? []));
         if ($metaKeys) {
             $output .= ' <span class="description">' . esc_html(sprintf(__('Meta fields: %s', 'rrze-multisite-manager'), implode(', ', $metaKeys))) . '</span>';

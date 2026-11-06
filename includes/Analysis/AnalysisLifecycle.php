@@ -25,14 +25,15 @@ class AnalysisLifecycle {
                 $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
             }
         }
-        $main = (int)get_main_site_id(get_current_network_id());
-        switch_to_blog($main);
-        try {
-            if (!wp_next_scheduled(self::HOOK)) {
-                wp_schedule_event(time() + MINUTE_IN_SECONDS, 'hourly', self::HOOK);
-            }
-        } finally {
-            restore_current_blog();
+        // The maintenance event lives in the main site's Cron table. Checking it
+        // from every other website would switch to the main site and load its
+        // options on each request. Requests and Cron runs of the main site
+        // itself are sufficient to restore a missing schedule.
+        if (!is_main_site()) {
+            return;
+        }
+        if (!wp_next_scheduled(self::HOOK)) {
+            wp_schedule_event(time() + MINUTE_IN_SECONDS, 'hourly', self::HOOK);
         }
     }
 
@@ -187,7 +188,8 @@ class AnalysisLifecycle {
         // Exact plugin-owned prefixes only. No payload is fetched or unserialized.
         $patterns = [];
         foreach (['_site_transient_', '_site_transient_timeout_'] as $prefix) {
-            foreach (['rrze_msm_site_storage_analysis_', 'rrze_msm_site_storage_attachment_index_', 'rrze_msm_site_media_metadata_analysis_'] as $suffix) {
+            // rrze_msm_plugin_source_: removed per-plugin registration index (1.3.36-4).
+            foreach (['rrze_msm_site_storage_analysis_', 'rrze_msm_site_storage_attachment_index_', 'rrze_msm_site_media_metadata_analysis_', 'rrze_msm_plugin_source_'] as $suffix) {
                 $patterns[] = $wpdb->prepare('meta_key LIKE %s', $wpdb->esc_like($prefix . $suffix) . '%');
             }
         }
@@ -202,6 +204,7 @@ class AnalysisLifecycle {
             $key = preg_replace('/^_site_transient_(?:timeout_)?/', '', $row->meta_key);
             wp_cache_delete($key, 'site-transient');
         }
+        delete_site_option('rrze_msm_plugin_source_index_generation');
         $hasExpired = $this->cleanupExpired();
         if (((int)get_site_option(self::CURSOR, 0) >= 0 || count($rows) === 250 || $hasExpired) && !wp_next_scheduled(self::HOOK, [true])) {
             wp_schedule_single_event(time() + MINUTE_IN_SECONDS, self::HOOK, [true]);
@@ -247,7 +250,7 @@ class AnalysisLifecycle {
         global $wpdb;
         $store = new AnalysisStore();
         $remaining = false;
-        foreach (['shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
+        foreach (['plugin_source_metrics_staging', 'theme_source_metrics_staging', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics', 'theme_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
             $table = $store->table($kind);
             $store->check($wpdb->query($wpdb->prepare("DELETE FROM $table WHERE network_id = %d LIMIT 250", get_current_network_id())));
             $exists = $wpdb->get_var($wpdb->prepare("SELECT 1 FROM $table WHERE network_id = %d LIMIT 1", get_current_network_id()));

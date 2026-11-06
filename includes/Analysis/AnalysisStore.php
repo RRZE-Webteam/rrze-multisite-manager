@@ -9,7 +9,7 @@ defined('ABSPATH') || exit;
 
 /** Installation-wide derived data. Every query is network-scoped; no object-cache payloads. */
 class AnalysisStore {
-    public const SCHEMA_VERSION = 4;
+    public const SCHEMA_VERSION = 7;
     // Destructive legacy-data replacement is independent of additive schema repairs.
     public const DATA_VERSION = 1;
     public const CHECKPOINT_BYTES = 1048576;
@@ -18,7 +18,7 @@ class AnalysisStore {
 
     public function table(string $kind): string {
         global $wpdb;
-        if (!in_array($kind, ['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics'], true)) {
+        if (!in_array($kind, ['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics', 'plugin_metrics', 'theme_metrics', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'], true)) {
             throw new \InvalidArgumentException('Invalid analysis table.');
         }
         return $wpdb->base_prefix . 'rrze_msm_analysis_' . $kind;
@@ -27,7 +27,7 @@ class AnalysisStore {
     /** Removes all central analysis tables; called only during plugin uninstall. */
     public function dropTables(): void {
         global $wpdb;
-        foreach (['dashboard_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
+        foreach (['theme_source_metrics_staging', 'plugin_source_metrics_staging', 'theme_metrics_staging', 'plugin_metrics_staging', 'theme_source_metrics', 'plugin_source_metrics', 'theme_metrics', 'plugin_metrics', 'dashboard_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
             $table = $this->table($kind);
             $this->check($wpdb->query("DROP TABLE IF EXISTS $table"), 'drop-' . $kind);
         }
@@ -108,6 +108,36 @@ class AnalysisStore {
             KEY snapshots (network_id,snapshot_status,recorded_at,id),
             KEY site_snapshots (network_id,blog_id,snapshot_status,recorded_at,id)
         ) ENGINE=InnoDB $charset;");
+        foreach (['plugin_metrics' => 'plugin_file', 'theme_metrics' => 'stylesheet', 'plugin_metrics_staging' => 'plugin_file', 'theme_metrics_staging' => 'stylesheet'] as $kind => $assetColumn) {
+            $table = $this->table($kind);
+            dbDelta("CREATE TABLE $table (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                network_id bigint(20) unsigned NOT NULL,
+                blog_id bigint(20) unsigned NOT NULL,
+                $assetColumn varchar(191) NOT NULL,
+                recorded_at bigint(20) unsigned NOT NULL,
+                PRIMARY KEY  (id),
+                UNIQUE KEY site_asset (network_id,blog_id,$assetColumn),
+                KEY asset_sites (network_id,$assetColumn,blog_id),
+                KEY site_assets (network_id,blog_id,id)
+            ) ENGINE=InnoDB $charset;");
+        }
+        foreach (['plugin_source_metrics' => 'plugin_file', 'theme_source_metrics' => 'stylesheet', 'plugin_source_metrics_staging' => 'plugin_file', 'theme_source_metrics_staging' => 'stylesheet'] as $kind => $assetColumn) {
+            $table = $this->table($kind);
+            dbDelta("CREATE TABLE $table (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                network_id bigint(20) unsigned NOT NULL,
+                $assetColumn varchar(191) NOT NULL,
+                fingerprint varchar(64) NOT NULL,
+                analysis_status varchar(16) NOT NULL DEFAULT 'complete',
+                payload longtext NOT NULL,
+                payload_bytes int(10) unsigned NOT NULL DEFAULT 0,
+                recorded_at bigint(20) unsigned NOT NULL,
+                PRIMARY KEY  (id),
+                UNIQUE KEY asset (network_id,$assetColumn),
+                KEY updated (network_id,recorded_at,id)
+            ) ENGINE=InnoDB $charset;");
+        }
         $this->verifySchema();
         update_site_option('rrze_msm_analysis_schema', self::SCHEMA_VERSION);
         if ((int)get_site_option('rrze_msm_analysis_schema', 0) !== self::SCHEMA_VERSION) {
@@ -118,7 +148,7 @@ class AnalysisStore {
     /** Never mark a partial dbDelta installation as current merely because its tables exist. */
     protected function verifySchema(): void {
         global $wpdb;
-        foreach (['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics'] as $kind) {
+        foreach (['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics', 'plugin_metrics', 'theme_metrics', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'] as $kind) {
             $table = $this->table($kind);
             $definition = $wpdb->get_row($wpdb->prepare('SHOW TABLE STATUS LIKE %s', $wpdb->esc_like($table)));
             if (!$definition || strtolower((string)$definition->Engine) !== 'innodb') {
@@ -132,6 +162,12 @@ class AnalysisStore {
                     'media_bytes', 'database_bytes', 'plugin_count', 'theme_count', 'user_count',
                     'page_count', 'post_count', 'media_count', 'custom_post_type_count',
                 ];
+            } elseif (in_array($kind, ['plugin_source_metrics', 'theme_source_metrics', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'], true)) {
+                $common = ['id', 'network_id'];
+                $required = [str_starts_with($kind, 'plugin_') ? 'plugin_file' : 'stylesheet', 'fingerprint', 'analysis_status', 'payload', 'payload_bytes', 'recorded_at'];
+            } elseif (in_array($kind, ['plugin_metrics', 'theme_metrics', 'plugin_metrics_staging', 'theme_metrics_staging'], true)) {
+                $common = ['id', 'network_id', 'blog_id'];
+                $required = [str_starts_with($kind, 'plugin_') ? 'plugin_file' : 'stylesheet', 'recorded_at'];
             } else {
                 $common = ['id', 'network_id', 'blog_id', 'run_id'];
                 $required = $kind === 'runs'
