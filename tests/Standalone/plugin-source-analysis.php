@@ -268,6 +268,16 @@ namespace {
         // asset after repeated aborted attempts instead of retrying forever.
         $usage = (new ReflectionClass(\RRZE\MultisiteManager\Metrics\PluginThemeUsageMetricsService::class))->newInstanceWithoutConstructor();
         setProtected($usage, 'store', new \RRZE\MultisiteManager\Analysis\AnalysisStore());
+        setProtected($usage, 'config', new \RRZE\MultisiteManager\Config());
+
+        // The static source analysis is optional and disabled by default:
+        // a run in its source phase is completed without reading any file.
+        $disabledRun = ['status' => 'running', 'run_id' => 'run-off', 'started_at' => 10, 'phase' => 'plugin_sources', 'source_offset' => 0, 'source_total' => 2, 'total' => 3];
+        update_site_option('rrze_msm_plugin_theme_usage_metrics_state', $disabledRun);
+        callProtected($usage, 'runSourceBatch', [$disabledRun]);
+        $afterDisabled = get_site_option('rrze_msm_plugin_theme_usage_metrics_state');
+        check($GLOBALS['analyzed_assets'] === [] && $afterDisabled['status'] === 'completed' && $afterDisabled['source_analysis'] === false, 'Disabled source analysis still read plugin sources.');
+        update_site_option('rrze-multisite-manager', ['monitoring_source_analysis_enabled' => 1]);
         $usage->setSourceAnalysisProviders('testAnalyzer', 'testAnalyzer', 'testFingerprint', 'testFingerprint');
 
         $state = ['status' => 'running', 'phase' => 'plugin_sources', 'source_offset' => 0, 'source_total' => 2];
@@ -333,5 +343,5 @@ namespace {
         removeDirectory($root);
     }
 
-    echo "PASS: source analysis isolates single-file plugins, skips dependency/hidden/symlinked directories, honours depth, PHP-file, size and time limits, stops retrying aborted assets, can be cancelled safely, and provides stored findings for shortcode/block provider attribution.\n";
+    echo "PASS: source analysis isolates single-file plugins, skips dependency/hidden/symlinked directories, honours depth, PHP-file, size and time limits, stops retrying aborted assets, can be cancelled safely, is optional, and provides stored findings for shortcode/block provider attribution.\n";
 }
