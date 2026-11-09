@@ -140,12 +140,12 @@ class StorageAnalysisResultService {
             $current = $this->getBoundedRow($option);
             if (!$current || (string)$current->bounded_value !== serialize($value)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('The analysis result changed during its update. Retry the analysis.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('The analysis result changed during its update. Retry the analysis.', 'rrze-multisite-manager'));
             }
         }
         if ($saved === false) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('The oversized legacy analysis result could not be replaced.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The oversized legacy analysis result could not be replaced.', 'rrze-multisite-manager'));
         }
         wp_cache_delete($option, 'options');
         wp_cache_delete('alloptions', 'options');
@@ -168,7 +168,7 @@ class StorageAnalysisResultService {
         $saved = $previous === null ? add_option($option, $value, '', false) : update_option($option, $value, false);
         if (!$saved) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped by callers when displayed.
-            throw new \RuntimeException(__('The analysis result could not be saved to the database.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The analysis result could not be saved to the database.', 'rrze-multisite-manager'));
         }
         return $value;
     }

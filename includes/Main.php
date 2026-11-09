@@ -58,6 +58,10 @@ class Main {
 
         $monitoring = new MonitoringService($this->plugin, $this->config);
         $monitoring->onLoaded();
+
+        // Inactive unless started on the Environment page; then only
+        // editorial requests read the sampling state.
+        Support\ResponseTimeSampler::register();
         $this->monitoring = $monitoring;
     }
 }

@@ -10,6 +10,13 @@ Depending on the site and permission, areas for overview, options, Cron entries,
 
 The page links, among other things, to site administration, the media library, theme settings, menus, the Customizer and, where appropriate, the Site Editor.
 
+## Theme tab
+
+Below the active theme, **Further allowed themes** lists every other theme the website may activate: network-enabled themes and themes enabled only for this website (`wp_get_themes(['allowed' => true, 'blog_id' => …])`). Themes with errors, for example a missing parent theme, are omitted, as on **Appearance > Themes**. The list is part of the cached theme section; it is invalidated by theme changes and by changes to the network or site option `allowedthemes`.
+
+* **Activate** (super admins only) calls `admin_post_rrze_multisite_manager_activate_site_theme` with the nonce `rrze_multisite_manager_activate_site_theme_<site>_<stylesheet>`. The handler checks that the theme exists, has no errors and is allowed for the website (`WP_Theme::is_allowed('both', <site>)`), then runs `switch_theme()` in the website's context and returns to the theme tab. The theme's own `after_switch_theme` handling runs on the website's next request (`check_theme_switched()`), as with any theme switch outside that website.
+* **Live Preview** opens the website's own preview: the Site Editor with `wp_theme_preview` for block themes, otherwise the Customizer with `theme=`. Access is checked by WordPress on that website.
+
 ## Management functions
 
 Super admins can maintain status information and access further network actions. Changing options, deleting data, or changing a status is protected and is not performed as part of merely viewing details.

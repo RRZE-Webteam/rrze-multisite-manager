@@ -1,10 +1,15 @@
 <?php
 /** Run outside WordPress: php -d memory_limit=64M tests/Standalone/analysis-storage.php */
 declare(strict_types=1);
-if (PHP_SAPI !== 'cli' || defined('ABSPATH')) {
-    throw new RuntimeException('Run this test outside WordPress.');
+// Standalone CLI test: no direct web access, never inside a WordPress request.
+if (!defined('ABSPATH')) {
+    if (PHP_SAPI !== 'cli') {
+        exit;
+    }
+    define('ABSPATH', __DIR__ . '/');
+} else {
+    exit(1);
 }
-define('ABSPATH', __DIR__ . '/');
 define('DAY_IN_SECONDS', 86400);
 define('HOUR_IN_SECONDS', 3600);
 define('MINUTE_IN_SECONDS', 60);
@@ -25,6 +30,9 @@ function get_current_network_id() { return $GLOBALS['network']; }
 function wp_generate_uuid4() { return bin2hex(random_bytes(16)); }
 function is_serialized($value) { return is_string($value) && preg_match('/^[abisOdN]:/', $value); }
 function __($value, $domain = '') { return $value; }
+function esc_html__($value, $domain = '') { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
+function esc_html($value) { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
+function shortcode_exists(string $tag): bool { return $tag === 'known'; }
 function current_time($format, $gmt = false) { return gmdate('Y-m-d H:i:s'); }
 function get_blog_option($id, $key, $default = false) { return $GLOBALS['options'][$id][$key] ?? $default; }
 function update_blog_option($id, $key, $value) { $GLOBALS['options'][$id][$key] = $value; return true; }
@@ -46,6 +54,7 @@ function wp_cache_delete($key, $group) { return true; }
 function wp_check_invalid_utf8($value, $strip = false) { return $value; }
 function wp_next_scheduled($hook, $args = []) { return false; }
 function wp_schedule_single_event($timestamp, $hook, $args = []) { $GLOBALS['scheduled_events'][] = [$timestamp, $hook, $args]; return true; }
+// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped, WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI test output, never rendered as HTML.
 function check($condition, $message) { if (!$condition) { throw new RuntimeException($message); } }
 function parse_blocks($content) { return json_decode($content, true); }
 
@@ -57,6 +66,7 @@ class FindingCollector extends RRZE\MultisiteManager\ShortcodeBlockAnalysisSched
     public function omit(string $kind, string $reason, int $postId, string $title, string $metaKey = ''): void { $this->recordOmittedSource($kind, $reason, $postId, $title, $metaKey); }
     public function totals(): array { return $this->findingTotals; }
     public function nextBatch(): void { $this->pendingFindingBytes = 0; }
+    public function shortcodesFrom(string $text, array &$buffer): void { $this->collectShortcodes($text, ['post_id' => 1], $buffer); }
     public function blocksFrom(string $content, array $location, array &$buffer): void { $this->collectBlocks($content, $location, $buffer); }
     protected function getBlockDetails(string $blockName): array { return []; }
 }
@@ -95,7 +105,7 @@ check($store->findings(2, $run->run_id, 'blocks')['entries'] === [], 'Failed tra
 $content->save(2, $state);
 $summary = $content->finish(2, $state);
 check($summary['shortcodes_count'] === 60 && $summary['blocks_count'] === 1, 'Wrong completed counts.');
-check($summary['unregistered_shortcodes'] === 2, 'Missing compact registration summary.');
+check(!array_key_exists('unregistered_shortcodes', $summary), 'Obsolete registration summary is still written.');
 check($content->load(2) === [], 'Completed run remained resumable.');
 $old = $store->summary(2)['run_id'];
 $new = $store->ensureRun(2, 'content', 'content');
@@ -115,6 +125,17 @@ $failed = false;
 try { $store->writeEntry('blocks', 3, $run->run_id, 'late', ['post_id' => 1]); } catch (RuntimeException $error) { $failed = true; }
 check($failed, 'Expired worker wrote new findings.');
 check($store->findings(3, $run->run_id, 'blocks')['entries'] === [], 'Expired worker left an orphan entry.');
+
+$probe = new FindingCollector();
+$found = [];
+$probe->shortcodesFrom('[known] [outside x="1"][/outside] [self/] [[escaped]] [demo.tag] [never', $found);
+check(array_column($found, 'shortcode') === ['known', 'outside', 'outside', 'self', 'demo.tag'], 'Candidate syntax or escape handling failed.');
+check(!array_key_exists('registered', $found[0]), 'Findings still carry a runtime registration flag.');
+check(!$GLOBALS['wpdb']->get_var("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'wp_rrze_msm_analysis_potential_shortcodes'"), 'The removed potential-shortcode catalog was written.');
+$config = (new ReflectionClass(RRZE\MultisiteManager\Config::class))->newInstanceWithoutConstructor();
+check($config->getKnownShortcode('gallery')['plugin'] === 'WordPress', 'Known shortcode lookup failed.');
+check($config->getKnownShortcode('GALLERY')['plugin'] === 'WordPress', 'Known shortcode lookup is not case-insensitive.');
+check($config->getKnownShortcode('unknown-tag') === [], 'Unknown shortcode was attributed.');
 
 $collector = new FindingCollector();
 $buffer = [];

@@ -24,19 +24,11 @@ class PluginThemeUsageMetricsService {
     protected const STATE_OPTION = 'rrze_msm_plugin_theme_usage_metrics_state';
     protected const LOCK_OPTION = 'rrze_msm_plugin_theme_usage_metrics_lock';
     protected const CONTINUATION_ARGS = ['rrze_msm_plugin_theme_usage_metrics_batch' => true];
-    // A source analysis that ends the PHP request (timeout, memory) is
-    // retried once; afterwards the asset is skipped for this run.
-    protected const MAX_SOURCE_ATTEMPTS = 2;
-
     protected Config $config;
     protected ?Settings $settings;
     protected AnalysisStore $store;
     protected ScheduleFrequency $scheduleFrequency;
-    protected $pluginAnalyzer = null;
-    protected $themeAnalyzer = null;
-    protected $pluginFingerprint = null;
-    protected $themeFingerprint = null;
-    protected $sourceAnalysisChanged = null;
+    protected $usageChanged = null;
 
     public function __construct(?Settings $settings = null, ?Config $config = null) {
         $this->settings = $settings;
@@ -61,12 +53,8 @@ class PluginThemeUsageMetricsService {
         add_action('wp_delete_site', [$this, 'removeDeletedSite'], 30, 1);
     }
 
-    public function setSourceAnalysisProviders(callable $pluginAnalyzer, callable $themeAnalyzer, callable $pluginFingerprint, callable $themeFingerprint, ?callable $sourceAnalysisChanged = null): void {
-        $this->pluginAnalyzer = $pluginAnalyzer;
-        $this->themeAnalyzer = $themeAnalyzer;
-        $this->pluginFingerprint = $pluginFingerprint;
-        $this->themeFingerprint = $themeFingerprint;
-        $this->sourceAnalysisChanged = $sourceAnalysisChanged;
+    public function setUsageChangedCallback(callable $callback): void {
+        $this->usageChanged = $callback;
     }
 
     public function registerSchedules(array $schedules): array {
@@ -127,9 +115,6 @@ class PluginThemeUsageMetricsService {
             'finished_at' => max(0, (int)($previousState['finished_at'] ?? 0)),
             'phase' => 'plugin_usage',
             'last_activity_at' => time(),
-            'source_offset' => 0,
-            'source_total' => 0,
-            'source_errors' => 0,
             'last_error' => '',
         ]);
         $this->scheduleContinuation(5);
@@ -217,8 +202,6 @@ class PluginThemeUsageMetricsService {
         $offset = min($total, max(0, (int)($state['offset'] ?? 0)));
         $running = (string)($state['status'] ?? '') === 'running';
         $phase = (string)($state['phase'] ?? '');
-        $sourceTotal = max(0, (int)($state['source_total'] ?? 0));
-        $sourceOffset = min($sourceTotal, max(0, (int)($state['source_offset'] ?? 0)));
 
         return [
             'has_data' => (int)($state['finished_at'] ?? 0) > 0,
@@ -233,9 +216,6 @@ class PluginThemeUsageMetricsService {
             'progress_percent' => $total > 0 ? (int)round(($offset / $total) * 100) : 0,
             'last_site_count' => $total,
             'phase' => $phase,
-            'source_offset' => $sourceOffset,
-            'source_total' => $sourceTotal,
-            'source_errors' => max(0, (int)($state['source_errors'] ?? 0)),
             'last_error' => (string)($state['last_error'] ?? ''),
             'is_cancelled' => (string)($state['status'] ?? '') === 'cancelled',
             'cancelled_at_timestamp' => max(0, (int)($state['cancelled_at'] ?? 0)),
@@ -280,60 +260,8 @@ class PluginThemeUsageMetricsService {
             return 0;
         }
         $table = $this->store->table('plugin_metrics');
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One site's indexed relation for the dashboard snapshot.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- One site's indexed relation for the dashboard snapshot.
         return (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE network_id = %d AND blog_id = %d", get_current_network_id(), $siteId));
-    }
-
-    public function getPluginSourceAnalysis(string $pluginFile): array {
-        return $this->getSourceAnalysis('plugin_source_metrics', 'plugin_file', $pluginFile);
-    }
-
-    /**
-     * Stored source findings of several plugins in one query.
-     *
-     * @param string[] $pluginFiles
-     * @return array<string, array<string, mixed>>
-     */
-    public function getPluginSourceAnalyses(array $pluginFiles): array {
-        global $wpdb;
-        $results = [];
-        $row = [];
-        $analysis = null;
-        $pluginFiles = array_values(array_unique(array_filter(array_map('strval', $pluginFiles))));
-
-        if (empty($pluginFiles) || !$this->hasCompletedSnapshot()) {
-            return [];
-        }
-
-        $table = $this->store->table('plugin_source_metrics');
-        $placeholders = implode(',', array_fill(0, count($pluginFiles), '%s'));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Bounded lookup of stored source findings; placeholders are generated above.
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT plugin_file, payload FROM $table WHERE network_id = %d AND analysis_status = 'complete' AND plugin_file IN ($placeholders)",
-            get_current_network_id(),
-            ...$pluginFiles
-        ), ARRAY_A);
-
-        foreach ((array)$rows as $row) {
-            $analysis = json_decode((string)($row['payload'] ?? ''), true);
-            if (is_array($analysis)) {
-                $results[(string)$row['plugin_file']] = $analysis;
-            }
-        }
-
-        return $results;
-    }
-
-    public function getThemeSourceAnalysis(string $stylesheet): array {
-        return $this->getSourceAnalysis('theme_source_metrics', 'stylesheet', $stylesheet);
-    }
-
-    public function hasPluginSourceAnalysis(string $pluginFile): bool {
-        return $this->hasSourceAnalysis('plugin_source_metrics', 'plugin_file', $pluginFile);
-    }
-
-    public function hasThemeSourceAnalysis(string $stylesheet): bool {
-        return $this->hasSourceAnalysis('theme_source_metrics', 'stylesheet', $stylesheet);
     }
 
     public function syncCurrentSiteAfterPluginChange(...$unused): void {
@@ -386,9 +314,6 @@ class PluginThemeUsageMetricsService {
     }
 
     protected function runBatch(): void {
-        if (!function_exists('get_plugins')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
         $state = get_site_option(self::STATE_OPTION, []);
         $state = is_array($state) ? $state : [];
         if ((string)($state['status'] ?? '') !== 'running') {
@@ -402,8 +327,6 @@ class PluginThemeUsageMetricsService {
             $this->clearStagingTables();
             $state['phase'] = 'plugin_usage';
             $state['offset'] = 0;
-            $state['source_offset'] = 0;
-            $state['source_total'] = 0;
             $state['last_activity_at'] = time();
             if (!$this->persistRunState($state)) {
                 return;
@@ -412,7 +335,9 @@ class PluginThemeUsageMetricsService {
             return;
         }
         if (!in_array($phase, ['plugin_usage', 'theme_usage'], true)) {
-            $this->runSourceBatch($state);
+            // Older versions may already have published usage and entered a source phase.
+            $this->notifyDetailsChanged();
+            $this->completeRun($state);
             return;
         }
 
@@ -446,17 +371,13 @@ class PluginThemeUsageMetricsService {
                 $this->scheduleContinuation(60);
                 return;
             }
-            if ($phase === 'theme_usage' && !$this->isSourceAnalysisEnabled()) {
-                // Usage relations are complete. The optional static source
-                // analysis is skipped; previously stored findings remain.
+            if ($phase === 'theme_usage') {
                 $this->notifyDetailsChanged();
                 $this->completeRun($state);
                 return;
             }
             $state['offset'] = 0;
-            $state['phase'] = $phase === 'plugin_usage' ? 'theme_usage' : 'plugin_sources';
-            $state['source_offset'] = 0;
-            $state['source_total'] = $phase === 'plugin_usage' ? 0 : count(get_plugins());
+            $state['phase'] = 'theme_usage';
             $state['last_activity_at'] = time();
             if (!$this->persistRunState($state)) {
                 return;
@@ -475,94 +396,6 @@ class PluginThemeUsageMetricsService {
     }
 
     /** @param array<string, mixed> $state */
-    protected function runSourceBatch(array $state): void {
-        if (!function_exists('get_plugins')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-        if (!$this->isSourceAnalysisEnabled()) {
-            // The option was disabled while a run was in its source phase:
-            // end the run without publishing unfinished source findings.
-            $this->completeRun($state);
-            return;
-        }
-        $phase = (string)($state['phase'] ?? 'plugin_sources');
-        $isPlugin = $phase === 'plugin_sources';
-        $assets = $isPlugin ? array_keys(get_plugins()) : array_keys(wp_get_themes());
-        sort($assets, SORT_NATURAL | SORT_FLAG_CASE);
-        $offset = max(0, (int)($state['source_offset'] ?? 0));
-        $asset = (string)($assets[$offset] ?? '');
-
-        if ($asset !== '') {
-            $attempts = (string)($state['source_attempt_asset'] ?? '') === $asset
-                ? max(0, (int)($state['source_attempts'] ?? 0))
-                : 0;
-
-            if ($attempts >= self::MAX_SOURCE_ATTEMPTS) {
-                $state['source_errors'] = max(0, (int)($state['source_errors'] ?? 0)) + 1;
-                $state['last_error'] = substr(sprintf(
-                    /* translators: %s: plugin file or theme stylesheet. */
-                    __('The source analysis of %s was skipped after repeated aborted attempts.', 'rrze-multisite-manager'),
-                    $asset
-                ), 0, 500);
-            } else {
-                // Persist the attempt before scanning. A fatal error ends the
-                // request without reaching the offset update below; the
-                // restored continuation must not retry the same asset forever.
-                $state['source_attempt_asset'] = $asset;
-                $state['source_attempts'] = $attempts + 1;
-                $state['last_activity_at'] = time();
-                if (!$this->persistRunState($state)) {
-                    return;
-                }
-
-                try {
-                    $this->storeSourceAnalysis($isPlugin, $asset, true);
-                } catch (\Throwable $error) {
-                    $state['source_errors'] = max(0, (int)($state['source_errors'] ?? 0)) + 1;
-                    $state['last_error'] = substr(sanitize_text_field($error->getMessage()), 0, 500);
-                }
-            }
-            unset($state['source_attempt_asset'], $state['source_attempts']);
-            $state['source_offset'] = $offset + 1;
-            $state['last_activity_at'] = time();
-            if (!$this->persistRunState($state)) {
-                return;
-            }
-            $this->scheduleContinuation(20);
-            return;
-        }
-
-        if ($isPlugin) {
-            if (!$this->isActiveRun($state)) {
-                return;
-            }
-            if (!$this->publishStagingTable('plugin_source_metrics', 'plugin_source_metrics_staging')) {
-                $this->scheduleContinuation(60);
-                return;
-            }
-            $this->notifyDetailsChanged();
-            $state['phase'] = 'theme_sources';
-            $state['source_offset'] = 0;
-            $state['source_total'] = count(wp_get_themes());
-            $state['last_activity_at'] = time();
-            if (!$this->persistRunState($state)) {
-                return;
-            }
-            $this->scheduleContinuation(5);
-            return;
-        }
-
-        if (!$this->isActiveRun($state)) {
-            return;
-        }
-        if (!$this->publishStagingTable('theme_source_metrics', 'theme_source_metrics_staging')) {
-            $this->scheduleContinuation(60);
-            return;
-        }
-        $this->notifyDetailsChanged();
-        $this->completeRun($state);
-    }
-
     /** @param array<string, mixed> $state */
     protected function completeRun(array $state): void {
         if (!$this->isActiveRun($state)) {
@@ -575,12 +408,7 @@ class PluginThemeUsageMetricsService {
             'started_at' => (int)($state['started_at'] ?? time()),
             'finished_at' => time(),
             'phase' => 'complete',
-            'source_analysis' => $this->isSourceAnalysisEnabled(),
         ]);
-    }
-
-    protected function isSourceAnalysisEnabled(): bool {
-        return isset($this->config) && $this->config->isSourceAnalysisEnabled();
     }
 
     protected function syncSite(int $siteId, bool $staging = false): void {
@@ -633,7 +461,7 @@ class PluginThemeUsageMetricsService {
                 $asset,
                 $now
             );
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Central derived index, updated only on state changes or scheduled batches.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Central derived index, updated only on state changes or scheduled batches.
             $wpdb->query($sql);
         }
     }
@@ -641,7 +469,7 @@ class PluginThemeUsageMetricsService {
     protected function deleteSiteRows(string $kind, int $siteId): void {
         global $wpdb;
         $table = $this->store->table($kind);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Central derived index, one site only.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Central derived index, one site only.
         $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE network_id = %d AND blog_id = %d", get_current_network_id(), $siteId));
     }
 
@@ -652,7 +480,7 @@ class PluginThemeUsageMetricsService {
             return [];
         }
         $table = $this->store->table($kind);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Detail page reads a narrow indexed relation.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Detail page reads a narrow indexed relation.
         $ids = $wpdb->get_col($wpdb->prepare("SELECT blog_id FROM $table WHERE network_id = %d AND $column = %s ORDER BY blog_id ASC", get_current_network_id(), $asset));
         return array_values(array_unique(array_filter(array_map('absint', (array)$ids))));
     }
@@ -664,7 +492,7 @@ class PluginThemeUsageMetricsService {
             return [];
         }
         $table = $this->store->table($kind);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Aggregated central derived index.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Aggregated central derived index.
         $rows = $wpdb->get_results($wpdb->prepare("SELECT $column AS asset, COUNT(*) AS site_count FROM $table WHERE network_id = %d GROUP BY $column", get_current_network_id()));
         $counts = [];
         foreach ((array)$rows as $row) {
@@ -676,81 +504,11 @@ class PluginThemeUsageMetricsService {
         return $counts;
     }
 
-    protected function storeSourceAnalysis(bool $isPlugin, string $asset, bool $staging = false): void {
-        global $wpdb;
-        $analyzer = $isPlugin ? $this->pluginAnalyzer : $this->themeAnalyzer;
-        $fingerprintProvider = $isPlugin ? $this->pluginFingerprint : $this->themeFingerprint;
-        if (!is_callable($analyzer) || !is_callable($fingerprintProvider)) {
-            return;
-        }
-        $kind = $isPlugin ? 'plugin_source_metrics' : 'theme_source_metrics';
-        if ($staging) {
-            $kind .= '_staging';
-        }
-        $column = $isPlugin ? 'plugin_file' : 'stylesheet';
-        $fingerprint = hash('sha256', (string)$fingerprintProvider($asset));
-        $table = $this->store->table($kind);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One central source-analysis row per installed asset.
-        $known = $wpdb->get_var($wpdb->prepare("SELECT fingerprint FROM $table WHERE network_id = %d AND $column = %s", get_current_network_id(), $asset));
-        if ($fingerprint !== '' && hash_equals($fingerprint, (string)$known)) {
-            return;
-        }
-        if ($staging && $fingerprint !== '') {
-            $publishedKind = $isPlugin ? 'plugin_source_metrics' : 'theme_source_metrics';
-            $published = $this->store->table($publishedKind);
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Reuse an unchanged, already published result in this run's unpublished staging snapshot.
-            $copied = $wpdb->query($wpdb->prepare(
-                "INSERT INTO $table (network_id,$column,fingerprint,analysis_status,payload,payload_bytes,recorded_at) SELECT network_id,$column,fingerprint,analysis_status,payload,payload_bytes,recorded_at FROM $published WHERE network_id = %d AND $column = %s AND fingerprint = %s AND analysis_status = 'complete'",
-                get_current_network_id(),
-                $asset,
-                $fingerprint
-            ));
-            if ($copied !== false && $copied > 0) {
-                return;
-            }
-        }
-        $analysis = $analyzer($asset);
-        $payload = is_array($analysis) ? wp_json_encode($analysis) : false;
-        if (!is_string($payload) || strlen($payload) > AnalysisStore::CHECKPOINT_BYTES) {
-            return;
-        }
-        $sql = $wpdb->prepare(
-            "INSERT INTO $table (network_id,$column,fingerprint,analysis_status,payload,payload_bytes,recorded_at) VALUES (%d,%s,%s,'complete',%s,%d,%d) ON DUPLICATE KEY UPDATE fingerprint = VALUES(fingerprint), analysis_status = VALUES(analysis_status), payload = VALUES(payload), payload_bytes = VALUES(payload_bytes), recorded_at = VALUES(recorded_at)",
-            get_current_network_id(), $asset, $fingerprint, $payload, strlen($payload), time()
-        );
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Central derived source-analysis cache.
-        $written = $wpdb->query($sql);
-    }
-
-    /** @return array<string, mixed> */
-    protected function getSourceAnalysis(string $kind, string $column, string $asset): array {
-        global $wpdb;
-        if (!$this->hasCompletedSnapshot() || $asset === '') {
-            return [];
-        }
-        $table = $this->store->table($kind);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One cached source-analysis row for a detail page.
-        $payload = $wpdb->get_var($wpdb->prepare("SELECT payload FROM $table WHERE network_id = %d AND $column = %s AND analysis_status = 'complete'", get_current_network_id(), $asset));
-        $analysis = is_string($payload) ? json_decode($payload, true) : null;
-        return is_array($analysis) ? $analysis : [];
-    }
-
-    protected function hasSourceAnalysis(string $kind, string $column, string $asset): bool {
-        global $wpdb;
-        if ($asset === '') {
-            return false;
-        }
-        $table = $this->store->table($kind);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Narrow source-analysis state lookup.
-        return (bool)$wpdb->get_var($wpdb->prepare("SELECT 1 FROM $table WHERE network_id = %d AND $column = %s AND analysis_status = 'complete' LIMIT 1", get_current_network_id(), $asset));
-    }
-
-    /** Clear only unpublished work from an abandoned or newly started run. */
     protected function clearStagingTables(): void {
         global $wpdb;
-        foreach (['plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'] as $kind) {
+        foreach (['plugin_metrics_staging', 'theme_metrics_staging'] as $kind) {
             $table = $this->store->table($kind);
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Only unpublished staging rows of this network are cleared before a new complete run.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Only unpublished staging rows of this network are cleared before a new complete run.
             $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE network_id = %d", get_current_network_id()));
         }
     }
@@ -763,38 +521,35 @@ class PluginThemeUsageMetricsService {
         global $wpdb;
         $published = $this->store->table($publishedKind);
         $staging = $this->store->table($stagingKind);
-        $isSource = str_contains($publishedKind, '_source_');
         $assetColumn = str_starts_with($publishedKind, 'plugin_') ? 'plugin_file' : 'stylesheet';
-        $columns = $isSource
-            ? "network_id, $assetColumn, fingerprint, analysis_status, payload, payload_bytes, recorded_at"
-            : "network_id, blog_id, $assetColumn, recorded_at";
+        $columns = "network_id, blog_id, $assetColumn, recorded_at";
         $networkId = get_current_network_id();
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- The replacement is a short transaction between two MSM-owned central tables.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The replacement is a short transaction between two MSM-owned central tables.
         if ($wpdb->query('START TRANSACTION') === false) {
             return false;
         }
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- See transaction above.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- See transaction above.
         $deleted = $wpdb->query($wpdb->prepare("DELETE FROM $published WHERE network_id = %d", $networkId));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- See transaction above.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- See transaction above.
         $inserted = $deleted === false ? false : $wpdb->query($wpdb->prepare("INSERT INTO $published ($columns) SELECT $columns FROM $staging WHERE network_id = %d", $networkId));
         if ($inserted === false) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Roll back the failed publication.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Roll back the failed publication.
             $wpdb->query('ROLLBACK');
             return false;
         }
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Commit the complete replacement.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Commit the complete replacement.
         if ($wpdb->query('COMMIT') !== false) {
             return true;
         }
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Leave no uncertain transaction open after a failed commit.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Leave no uncertain transaction open after a failed commit.
         $wpdb->query('ROLLBACK');
         return false;
     }
 
     protected function notifyDetailsChanged(): void {
-        if (is_callable($this->sourceAnalysisChanged)) {
-            ($this->sourceAnalysisChanged)();
+        if (is_callable($this->usageChanged)) {
+            ($this->usageChanged)();
         }
     }
 

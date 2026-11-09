@@ -24,4 +24,4 @@ The page uses aggregated dashboard data for site usage. Plugin actions themselve
 
 ## Implementation
 
-`Dashboard::renderPluginOverviewPage()` uses `PluginUsageWidget` and `templates/plugin-overview-page.php`. Usage counts come from the central plugin-usage index (`plugin_metrics`, see [Runtime state and scheduler](runtime-state.md#plugin-and-theme-usage-index)); neither the overview nor the dashboard batch reads `active_plugins` of every website or plugin source code. The optional static source analysis runs only in the background usage-index pass. Actions use the WordPress URLs and nonces from network plugin administration, not custom unprotected endpoints.
+`Dashboard::renderPluginOverviewPage()` uses `PluginUsageWidget` and `templates/plugin-overview-page.php`. Usage counts come from the central plugin-usage index (`plugin_metrics`, see [Runtime state and scheduler](runtime-state.md#plugin-and-theme-usage-index)); neither the overview nor the dashboard batch reads `active_plugins` of every website or plugin source code. Actions use the WordPress URLs and nonces from network plugin administration, not custom unprotected endpoints.

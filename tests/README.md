@@ -40,13 +40,11 @@ This standalone harness executes the real lock/budget services and scheduler adm
 
 `tests/Unit/WorkerCoordinationTest.php` requires the disposable WordPress test database and opens a second real database connection. It verifies cross-connection exclusion, foreign-release rejection, simultaneous named locks, capacity exhaustion, release on disconnect and nested budget reuse. Run it with the integration suite before deployment; production credentials must not be used.
 
-## Plugin and theme source analysis regression
+## Live plugin registrations and known shortcodes
 
-```sh
-php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/plugin-source-analysis.php
-```
+Run `php tests/Standalone/plugin-metadata.php` to check that plugin metadata comes only from readme.txt, package.json and the plugin header and that translations are found without recursion.
 
-This standalone test executes the real file collection of the source analysis used by the plugin and theme usage index and the real source phase of `PluginThemeUsageMetricsService`. It verifies that a single-file plugin is analysed alone, that dependency, hidden and symlinked directories are not entered, that the configured depth limits the scope without marking it incomplete, that the PHP file limit reads the main directory first and is reported as incomplete, that a changed scope changes the fingerprint, that oversized files and an exhausted deadline mark the result as incomplete, that the single-file fingerprint ignores `WP_PLUGIN_DIR`, that an asset whose analysis repeatedly ended the request is skipped instead of being retried forever, and that the stored findings are returned per plugin only after a completed usage-index run and attributed as shortcode/block providers by the content analysis. Database access is a test double.
+Run `php tests/Standalone/plugin-registrations.php` to check callback attribution and resumption of legacy usage-index jobs. The analysis-storage harness also covers shortcode candidate syntax, replay and the lookup in `Config::KNOWN_SHORTCODES`.
 
 ## Settings multiselect regression
 
@@ -55,3 +53,11 @@ php -d memory_limit=64M -d error_reporting=-1 tests/Standalone/settings-multisel
 ```
 
 This standalone test executes the real settings renderer and sanitizer for multiselect fields, which are rendered as checkbox groups. It verifies that a stored selection is shown as checked, that saving another settings tab keeps it, that a submitted selection is stored exactly, and that deselecting every entry is saved as an empty selection.
+
+## Response-time sampling
+
+Run `php tests/Standalone/response-time-sampler.php` to check request classification, aggregation by concurrent analyses, percentile bounds and the bounded sample list.
+
+## Lock routing
+
+Run `php tests/Standalone/lock-routing.php` to check that named-lock statements set the send-reads-to-masters flag of HyperDB/LudicrousDB and restore it afterwards.

@@ -18,12 +18,12 @@ class AnalysisStorageException extends \RuntimeException {
             'error_fingerprint' => $error !== '' ? substr(hash('sha256', $error), 0, 12) : '',
         ];
         do_action('rrze.log.error', 'RRZE-MSM: Analysis persistence failed', $context);
-        throw new self(sprintf(
+        throw new self(esc_html(sprintf(
             /* translators: 1: internal operation identifier, 2: database error category. */
             __('Analysis data could not be read or saved (operation: %1$s; reason: %2$s). See the error log.', 'rrze-multisite-manager'),
             $operation,
             $reason
-        ));
+        )));
     }
 
     public static function classify(string $error): string {

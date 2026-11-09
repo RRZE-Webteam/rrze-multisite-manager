@@ -9,26 +9,49 @@ defined('ABSPATH') || exit;
 
 /** Installation-wide derived data. Every query is network-scoped; no object-cache payloads. */
 class AnalysisStore {
-    public const SCHEMA_VERSION = 7;
+    public const SCHEMA_VERSION = 9;
     // Destructive legacy-data replacement is independent of additive schema repairs.
     public const DATA_VERSION = 1;
     public const CHECKPOINT_BYTES = 1048576;
     public const FINDING_BYTES = 8192;
     public const PAGE_SIZE = 50;
+    private const TABLE_KINDS = [
+        'runs',
+        'shortcodes',
+        'blocks',
+        'mediaindex',
+        'dashboard_metrics',
+        'plugin_metrics',
+        'theme_metrics',
+        'plugin_metrics_staging',
+        'theme_metrics_staging',
+    ];
 
     public function table(string $kind): string {
         global $wpdb;
-        if (!in_array($kind, ['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics', 'plugin_metrics', 'theme_metrics', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'], true)) {
+        if (!in_array($kind, self::TABLE_KINDS, true)) {
             throw new \InvalidArgumentException('Invalid analysis table.');
         }
         return $wpdb->base_prefix . 'rrze_msm_analysis_' . $kind;
     }
 
+    /** @return array<int, string> Central tables that never belong to one website. */
+    public function tables(): array {
+        $tables = [];
+
+        foreach (self::TABLE_KINDS as $kind) {
+            $tables[] = $this->table($kind);
+        }
+
+        return $tables;
+    }
+
     /** Removes all central analysis tables; called only during plugin uninstall. */
     public function dropTables(): void {
         global $wpdb;
-        foreach (['theme_source_metrics_staging', 'plugin_source_metrics_staging', 'theme_metrics_staging', 'plugin_metrics_staging', 'theme_source_metrics', 'plugin_source_metrics', 'theme_metrics', 'plugin_metrics', 'dashboard_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
+        foreach (['theme_metrics_staging', 'plugin_metrics_staging', 'theme_metrics', 'plugin_metrics', 'dashboard_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
             $table = $this->table($kind);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $this->check($wpdb->query("DROP TABLE IF EXISTS $table"), 'drop-' . $kind);
         }
         delete_site_option('rrze_msm_analysis_schema');
@@ -122,23 +145,13 @@ class AnalysisStore {
                 KEY site_assets (network_id,blog_id,id)
             ) ENGINE=InnoDB $charset;");
         }
-        foreach (['plugin_source_metrics' => 'plugin_file', 'theme_source_metrics' => 'stylesheet', 'plugin_source_metrics_staging' => 'plugin_file', 'theme_source_metrics_staging' => 'stylesheet'] as $kind => $assetColumn) {
-            $table = $this->table($kind);
-            dbDelta("CREATE TABLE $table (
-                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                network_id bigint(20) unsigned NOT NULL,
-                $assetColumn varchar(191) NOT NULL,
-                fingerprint varchar(64) NOT NULL,
-                analysis_status varchar(16) NOT NULL DEFAULT 'complete',
-                payload longtext NOT NULL,
-                payload_bytes int(10) unsigned NOT NULL DEFAULT 0,
-                recorded_at bigint(20) unsigned NOT NULL,
-                PRIMARY KEY  (id),
-                UNIQUE KEY asset (network_id,$assetColumn),
-                KEY updated (network_id,recorded_at,id)
-            ) ENGINE=InnoDB $charset;");
-        }
         $this->verifySchema();
+        // Obsolete derived data: source snapshots (schema 7 and earlier) and the
+        // potential-shortcode catalog (schema 8), replaced by Config::KNOWN_SHORTCODES.
+        foreach (['plugin_source_metrics', 'theme_source_metrics', 'plugin_source_metrics_staging', 'theme_source_metrics_staging', 'potential_shortcodes'] as $suffix) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.SchemaChange -- Drops obsolete plugin-owned tables of earlier schema versions; suffixes come from the fixed list above.
+            $this->check($wpdb->query("DROP TABLE IF EXISTS {$wpdb->base_prefix}rrze_msm_analysis_$suffix"), 'drop-' . $suffix);
+        }
         update_site_option('rrze_msm_analysis_schema', self::SCHEMA_VERSION);
         if ((int)get_site_option('rrze_msm_analysis_schema', 0) !== self::SCHEMA_VERSION) {
             $this->fail('schema-install');
@@ -148,8 +161,9 @@ class AnalysisStore {
     /** Never mark a partial dbDelta installation as current merely because its tables exist. */
     protected function verifySchema(): void {
         global $wpdb;
-        foreach (['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics', 'plugin_metrics', 'theme_metrics', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'] as $kind) {
+        foreach (['runs', 'shortcodes', 'blocks', 'mediaindex', 'dashboard_metrics', 'plugin_metrics', 'theme_metrics', 'plugin_metrics_staging', 'theme_metrics_staging'] as $kind) {
             $table = $this->table($kind);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $definition = $wpdb->get_row($wpdb->prepare('SHOW TABLE STATUS LIKE %s', $wpdb->esc_like($table)));
             if (!$definition || strtolower((string)$definition->Engine) !== 'innodb') {
                 $this->fail('schema-engine-' . $kind);
@@ -162,9 +176,6 @@ class AnalysisStore {
                     'media_bytes', 'database_bytes', 'plugin_count', 'theme_count', 'user_count',
                     'page_count', 'post_count', 'media_count', 'custom_post_type_count',
                 ];
-            } elseif (in_array($kind, ['plugin_source_metrics', 'theme_source_metrics', 'plugin_source_metrics_staging', 'theme_source_metrics_staging'], true)) {
-                $common = ['id', 'network_id'];
-                $required = [str_starts_with($kind, 'plugin_') ? 'plugin_file' : 'stylesheet', 'fingerprint', 'analysis_status', 'payload', 'payload_bytes', 'recorded_at'];
             } elseif (in_array($kind, ['plugin_metrics', 'theme_metrics', 'plugin_metrics_staging', 'theme_metrics_staging'], true)) {
                 $common = ['id', 'network_id', 'blog_id'];
                 $required = [str_starts_with($kind, 'plugin_') ? 'plugin_file' : 'stylesheet', 'recorded_at'];
@@ -178,6 +189,7 @@ class AnalysisStore {
                 }
             }
             // Table identifiers come only from table()'s fixed allowlist and the WP base prefix.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $columns = $wpdb->get_col("SHOW COLUMNS FROM $table");
             if ($wpdb->last_error || array_diff(array_merge($common, $required), (array)$columns)) {
                 $this->fail('schema-columns-' . $kind);
@@ -188,6 +200,7 @@ class AnalysisStore {
     public function active(int $siteId, string $slot): ?object {
         global $wpdb;
         $table = $this->table('runs');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE network_id = %d AND blog_id = %d AND slot = %s AND status = 'running' AND expires_at > %d", get_current_network_id(), $siteId, $slot, time()));
         if ($wpdb->last_error) {
             $this->fail('run-read');
@@ -204,6 +217,7 @@ class AnalysisStore {
         $this->retire($siteId, $slot);
         $table = $this->table('runs');
         $runId = wp_generate_uuid4();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $this->check($wpdb->insert($table, ['network_id' => get_current_network_id(), 'blog_id' => $siteId, 'run_id' => $runId, 'slot' => $slot, 'kind' => $kind, 'status' => 'running', 'payload' => serialize([]), 'summary' => serialize([]), 'updated_at' => time(), 'expires_at' => time() + $ttl]));
         $row = $this->active($siteId, $slot);
         if (!$row || $row->run_id !== $runId) {
@@ -230,6 +244,7 @@ class AnalysisStore {
         $this->assertSize($state, self::CHECKPOINT_BYTES);
         $run = $this->ensureRun($siteId, $slot, $kind, $ttl);
         $payload = serialize($state);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $changed = $wpdb->update($this->table('runs'), ['payload' => $payload, 'updated_at' => time(), 'expires_at' => time() + $ttl], ['network_id' => get_current_network_id(), 'blog_id' => $siteId, 'run_id' => $run->run_id, 'status' => 'running']);
         $this->check($changed, 'checkpoint-write');
         if ($changed === 0) {
@@ -243,6 +258,7 @@ class AnalysisStore {
     public function retire(int $siteId, string $slot): void {
         global $wpdb;
         $table = $this->table('runs');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $this->check($wpdb->query($wpdb->prepare("UPDATE $table SET slot = run_id, status = 'obsolete', expires_at = %d WHERE network_id = %d AND blog_id = %d AND slot = %s AND status = 'running'", time(), get_current_network_id(), $siteId, $slot)));
     }
 
@@ -256,6 +272,7 @@ class AnalysisStore {
         $where = $analysis === 'content'
             ? "kind = 'content'"
             : "kind IN ('storage_base','storage_orphan','storage_metadata','mediaindex')";
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $this->check($wpdb->query($wpdb->prepare("UPDATE $table SET slot = run_id, status = 'obsolete', expires_at = %d WHERE network_id = %d AND blog_id = %d AND $where", time(), get_current_network_id(), $siteId)), $analysis . '-remove-runs');
         AnalysisLifecycle::scheduleMaintenanceSoon();
     }
@@ -280,7 +297,9 @@ class AnalysisStore {
                 $updates .= ", $column = VALUES($column)";
             }
         }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $this->check($wpdb->query($wpdb->prepare("INSERT INTO $table (network_id,blog_id,run_id,entry_key,name,post_id,payload,payload_bytes$columns) SELECT network_id,blog_id,run_id,%s,%s,%d,%s,%d$values FROM $runs WHERE network_id = %d AND blog_id = %d AND run_id = %s AND status = 'running' AND expires_at > %d ON DUPLICATE KEY UPDATE payload = VALUES(payload), payload_bytes = VALUES(payload_bytes), name = VALUES(name)$updates", ...array_merge($arguments, [get_current_network_id(), $siteId, $runId, time()]))), $kind . '-entry-write');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         if (!$wpdb->get_var($wpdb->prepare("SELECT 1 FROM $runs WHERE network_id = %d AND blog_id = %d AND run_id = %s AND status = 'running' AND expires_at > %d", get_current_network_id(), $siteId, $runId, time()))) {
             $this->fail('entry-run-validation');
         }
@@ -289,6 +308,7 @@ class AnalysisStore {
     public function readEntry(string $kind, int $siteId, string $runId, string $key): ?array {
         global $wpdb;
         $table = $this->table($kind);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $value = $wpdb->get_var($wpdb->prepare("SELECT payload FROM $table WHERE network_id = %d AND blog_id = %d AND run_id = %s AND entry_key = %s", get_current_network_id(), $siteId, $runId, $key));
         if ($wpdb->last_error) {
             $this->fail('entry-read');
@@ -300,6 +320,7 @@ class AnalysisStore {
     public function summary(int $siteId): array {
         global $wpdb;
         $table = $this->table('runs');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $row = $wpdb->get_row($wpdb->prepare("SELECT run_id, summary FROM $table WHERE network_id = %d AND blog_id = %d AND kind = 'content' AND status = 'complete' ORDER BY id DESC LIMIT 1", get_current_network_id(), $siteId));
         if ($wpdb->last_error) {
             $this->fail('summary-read');
@@ -311,15 +332,20 @@ class AnalysisStore {
         global $wpdb;
         $this->assertSize($summary, 16384);
         $table = $this->table('runs');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $this->check($wpdb->query('START TRANSACTION'));
         try {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $this->check($wpdb->query($wpdb->prepare("UPDATE $table SET status = 'obsolete', expires_at = %d WHERE network_id = %d AND blog_id = %d AND kind = 'content' AND status = 'complete' AND run_id <> %s", time(), get_current_network_id(), $siteId, $runId)));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $changed = $wpdb->query($wpdb->prepare("UPDATE $table SET status = 'complete', slot = run_id, payload = %s, summary = %s, expires_at = 0, updated_at = %d WHERE network_id = %d AND blog_id = %d AND run_id = %s AND status = 'running' AND expires_at > %d", serialize([]), serialize($summary), time(), get_current_network_id(), $siteId, $runId, time()));
             if ($changed !== 1) {
                 $this->fail('run-publish');
             }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $this->check($wpdb->query('COMMIT'));
         } catch (\Throwable $error) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $wpdb->query('ROLLBACK');
             throw $error;
         }
@@ -333,25 +359,28 @@ class AnalysisStore {
         }
         $page = max(1, min(100000, $page));
         $table = $this->table($kind);
-        $sort = in_array($sort, ['registered', 'provider', 'category', 'origin', 'description'], true) ? $sort : 'name';
+        $sort = in_array($sort, ['category', 'origin', 'description'], true) ? $sort : 'name';
+        $from = "$table f";
+        $sort = "f.$sort";
         $order = $order === 'desc' ? 'DESC' : 'ASC';
-        $where = $wpdb->prepare('network_id = %d AND blog_id = %d AND run_id = %s AND post_id > 0', get_current_network_id(), $siteId, $runId);
+        $where = $wpdb->prepare('f.network_id = %d AND f.blog_id = %d AND f.run_id = %s AND f.post_id > 0', get_current_network_id(), $siteId, $runId);
         $terms = array_slice(array_filter(array_map('trim', explode(',', substr($filter, 0, 1024)))), 0, 20);
         if ($terms) {
             $clauses = [];
             foreach ($terms as $term) {
-                $clauses[] = $wpdb->prepare('name LIKE %s', '%' . $wpdb->esc_like($term) . '%');
+                $clauses[] = $wpdb->prepare('f.name LIKE %s', '%' . $wpdb->esc_like($term) . '%');
             }
             $where .= ' AND (' . implode(' OR ', $clauses) . ')';
         }
-        $rows = $wpdb->get_col($wpdb->prepare("SELECT payload FROM $table WHERE $where ORDER BY $sort $order, name ASC, id ASC LIMIT %d OFFSET %d", self::PAGE_SIZE + 1, (max(1, $page) - 1) * self::PAGE_SIZE));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT f.payload FROM $from WHERE $where ORDER BY $sort $order, f.name ASC, f.id ASC LIMIT %d OFFSET %d", self::PAGE_SIZE + 1, (max(1, $page) - 1) * self::PAGE_SIZE));
         if ($wpdb->last_error) {
             $this->fail('findings-read');
         }
         $hasMore = count($rows) > self::PAGE_SIZE;
         $entries = [];
-        foreach (array_slice($rows, 0, self::PAGE_SIZE) as $payload) {
-            $entries[] = $this->decode($payload, self::FINDING_BYTES);
+        foreach (array_slice($rows, 0, self::PAGE_SIZE) as $row) {
+            $entries[] = $this->decode($row->payload, self::FINDING_BYTES);
         }
         return ['entries' => $entries, 'has_more' => $hasMore, 'page' => max(1, $page)];
     }
@@ -369,27 +398,31 @@ class AnalysisStore {
 
         $page = max(1, min(100000, $page));
         $table = $this->table($kind);
-        $sort = in_array($sort, ['registered', 'provider', 'category', 'origin', 'description'], true) ? $sort : 'name';
+        $sort = in_array($sort, ['category', 'origin', 'description'], true) ? $sort : 'name';
+        $from = "$table f";
+        $sort = "f.$sort";
         $order = $order === 'desc' ? 'DESC' : 'ASC';
-        $where = $wpdb->prepare('network_id = %d AND blog_id = %d AND run_id = %s AND post_id > 0', get_current_network_id(), $siteId, $runId);
+        $where = $wpdb->prepare('f.network_id = %d AND f.blog_id = %d AND f.run_id = %s AND f.post_id > 0', get_current_network_id(), $siteId, $runId);
         $terms = array_slice(array_filter(array_map('trim', explode(',', substr($filter, 0, 1024)))), 0, 20);
 
         if ($terms) {
             $clauses = [];
             foreach ($terms as $term) {
-                $clauses[] = $wpdb->prepare('name LIKE %s', '%' . $wpdb->esc_like($term) . '%');
+                $clauses[] = $wpdb->prepare('f.name LIKE %s', '%' . $wpdb->esc_like($term) . '%');
             }
             $where .= ' AND (' . implode(' OR ', $clauses) . ')';
         }
 
-        $total = (int)$wpdb->get_var("SELECT COUNT(DISTINCT name) FROM $table WHERE $where");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
+        $total = (int)$wpdb->get_var("SELECT COUNT(DISTINCT f.name) FROM $from WHERE $where");
         if ($wpdb->last_error) {
             $this->fail('finding-groups-count');
         }
 
         $limit = self::PAGE_SIZE;
         $offset = ($page - 1) * self::PAGE_SIZE;
-        $names = $wpdb->get_col("SELECT name FROM $table WHERE $where GROUP BY name ORDER BY MIN($sort) $order, name ASC LIMIT $limit OFFSET $offset");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
+        $names = $wpdb->get_col("SELECT f.name FROM $from WHERE $where GROUP BY f.name ORDER BY MIN($sort) $order, f.name ASC LIMIT $limit OFFSET $offset");
         if ($wpdb->last_error) {
             $this->fail('finding-groups-read');
         }
@@ -398,14 +431,15 @@ class AnalysisStore {
         }
 
         $quotedNames = implode(',', array_map(static fn(string $name): string => $wpdb->prepare('%s', $name), array_map('strval', $names)));
-        $rows = $wpdb->get_col("SELECT payload FROM $table WHERE $where AND name IN ($quotedNames) ORDER BY name ASC, id ASC");
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
+        $rows = $wpdb->get_results("SELECT f.payload FROM $from WHERE $where AND f.name IN ($quotedNames) ORDER BY f.name ASC, f.id ASC");
         if ($wpdb->last_error) {
             $this->fail('finding-group-entries-read');
         }
 
         $entries = [];
-        foreach ($rows as $payload) {
-            $entries[] = $this->decode($payload, self::FINDING_BYTES);
+        foreach ($rows as $row) {
+            $entries[] = $this->decode($row->payload, self::FINDING_BYTES);
         }
 
         return ['entries' => $entries, 'total' => $total, 'page' => $page, 'per_page' => self::PAGE_SIZE];
@@ -413,7 +447,7 @@ class AnalysisStore {
 
     public function assertSize(array $value, int $limit): void {
         if (!BoundedArray::fits($value, $limit)) {
-            throw new \RuntimeException(__('The analysis data exceeded its storage budget.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The analysis data exceeded its storage budget.', 'rrze-multisite-manager'));
         }
     }
 

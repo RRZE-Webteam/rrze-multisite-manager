@@ -68,7 +68,7 @@ For new or renamed menu pages, create or update a file in `doc/` and link it fro
 
 ### Central analysis schema changes
 
-The thirteen central analysis tables are specified in [Runtime state and scheduler](runtime-state.md#central-analysis-tables). They use `$wpdb->base_prefix`, not a website prefix; every database operation must therefore constrain `network_id`, `blog_id`, and the relevant `run_id`.
+The nine central analysis tables are specified in [Runtime state and scheduler](runtime-state.md#central-analysis-tables). They use `$wpdb->base_prefix`, not a website prefix; every database operation must therefore constrain `network_id`, `blog_id`, and the relevant `run_id`.
 
 When changing this schema:
 
@@ -77,3 +77,7 @@ When changing this schema:
 3. Preserve separate `shortcodes` and `blocks` tables and their phase checkpoints. Do not move large findings back to options, post types, or object-cache payloads.
 4. Add or update isolated persistence regressions and, where possible, WordPress/MySQL integration coverage for upgrades and cleanup.
 5. Document new columns, indexes, retention, and deletion behaviour in the central-schema section before shipping.
+
+### Private operational records
+
+Do not commit database-monitoring exports, internal hostnames or addresses, server identifiers, credentials, or installation-specific topology and capacity measurements. Public documentation describes the diagnostic functions and measurement procedures without actual infrastructure values. `doc/Todo.md` is a local-only planning file excluded by `.gitignore`; do not force-add it or link to it from published documentation.

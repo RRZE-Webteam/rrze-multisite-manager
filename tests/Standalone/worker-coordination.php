@@ -1,8 +1,15 @@
 <?php
 /** Isolated coordination tests. The DB boundary simulates MySQL named locks. */
 declare(strict_types=1);
-if (PHP_SAPI !== 'cli' || defined('ABSPATH')) { exit(1); }
-define('ABSPATH', __DIR__ . '/');
+// Standalone CLI test: no direct web access, never inside a WordPress request.
+if (!defined('ABSPATH')) {
+    if (PHP_SAPI !== 'cli') {
+        exit;
+    }
+    define('ABSPATH', __DIR__ . '/');
+} else {
+    exit(1);
+}
 define('MINUTE_IN_SECONDS', 60);
 define('HOUR_IN_SECONDS', 3600);
 define('DAY_IN_SECONDS', 86400);
@@ -22,6 +29,7 @@ function wp_next_scheduled($hook, $args = []) { return $GLOBALS['events'][$hook 
 function wp_schedule_single_event($at, $hook, $args = []) { $GLOBALS['events'][$hook . serialize($args)] = $at; return true; }
 function wp_clear_scheduled_hook($hook, $args = []) { unset($GLOBALS['events'][$hook . serialize($args)]); return true; }
 function wp_cache_delete($key, $group) { $GLOBALS['cache_deletions'][] = [$key, $group]; return true; }
+// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped, WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI test output, never rendered as HTML.
 function check($condition, $message) { if (!$condition) { throw new RuntimeException($message); } }
 spl_autoload_register(static function ($class) {
     $prefix = 'RRZE\\MultisiteManager\\';

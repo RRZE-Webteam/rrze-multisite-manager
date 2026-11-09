@@ -1664,6 +1664,41 @@ a.rrze-msm-subtab.is-active:visited {
     margin-top: 16px;
 }
 
+.rrze-msm-site-allowed-themes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+.rrze-msm-site-allowed-theme {
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+    padding: 12px;
+}
+
+.rrze-msm-site-allowed-theme-screenshot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border: 1px solid var(--rrze-msm-border);
+    border-radius: var(--rrze-msm-widget-border-radius);
+}
+
+.rrze-msm-site-allowed-theme h3 {
+    margin: 12px 0 4px;
+}
+
+.rrze-msm-site-allowed-theme-meta {
+    margin: 0;
+    color: var(--rrze-msm-muted);
+}
+
+.rrze-msm-site-allowed-theme .rrze-msm-site-theme-links {
+    margin-top: 12px;
+}
+
 .rrze-msm-site-storage-visual {
     display: grid;
     grid-template-columns: 180px 1fr;

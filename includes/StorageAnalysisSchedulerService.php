@@ -2272,7 +2272,7 @@ class StorageAnalysisSchedulerService {
             ]);
             if ($this->isRequestMemoryBudgetReached($memoryBaseline)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('Not enough PHP memory is available to start another analysis step.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Not enough PHP memory is available to start another analysis step.', 'rrze-multisite-manager'));
             }
             $batchesProcessed = 0;
             for ($batch = 0; $batch < self::MAX_BATCHES_PER_REQUEST && ($batch === 0 || microtime(true) < $deadline); $batch++) {
@@ -2305,7 +2305,7 @@ class StorageAnalysisSchedulerService {
                     $complete = ($result['analysis']['status'] ?? '') === 'complete';
                 } else {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when rendered.
-                    throw new \RuntimeException(__('Invalid storage analysis phase.', 'rrze-multisite-manager'));
+                    throw new \RuntimeException(esc_html__('Invalid storage analysis phase.', 'rrze-multisite-manager'));
                 }
                 if (empty($result['success'])) {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when rendered.
@@ -2841,7 +2841,7 @@ class StorageAnalysisSchedulerService {
                     // Keep the site in the recurring batch even if the
                     // additional targeted event could not be created.
                     $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $mode);
-                    LoggingService::error($this->config, 'RRZE-MSM: Prompt storage-analysis batch run could not be scheduled.', [
+                    LoggingService::error('RRZE-MSM: Prompt storage-analysis batch run could not be scheduled.', [
                         'site_id' => $siteId,
                         'assignment_mode' => $mode,
                     ]);

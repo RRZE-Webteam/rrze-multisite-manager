@@ -2,7 +2,6 @@
 
 namespace RRZE\MultisiteManager;
 
-use RRZE\MultisiteManager\Support\SafeSerializedValue;
 use RRZE\MultisiteManager\Support\NetworkCronCleanupQueue;
 
 defined('ABSPATH') || exit;
@@ -43,7 +42,6 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const INDIVIDUAL_REQUEST_BUDGET_SECONDS = 60;
     protected const CONTINUATION_DELAY_SECONDS = 5;
     protected const BATCH_RUN_STALE_AFTER_SECONDS = 2 * HOUR_IN_SECONDS;
-    protected const META_VALUES_PER_POST_LIMIT = 10;
     // Cumulative stored finding payload per phase. Sized so that the
     // configurable entry limit (up to 5,000) remains the effective bound.
     protected const RESULT_MAX_BYTES = 4194304;
@@ -55,12 +53,6 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const BLOCK_PHASE = 'blocks';
 
     protected Config $config;
-    protected SafeSerializedValue $serializedValue;
-    /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
-    protected array $activeSiteShortcodeRegistrations = [];
-    /** @var array<int, array<string, array{name: string, plugin_file: string}>> */
-    protected array $activeSiteBlockRegistrations = [];
-    protected ?Metrics\PluginThemeUsageMetricsService $pluginThemeUsage = null;
     /** @var array<string, string> */
     protected array $blockCategoryLabels = [];
     /** @var array<int, int>|null */
@@ -70,7 +62,6 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     public function __construct(?Config $config = null) {
         $this->config = $config ?? new Config();
-        $this->serializedValue = new SafeSerializedValue();
     }
 
     public function onLoaded(): void {
@@ -1339,7 +1330,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             self::BATCH_SIZE
         );
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Keyset pagination keeps long analyses bounded and avoids expensive SQL offsets.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Keyset pagination keeps long analyses bounded and avoids expensive SQL offsets.
         $ids = $wpdb->get_col($sql);
         if ($wpdb->last_error) {
             Analysis\AnalysisStorageException::raise('source-post-ids', get_current_blog_id());
@@ -1534,6 +1525,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected function getBoundedAnalysisPost(int $postId): ?\WP_Post {
         global $wpdb;
         $maxBytes = $this->config->getShortcodeBlockAnalysisValueMaxBytes();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Size-gated read of one post in a background analysis; avoids loading oversized content into the post cache.
         $row = $wpdb->get_row($wpdb->prepare(
             "SELECT ID, post_type, post_status, LEFT(post_title, 512) AS post_title, post_name, post_parent, post_date, post_author,
             CASE WHEN OCTET_LENGTH(post_content) > %d THEN 1 ELSE 0 END AS content_exceeds_limit,
@@ -1576,66 +1568,11 @@ class ShortcodeBlockAnalysisSchedulerService {
             return true;
         }
 
-        if ((int)($state['shortcode_active_post'] ?? 0) !== $postId) {
-            $state['shortcode_active_post'] = $postId;
-            $state['shortcode_meta_cursor'] = 0;
-            $this->collectShortcodes($content, $location, $state['shortcodes']);
-            // Unregistered tags are meaningful only inside an explicit Shortcode block.
-            foreach ($this->flattenBlocks(parse_blocks($content)) as $block) {
-                if ((string)($block['blockName'] ?? '') === 'core/shortcode') {
-                    $this->collectShortcodes((string)($block['innerHTML'] ?? ''), $location, $state['shortcodes'], true);
-                }
-            }
-        }
-        do {
-            if (microtime(true) >= $deadline || $this->pendingFindingBytes >= 131072) {
-                return false;
-            }
-            $rows = $this->getPostMetaValuesForShortcodeAnalysis($postId, (int)$state['shortcode_meta_cursor']);
-            foreach ($rows as $metaRow) {
-                if (microtime(true) >= $deadline || $this->pendingFindingBytes >= 131072) {
-                    return false;
-                }
-                $metaLocation = $location;
-                $metaLocation['metadata_id'] = (int)$metaRow->meta_id;
-                $metaLocation['metadata_key'] = (string)($metaRow->metadata_key ?? '');
-                if (!empty($metaRow->value_exceeds_limit)) {
-                    $this->recordOmittedSource(
-                        'shortcodes',
-                        'post_meta_too_large',
-                        $postId,
-                        (string)$post->post_title,
-                        (string)($metaRow->metadata_key ?? '')
-                    );
-                } else {
-                    $this->collectShortcodesFromValue((string)$metaRow->meta_value, $metaLocation, $state['shortcodes']);
-                }
-                $state['shortcode_meta_cursor'] = (int)$metaRow->meta_id;
-            }
-        } while (count($rows) === self::META_VALUES_PER_POST_LIMIT);
+        // Only post_content of posts and pages is analysed; post metadata is
+        // deliberately not read (see Todo: optional further post types).
+        $this->collectShortcodes($content, $location, $state['shortcodes']);
         unset($state['shortcode_active_post'], $state['shortcode_meta_cursor']);
         return true;
-    }
-
-    /** @return array<int, object> */
-    protected function getPostMetaValuesForShortcodeAnalysis(int $postId, int $cursor = 0): array {
-        global $wpdb;
-        $maxBytes = $this->config->getShortcodeBlockAnalysisValueMaxBytes();
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT meta_id, LEFT(meta_key, 512) AS metadata_key,
-            CASE WHEN OCTET_LENGTH(meta_value) > %d THEN 1 ELSE 0 END AS value_exceeds_limit,
-            CASE WHEN OCTET_LENGTH(meta_value) <= %d THEN meta_value ELSE '' END AS meta_value
-            FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_id > %d ORDER BY meta_id ASC LIMIT %d",
-            $maxBytes,
-            $maxBytes,
-            $postId,
-            $cursor,
-            self::META_VALUES_PER_POST_LIMIT
-        ));
-        if ($wpdb->last_error) {
-            Analysis\AnalysisStorageException::raise('source-postmeta-read', get_current_blog_id());
-        }
-        return (array)$rows;
     }
 
     protected function analysePostBlocks(int $postId, array &$state): void {
@@ -1658,43 +1595,17 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
     }
 
-    protected function collectShortcodesFromValue($value, array $location, array &$shortcodes, int $depth = 0): void {
-        if ($depth >= 8 || (is_string($value) && strlen($value) > SafeSerializedValue::MAX_BYTES)) {
-            return;
-        }
+    protected function collectShortcodes(string $content, array $location, array &$shortcodes): void {
 
-        $decoded = $this->serializedValue->decode($value);
-
-        if (!$decoded['valid']) {
-            return;
-        }
-
-        $value = $decoded['value'];
-
-        if (is_string($value)) {
-            $this->collectShortcodes($value, $location, $shortcodes);
-            return;
-        }
-
-        if (!is_array($value)) {
-            return;
-        }
-
-        foreach ($value as $childValue) {
-            $this->collectShortcodesFromValue($childValue, $location, $shortcodes, $depth + 1);
-        }
-    }
-
-    protected function collectShortcodes(string $content, array $location, array &$shortcodes, bool $allowUnregistered = false): void {
-
-        if ($content === '' || !preg_match_all('/(?<!\\[)\\[(?!\\[)([A-Za-z][A-Za-z0-9_-]*)(?=\\s|\\])(?:\\s[^\\]]*)?\\]/', $content, $matches)) {
+        // Group 1 distinguishes a closing tag (whitespace only) from an opening tag with attributes.
+        if ($content === '' || !preg_match_all('~(?<!\[)\[(?!\[)(/)?([A-Za-z_][A-Za-z0-9_.-]{0,190})(?(1)\s*+|(?:\s++[^\[\]]*+)?/?)\](?!\])~', $content, $matches)) {
             return;
         }
 
         $matchesByRawShortcode = [];
 
         foreach ((array)($matches[0] ?? []) as $index => $rawShortcode) {
-            $tag = (string)($matches[1][$index] ?? '');
+            $tag = (string)($matches[2][$index] ?? '');
             $rawShortcode = (string)$rawShortcode;
 
             if ($tag === '' || $rawShortcode === '') {
@@ -1710,20 +1621,10 @@ class ShortcodeBlockAnalysisSchedulerService {
         foreach ($matchesByRawShortcode as $match) {
 
             $tag = (string)$match['tag'];
-            $registration = $this->getShortcodeRegistration($tag);
-            $isRegistered = !empty($registration);
-
-            if (!$isRegistered && !$allowUnregistered) {
-                continue;
-            }
-
             $this->appendFinding('shortcodes', array_merge(
                 [
                     'shortcode' => $tag,
                     'raw_shortcode' => (string)$match['raw_shortcode'],
-                    'registered' => $isRegistered,
-                    'provider' => (string)($registration['name'] ?? __('Unknown', 'rrze-multisite-manager')),
-                    'provider_plugin_file' => (string)($registration['plugin_file'] ?? ''),
                 ],
                 $location
             ), $shortcodes);
@@ -1767,10 +1668,6 @@ class ShortcodeBlockAnalysisSchedulerService {
         $blockType = \WP_Block_Type_Registry::get_instance()->get_registered($blockName);
 
         if (!$blockType instanceof \WP_Block_Type) {
-            $registration = $this->getActiveSiteBlockRegistrations()[$blockName] ?? [];
-            if ($registration) {
-                $details['origin'] = (string)($registration['name'] ?? __('Plugin', 'rrze-multisite-manager'));
-            }
             return $details;
         }
 
@@ -1888,205 +1785,6 @@ class ShortcodeBlockAnalysisSchedulerService {
         }
 
         return $flat;
-    }
-
-    protected function getShortcodeProviderDetails(string $tag): array {
-        global $shortcode_tags;
-
-        $callback = is_array($shortcode_tags) ? ($shortcode_tags[$tag] ?? null) : null;
-
-        if ($callback === null) {
-            return [];
-        }
-
-        try {
-            $reflection = is_array($callback)
-                ? new \ReflectionMethod($callback[0], $callback[1])
-                : new \ReflectionFunction($callback);
-            $file = (string)$reflection->getFileName();
-        } catch (\Throwable $exception) {
-            return [];
-        }
-
-        if ($file === '') {
-            return [];
-        }
-
-        $pluginDirectory = wp_normalize_path(WP_PLUGIN_DIR) . '/';
-        $muPluginDirectory = wp_normalize_path(WPMU_PLUGIN_DIR) . '/';
-        $stylesheetDirectory = wp_normalize_path(get_stylesheet_directory()) . '/';
-        $file = wp_normalize_path($file);
-
-        if (str_starts_with($file, $pluginDirectory)) {
-            $pluginFile = ltrim(substr($file, strlen($pluginDirectory)), '/');
-
-            if (!function_exists('get_plugins')) {
-                require_once ABSPATH . 'wp-admin/includes/plugin.php';
-            }
-
-            foreach ((array)get_plugins() as $installedPluginFile => $pluginData) {
-                $directory = dirname((string)$installedPluginFile);
-
-                if ($pluginFile === (string)$installedPluginFile || ($directory !== '.' && str_starts_with($pluginFile, $directory . '/'))) {
-                    return [
-                        'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                        'plugin_file' => (string)$installedPluginFile,
-                    ];
-                }
-            }
-
-            return ['name' => $pluginFile];
-        }
-
-        if (str_starts_with($file, $muPluginDirectory)) {
-            return ['name' => __('MU-plugin', 'rrze-multisite-manager')];
-        }
-
-        if (str_starts_with($file, $stylesheetDirectory)) {
-            return ['name' => __('Theme', 'rrze-multisite-manager')];
-        }
-
-        return ['name' => __('Unknown', 'rrze-multisite-manager')];
-    }
-
-    /**
-     * Checks the runtime registry and the stored source findings of plugins and the theme active on the current site.
-     *
-     * switch_to_blog() does not load plugins that are active only on the target site. The plugin
-     * and theme usage index has already analysed their add_shortcode() declarations; reusing those
-     * results prevents such shortcodes from being reported as missing without reading any source file.
-     *
-     * @return array{name: string, plugin_file: string}
-     */
-    protected function getShortcodeRegistration(string $tag): array {
-        if (shortcode_exists($tag)) {
-            $provider = $this->getShortcodeProviderDetails($tag);
-
-            return [
-                'name' => (string)($provider['name'] ?? __('Unknown', 'rrze-multisite-manager')),
-                'plugin_file' => (string)($provider['plugin_file'] ?? ''),
-            ];
-        }
-
-        $registrations = $this->getActiveSiteShortcodeRegistrations();
-
-        return $registrations[$tag] ?? [];
-    }
-
-    /**
-     * @return array<string, array{name: string, plugin_file: string}>
-     */
-    protected function getActiveSiteShortcodeRegistrations(): array {
-        $siteId = get_current_blog_id();
-
-        if (!isset($this->activeSiteShortcodeRegistrations[$siteId])) {
-            $this->loadActiveSitePluginRegistrations($siteId);
-        }
-
-        return $this->activeSiteShortcodeRegistrations[$siteId] ?? [];
-    }
-
-    /**
-     * @return array<string, array{name: string, plugin_file: string}>
-     */
-    protected function getActiveSiteBlockRegistrations(): array {
-        $siteId = get_current_blog_id();
-        if (!isset($this->activeSiteBlockRegistrations[$siteId])) {
-            $this->loadActiveSitePluginRegistrations($siteId);
-        }
-
-        return $this->activeSiteBlockRegistrations[$siteId] ?? [];
-    }
-
-    /**
-     * Builds the provider lookup for one website from the stored static
-     * source analysis of the plugin and theme usage index. Before that
-     * index has completed a run, unknown registrations stay unattributed.
-     */
-    protected function loadActiveSitePluginRegistrations(int $siteId): void {
-        $shortcodes = [];
-        $blocks = [];
-        $activePlugins = $this->getActivePluginData();
-        $usage = $this->getPluginThemeUsage();
-        $analyses = $usage->getPluginSourceAnalyses(array_keys($activePlugins));
-        $pluginFile = '';
-        $analysis = [];
-        $provider = [];
-        $theme = wp_get_theme();
-        $themeAnalysis = [];
-
-        foreach ($activePlugins as $pluginFile => $pluginData) {
-            $analysis = (array)($analyses[$pluginFile] ?? []);
-            $provider = [
-                'name' => (string)($pluginData['Name'] ?? $pluginFile),
-                'plugin_file' => (string)$pluginFile,
-            ];
-            $this->addSourceRegistrations($shortcodes, $blocks, $analysis, $provider);
-        }
-
-        if ($theme instanceof \WP_Theme && $theme->exists()) {
-            $themeAnalysis = $usage->getThemeSourceAnalysis((string)$theme->get_stylesheet());
-            $provider = [
-                'name' => sprintf(
-                    /* translators: %s: theme name. */
-                    __('Theme: %s', 'rrze-multisite-manager'),
-                    (string)$theme->get('Name')
-                ),
-                'plugin_file' => '',
-            ];
-            $this->addSourceRegistrations($shortcodes, $blocks, $themeAnalysis, $provider);
-        }
-
-        $this->activeSiteShortcodeRegistrations[$siteId] = $shortcodes;
-        $this->activeSiteBlockRegistrations[$siteId] = $blocks;
-    }
-
-    /**
-     * @param array<string, array{name: string, plugin_file: string}> $shortcodes
-     * @param array<string, array{name: string, plugin_file: string}> $blocks
-     * @param array<string, mixed> $analysis
-     * @param array{name: string, plugin_file: string} $provider
-     */
-    protected function addSourceRegistrations(array &$shortcodes, array &$blocks, array $analysis, array $provider): void {
-        $shortcodeTag = '';
-        $block = null;
-        $blockName = '';
-
-        foreach ((array)($analysis['shortcodes'] ?? []) as $shortcodeTag) {
-            $shortcodeTag = (string)$shortcodeTag;
-            if ($shortcodeTag !== '' && !isset($shortcodes[$shortcodeTag])) {
-                $shortcodes[$shortcodeTag] = $provider;
-            }
-        }
-
-        foreach ((array)($analysis['blocks'] ?? []) as $block) {
-            $blockName = is_array($block) ? (string)($block['name'] ?? '') : (string)$block;
-            if ($blockName !== '' && !isset($blocks[$blockName])) {
-                $blocks[$blockName] = $provider;
-            }
-        }
-    }
-
-    protected function getPluginThemeUsage(): Metrics\PluginThemeUsageMetricsService {
-        if ($this->pluginThemeUsage === null) {
-            $this->pluginThemeUsage = new Metrics\PluginThemeUsageMetricsService(null, $this->config);
-        }
-
-        return $this->pluginThemeUsage;
-    }
-
-    /** @return array<string, array<string, mixed>> */
-    protected function getActivePluginData(): array {
-        if (!function_exists('get_plugins')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-
-        $activePluginFiles = array_unique(array_merge(
-            array_values(array_filter((array)get_option('active_plugins', []), 'is_string')),
-            array_keys((array)get_site_option('active_sitewide_plugins', []))
-        ));
-        $availablePlugins = get_plugins();
-        return array_intersect_key($availablePlugins, array_fill_keys($activePluginFiles, true));
     }
 
     protected function markStarted(int $siteId, array $state): void {
@@ -2337,7 +2035,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             : $this->scheduleBatchAnalysisAt($timestamp, $assignmentMode);
 
         if (!$scheduled) {
-            LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block analysis task could not be scheduled.', [
+            LoggingService::error('RRZE-MSM: Shortcode and block analysis task could not be scheduled.', [
                 'site_id' => $siteId,
                 'site_url' => get_home_url($siteId, '/'),
                 'assignment_mode' => $assignmentMode,
@@ -2361,7 +2059,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             // The recurring shared batch may be days away. Explicitly adding
             // a site must not make its first analysis wait for that cycle.
             if ($resetPreviousRun && !$this->scheduleBatchAnalysisSoon($assignmentMode)) {
-                LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block shared-batch task could not be scheduled promptly.', [
+                LoggingService::error('RRZE-MSM: Shortcode and block shared-batch task could not be scheduled promptly.', [
                     'site_id' => $siteId,
                     'site_url' => get_home_url($siteId, '/'),
                     'assignment_mode' => $assignmentMode,
@@ -2374,7 +2072,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         if ($this->getNextRecurringScheduledTimestamp($siteId) <= 0) {
             $this->unschedule($siteId);
             $this->clearRecurringScheduleCache();
-            LoggingService::error($this->config, 'RRZE-MSM: Shortcode and block analysis task could not be verified after scheduling.', [
+            LoggingService::error('RRZE-MSM: Shortcode and block analysis task could not be verified after scheduling.', [
                 'site_id' => $siteId,
                 'site_url' => get_home_url($siteId, '/'),
                 'assignment_mode' => $assignmentMode,

@@ -107,7 +107,7 @@ class StorageAnalysisResourceService {
             if ($available < 0) {
                 if (empty($occupiedSiteIds)) {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                    throw new StorageAnalysisBusyException(__('Storage analysis capacity is occupied. The analysis will be retried.', 'rrze-multisite-manager'));
+                    throw new StorageAnalysisBusyException(esc_html__('Storage analysis capacity is occupied. The analysis will be retried.', 'rrze-multisite-manager'));
                 }
                 $occupiedSiteIdsLabel = esc_html(implode(', ', array_map('absint', $occupiedSiteIds)));
                 throw new StorageAnalysisBusyException(sprintf(
@@ -132,7 +132,7 @@ class StorageAnalysisResourceService {
         $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
         if (!$budget->acquire()) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new StorageAnalysisBusyException(__('Background processes are busy. The analysis will be retried.', 'rrze-multisite-manager'));
+            throw new StorageAnalysisBusyException(esc_html__('Background processes are busy. The analysis will be retried.', 'rrze-multisite-manager'));
         }
         try {
             return $this->runAdmitted($siteId, $callback, $assignmentMode);
@@ -148,7 +148,7 @@ class StorageAnalysisResourceService {
         $this->locked(function () use ($siteId, $token, $mode, &$selected): void {
             if ($this->hasLiveWorker($siteId, false)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new StorageAnalysisBusyException(__('Another request is already processing this website.', 'rrze-multisite-manager'));
+                throw new StorageAnalysisBusyException(esc_html__('Another request is already processing this website.', 'rrze-multisite-manager'));
             }
             for ($slot = 0; $slot < self::MAX_SLOTS; $slot++) {
                 $key = $this->getWorkerKey($mode, $slot);
@@ -159,7 +159,7 @@ class StorageAnalysisResourceService {
                 }
                 if (!empty($record) && (int)($record['site_id'] ?? 0) === $siteId) {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                    throw new StorageAnalysisBusyException(__('Another request is already processing this website.', 'rrze-multisite-manager'));
+                    throw new StorageAnalysisBusyException(esc_html__('Another request is already processing this website.', 'rrze-multisite-manager'));
                 }
                 if ($selected < 0 && empty($record) && $slot < $this->config->getStorageAnalysisMaxConcurrentRuns()) {
                     $selected = $slot;
@@ -167,7 +167,7 @@ class StorageAnalysisResourceService {
             }
             if ($selected < 0 || !add_option($this->getWorkerKey($mode, $selected), ['site_id' => $siteId, 'mode' => $mode, 'token' => $token, 'expires_at' => time() + DAY_IN_SECONDS, 'host' => (string)gethostname(), 'pid' => getmypid()], '', false)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new StorageAnalysisBusyException(__('Storage analysis workers are occupied. The analysis will be retried.', 'rrze-multisite-manager'));
+                throw new StorageAnalysisBusyException(esc_html__('Storage analysis workers are occupied. The analysis will be retried.', 'rrze-multisite-manager'));
             }
         });
         self::$liveWorkerTokens[$token] = true;
@@ -218,18 +218,18 @@ class StorageAnalysisResourceService {
     public function writeIndexBucketGroup(int $siteId, array $buckets, callable $write): void {
         if ($siteId <= 0 || !$buckets) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('Invalid media index reservation.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Invalid media index reservation.', 'rrze-multisite-manager'));
         }
         $sizes = [];
         foreach ($buckets as $bucket => $entries) {
             $bucket = (string)$bucket;
             if (preg_match('/^u?[a-f0-9]{2}$/', $bucket) !== 1 || !is_array($entries)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('Invalid media index reservation.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Invalid media index reservation.', 'rrze-multisite-manager'));
             }
             if (!BoundedArray::fits($entries, self::MAX_BUCKET_BYTES)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('The media index exceeded its segment limit. The analysis was stopped without classifying additional files as orphaned.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('The media index exceeded its segment limit. The analysis was stopped without classifying additional files as orphaned.', 'rrze-multisite-manager'));
             }
             $sizes[$bucket] = strlen(serialize($entries)); // Each input is already bounded to 128 KiB.
         }
@@ -242,7 +242,7 @@ class StorageAnalysisResourceService {
                 $record['buckets'] = array_replace((array)($record['buckets'] ?? []), $sizes);
                 if (array_sum($record['buckets']) > self::MAX_INDEX_BYTES) {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                    throw new \RuntimeException(__('The media index exceeded the temporary storage budget. The previous completed result is preserved.', 'rrze-multisite-manager'));
+                    throw new \RuntimeException(esc_html__('The media index exceeded the temporary storage budget. The previous completed result is preserved.', 'rrze-multisite-manager'));
                 }
                 $record['expires_at'] = time() + DAY_IN_SECONDS;
                 // Reserve before writing so an interrupted request cannot leave unaccounted segments.
@@ -251,7 +251,7 @@ class StorageAnalysisResourceService {
                 return;
             }
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new StorageAnalysisBusyException(__('The temporary analysis reservation is unavailable. The analysis will be retried.', 'rrze-multisite-manager'));
+            throw new StorageAnalysisBusyException(esc_html__('The temporary analysis reservation is unavailable. The analysis will be retried.', 'rrze-multisite-manager'));
         });
     }
 
@@ -270,14 +270,14 @@ class StorageAnalysisResourceService {
         });
         if ($expected) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('A media index segment is missing or expired. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('A media index segment is missing or expired. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
         }
     }
 
     public static function saveState(string $key, array $state, int $ttl): void {
         if (!BoundedArray::fits($state, self::MAX_STATE_BYTES)) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('The analysis working state exceeded its storage limit. The previous completed result is preserved.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The analysis working state exceeded its storage limit. The previous completed result is preserved.', 'rrze-multisite-manager'));
         }
         (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->save($key, $state, $ttl);
     }
@@ -300,7 +300,7 @@ class StorageAnalysisResourceService {
         $saved = get_option($key, null) === null ? add_option($key, $record, '', false) : update_option($key, $record, false);
         if (!$saved) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('The temporary storage reservation could not be saved.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The temporary storage reservation could not be saved.', 'rrze-multisite-manager'));
         }
     }
 
@@ -309,7 +309,7 @@ class StorageAnalysisResourceService {
             $token = \RRZE\MultisiteManager\Support\AtomicLock::acquire(self::MUTEX);
             if ($token === '') {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new StorageAnalysisBusyException(__('The central storage-analysis lock is busy. The analysis will be retried.', 'rrze-multisite-manager'));
+                throw new StorageAnalysisBusyException(esc_html__('The central storage-analysis lock is busy. The analysis will be retried.', 'rrze-multisite-manager'));
             }
             try {
                 $callback();
@@ -347,7 +347,7 @@ class StorageAnalysisResourceService {
         $this->locked(function () use ($siteId): void {
             if ($this->hasLiveWorker($siteId, true)) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new StorageAnalysisBusyException(__('Another request is already processing this website.', 'rrze-multisite-manager'));
+                throw new StorageAnalysisBusyException(esc_html__('Another request is already processing this website.', 'rrze-multisite-manager'));
             }
             $this->deleteSiteKeys($siteId);
             foreach ($this->getSlotKeys() as $key) {
@@ -376,7 +376,7 @@ class StorageAnalysisResourceService {
             $deleted = $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE site_id = %d AND meta_key IN ({$placeholders})", ...array_merge([get_current_network_id()], $names)));
             if ($deleted === false) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('Temporary analysis data could not be removed from the database.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Temporary analysis data could not be removed from the database.', 'rrze-multisite-manager'));
             }
             foreach ($chunk as $key) {
                 wp_cache_delete($key, 'site-transient');

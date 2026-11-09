@@ -60,7 +60,7 @@ class MetricsImplementationService {
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const DETAIL_OPTION_VALUE_MAX_BYTES = 16384;
-    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 6;
+    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 8;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE = 250;
@@ -72,15 +72,6 @@ class MetricsImplementationService {
     protected const STORAGE_ANALYSIS_INDEX_CACHE_BUCKETS = 32;
     protected const STORAGE_ORPHAN_ANALYSIS_BATCH_SIZE = 10;
     protected const STORAGE_MEDIA_METADATA_BATCH_SIZE = 50;
-    // Static plugin/theme source analysis runs in the Cron-driven usage index.
-    // One asset is analysed per request; these limits bound that request.
-    protected const SOURCE_ANALYSIS_VERSION = 2;
-    protected const SOURCE_ANALYSIS_MAX_SECONDS = 20;
-    protected const SOURCE_ANALYSIS_MAX_FILES = 5000;
-    protected const SOURCE_ANALYSIS_MAX_DIRECTORIES = 2000;
-    protected const SOURCE_ANALYSIS_MAX_FILE_BYTES = 1048576;
-    protected const SOURCE_ANALYSIS_MAX_TOTAL_BYTES = 33554432;
-    protected const SOURCE_ANALYSIS_SKIPPED_DIRECTORIES = ['node_modules', 'bower_components'];
     protected const STORAGE_MEDIA_METADATA_RESULT_LIMIT = 500;
     protected const STORAGE_ANALYSIS_REFERENCE_VALUE_MAX_BYTES = 262144;
     protected const DASHBOARD_LOCK_TTL = 900;
@@ -159,13 +150,7 @@ class MetricsImplementationService {
         $this->dashboardBatch = new DashboardMetricsBatchService($this->dashboardRefresh);
         $this->dashboardHistory = new DashboardMetricsHistoryStore();
         $this->pluginThemeUsageMetrics = new PluginThemeUsageMetricsService($this->settings, $this->config);
-        $this->pluginThemeUsageMetrics->setSourceAnalysisProviders(
-            fn(string $pluginFile): array => $this->analyzePluginCode($pluginFile),
-            fn(string $stylesheet): array => $this->analyzeThemeCode($stylesheet),
-            fn(string $pluginFile): string => $this->getPluginCacheFingerprint($pluginFile),
-            fn(string $stylesheet): string => $this->getThemeCacheFingerprint($stylesheet),
-            fn(): int => $this->bumpDetailCacheVersion()
-        );
+        $this->pluginThemeUsageMetrics->setUsageChangedCallback(fn(): int => $this->bumpDetailCacheVersion());
         $this->storageUploadScanner = new StorageUploadScannerService();
         $this->storageAnalysisBatch = new StorageAnalysisBatchService();
         $this->siteDetailMetrics = new SiteDetailMetricsService();
@@ -369,9 +354,9 @@ class MetricsImplementationService {
             $valueKey = $wpdb->esc_like('_site_transient_') . $escapedPrefix;
             $timeoutKey = $wpdb->esc_like('_site_transient_timeout_') . $escapedPrefix;
 
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Old storage-analysis site transients have dynamic cache versions and are removed in bounded batches by their strictly scoped key prefixes.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Old storage-analysis site transients have dynamic cache versions and are removed in bounded batches by their strictly scoped key prefixes.
             $deletedValues = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $valueKey, self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Matching timeout rows are removed in a separate bounded batch.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Matching timeout rows are removed in a separate bounded batch.
             $deletedTimeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s LIMIT %d", $timeoutKey, self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE));
             $hasRemainingRows = $hasRemainingRows
                 || $deletedValues >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
@@ -383,7 +368,7 @@ class MetricsImplementationService {
             $valueKey = $wpdb->esc_like('_site_transient_') . $escapedPrefix;
             $timeoutKey = $wpdb->esc_like('_site_transient_timeout_') . $escapedPrefix;
 
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Only expired or completed work states are selected; active runs must remain untouched.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Only expired or completed work states are selected; active runs must remain untouched.
             $stateRows = (array)$wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT value_row.meta_id, value_row.meta_key
@@ -418,7 +403,7 @@ class MetricsImplementationService {
             if (!empty($stateIds)) {
                 $placeholders = implode(', ', array_fill(0, count($stateIds), '%d'));
 
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- IDs were selected above from the same strictly scoped transient family.
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- IDs were selected above from the same strictly scoped transient family.
                 $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_id IN ({$placeholders})", ...$stateIds));
             }
 
@@ -428,11 +413,11 @@ class MetricsImplementationService {
                 $stateTimeoutKeys = array_values(array_unique($stateTimeoutKeys));
                 $placeholders = implode(', ', array_fill(0, count($stateTimeoutKeys), '%s'));
 
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Matching timeout rows belong to completed or expired states selected above.
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Matching timeout rows belong to completed or expired states selected above.
                 $deletedStateTimeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key IN ({$placeholders})", ...$stateTimeoutKeys));
             }
 
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Expired timeout rows no longer belong to active states and are removed in a bounded batch.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Expired timeout rows no longer belong to active states and are removed in a bounded batch.
             $deletedTimeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s AND CAST(meta_value AS UNSIGNED) < %d LIMIT %d", $timeoutKey, time(), self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE));
             $hasRemainingRows = $hasRemainingRows
                 || count($stateIds) >= self::STORAGE_ANALYSIS_TRANSIENT_CLEANUP_BATCH_SIZE
@@ -589,7 +574,7 @@ class MetricsImplementationService {
             $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%',
             $wpdb->esc_like('_site_transient_timeout_rrze_multisite_manager_') . '%',
         ];
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The administrator explicitly requested an inventory of scoped, obsolete plugin transient rows.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The administrator explicitly requested an inventory of scoped, obsolete plugin transient rows.
         $row = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS row_count, COALESCE(SUM(OCTET_LENGTH(meta_value)), 0) AS byte_count FROM {$wpdb->sitemeta} WHERE meta_key LIKE %s OR meta_key LIKE %s OR meta_key LIKE %s OR meta_key LIKE %s", ...array_merge($valueKeys, $timeoutKeys)), ARRAY_A);
 
         return [
@@ -610,9 +595,9 @@ class MetricsImplementationService {
             $wpdb->esc_like('_site_transient_timeout_rrze_msm_') . '%',
             $wpdb->esc_like('_site_transient_timeout_rrze_multisite_manager_') . '%',
         ];
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The cleanup is explicitly administrator-initiated and deletes only this plugin's transient namespace in bounded batches.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The cleanup is explicitly administrator-initiated and deletes only this plugin's transient namespace in bounded batches.
         $values = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE (meta_key LIKE %s OR meta_key LIKE %s) LIMIT %d", ...array_merge($valueKeys, [self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE])));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Matching timeout rows are part of the same scoped transient namespace.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Matching timeout rows are part of the same scoped transient namespace.
         $timeouts = (int)$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->sitemeta} WHERE (meta_key LIKE %s OR meta_key LIKE %s) LIMIT %d", ...array_merge($timeoutKeys, [self::FULL_DATA_CLEANUP_TRANSIENT_BATCH_SIZE])));
 
         return [
@@ -631,7 +616,7 @@ class MetricsImplementationService {
 
         $optionsTable = (string)$wpdb->get_blog_prefix($siteId) . 'options';
         if (preg_match('/^[A-Za-z0-9_]+$/', $optionsTable) !== 1) {
-            throw new \RuntimeException(__('MSM website data could not be removed.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('MSM website data could not be removed.', 'rrze-multisite-manager'));
         }
 
         $patterns = [
@@ -646,7 +631,7 @@ class MetricsImplementationService {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- An explicit administrator cleanup deletes only MSM-owned option and transient prefixes from a validated WordPress options-table name.
         $deleted = $wpdb->query($wpdb->prepare("DELETE FROM $optionsTable WHERE $conditions", ...$patterns));
         if ($deleted === false || $wpdb->last_error) {
-            throw new \RuntimeException(__('MSM website data could not be removed.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('MSM website data could not be removed.', 'rrze-multisite-manager'));
         }
 
         wp_cache_delete('alloptions', 'options');
@@ -684,7 +669,7 @@ class MetricsImplementationService {
 
         $storageLock = $wpdb->esc_like('rrze_msm_storage_analysis_lock_') . '%';
         $shortcodeLock = $wpdb->esc_like('rrze_msm_shortcode_block_analysis_lock_') . '%';
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Locks are network options. Only a bounded existence check is needed to avoid deleting active analysis state.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Locks are network options. Only a bounded existence check is needed to avoid deleting active analysis state.
         $activeLock = $wpdb->get_var($wpdb->prepare("SELECT meta_id FROM {$wpdb->sitemeta} WHERE (meta_key LIKE %s OR meta_key LIKE %s) AND CAST(meta_value AS UNSIGNED) > %d LIMIT 1", $storageLock, $shortcodeLock, time() - HOUR_IN_SECONDS));
 
         return !empty($activeLock);
@@ -1897,25 +1882,12 @@ class MetricsImplementationService {
             $usagePhase = '';
         }
 
-        if ($usagePhase === 'plugin_sources' || $usagePhase === 'theme_sources') {
-            $usageBatchOffset = (int)($usageStatus['source_offset'] ?? 0);
-            $usageBatchTotal = (int)($usageStatus['source_total'] ?? 0);
-            $usageStatusMessage = $usagePhase === 'plugin_sources'
-                ? __('Static plugin source analysis is running.', 'rrze-multisite-manager')
-                : __('Static theme source analysis is running.', 'rrze-multisite-manager');
-        } elseif ($usagePhase === 'plugin_usage') {
+        if ($usagePhase === 'plugin_usage') {
             $usageStatusMessage = __('Plugin usage is being collected.', 'rrze-multisite-manager');
         } elseif ($usagePhase === 'theme_usage') {
             $usageStatusMessage = __('Theme usage is being collected.', 'rrze-multisite-manager');
         }
 
-        if (empty($usageStatus['is_cancelled']) && (int)($usageStatus['source_errors'] ?? 0) > 0) {
-            $usageStatusMessage = sprintf(
-                /* translators: %d: number of source analyses that could not be completed. */
-                _n('%d source analysis could not be completed.', '%d source analyses could not be completed.', (int)$usageStatus['source_errors'], 'rrze-multisite-manager'),
-                number_format_i18n((int)$usageStatus['source_errors'])
-            );
-        }
         $isComposing = !empty($status['is_composing']);
         $nextCompositionRunTimestamp = (int)($status['next_composition_run_timestamp'] ?? 0);
         $nextCompositionWatchdogTimestamp = (int)($status['next_composition_watchdog_timestamp'] ?? 0);
@@ -2200,7 +2172,7 @@ class MetricsImplementationService {
             get_current_network_id()
         );
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Aggregated dashboard metric query; result is persisted in the dashboard cache.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Aggregated dashboard metric query; result is persisted in the dashboard cache.
         $rows = $wpdb->get_results($sql);
 
         foreach ($rows as $row) {
@@ -2222,296 +2194,6 @@ class MetricsImplementationService {
     }
 
 
-    protected function analyzePluginCode(string $pluginFile): array {
-        $deadline = microtime(true) + self::SOURCE_ANALYSIS_MAX_SECONDS;
-        $collection = $this->getPluginAnalysisFiles($pluginFile, $deadline);
-        $files = (array)$collection['files'];
-        $truncated = !empty($collection['truncated']);
-        $globalSymbols = $this->getSourceStringSymbolsFromFiles($files, $deadline, $truncated);
-        $shortcodes = [];
-        $blocks = [];
-        $patterns = [];
-        $customPostTypes = [];
-        $taxonomies = [];
-        $imageSizes = [];
-        $hooks = [];
-        $filePath = '';
-        $source = '';
-        $extension = '';
-        $scannedFiles = 0;
-
-        foreach ($files as $filePath) {
-            if (microtime(true) >= $deadline) {
-                $truncated = true;
-                break;
-            }
-
-            $source = $this->readSourceAnalysisFile((string)$filePath);
-            $scannedFiles++;
-
-            if ($source === '') {
-                continue;
-            }
-
-            $extension = strtolower((string)pathinfo($filePath, PATHINFO_EXTENSION));
-
-            if (in_array($extension, ['php', 'js'], true)) {
-                $shortcodes = $this->mergeStringList($shortcodes, $this->extractShortcodesFromSource($source));
-                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromSource($source));
-                $patterns = $this->mergeStringList($patterns, $this->extractBlockPatternsFromSource($source));
-                $customPostTypes = $this->mergePostTypeRows($customPostTypes, $this->extractCustomPostTypesFromSource($source, $globalSymbols));
-                $taxonomies = $this->mergeTaxonomyRows($taxonomies, $this->extractTaxonomiesFromSource($source, $globalSymbols));
-                $imageSizes = $this->mergeImageSizeRows($imageSizes, $this->extractImageSizesFromSource($source, $globalSymbols));
-                $hooks = $this->mergeKeyedRows($hooks, $this->extractProvidedHooksFromSource($source));
-            }
-
-            if (strtolower((string)basename($filePath)) === 'block.json') {
-                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromMetadataFile($filePath));
-            }
-        }
-
-        sort($shortcodes, SORT_NATURAL | SORT_FLAG_CASE);
-        usort($blocks, [self::class, 'comparePluginNamedRows']);
-        sort($patterns, SORT_NATURAL | SORT_FLAG_CASE);
-        usort($customPostTypes, [self::class, 'comparePluginPostTypeRows']);
-        usort($taxonomies, [self::class, 'comparePluginTaxonomyRows']);
-        usort($imageSizes, [self::class, 'compareImageSizeRows']);
-        usort($hooks, [self::class, 'comparePluginNamedRows']);
-
-        return [
-            'shortcodes' => $shortcodes,
-            'blocks' => $blocks,
-            'block_patterns' => $patterns,
-            'custom_post_types' => $customPostTypes,
-            'taxonomies' => $taxonomies,
-            'image_sizes' => $imageSizes,
-            'provided_hooks' => $hooks,
-            'truncated' => $truncated,
-            'files_scanned' => $scannedFiles,
-            'analysis_version' => self::SOURCE_ANALYSIS_VERSION,
-        ];
-    }
-
-    protected function analyzeThemeCode(string $stylesheet): array {
-        $deadline = microtime(true) + self::SOURCE_ANALYSIS_MAX_SECONDS;
-        $collection = $this->getThemeAnalysisFiles($stylesheet, $deadline);
-        $files = (array)$collection['files'];
-        $truncated = !empty($collection['truncated']);
-        $shortcodes = [];
-        $blocks = [];
-        $patterns = [];
-        $imageSizes = [];
-        $hooks = [];
-        $filePath = '';
-        $source = '';
-        $extension = '';
-        $scannedFiles = 0;
-
-        foreach ($files as $filePath) {
-            if (microtime(true) >= $deadline) {
-                $truncated = true;
-                break;
-            }
-
-            $source = $this->readSourceAnalysisFile((string)$filePath);
-            $scannedFiles++;
-
-            if ($source === '') {
-                continue;
-            }
-
-            $extension = strtolower((string)pathinfo($filePath, PATHINFO_EXTENSION));
-
-            if (in_array($extension, ['php', 'js'], true)) {
-                $shortcodes = $this->mergeStringList($shortcodes, $this->extractShortcodesFromSource($source));
-                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromSource($source));
-                $patterns = $this->mergeStringList($patterns, $this->extractBlockPatternsFromSource($source));
-                $imageSizes = $this->mergeImageSizeRows($imageSizes, $this->extractImageSizesFromSource($source));
-                $hooks = $this->mergeKeyedRows($hooks, $this->extractProvidedHooksFromSource($source));
-            }
-
-            if (strtolower((string)basename($filePath)) === 'block.json') {
-                $blocks = $this->mergeKeyedRows($blocks, $this->extractBlocksFromMetadataFile($filePath));
-            }
-        }
-
-        sort($shortcodes, SORT_NATURAL | SORT_FLAG_CASE);
-        usort($blocks, [self::class, 'comparePluginNamedRows']);
-        sort($patterns, SORT_NATURAL | SORT_FLAG_CASE);
-        usort($imageSizes, [self::class, 'compareImageSizeRows']);
-        usort($hooks, [self::class, 'comparePluginNamedRows']);
-
-        return [
-            'shortcodes' => $shortcodes,
-            'blocks' => $blocks,
-            'block_patterns' => $patterns,
-            'image_sizes' => $imageSizes,
-            'provided_hooks' => $hooks,
-            'truncated' => $truncated,
-            'files_scanned' => $scannedFiles,
-            'analysis_version' => self::SOURCE_ANALYSIS_VERSION,
-        ];
-    }
-
-    /**
-     * @return array{files: string[], truncated: bool}
-     */
-    protected function getPluginAnalysisFiles(string $pluginFile, float $deadline): array {
-        $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
-
-        if ($mainFilePath === '' || !is_file($mainFilePath)) {
-            return ['files' => [], 'truncated' => false];
-        }
-
-        // A single-file plugin lives directly in WP_PLUGIN_DIR. Its directory
-        // must never become the scan root, otherwise every plugin is read.
-        if (dirname(ltrim($pluginFile, '/')) === '.') {
-            if ((int)filesize($mainFilePath) > self::SOURCE_ANALYSIS_MAX_FILE_BYTES) {
-                return ['files' => [], 'truncated' => true];
-            }
-
-            return ['files' => [$mainFilePath], 'truncated' => false];
-        }
-
-        return $this->collectSourceAnalysisFiles(dirname($mainFilePath), $deadline);
-    }
-
-    /**
-     * Collects analysable source files below one plugin or theme directory.
-     *
-     * The traversal is breadth-first and alphabetical: the main directory is
-     * read first, then each subdirectory level up to the configured depth.
-     * It is bounded by the configured number of PHP files, directory and
-     * file counts, per-file and total bytes, and a deadline. Symlinked,
-     * hidden and JavaScript dependency directories are not entered. The
-     * configured depth defines the analysis scope and does not mark a result
-     * as incomplete; reaching any other limit does.
-     *
-     * @return array{files: string[], truncated: bool}
-     */
-    protected function collectSourceAnalysisFiles(string $root, float $deadline): array {
-        $files = [];
-        $truncated = false;
-        $totalBytes = 0;
-        $phpFiles = 0;
-        $maxDepth = $this->getSourceAnalysisMaxDepth();
-        $maxPhpFiles = $this->getSourceAnalysisMaxPhpFiles();
-        $pendingDirectories = [[$root, 0]];
-        $visitedDirectories = 0;
-        $directory = '';
-        $depth = 0;
-        $entries = [];
-        $entry = null;
-        $size = 0;
-        $isPhp = false;
-
-        if (!is_dir($root)) {
-            return ['files' => [], 'truncated' => false];
-        }
-
-        while (!empty($pendingDirectories)) {
-            if ($visitedDirectories >= self::SOURCE_ANALYSIS_MAX_DIRECTORIES || microtime(true) >= $deadline) {
-                $truncated = true;
-                break;
-            }
-
-            [$directory, $depth] = array_shift($pendingDirectories);
-            $visitedDirectories++;
-
-            try {
-                $entries = iterator_to_array(new \FilesystemIterator((string)$directory, \FilesystemIterator::SKIP_DOTS), false);
-            } catch (\RuntimeException $error) {
-                // Unreadable directories are reported as an incomplete result
-                // instead of aborting the whole analysis.
-                $truncated = true;
-                continue;
-            }
-
-            usort($entries, [self::class, 'compareSourceAnalysisEntries']);
-
-            foreach ($entries as $entry) {
-                if (!$entry instanceof \SplFileInfo) {
-                    continue;
-                }
-
-                if ($entry->isDir()) {
-                    if ($depth < $maxDepth && !$entry->isLink() && !$this->isSkippedSourceAnalysisDirectory($entry->getFilename())) {
-                        $pendingDirectories[] = [$entry->getPathname(), $depth + 1];
-                    }
-                    continue;
-                }
-
-                if (!$entry->isFile() || !$this->isPluginAnalysisFile($entry->getPathname())) {
-                    continue;
-                }
-
-                $isPhp = strtolower((string)pathinfo($entry->getFilename(), PATHINFO_EXTENSION)) === 'php';
-
-                if ($isPhp && $phpFiles >= $maxPhpFiles) {
-                    $truncated = true;
-                    continue;
-                }
-
-                $size = (int)$entry->getSize();
-
-                if ($size > self::SOURCE_ANALYSIS_MAX_FILE_BYTES) {
-                    $truncated = true;
-                    continue;
-                }
-
-                if (count($files) >= self::SOURCE_ANALYSIS_MAX_FILES || $totalBytes + $size > self::SOURCE_ANALYSIS_MAX_TOTAL_BYTES) {
-                    $truncated = true;
-                    break 2;
-                }
-
-                $files[] = $entry->getPathname();
-                $totalBytes += $size;
-
-                if ($isPhp) {
-                    $phpFiles++;
-                }
-            }
-        }
-
-        return ['files' => $files, 'truncated' => $truncated];
-    }
-
-    protected static function compareSourceAnalysisEntries(\SplFileInfo $first, \SplFileInfo $second): int {
-        return strnatcasecmp($first->getFilename(), $second->getFilename());
-    }
-
-    protected function getSourceAnalysisMaxDepth(): int {
-        return isset($this->config) ? $this->config->getSourceAnalysisMaxDepth() : \RRZE\MultisiteManager\Config::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH;
-    }
-
-    protected function getSourceAnalysisMaxPhpFiles(): int {
-        return isset($this->config) ? $this->config->getSourceAnalysisMaxPhpFiles() : \RRZE\MultisiteManager\Config::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES;
-    }
-
-    protected function isSkippedSourceAnalysisDirectory(string $name): bool {
-        if ($name === '' || str_starts_with($name, '.')) {
-            return true;
-        }
-
-        return in_array(strtolower($name), self::SOURCE_ANALYSIS_SKIPPED_DIRECTORIES, true);
-    }
-
-    protected function readSourceAnalysisFile(string $filePath): string {
-        if ($filePath === '' || !is_readable($filePath)) {
-            return '';
-        }
-
-        $source = file_get_contents($filePath, false, null, 0, self::SOURCE_ANALYSIS_MAX_FILE_BYTES);
-
-        return is_string($source) ? $source : '';
-    }
-
-    protected function isPluginAnalysisFile(string $filePath): bool {
-        $extension = strtolower((string)pathinfo($filePath, PATHINFO_EXTENSION));
-
-        return in_array($extension, ['php', 'js', 'json'], true);
-    }
-
     protected function getPluginAbsolutePath(string $pluginFile): string {
         $pluginFile = ltrim($pluginFile, '/');
 
@@ -2520,87 +2202,6 @@ class MetricsImplementationService {
         }
 
         return trailingslashit(WP_PLUGIN_DIR) . $pluginFile;
-    }
-
-    protected function extractOptionsFromSource(string $source): array {
-        $results = [];
-        $patterns = [
-            'site' => '/\b(update_option|add_option|delete_option)\s*\(\s*[\'"]([^\'"]+)[\'"]/m',
-            'network' => '/\b(update_site_option|add_site_option|delete_site_option)\s*\(\s*[\'"]([^\'"]+)[\'"]/m',
-        ];
-        $scope = '';
-        $matches = [];
-        $index = 0;
-        $name = '';
-        $functionName = '';
-        $key = '';
-
-        foreach ($patterns as $scope => $pattern) {
-            $matches = [];
-
-            if (!preg_match_all($pattern, $source, $matches, PREG_SET_ORDER)) {
-                continue;
-            }
-
-            for ($index = 0; $index < count($matches); $index++) {
-                $functionName = (string)($matches[$index][1] ?? '');
-                $name = (string)($matches[$index][2] ?? '');
-
-                if ($name === '') {
-                    continue;
-                }
-
-                $key = $scope . ':' . $name;
-
-                if (!isset($results[$key])) {
-                    $results[$key] = [
-                        'name' => $name,
-                        'scope' => $scope,
-                        'functions' => [],
-                    ];
-                }
-
-                if (!in_array($functionName, $results[$key]['functions'], true)) {
-                    $results[$key]['functions'][] = $functionName;
-                }
-            }
-        }
-
-        return array_values($results);
-    }
-
-    protected function extractShortcodesFromSource(string $source): array {
-        $matches = [];
-        $results = [];
-        $index = 0;
-        $name = '';
-
-        if (!preg_match_all('/\badd_shortcode\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
-            return [];
-        }
-
-        for ($index = 0; $index < count($matches); $index++) {
-            $name = (string)($matches[$index][1] ?? '');
-
-            if ($name !== '') {
-                $results[] = $name;
-            }
-        }
-
-        return $results;
-    }
-
-    /**
-     * @return array{files: string[], truncated: bool}
-     */
-    protected function getThemeAnalysisFiles(string $stylesheet, float $deadline): array {
-        $baseDir = $this->getThemeAbsolutePath($stylesheet);
-
-        if ($baseDir === '' || !is_dir($baseDir)) {
-            return ['files' => [], 'truncated' => false];
-        }
-
-        return $this->collectSourceAnalysisFiles($baseDir, $deadline);
     }
 
     protected function getThemeAbsolutePath(string $stylesheet): string {
@@ -2704,595 +2305,176 @@ class MetricsImplementationService {
         ];
     }
 
-    protected function extractBlocksFromSource(string $source): array {
-        $matches = [];
-        $results = [];
-        $index = 0;
-        $name = '';
+    /**
+     * Plugin metadata for the detail page. Reads only readme.txt and
+     * package.json of the plugin directory and the header of the main file
+     * (get_file_data() reads at most 8 KiB). No other plugin file is opened;
+     * translations are found by file name in the language directories.
+     */
+    protected function getPluginSupplementaryData(string $pluginFile, array $header): array {
+        $mainFile = $this->getPluginAbsolutePath($pluginFile);
+        $directory = dirname($pluginFile) !== '.' ? dirname($mainFile) : '';
+        $readmeContent = $directory !== '' ? $this->readSmallPluginFile($directory . '/readme.txt') : '';
+        $packageContent = $directory !== '' ? $this->readSmallPluginFile($directory . '/package.json') : '';
+        $readmeData = $readmeContent !== '' ? $this->parsePluginReadmeTxtContent($readmeContent) : [];
+        $packageData = [];
+        $headerLicense = is_file($mainFile)
+            ? get_file_data($mainFile, ['name' => 'License', 'url' => 'License URI'])
+            : ['name' => '', 'url' => ''];
+        $sources = [__('Plugin header', 'rrze-multisite-manager')];
+        $installTimestamp = 0;
+        $modifiedTimestamp = 0;
+        $textDomain = !empty($header['TextDomain']) && is_string($header['TextDomain']) ? (string)$header['TextDomain'] : '';
+        $license = [];
+        $compatibility = [];
 
-        if (preg_match_all('/\bregister_block_type(?:_from_metadata)?\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $name = (string)($matches[$index][1] ?? '');
-
-                if ($name !== '' && str_contains($name, '/')) {
-                    $results[$name] = [
-                        'name' => $name,
-                        'source' => 'php',
-                    ];
-                }
-            }
+        if ($packageContent !== '') {
+            $packageData = $this->parsePluginPackageJsonContent($packageContent);
         }
 
-        if (preg_match_all('/\bregisterBlockType\s*\(\s*[\'"]([^\'"]+)[\'"]/mi', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $name = (string)($matches[$index][1] ?? '');
-
-                if ($name !== '') {
-                    $results[$name] = [
-                        'name' => $name,
-                        'source' => 'js',
-                    ];
-                }
-            }
+        if ($packageData !== []) {
+            $sources[] = 'package.json';
         }
 
-        return array_values($results);
-    }
-
-    protected function extractBlocksFromMetadataFile(string $filePath): array {
-        $json = (string)file_get_contents($filePath);
-        $data = [];
-        $name = '';
-        $title = '';
-        $description = '';
-        $category = '';
-        $icon = '';
-        $keywords = [];
-
-        if ($json === '') {
-            return [];
+        if ($readmeData !== []) {
+            $sources[] = 'readme.txt';
         }
 
-        $data = json_decode($json, true);
-
-        if (!is_array($data) || empty($data['name']) || !is_string($data['name'])) {
-            return [];
+        if (is_file($mainFile)) {
+            $installTimestamp = max(0, (int)@filectime($directory !== '' ? $directory : $mainFile));
+            $modifiedTimestamp = max(0, (int)@filemtime($mainFile));
         }
 
-        $name = (string)$data['name'];
-        $title = !empty($data['title']) && is_string($data['title']) ? (string)$data['title'] : '';
-        $description = !empty($data['description']) && is_string($data['description']) ? (string)$data['description'] : '';
-        $category = !empty($data['category']) && is_string($data['category']) ? (string)$data['category'] : '';
-        $icon = is_string($data['icon'] ?? null) ? (string)$data['icon'] : '';
-        $keywords = is_array($data['keywords'] ?? null) ? $this->normalizeStringList((array)$data['keywords']) : [];
+        $license = $this->mergePluginLicenseData(
+            $this->mergePluginLicenseData((array)($packageData['license'] ?? []), (array)($readmeData['license'] ?? [])),
+            ['name' => trim((string)($headerLicense['name'] ?? '')), 'url' => trim((string)($headerLicense['url'] ?? ''))]
+        );
+        $compatibility = $this->mergePluginCompatibility(
+            (array)($packageData['compatibility'] ?? []),
+            (array)($readmeData['compatibility'] ?? [])
+        );
+
+        // The plugin header is authoritative for the requirements WordPress enforces.
+        if (!empty($header['RequiresWP']) && is_string($header['RequiresWP'])) {
+            $compatibility['wp_requires'] = (string)$header['RequiresWP'];
+        }
+
+        if (!empty($header['RequiresPHP']) && is_string($header['RequiresPHP'])) {
+            $compatibility['php_requires'] = (string)$header['RequiresPHP'];
+        }
 
         return [
-            [
-                'name' => $name,
-                'source' => 'block.json',
-                'title' => $title,
-                'description' => $description,
-                'category' => $category,
-                'icon' => $icon,
-                'keywords' => $keywords,
-            ],
+            'author_email' => (string)($this->mergePluginAuthorData((array)($packageData['author'] ?? []), [])['email'] ?? ''),
+            'compatibility' => $compatibility,
+            'supports' => $this->mergeStringList(
+                (array)($packageData['supports'] ?? []),
+                (array)($readmeData['supports'] ?? [])
+            ),
+            'license' => $license,
+            'tags' => $this->mergeStringList(
+                (array)($packageData['tags'] ?? []),
+                (array)($readmeData['tags'] ?? [])
+            ),
+            'repository' => $this->mergePluginRepositoryData(
+                (array)($packageData['repository'] ?? []),
+                (array)($readmeData['repository'] ?? [])
+            ),
+            'translation_languages' => $this->getPluginTranslationLanguages(
+                $directory,
+                $textDomain !== '' ? $textDomain : ($directory !== '' ? basename($directory) : ''),
+                !empty($header['DomainPath']) && is_string($header['DomainPath']) ? (string)$header['DomainPath'] : '/languages'
+            ),
+            'metadata_sources' => $sources,
+            'readme_markdown' => $readmeContent !== '' ? $this->convertReadmeTxtToMarkdown($readmeContent) : '',
+            'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Not available.', 'rrze-multisite-manager'),
+            'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Not available.', 'rrze-multisite-manager'),
         ];
     }
 
-    protected function extractBlockPatternsFromSource(string $source): array {
-        $matches = [];
-        $results = [];
-        $index = 0;
-        $name = '';
-
-        if (!preg_match_all('/\bregister_block_pattern\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
-            return [];
-        }
-
-        for ($index = 0; $index < count($matches); $index++) {
-            $name = (string)($matches[$index][1] ?? '');
-
-            if ($name !== '') {
-                $results[] = $name;
-            }
-        }
-
-        return $results;
-    }
-
-    protected function extractProvidedHooksFromSource(string $source): array {
-        $matches = [];
-        $results = [];
-        $index = 0;
-        $type = '';
-        $name = '';
-
-        if (!preg_match_all('/\b(do_action|do_action_ref_array|apply_filters|apply_filters_ref_array)\s*\(\s*[\'"]([^\'"]+)[\'"]/m', $source, $matches, PREG_SET_ORDER)) {
-            return [];
-        }
-
-        for ($index = 0; $index < count($matches); $index++) {
-            $type = str_starts_with((string)($matches[$index][1] ?? ''), 'apply_filters') ? 'filter' : 'action';
-            $name = (string)($matches[$index][2] ?? '');
-
-            if ($name === '') {
-                continue;
-            }
-
-            $results[$type . ':' . $name] = [
-                'name' => $name,
-                'type' => $type,
-            ];
-        }
-
-        return array_values($results);
-    }
-
-    protected function extractCustomPostTypesFromSource(string $source, array $sharedSymbols = []): array {
-        $matches = [];
-        $results = [];
-        $index = 0;
-        $token = '';
-        $slug = '';
-        $context = '';
-        $label = '';
-        $type = '';
-        $symbols = array_merge($sharedSymbols, $this->getSourceStringSymbols($source));
-        $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
-
-        if (!preg_match_all('/(?<!function )\bregister_post_type\s*\(\s*([^,\)]+)\s*,/m', $source, $matches, PREG_OFFSET_CAPTURE)) {
-            return [];
-        }
-
-        for ($index = 0; $index < count($matches[1]); $index++) {
-            $token = trim((string)($matches[1][$index][0] ?? ''));
-            $context = substr($source, (int)($matches[0][$index][1] ?? 0), 1600);
-            $slug = $this->resolveSourceStringToken($token, $symbols);
-            $label = $this->extractCustomPostTypeLabel($context, __('Dynamically registered post type', 'rrze-multisite-manager'));
-            $type = $this->extractCustomPostTypeDisplayType($context);
-
-            if ($slug === '') {
-                $results['__dynamic_cpt_' . $index] = [
-                    'slug' => __('Cannot be resolved statically', 'rrze-multisite-manager'),
-                    'label' => $label,
-                    'type' => $type,
-                    'resolved' => false,
-                ];
-                continue;
-            }
-
-            $results[$slug] = [
-                'slug' => $slug,
-                'label' => $this->extractCustomPostTypeLabel($context, $slug),
-                'type' => $type,
-                'resolved' => true,
-            ];
-        }
-
-        return array_values($results);
-    }
-
-    protected function extractCustomPostTypeLabel(string $context, string $fallback): string {
-        $matches = [];
-
-        if (preg_match('/[\'"]name[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
-            return (string)($matches[1] ?? $fallback);
-        }
-
-        if (preg_match('/[\'"]label[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
-            return (string)($matches[1] ?? $fallback);
-        }
-
-        return $fallback;
-    }
-
-    protected function extractCustomPostTypeDisplayType(string $context): string {
-        if (preg_match('/[\'"]hierarchical[\'"]\s*=>\s*true/i', $context)) {
-            return 'page';
-        }
-
-        return 'post';
-    }
-
-    protected function extractTaxonomiesFromSource(string $source, array $sharedSymbols = []): array {
-        $matches = [];
-        $results = [];
-        $index = 0;
-        $taxonomyToken = '';
-        $objectTypeToken = '';
-        $slug = '';
-        $context = '';
-        $label = '';
-        $objectTypes = [];
-        $objectType = '';
-        $symbols = array_merge($sharedSymbols, $this->getSourceStringSymbols($source));
-        $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
-
-        if (!preg_match_all('/(?<!function )\bregister_taxonomy\s*\(\s*(.+?)\s*,\s*(\[.*?\]|array\s*\(.*?\)|[^,\)]+)/ms', $source, $matches, PREG_OFFSET_CAPTURE)) {
-            return [];
-        }
-
-        for ($index = 0; $index < count($matches[1]); $index++) {
-            $taxonomyToken = trim((string)($matches[1][$index][0] ?? ''));
-            $objectTypeToken = trim((string)($matches[2][$index][0] ?? ''));
-            $context = substr($source, (int)($matches[0][$index][1] ?? 0), 1800);
-            $slug = $this->resolveSourceStringToken($taxonomyToken, $symbols);
-            $label = $this->extractTaxonomyLabel($context, __('Dynamically registered taxonomy', 'rrze-multisite-manager'));
-            $objectTypes = $this->extractTaxonomyObjectTypes($objectTypeToken, $symbols);
-
-            if ($slug === '') {
-                if (empty($objectTypes)) {
-                    $objectTypes[] = __('Cannot be resolved statically', 'rrze-multisite-manager');
-                }
-
-                foreach ($objectTypes as $objectType) {
-                    $results['__dynamic_tax_' . $index . ':' . $objectType] = [
-                        'slug' => __('Cannot be resolved statically', 'rrze-multisite-manager'),
-                        'label' => $label,
-                        'object_type' => $objectType,
-                        'resolved' => false,
-                    ];
-                }
-
-                continue;
-            }
-
-            if (empty($objectTypes)) {
-                $objectTypes[] = '';
-            }
-
-            foreach ($objectTypes as $objectType) {
-                $results[$slug . ':' . $objectType] = [
-                    'slug' => $slug,
-                    'label' => $this->extractTaxonomyLabel($context, $slug),
-                    'object_type' => $objectType,
-                    'resolved' => true,
-                ];
-            }
-        }
-
-        return array_values($results);
-    }
-
-    protected function extractImageSizesFromSource(string $source, array $sharedSymbols = []): array {
-        $results = [];
-        $matches = [];
-        $index = 0;
-        $nameToken = '';
-        $widthToken = '';
-        $heightToken = '';
-        $cropToken = '';
-        $name = '';
-        $width = 0;
-        $height = 0;
-        $crop = '';
-        $symbols = array_merge($sharedSymbols, $this->getSourceStringSymbols($source));
-        $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
-
-        if (preg_match_all('/\badd_image_size\s*\(\s*([^,\)]+)\s*,\s*([^,\)]+)\s*,\s*([^,\)]+)(?:\s*,\s*([^\)]+))?\)/m', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $nameToken = trim((string)($matches[$index][1] ?? ''));
-                $widthToken = trim((string)($matches[$index][2] ?? ''));
-                $heightToken = trim((string)($matches[$index][3] ?? ''));
-                $cropToken = trim((string)($matches[$index][4] ?? ''));
-                $name = $this->resolveSourceStringToken($nameToken, $symbols);
-
-                if ($name === '') {
-                    continue;
-                }
-
-                $width = $this->resolveSourceIntegerToken($widthToken, $symbols);
-                $height = $this->resolveSourceIntegerToken($heightToken, $symbols);
-                $crop = $this->normalizeImageSizeCropToken($cropToken, $symbols);
-
-                $results[$name] = [
-                    'slug' => $name,
-                    'label' => $this->formatImageSizeLabel($name),
-                    'width' => $width,
-                    'height' => $height,
-                    'crop' => $crop,
-                ];
-            }
-        }
-
-        if (preg_match_all('/\bset_post_thumbnail_size\s*\(\s*([^,\)]+)\s*,\s*([^,\)]+)(?:\s*,\s*([^\)]+))?\)/m', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $widthToken = trim((string)($matches[$index][1] ?? ''));
-                $heightToken = trim((string)($matches[$index][2] ?? ''));
-                $cropToken = trim((string)($matches[$index][3] ?? ''));
-
-                $results['post-thumbnail'] = [
-                    'slug' => 'post-thumbnail',
-                    'label' => $this->formatImageSizeLabel('post-thumbnail'),
-                    'width' => $this->resolveSourceIntegerToken($widthToken, $symbols),
-                    'height' => $this->resolveSourceIntegerToken($heightToken, $symbols),
-                    'crop' => $this->normalizeImageSizeCropToken($cropToken, $symbols),
-                ];
-            }
-        }
-
-        return array_values($results);
-    }
-
-    protected function extractTaxonomyLabel(string $context, string $fallback): string {
-        $matches = [];
-
-        if (preg_match('/[\'"]name[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
-            return (string)($matches[1] ?? $fallback);
-        }
-
-        if (preg_match('/[\'"]label[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i', $context, $matches)) {
-            return (string)($matches[1] ?? $fallback);
-        }
-
-        return $fallback;
-    }
-
-    protected function extractTaxonomyObjectTypes(string $token, array $symbols): array {
-        $objectTypes = [];
-        $objectType = '';
-        $matches = [];
-        $parts = [];
-        $part = '';
-
-        $token = trim($token);
-
-        if ($token === '') {
-            return [];
-        }
-
-        if (str_starts_with($token, '[') && str_ends_with($token, ']')) {
-            $token = trim(substr($token, 1, -1));
-            $parts = preg_split('/\s*,\s*/', $token);
-
-            if (!is_array($parts)) {
-                return [];
-            }
-
-            foreach ($parts as $part) {
-                $objectType = $this->resolveSourceStringToken((string)$part, $symbols);
-
-                if ($objectType !== '' && !in_array($objectType, $objectTypes, true)) {
-                    $objectTypes[] = $objectType;
-                }
-            }
-
-            return $objectTypes;
-        }
-
-        if (preg_match('/^array\s*\((.*)\)$/is', $token, $matches)) {
-            $parts = preg_split('/\s*,\s*/', (string)($matches[1] ?? ''));
-
-            if (!is_array($parts)) {
-                return [];
-            }
-
-            foreach ($parts as $part) {
-                $objectType = $this->resolveSourceStringToken((string)$part, $symbols);
-
-                if ($objectType !== '' && !in_array($objectType, $objectTypes, true)) {
-                    $objectTypes[] = $objectType;
-                }
-            }
-
-            return $objectTypes;
-        }
-
-        $objectType = $this->resolveSourceStringToken($token, $symbols);
-
-        if ($objectType !== '') {
-            return [$objectType];
-        }
-
-        return [];
-    }
-
-    protected function getSourceStringSymbols(string $source): array {
-        $symbols = [];
-        $matches = [];
-        $index = 0;
-        $name = '';
-        $value = '';
-
-        if (preg_match_all('/define\s*\(\s*[\'"]([A-Z0-9_]+)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)/', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $name = (string)($matches[$index][1] ?? '');
-                $value = (string)($matches[$index][2] ?? '');
-
-                if ($name !== '' && $value !== '') {
-                    $symbols[$name] = $value;
-                }
-            }
-        }
-
-        if (preg_match_all('/(?:public|protected|private)?\s*const\s+([A-Z0-9_]+)\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/i', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $name = (string)($matches[$index][1] ?? '');
-                $value = (string)($matches[$index][2] ?? '');
-
-                if ($name !== '' && $value !== '') {
-                    $symbols[$name] = $value;
-                }
-            }
-        }
-
-        if (preg_match_all('/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $name = '$' . (string)($matches[$index][1] ?? '');
-                $value = (string)($matches[$index][2] ?? '');
-
-                if ($name !== '$' && $value !== '') {
-                    $symbols[$name] = $value;
-                }
-            }
-        }
-
-        if (preg_match_all('/\$this->([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $name = '$this->' . (string)($matches[$index][1] ?? '');
-                $value = (string)($matches[$index][2] ?? '');
-
-                if ($name !== '$this->' && $value !== '') {
-                    $symbols[$name] = $value;
-                }
-            }
-        }
-
-        if (preg_match_all('/[\'"]([A-Za-z0-9_\-]+)[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/', $source, $matches, PREG_SET_ORDER)) {
-            for ($index = 0; $index < count($matches); $index++) {
-                $name = (string)($matches[$index][1] ?? '');
-                $value = (string)($matches[$index][2] ?? '');
-
-                if ($name !== '' && $value !== '' && !isset($symbols[$name])) {
-                    $symbols[$name] = $value;
-                }
-            }
-        }
-
-        return $symbols;
-    }
-
-    protected function getSourceStringSymbolsFromFiles(array $files, float $deadline, bool &$truncated): array {
-        $symbols = [];
-        $filePath = '';
-        $source = '';
-
-        foreach ($files as $filePath) {
-            if (!is_string($filePath) || $filePath === '') {
-                continue;
-            }
-
-            if (microtime(true) >= $deadline) {
-                $truncated = true;
-                break;
-            }
-
-            $source = $this->readSourceAnalysisFile($filePath);
-
-            if ($source === '') {
-                continue;
-            }
-
-            $symbols = array_merge($symbols, $this->getSourceStringSymbols($source));
-            $symbols = $this->resolveGetterBackedSourceSymbols($source, $symbols);
-        }
-
-        return $symbols;
-    }
-
-    protected function resolveGetterBackedSourceSymbols(string $source, array $symbols): array {
-        $matches = [];
-        $index = 0;
-        $name = '';
-        $key = '';
-
-        if (!preg_match_all('/(\$this->\w+|\$\w+)\s*=\s*(?:\(string\)\s*)?(?:\$this->config|\$config|\$this->settings|\$settings)->get\(\s*[\'"]([^\'"]+)[\'"]\s*\)\s*;/i', $source, $matches, PREG_SET_ORDER)) {
-            return $symbols;
-        }
-
-        for ($index = 0; $index < count($matches); $index++) {
-            $name = trim((string)($matches[$index][1] ?? ''));
-            $key = trim((string)($matches[$index][2] ?? ''));
-
-            if ($name === '' || $key === '' || !isset($symbols[$key]) || !is_string($symbols[$key])) {
-                continue;
-            }
-
-            $symbols[$name] = (string)$symbols[$key];
-        }
-
-        return $symbols;
-    }
-
-    protected function resolveSourceStringToken(string $token, array $symbols): string {
-        $matches = [];
-        $key = '';
-
-        $token = trim($token);
-
-        if ($token === '') {
+    /** Reads a metadata file of at most 512 KiB; larger or missing files are ignored. */
+    protected function readSmallPluginFile(string $path): string {
+        $size = is_file($path) && is_readable($path) ? (int)@filesize($path) : 0;
+
+        if ($size <= 0 || $size > 524288) {
             return '';
         }
 
-        if (preg_match('/^[\'"]([^\'"]+)[\'"]$/', $token, $matches)) {
-            return (string)($matches[1] ?? '');
+        return (string)@file_get_contents($path);
+    }
+
+    /**
+     * Languages of the plugin's translation files. Only file names in the
+     * plugin's Domain Path and in WP_LANG_DIR/plugins are listed; no
+     * directory is traversed recursively.
+     *
+     * @return string[]
+     */
+    protected function getPluginTranslationLanguages(string $directory, string $textDomain, string $domainPath): array {
+        $directories = [];
+        $languages = [];
+        $searchDirectory = '';
+        $files = [];
+        $file = '';
+        $matches = [];
+
+        if ($textDomain === '') {
+            return [];
         }
 
-        if (isset($symbols[$token]) && is_string($symbols[$token])) {
-            return (string)$symbols[$token];
+        if ($directory !== '') {
+            $directories[] = rtrim($directory . '/' . trim($domainPath, '/'), '/');
         }
 
-        if (preg_match('/^(?:\(string\)\s*)?(?:\$this->config|\$config|\$this->settings|\$settings)->get\(\s*[\'"]([^\'"]+)[\'"]\s*\)$/i', $token, $matches)) {
-            $key = (string)($matches[1] ?? '');
+        if (defined('WP_LANG_DIR')) {
+            $directories[] = WP_LANG_DIR . '/plugins';
+        }
 
-            if ($key !== '' && isset($symbols[$key]) && is_string($symbols[$key])) {
-                return (string)$symbols[$key];
+        foreach (array_unique($directories) as $searchDirectory) {
+            if (!is_dir($searchDirectory)) {
+                continue;
+            }
+
+            $files = array_merge(
+                (array)glob($searchDirectory . '/' . $textDomain . '-*.mo'),
+                (array)glob($searchDirectory . '/' . $textDomain . '-*.po'),
+                (array)glob($searchDirectory . '/' . $textDomain . '-*.l10n.php')
+            );
+
+            foreach ($files as $file) {
+                if (preg_match('/^' . preg_quote($textDomain, '/') . '-([a-z]{2,3}(?:_[A-Z]{2})?(?:_[A-Za-z0-9]+)?)\.(?:mo|po|l10n\.php)$/', basename((string)$file), $matches)) {
+                    $languages[str_replace('_', '-', (string)$matches[1])] = true;
+                }
             }
         }
 
-        if (str_starts_with($token, 'self::')) {
-            $token = substr($token, 6);
-        } elseif (str_starts_with($token, 'static::')) {
-            $token = substr($token, 8);
-        }
+        $languages = array_keys($languages);
+        sort($languages, SORT_NATURAL | SORT_FLAG_CASE);
 
-        if (isset($symbols[$token]) && is_string($symbols[$token])) {
-            return (string)$symbols[$token];
-        }
-
-        return '';
+        return $languages;
     }
 
-    protected function resolveSourceIntegerToken(string $token, array $symbols): int {
-        $value = $this->resolveSourceStringToken($token, $symbols);
+    /** Converts the WordPress readme.txt headings to the Markdown subset rendered on detail pages. */
+    protected function convertReadmeTxtToMarkdown(string $content): string {
+        $lines = explode("\n", str_replace("\r", '', $content));
+        $line = '';
+        $matches = [];
+        $markdown = [];
 
-        if ($value !== '' && is_numeric($value)) {
-            return max(0, (int)$value);
+        foreach ($lines as $line) {
+            if (preg_match('/^\s*(={2,3})\s*(.+?)\s*={2,3}\s*$/', $line, $matches)) {
+                $markdown[] = '### ' . $matches[2];
+                continue;
+            }
+
+            if (preg_match('/^\s*=\s*(.+?)\s*=\s*$/', $line, $matches)) {
+                $markdown[] = '#### ' . $matches[1];
+                continue;
+            }
+
+            $markdown[] = $line;
         }
 
-        $token = trim($token);
-
-        if ($token === '') {
-            return 0;
-        }
-
-        if (preg_match('/^\(?\s*(\d+)\s*\)?$/', $token, $matches)) {
-            return (int)($matches[1] ?? 0);
-        }
-
-        if (isset($symbols[$token]) && is_numeric($symbols[$token])) {
-            return max(0, (int)$symbols[$token]);
-        }
-
-        return 0;
-    }
-
-    protected function normalizeImageSizeCropToken(string $token, array $symbols): string {
-        $token = trim($token);
-
-        if ($token === '') {
-            return __('No', 'rrze-multisite-manager');
-        }
-
-        if (preg_match('/^\[\s*[\'"]([^\'"]+)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\]$/', $token, $matches)) {
-            return (string)($matches[1] ?? '') . ' / ' . (string)($matches[2] ?? '');
-        }
-
-        if (preg_match('/^array\s*\(\s*[\'"]([^\'"]+)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)$/i', $token, $matches)) {
-            return (string)($matches[1] ?? '') . ' / ' . (string)($matches[2] ?? '');
-        }
-
-        $resolved = strtolower($this->resolveSourceStringToken($token, $symbols));
-
-        if ($resolved === 'true' || strtolower($token) === 'true') {
-            return __('Yes', 'rrze-multisite-manager');
-        }
-
-        if ($resolved === 'false' || strtolower($token) === 'false') {
-            return __('No', 'rrze-multisite-manager');
-        }
-
-        return $token;
+        return trim(implode("\n", $markdown));
     }
 
     protected function formatImageSizeCropValue(mixed $crop): string {
@@ -3325,56 +2507,7 @@ class MetricsImplementationService {
         return ucwords(str_replace(['-', '_'], ' ', $slug));
     }
 
-    protected function indexImageSizesBySlug(array $imageSizes, string $providerName): array {
-        $result = [];
-        $item = [];
-        $slug = '';
-
-        foreach ($imageSizes as $item) {
-            $slug = (string)($item['slug'] ?? '');
-
-            if ($slug === '') {
-                continue;
-            }
-
-            if (!isset($result[$slug])) {
-                $result[$slug] = [
-                    'providers' => [],
-                ];
-            }
-
-            if ($providerName !== '' && !in_array($providerName, $result[$slug]['providers'], true)) {
-                $result[$slug]['providers'][] = $providerName;
-            }
-        }
-
-        return $result;
-    }
-
-    protected function mergeImageSizeProviderMap(array $current, array $additional): array {
-        $slug = '';
-        $provider = '';
-
-        foreach ($additional as $slug => $data) {
-            if (!isset($current[$slug])) {
-                $current[$slug] = [
-                    'providers' => [],
-                ];
-            }
-
-            foreach ((array)($data['providers'] ?? []) as $provider) {
-                if (!is_string($provider) || $provider === '' || in_array($provider, $current[$slug]['providers'], true)) {
-                    continue;
-                }
-
-                $current[$slug]['providers'][] = $provider;
-            }
-        }
-
-        return $current;
-    }
-
-    protected function determineImageSizeProviderType(string $slug, array $providerNames): string {
+    protected function determineImageSizeProviderType(string $slug): string {
         $coreSlugs = [
             'thumbnail',
             'medium',
@@ -3385,42 +2518,11 @@ class MetricsImplementationService {
             '2048x2048',
         ];
 
-        if (!empty($providerNames)) {
-            return __('Theme/plugin', 'rrze-multisite-manager');
-        }
-
         if (in_array($slug, $coreSlugs, true)) {
             return __('WordPress Core', 'rrze-multisite-manager');
         }
 
         return __('Not directly assigned', 'rrze-multisite-manager');
-    }
-
-    protected function mergeDiscoveredOptions(array $current, array $additional): array {
-        $result = [];
-        $item = [];
-        $key = '';
-
-        foreach ($current as $item) {
-            $key = (string)($item['scope'] ?? '') . ':' . (string)($item['name'] ?? '');
-            $result[$key] = $item;
-        }
-
-        foreach ($additional as $item) {
-            $key = (string)($item['scope'] ?? '') . ':' . (string)($item['name'] ?? '');
-
-            if (!isset($result[$key])) {
-                $result[$key] = $item;
-                continue;
-            }
-
-            $result[$key]['functions'] = $this->mergeStringList(
-                (array)($result[$key]['functions'] ?? []),
-                (array)($item['functions'] ?? [])
-            );
-        }
-
-        return array_values($result);
     }
 
     protected function mergeStringList(array $current, array $additional): array {
@@ -3437,106 +2539,6 @@ class MetricsImplementationService {
         return $current;
     }
 
-    protected function mergeKeyedRows(array $current, array $additional): array {
-        $result = [];
-        $item = [];
-        $key = '';
-
-        foreach ($current as $item) {
-            $key = (string)($item['name'] ?? '');
-
-            if ($key !== '') {
-                $result[$key] = $item;
-            }
-        }
-
-        foreach ($additional as $item) {
-            $key = (string)($item['name'] ?? '');
-
-            if ($key !== '') {
-                if (isset($result[$key]) && is_array($result[$key])) {
-                    $result[$key] = array_merge($result[$key], $item);
-                } else {
-                    $result[$key] = $item;
-                }
-            }
-        }
-
-        return array_values($result);
-    }
-
-    protected function mergePostTypeRows(array $current, array $additional): array {
-        $result = [];
-        $item = [];
-        $key = '';
-
-        foreach ($current as $item) {
-            $key = (string)($item['slug'] ?? '');
-
-            if ($key !== '') {
-                $result[$key] = $item;
-            }
-        }
-
-        foreach ($additional as $item) {
-            $key = (string)($item['slug'] ?? '');
-
-            if ($key !== '') {
-                $result[$key] = $item;
-            }
-        }
-
-        return array_values($result);
-    }
-
-    protected function mergeTaxonomyRows(array $current, array $additional): array {
-        $result = [];
-        $item = [];
-        $key = '';
-
-        foreach ($current as $item) {
-            $key = (string)($item['slug'] ?? '') . ':' . (string)($item['object_type'] ?? '');
-
-            if ($key !== ':') {
-                $result[$key] = $item;
-            }
-        }
-
-        foreach ($additional as $item) {
-            $key = (string)($item['slug'] ?? '') . ':' . (string)($item['object_type'] ?? '');
-
-            if ($key !== ':') {
-                $result[$key] = $item;
-            }
-        }
-
-        return array_values($result);
-    }
-
-    protected function mergeImageSizeRows(array $current, array $additional): array {
-        $result = [];
-        $item = [];
-        $key = '';
-
-        foreach ($current as $item) {
-            $key = (string)($item['slug'] ?? '');
-
-            if ($key !== '') {
-                $result[$key] = $item;
-            }
-        }
-
-        foreach ($additional as $item) {
-            $key = (string)($item['slug'] ?? '');
-
-            if ($key !== '') {
-                $result[$key] = $item;
-            }
-        }
-
-        return array_values($result);
-    }
-
     protected function getPluginReleaseDateLabel(?object $updateItem): string {
         if ($updateItem !== null && !empty($updateItem->last_updated) && is_string($updateItem->last_updated)) {
             return $this->formatDate((string)$updateItem->last_updated);
@@ -3545,79 +2547,8 @@ class MetricsImplementationService {
         return __('Not available.', 'rrze-multisite-manager');
     }
 
-    protected function getPluginSupplementaryData(string $pluginFile): array {
-        $pluginDir = $this->getPluginDirectoryPath($pluginFile);
-        $packageJsonPath = $pluginDir !== '' ? $pluginDir . '/package.json' : '';
-        $readmeTxtPath = $pluginDir !== '' ? $pluginDir . '/readme.txt' : '';
-        $readmeMarkdownPath = $this->getFirstExistingPath([
-            $pluginDir !== '' ? $pluginDir . '/README.md' : '',
-            $pluginDir !== '' ? $pluginDir . '/readme.md' : '',
-        ]);
-        $packageData = is_readable($packageJsonPath) ? $this->parsePluginPackageJson($packageJsonPath) : [];
-        $readmeData = is_readable($readmeTxtPath) ? $this->parsePluginReadmeTxt($readmeTxtPath) : [];
-        $readmeMarkdown = is_readable($readmeMarkdownPath) ? (string)file_get_contents($readmeMarkdownPath) : '';
-        $sources = [];
-
-        if ($packageData !== []) {
-            $sources[] = 'package.json';
-        }
-
-        if ($readmeData !== []) {
-            $sources[] = 'readme.txt';
-        }
-
-        if (trim($readmeMarkdown) !== '') {
-            $sources[] = basename($readmeMarkdownPath);
-        }
-
-        return [
-            'compatibility' => $this->mergePluginCompatibility(
-                (array)($packageData['compatibility'] ?? []),
-                (array)($readmeData['compatibility'] ?? [])
-            ),
-            'supports' => $this->mergeStringList(
-                (array)($packageData['supports'] ?? []),
-                (array)($readmeData['supports'] ?? [])
-            ),
-            'author' => $this->mergePluginAuthorData(
-                (array)($packageData['author'] ?? []),
-                (array)($readmeData['author'] ?? [])
-            ),
-            'license' => $this->mergePluginLicenseData(
-                (array)($packageData['license'] ?? []),
-                (array)($readmeData['license'] ?? [])
-            ),
-            'tags' => $this->mergeStringList(
-                (array)($packageData['tags'] ?? []),
-                (array)($readmeData['tags'] ?? [])
-            ),
-            'description' => $this->pickFirstNonEmptyString([
-                (string)($packageData['description'] ?? ''),
-                (string)($readmeData['description'] ?? ''),
-            ]),
-            'repository' => $this->mergePluginRepositoryData(
-                (array)($packageData['repository'] ?? []),
-                (array)($readmeData['repository'] ?? [])
-            ),
-            'readme_markdown' => $readmeMarkdown,
-            'sources' => $sources,
-        ];
-    }
-
-    protected function getPluginDirectoryPath(string $pluginFile): string {
-        $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
-
-        if ($mainFilePath === '' || !file_exists($mainFilePath)) {
-            return '';
-        }
-
-        return dirname($mainFilePath);
-    }
-
-    protected function getTranslationLanguages(string $target, string $textDomain = '', string $type = 'plugin'): array {
-        $baseDir = $type === 'theme'
-            ? $this->getThemeAbsolutePath($target)
-            : $this->getPluginDirectoryPath($target);
+    protected function getThemeTranslationLanguages(string $stylesheet, string $textDomain): array {
+        $baseDir = $this->getThemeAbsolutePath($stylesheet);
         $directories = [];
         $directory = '';
         $files = [];
@@ -3705,29 +2636,11 @@ class MetricsImplementationService {
         return str_replace('_', '-', $language);
     }
 
-    protected function getPluginInstallTimestamp(string $pluginFile): int {
-        $pluginDir = $this->getPluginDirectoryPath($pluginFile);
-        $target = $pluginDir !== '' && is_dir($pluginDir) ? $pluginDir : $this->getPluginAbsolutePath($pluginFile);
-
-        if ($target === '' || !file_exists($target)) {
-            return 0;
-        }
-
-        return max(0, (int)@filectime($target));
-    }
-
-    protected function getPluginModifiedTimestamp(string $pluginFile): int {
-        $mainFilePath = $this->getPluginAbsolutePath($pluginFile);
-
-        if ($mainFilePath === '' || !file_exists($mainFilePath)) {
-            return 0;
-        }
-
-        return max(0, (int)@filemtime($mainFilePath));
-    }
-
     protected function parsePluginPackageJson(string $path): array {
-        $content = (string)file_get_contents($path);
+        return $this->parsePluginPackageJsonContent((string)file_get_contents($path));
+    }
+
+    protected function parsePluginPackageJsonContent(string $content): array {
         $data = [];
         $repository = [];
         $compatibility = [];
@@ -3776,7 +2689,10 @@ class MetricsImplementationService {
     }
 
     protected function parsePluginReadmeTxt(string $path): array {
-        $content = (string)file_get_contents($path);
+        return $this->parsePluginReadmeTxtContent((string)file_get_contents($path));
+    }
+
+    protected function parsePluginReadmeTxtContent(string $content): array {
         $compatibility = [
             'wp_requires' => '',
             'wp_tested_up_to' => '',
@@ -4198,7 +3114,7 @@ class MetricsImplementationService {
             $days
         );
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lightweight aggregate used for dashboard summary generation and covered by dashboard caching.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Lightweight aggregate used for dashboard summary generation and covered by dashboard caching.
         return (int)$wpdb->get_var($sql);
     }
 
@@ -4496,20 +3412,12 @@ class MetricsImplementationService {
             return null;
         }
 
-        $globalTables = array_merge((array)$wpdb->tables('global'), (array)$wpdb->tables('ms_global'));
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('runs');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('shortcodes');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('blocks');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('mediaindex');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('dashboard_metrics');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_metrics');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_metrics');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_source_metrics');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_source_metrics');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_metrics_staging');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_metrics_staging');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('plugin_source_metrics_staging');
-        $globalTables[] = (new \RRZE\MultisiteManager\Analysis\AnalysisStore())->table('theme_source_metrics_staging');
+        $analysisStore = new \RRZE\MultisiteManager\Analysis\AnalysisStore();
+        $globalTables = array_merge(
+            (array)$wpdb->tables('global'),
+            (array)$wpdb->tables('ms_global'),
+            $analysisStore->tables()
+        );
         $globalTables = array_values(array_unique(array_filter($globalTables, 'is_string')));
         $where = ['table_schema = DATABASE()', 'table_name LIKE %s'];
         $arguments = [$wpdb->esc_like($prefix) . '%'];
@@ -4525,7 +3433,7 @@ class MetricsImplementationService {
             $arguments = array_merge($arguments, $globalTables);
         }
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Database table metadata is intentionally sampled by the dashboard metrics process and persisted as a historical snapshot.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Database table metadata is intentionally sampled by the dashboard metrics process and persisted as a historical snapshot.
         $size = $wpdb->get_var($wpdb->prepare(
             'SELECT SUM(data_length + index_length) FROM information_schema.tables WHERE ' . implode(' AND ', $where),
             ...$arguments
@@ -4539,7 +3447,7 @@ class MetricsImplementationService {
             'theme' => fn(): array => $this->getCurrentThemeDetails(),
             'plugins' => fn(): array => $this->getCurrentSiteActivePlugins(),
             'users' => fn(): array => $this->getCurrentSiteUsers(),
-            'image_sizes' => fn(array $theme, array $plugins): array => $this->getCurrentSiteImageSizes($theme, $plugins),
+            'image_sizes' => fn(): array => $this->getCurrentSiteImageSizes(),
             'content_types' => fn(): array => $this->getCurrentSiteContentTypeCounts(),
             'custom_post_types' => fn(): array => $this->getCurrentSiteCustomPostTypes(),
             'block_template_types' => fn(): array => $this->getCurrentSiteBlockTemplateTypes(),
@@ -4580,11 +3488,51 @@ class MetricsImplementationService {
             'author' => $theme instanceof \WP_Theme ? (string)$theme->get('Author') : '',
             'author_url' => $theme instanceof \WP_Theme ? (string)$theme->get('AuthorURI') : '',
             'tags' => is_array($tags) ? $this->normalizeStringList($tags) : [],
+            'allowed_themes' => $this->getCurrentSiteAllowedThemes($theme instanceof \WP_Theme ? (string)$theme->get_stylesheet() : ''),
         ];
 
         $this->setCachedCurrentSiteDetailSection('theme', $result);
 
         return $result;
+    }
+
+    /**
+     * Themes the current website may activate (network- or site-enabled),
+     * without the active theme and without themes with errors (for example
+     * a missing parent theme), as on Appearance > Themes.
+     */
+    protected function getCurrentSiteAllowedThemes(string $activeStylesheet): array {
+        $themes = wp_get_themes(['errors' => false, 'allowed' => true, 'blog_id' => get_current_blog_id()]);
+        $results = [];
+        $stylesheet = '';
+        $theme = null;
+        $screenshot = '';
+        $parent = null;
+
+        foreach ($themes as $stylesheet => $theme) {
+            if (!$theme instanceof \WP_Theme || (string)$stylesheet === $activeStylesheet) {
+                continue;
+            }
+
+            $screenshot = $theme->get_screenshot();
+            $parent = $theme->parent();
+            $results[] = [
+                'name' => (string)$theme->get('Name') ?: (string)$stylesheet,
+                'stylesheet' => (string)$stylesheet,
+                'version' => (string)$theme->get('Version'),
+                'screenshot' => is_string($screenshot) ? $screenshot : '',
+                'is_block_theme' => method_exists($theme, 'is_block_theme') && (bool)$theme->is_block_theme(),
+                'parent_name' => $parent instanceof \WP_Theme ? (string)$parent->get('Name') : '',
+            ];
+        }
+
+        usort($results, [self::class, 'compareThemeRowsByName']);
+
+        return $results;
+    }
+
+    protected static function compareThemeRowsByName(array $left, array $right): int {
+        return strnatcasecmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
     }
 
     protected function getCurrentSiteActivePlugins(): array {
@@ -4645,7 +3593,7 @@ class MetricsImplementationService {
         return $results;
     }
 
-    protected function getCurrentSiteImageSizes(array $theme, array $plugins): array {
+    protected function getCurrentSiteImageSizes(): array {
         $cached = $this->getCachedCurrentSiteDetailSection('image_sizes');
 
         if (is_array($cached)) {
@@ -4657,38 +3605,13 @@ class MetricsImplementationService {
         $registeredSizes = function_exists('wp_get_registered_image_subsizes')
             ? wp_get_registered_image_subsizes()
             : [];
-        $themeDetails = [];
-        $pluginDetails = [];
-        $themeSizeMap = [];
-        $pluginSizeMap = [];
         $rows = [];
         $slug = '';
         $sizeData = [];
-        $providerNames = [];
         $crop = '';
 
         if (!is_array($registeredSizes)) {
             $registeredSizes = [];
-        }
-
-        if (!empty($theme['stylesheet']) && is_string($theme['stylesheet'])) {
-            $themeDetails = $this->getThemeDetails((string)$theme['stylesheet']);
-            $themeSizeMap = $this->indexImageSizesBySlug((array)($themeDetails['image_sizes'] ?? []), (string)($theme['name'] ?? ''));
-        }
-
-        foreach ($plugins as $plugin) {
-            if (empty($plugin['file']) || !is_string($plugin['file'])) {
-                continue;
-            }
-
-            $pluginDetails = $this->getPluginDetails((string)$plugin['file']);
-            $pluginSizeMap = $this->mergeImageSizeProviderMap(
-                $pluginSizeMap,
-                $this->indexImageSizesBySlug(
-                    (array)($pluginDetails['image_sizes'] ?? []),
-                    (string)($plugin['name'] ?? $plugin['file'])
-                )
-            );
         }
 
         foreach ($registeredSizes as $slug => $sizeData) {
@@ -4696,15 +3619,6 @@ class MetricsImplementationService {
                 continue;
             }
 
-            $providerNames = [];
-
-            if (isset($themeSizeMap[$slug]) && is_array($themeSizeMap[$slug])) {
-                $providerNames = array_merge($providerNames, (array)($themeSizeMap[$slug]['providers'] ?? []));
-            }
-
-            if (isset($pluginSizeMap[$slug]) && is_array($pluginSizeMap[$slug])) {
-                $providerNames = array_merge($providerNames, (array)($pluginSizeMap[$slug]['providers'] ?? []));
-            }
 
             $crop = $this->formatImageSizeCropValue($sizeData['crop'] ?? false);
 
@@ -4714,8 +3628,8 @@ class MetricsImplementationService {
                 'width' => (int)($sizeData['width'] ?? 0),
                 'height' => (int)($sizeData['height'] ?? 0),
                 'crop' => $crop,
-                'provider_type' => $this->determineImageSizeProviderType($slug, $providerNames),
-                'providers' => $this->normalizeStringList($providerNames),
+                'provider_type' => $this->determineImageSizeProviderType($slug),
+                'providers' => [],
                 'is_reserved' => !empty($sizeData['crop']) || isset($_wp_additional_image_sizes[$slug]) || in_array($slug, get_intermediate_image_sizes(), true),
             ];
         }
@@ -5263,7 +4177,7 @@ class MetricsImplementationService {
         $mime = '';
         $count = 0;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Attachment MIME aggregation is not available through a core helper and is cached by the surrounding detail cache.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Attachment MIME aggregation is not available through a core helper and is cached by the surrounding detail cache.
         $rows = $wpdb->get_results(
             "SELECT post_mime_type, COUNT(ID) AS total
             FROM {$wpdb->posts}
@@ -5441,7 +4355,7 @@ class MetricsImplementationService {
             return 0;
         }
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Purpose-built post type count query used in a cached detail context.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Purpose-built post type count query used in a cached detail context.
         $count = (int)$wpdb->get_var(
             $wpdb->prepare(
                 "SELECT COUNT(ID)
@@ -5458,7 +4372,7 @@ class MetricsImplementationService {
     protected function getDistinctPostTypeCounts(): array {
         global $wpdb;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Distinct post type overview requires direct grouping and is computed inside cached detail generation.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Distinct post type overview requires direct grouping and is computed inside cached detail generation.
         $rows = $wpdb->get_results(
             "SELECT post_type, COUNT(ID) AS total
             FROM {$wpdb->posts}
@@ -5564,7 +4478,7 @@ class MetricsImplementationService {
         try {
             foreach (array_chunk($attachmentIds, 250) as $ids) {
                 $placeholders = implode(',', array_fill(0, count($ids), '%d'));
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One bounded display-only bulk lookup for attachment authors.
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- One bounded display-only bulk lookup for attachment authors.
                 $rows = $wpdb->get_results($wpdb->prepare(
                     "SELECT p.ID, p.post_author, u.display_name, u.user_login
                     FROM {$wpdb->posts} p
@@ -6037,7 +4951,7 @@ class MetricsImplementationService {
         // Existing active states retain the former conservative limit until
         // they finish. New states persist their selected profile at startup.
         $attachmentBatchSize = max(5, min(100, (int)($state['attachment_index_batch_size'] ?? self::STORAGE_ANALYSIS_ATTACHMENT_INDEX_BATCH_SIZE)));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A bounded, paginated attachment index cannot use the unbounded post and post-meta object caches.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- A bounded, paginated attachment index cannot use the unbounded post and post-meta object caches.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT p.ID, p.post_mime_type,
@@ -6062,7 +4976,7 @@ class MetricsImplementationService {
         foreach ($rows as $row) {
             if ((int)($row->path_bytes ?? 0) > 1024 || (int)($row->metadata_bytes ?? 0) > 262144) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('Attachment metadata exceeded the analysis input limit. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Attachment metadata exceeded the analysis input limit. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
             }
             $attachmentId = (int)($row->ID ?? 0);
             $attachedPath = is_string($row->attached_file ?? null) ? (string)$row->attached_file : '';
@@ -6083,7 +4997,7 @@ class MetricsImplementationService {
 
             if (is_array($metadata) && count((array)($metadata['sizes'] ?? [])) > 256) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('An attachment exceeded the permitted number of image variants.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('An attachment exceeded the permitted number of image variants.', 'rrze-multisite-manager'));
             }
             if (is_array($metadata)) {
                 $this->collectAttachmentIndexPathsFromMetadata($paths, $baseEntry, $metadata, $registeredImageSizeSlugs);
@@ -6100,7 +5014,7 @@ class MetricsImplementationService {
                 }
                 if (strlen($path) > 1024) {
                     // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                    throw new \RuntimeException(__('An indexed file path exceeded the analysis input limit.', 'rrze-multisite-manager'));
+                    throw new \RuntimeException(esc_html__('An indexed file path exceeded the analysis input limit.', 'rrze-multisite-manager'));
                 }
 
                 $bucket = $this->getStorageAttachmentIndexBucket($path);
@@ -6110,7 +5024,7 @@ class MetricsImplementationService {
 
         if (!\RRZE\MultisiteManager\Support\BoundedArray::fits($bucketEntries, intdiv(StorageAnalysisResourceService::MAX_STATE_BYTES, 2))) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-            throw new \RuntimeException(__('The pending media index exceeded its working-state budget.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The pending media index exceeded its working-state budget.', 'rrze-multisite-manager'));
         }
         $state['attachment_index_last_id'] = $lastAttachmentId;
         $state['attachment_index_source_complete'] = count($rows) < $attachmentBatchSize;
@@ -7082,7 +5996,7 @@ class MetricsImplementationService {
     protected function getCurrentSiteAttachmentUsageOptionRows(): array {
         global $wpdb;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A small, explicit set of widget and theme options is inspected once per storage analysis.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- A small, explicit set of widget and theme options is inspected once per storage analysis.
         return (array)$wpdb->get_results(
             "SELECT option_name, option_value
             FROM {$wpdb->options}
@@ -7304,7 +6218,7 @@ class MetricsImplementationService {
 
         $siteId = get_current_blog_id();
         $cursor = max(1, (int)($state['media_attachment_cursor'] ?? PHP_INT_MAX));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Attachment usage is scanned in bounded cursor pages; complete source data must not enter the object cache.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Attachment usage is scanned in bounded cursor pages; complete source data must not enter the object cache.
         $rows = (array)$wpdb->get_results($wpdb->prepare(
             "SELECT p.ID, p.post_mime_type,
                 CASE WHEN OCTET_LENGTH(pm.meta_value) <= 1024 THEN pm.meta_value ELSE NULL END AS attached_file,
@@ -7327,7 +6241,7 @@ class MetricsImplementationService {
             $state['media_attachment_cursor'] = min((int)$state['media_attachment_cursor'], $id);
             if ((int)($row->path_bytes ?? 0) > 1024) {
                 // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
-                throw new \RuntimeException(__('Attachment metadata exceeded the analysis input limit. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Attachment metadata exceeded the analysis input limit. The analysis was stopped to avoid incorrect orphan classifications.', 'rrze-multisite-manager'));
             }
             $path = $this->normalizeRelativeUploadPath((string)($row->attached_file ?? ''));
             if ($path === '' || (new \RRZE\MultisiteManager\Analysis\StorageRuntimeStore())->isUsed($siteId, $id)) {
@@ -7874,7 +6788,7 @@ class MetricsImplementationService {
         global $wpdb;
 
         $index = [];
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Attachment index needs a joined metadata query and is reused within cached storage analysis.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Attachment index needs a joined metadata query and is reused within cached storage analysis.
         $rows = $wpdb->get_results(
             "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file, pm_meta.meta_value AS attachment_metadata
             FROM {$wpdb->posts} p
@@ -7923,7 +6837,7 @@ class MetricsImplementationService {
     protected function getCurrentSiteUploadAttachmentStats(): array {
         global $wpdb;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- This site-local attachment index is an analysis input and is persisted in the resulting storage analysis.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- This site-local attachment index is an analysis input and is persisted in the resulting storage analysis.
         $rows = $wpdb->get_results(
             "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file, pm_meta.meta_value AS attachment_metadata
             FROM {$wpdb->posts} p
@@ -8060,7 +6974,7 @@ class MetricsImplementationService {
     protected function getCurrentSiteEmptyUploadAttachmentStats(): array {
         global $wpdb;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Aggregate query for the current site's media summary.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Aggregate query for the current site's media summary.
         $rows = $wpdb->get_results(
             "SELECT post_mime_type, COUNT(ID) AS attachment_count
             FROM {$wpdb->posts}
@@ -9199,7 +8113,7 @@ class MetricsImplementationService {
         $uploadDir = wp_get_upload_dir();
         $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
         $normalizedBaseDir = trailingslashit(wp_normalize_path($baseDir));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- This site-local attachment index is an analysis input and is persisted in the resulting storage analysis.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- This site-local attachment index is an analysis input and is persisted in the resulting storage analysis.
         $rows = $wpdb->get_results(
             "SELECT p.ID, p.post_mime_type, pm_file.meta_value AS attached_file
             FROM {$wpdb->posts} p
@@ -9349,7 +8263,7 @@ class MetricsImplementationService {
 
         global $wpdb;
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Options summary needs a full option-name scan and is stored in the section cache.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Options summary needs a full option-name scan and is stored in the section cache.
         $rows = $wpdb->get_results(
             "SELECT option_name
             FROM {$wpdb->options}
@@ -9414,7 +8328,7 @@ class MetricsImplementationService {
         $isTruncated = false;
 
         if (!empty($whereData['where'])) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Group-filtered option inspection is cached per site and group.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Group-filtered option inspection is cached per site and group.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT option_name, autoload, OCTET_LENGTH(option_value) AS value_bytes,
@@ -9427,7 +8341,7 @@ class MetricsImplementationService {
                 )
             );
         } else {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The detail view returns only bounded values, preventing large option payloads from entering PHP or its cache.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The detail view returns only bounded values, preventing large option payloads from entering PHP or its cache.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT option_name, autoload, OCTET_LENGTH(option_value) AS value_bytes,
@@ -9592,7 +8506,7 @@ class MetricsImplementationService {
         switch_to_blog($siteId);
 
         try {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- An explicit, user-initiated download retrieves one option value without loading it during page rendering.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- An explicit, user-initiated download retrieves one option value without loading it during page rendering.
             $rawValue = $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT option_value
@@ -9648,7 +8562,7 @@ class MetricsImplementationService {
         }
 
         switch_to_blog($siteId);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Check the value size before retrieving an option for an explicit edit action.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Check the value size before retrieving an option for an explicit edit action.
         $currentValueBytes = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT OCTET_LENGTH(option_value)
@@ -9664,7 +8578,7 @@ class MetricsImplementationService {
             return false;
         }
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Single option row lookup for explicit admin edit action.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Single option row lookup for explicit admin edit action.
         $currentRawValue = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT option_value
@@ -9730,7 +8644,7 @@ class MetricsImplementationService {
 
         switch_to_blog($siteId);
         do {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Batch selection for CPT deletion is necessary and bounded to 100 rows per loop.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Batch selection for CPT deletion is necessary and bounded to 100 rows per loop.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT ID
@@ -9777,7 +8691,7 @@ class MetricsImplementationService {
         $whereData = $this->getOptionGroupWhereData($groupKey);
 
         if (!empty($whereData['where'])) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Option group selection is a targeted admin delete action.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Option group selection is a targeted admin delete action.
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
                     "SELECT option_name
@@ -9788,7 +8702,7 @@ class MetricsImplementationService {
                 )
             );
         } else {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Option group fallback selection is a targeted admin delete action.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Option group fallback selection is a targeted admin delete action.
             $rows = $wpdb->get_results(
                 "SELECT option_name
                 FROM {$wpdb->options}
@@ -10714,6 +9628,9 @@ class MetricsImplementationService {
         add_action('update_option_blogname', [$this, 'invalidateCurrentSiteCaches'], 20, 3);
         add_action('update_option_admin_email', [$this, 'invalidateCurrentSiteCaches'], 20, 3);
         add_action('update_option_stylesheet', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
+        // Site-level theme enablement changes the list of allowed themes.
+        add_action('update_option_allowedthemes', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
+        add_action('add_option_allowedthemes', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 2);
         add_action('update_option_template', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
         add_action('update_option_active_plugins', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 3);
         add_action('add_option_active_plugins', [$this, 'invalidateCurrentSiteAndGlobalCaches'], 20, 2);
@@ -11244,12 +10161,12 @@ class MetricsImplementationService {
         $this->metricsCache->setCurrentSection($section, $value, $suffix);
     }
 
-    protected function getPluginDetailsCacheKey(string $pluginFile, bool $includeSourceAnalysis = false): string {
-        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5('usage-index-v2|' . $pluginFile . '|' . (int)$includeSourceAnalysis . '|' . $this->getPluginCacheFingerprint($pluginFile));
+    protected function getPluginDetailsCacheKey(string $pluginFile): string {
+        return 'rrze_msm_plugin_details_' . $this->getDetailCacheVersion() . '_' . md5('registrations-v2|' . $pluginFile . '|' . $this->getPluginCacheFingerprint($pluginFile));
     }
 
-    protected function getThemeDetailsCacheKey(string $stylesheet, bool $includeSourceAnalysis = false): string {
-        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5('usage-index-v1|' . $stylesheet . '|' . (int)$includeSourceAnalysis . '|' . $this->getThemeCacheFingerprint($stylesheet));
+    protected function getThemeDetailsCacheKey(string $stylesheet): string {
+        return 'rrze_msm_theme_details_' . $this->getDetailCacheVersion() . '_' . md5('usage-v3|' . $stylesheet . '|' . $this->getThemeCacheFingerprint($stylesheet));
     }
 
     protected function getPluginCacheFingerprint(string $pluginFile): string {
@@ -11259,7 +10176,6 @@ class MetricsImplementationService {
         // that directory's timestamp says nothing about this plugin.
         $baseDir = $mainFilePath !== '' && dirname(ltrim($pluginFile, '/')) !== '.' ? dirname($mainFilePath) : '';
         $fingerprint = [
-            'source-v' . self::SOURCE_ANALYSIS_VERSION . '-d' . $this->getSourceAnalysisMaxDepth() . '-p' . $this->getSourceAnalysisMaxPhpFiles(),
             $pluginFile,
             $mainFileExists ? (string)filemtime($mainFilePath) : '0',
             $mainFileExists ? (string)filesize($mainFilePath) : '0',
@@ -11273,7 +10189,6 @@ class MetricsImplementationService {
         $themePath = $this->getThemeAbsolutePath($stylesheet);
         $mainPath = $this->getThemeMainFilePath($stylesheet);
         $fingerprint = [
-            'source-v' . self::SOURCE_ANALYSIS_VERSION . '-d' . $this->getSourceAnalysisMaxDepth() . '-p' . $this->getSourceAnalysisMaxPhpFiles(),
             $stylesheet,
             $themePath !== '' && file_exists($themePath) ? (string)filemtime($themePath) : '0',
             $mainPath !== '' && file_exists($mainPath) ? (string)filemtime($mainPath) : '0',

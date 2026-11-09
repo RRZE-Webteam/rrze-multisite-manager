@@ -279,10 +279,13 @@ defined('ABSPATH') || exit;
                 <?php } ?>
 
                 <?php if ($site_detail_current_section === 'theme') { ?>
-                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                <section id="rrze-msm-site-theme" class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Used theme', 'rrze-multisite-manager'); ?></h2>
                     </header>
+                    <?php if (!empty($site_theme_activated)) { ?>
+                        <div class="notice notice-success inline"><p><?php echo esc_html__('The theme was activated for this website.', 'rrze-multisite-manager'); ?></p></div>
+                    <?php } ?>
                     <div class="rrze-msm-site-theme-card">
                         <div class="rrze-msm-site-theme-screenshot">
                             <?php if (!empty($site_details['theme']['screenshot'])) { ?>
@@ -310,6 +313,59 @@ defined('ABSPATH') || exit;
                             </div>
                         </div>
                     </div>
+                </section>
+
+                <section class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <header class="rrze-msm-widget-header">
+                        <h2><?php echo esc_html__('Further allowed themes', 'rrze-multisite-manager'); ?></h2>
+                        <p><?php echo esc_html__('Themes that are enabled for the network or for this website. Activation applies only to this website.', 'rrze-multisite-manager'); ?></p>
+                    </header>
+                    <?php $allowedSiteThemes = is_array($site_details['theme']['allowed_themes'] ?? null) ? $site_details['theme']['allowed_themes'] : []; ?>
+                    <?php if (empty($allowedSiteThemes)) { ?>
+                        <p><?php echo esc_html__('No further themes are allowed for this website.', 'rrze-multisite-manager'); ?></p>
+                    <?php } else { ?>
+                        <div class="rrze-msm-site-allowed-themes">
+                            <?php foreach ($allowedSiteThemes as $allowedSiteTheme) { ?>
+                                <?php $allowedThemeStylesheet = (string)($allowedSiteTheme['stylesheet'] ?? ''); ?>
+                                <div class="rrze-msm-site-allowed-theme">
+                                    <div class="rrze-msm-site-allowed-theme-screenshot">
+                                        <?php if (!empty($allowedSiteTheme['screenshot'])) { ?>
+                                            <img src="<?php echo esc_url((string)$allowedSiteTheme['screenshot']); ?>" alt="" loading="lazy">
+                                        <?php } else { ?>
+                                            <span class="rrze-msm-site-branding-empty"><?php echo esc_html__('No screenshot available', 'rrze-multisite-manager'); ?></span>
+                                        <?php } ?>
+                                    </div>
+                                    <h3><a href="<?php echo esc_url($this->getThemeDetailsUrl($allowedThemeStylesheet)); ?>"><?php echo esc_html((string)($allowedSiteTheme['name'] ?? $allowedThemeStylesheet)); ?></a></h3>
+                                    <p class="rrze-msm-site-allowed-theme-meta">
+                                        <?php if (!empty($allowedSiteTheme['version'])) { ?>
+                                            <?php echo esc_html__('Version:', 'rrze-multisite-manager'); ?> <?php echo esc_html((string)$allowedSiteTheme['version']); ?>
+                                        <?php } ?>
+                                        <?php if (!empty($allowedSiteTheme['parent_name'])) { ?>
+                                            <br><?php echo esc_html(sprintf(
+                                                /* translators: %s: parent theme name. */
+                                                __('Child theme of %s', 'rrze-multisite-manager'),
+                                                (string)$allowedSiteTheme['parent_name']
+                                            )); ?>
+                                        <?php } ?>
+                                    </p>
+                                    <div class="rrze-msm-site-theme-links">
+                                        <?php if (!empty($can_activate_site_themes)) { ?>
+                                            <a class="button button-primary" href="<?php echo esc_url($this->getSiteThemeActivateUrl((int)$site_id, $allowedThemeStylesheet)); ?>" aria-label="<?php echo esc_attr(sprintf(
+                                                /* translators: %s: theme name. */
+                                                __('Activate %s', 'rrze-multisite-manager'),
+                                                (string)($allowedSiteTheme['name'] ?? $allowedThemeStylesheet)
+                                            )); ?>"><?php echo esc_html__('Activate', 'rrze-multisite-manager'); ?></a>
+                                        <?php } ?>
+                                        <a class="button button-secondary" href="<?php echo esc_url($this->getSiteThemePreviewUrl((int)$site_id, $allowedThemeStylesheet, !empty($allowedSiteTheme['is_block_theme']))); ?>" aria-label="<?php echo esc_attr(sprintf(
+                                            /* translators: %s: theme name. */
+                                            __('Live preview of %s', 'rrze-multisite-manager'),
+                                            (string)($allowedSiteTheme['name'] ?? $allowedThemeStylesheet)
+                                        )); ?>"><?php echo esc_html__('Live Preview', 'rrze-multisite-manager'); ?></a>
+                                    </div>
+                                </div>
+                            <?php } ?>
+                        </div>
+                    <?php } ?>
                 </section>
                 <?php } ?>
 

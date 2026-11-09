@@ -9,10 +9,15 @@
 declare(strict_types=1);
 
 namespace {
-    if (PHP_SAPI !== 'cli' || defined('ABSPATH')) {
+    // Standalone CLI test: no direct web access, never inside a WordPress request.
+    if (!defined('ABSPATH')) {
+        if (PHP_SAPI !== 'cli') {
+            exit;
+        }
+        define('ABSPATH', __DIR__ . '/');
+    } else {
         exit(1);
     }
-    define('ABSPATH', __DIR__ . '/');
 
     $GLOBALS['options'] = [];
     $GLOBALS['networkActive'] = [];
@@ -66,6 +71,7 @@ namespace {
     }
     function check($condition, $message) {
         if (!$condition) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped, WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI test output, never rendered as HTML.
             throw new RuntimeException($message);
         }
     }
@@ -102,6 +108,7 @@ namespace Test {
     $settingsDir = $argv[1] ?? '';
     if ($settingsDir !== '') {
         require_once rtrim($settingsDir, '/') . '/includes/Governance/PluginAvailability.php';
+        // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped, WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI test output, never rendered as HTML.
         echo "Using RRZE Settings from $settingsDir\n";
     } else {
         eval('namespace RRZE\Settings\Governance; class PluginAvailability {

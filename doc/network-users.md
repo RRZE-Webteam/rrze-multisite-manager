@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The **Users** page is a network-wide user list based on the WordPress network administration. It adds a view of users without any website assignment, so that orphaned accounts can be found and removed. It is visible only to super admins. The page is a first step; further functions for orphaned users are planned (see [Todo](Todo.md)).
+The **Users** page is a network-wide user list based on the WordPress network administration. It adds a view of users without any website assignment, so that orphaned accounts can be found and removed. It is visible only to super admins.
 
 ## Views and search
 
@@ -12,7 +12,7 @@ The **Users** page is a network-wide user list based on the WordPress network ad
 | Super administrators | Users returned by `get_super_admins()` (`role=super`) |
 | Users without website assignment | Users without a `<base_prefix><n>_capabilities` meta entry on any website (`rrze_msm_user_filter=without-site-membership`) |
 
-The search field and pagination are those of the WordPress network user table. The counts in the view links are calculated on each page load; the count of users without website assignment is one SQL query on `usermeta`.
+The search field and pagination are those of the WordPress network user table. The counts in the view links are calculated on each page load; the count of users without website assignment is one SQL query on `usermeta` and is cached for one hour in the site transient `rrze_msm_users_without_membership_count`. The cache is cleared when a user is registered or deleted and when a `<base_prefix>…capabilities` meta entry is added or removed (`user_register`, `wpmu_delete_user`, `deleted_user`, `added_user_meta`, `deleted_user_meta`), so changes outside the MSM screens are reflected too.
 
 ## Columns
 
