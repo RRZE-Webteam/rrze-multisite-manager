@@ -63,7 +63,7 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
 
         $capabilityMetaKeyPattern = $wpdb->esc_like($wpdb->base_prefix) . '%capabilities';
 
-        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- WordPress table names are trusted identifiers.
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- WordPress table names are trusted identifiers.
         $count = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(1) FROM {$wpdb->users} AS rrze_msm_users WHERE NOT EXISTS (SELECT 1 FROM {$wpdb->usermeta} AS rrze_msm_site_membership WHERE rrze_msm_site_membership.user_id = rrze_msm_users.ID AND rrze_msm_site_membership.meta_key LIKE %s)",
             $capabilityMetaKeyPattern
@@ -79,7 +79,7 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
         }
 
         return [
-            'delete' => __('Delete', 'default'),
+            'delete' => __('Delete', 'rrze-multisite-manager'),
         ];
     }
 
@@ -96,13 +96,13 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
         $fieldName = 'rrze_msm_bulk_action' . $suffix;
 
         echo '<label for="rrze-msm-bulk-action-selector-' . esc_attr($which) . '" class="screen-reader-text">';
-        echo esc_html__('Select bulk action', 'default');
+        echo esc_html__('Select bulk action', 'rrze-multisite-manager');
         echo '</label>';
         echo '<select name="' . esc_attr($fieldName) . '" id="rrze-msm-bulk-action-selector-' . esc_attr($which) . '">';
-        echo '<option value="-1">' . esc_html__('Bulk actions', 'default') . '</option>';
-        echo '<option value="delete">' . esc_html__('Delete', 'default') . '</option>';
+        echo '<option value="-1">' . esc_html__('Bulk actions', 'rrze-multisite-manager') . '</option>';
+        echo '<option value="delete">' . esc_html__('Delete', 'rrze-multisite-manager') . '</option>';
         echo '</select>';
-        submit_button(__('Apply', 'default'), 'action compact', 'rrze_msm_bulk_apply', false, [
+        submit_button(__('Apply', 'rrze-multisite-manager'), 'action compact', 'rrze_msm_bulk_apply', false, [
             'id' => 'rrze-msm-doaction' . $suffix,
         ]);
     }
@@ -145,8 +145,8 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
             $siteLabel = str_replace('.' . get_network()->domain, '', $site->domain . $path);
             $roleLabels = $this->getSiteRoleLabels((int)$user->ID, $siteId);
             $actions = [
-                'edit' => '<a href="' . esc_url(network_admin_url('site-info.php?id=' . $siteId)) . '">' . esc_html__('Edit', 'default') . '</a>',
-                'view' => '<a href="' . esc_url(get_home_url($siteId)) . '">' . esc_html__('View', 'default') . '</a>',
+                'edit' => '<a href="' . esc_url(network_admin_url('site-info.php?id=' . $siteId)) . '">' . esc_html__('Edit', 'rrze-multisite-manager') . '</a>',
+                'view' => '<a href="' . esc_url(get_home_url($siteId)) . '">' . esc_html__('View', 'rrze-multisite-manager') . '</a>',
             ];
 
             $actions = apply_filters('ms_user_list_site_actions', $actions, $siteId);

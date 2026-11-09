@@ -270,7 +270,8 @@ class WebsiteStatusReportService {
             }
         }
 
-        $overviewUrl = network_admin_url('admin.php?page=' . $this->config->getMenuSettings()['site_overview_slug']);
+        // The manager pages exist only in the main site's dashboard.
+        $overviewUrl = get_admin_url(get_main_site_id(), 'admin.php?page=' . $this->config->getMenuSettings()['site_overview_slug']);
         $statusRows = [
             __('Active websites', 'rrze-multisite-manager') => $statusCounts['active'],
             __('Archived websites', 'rrze-multisite-manager') => $statusCounts['archived'],

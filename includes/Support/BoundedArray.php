@@ -53,7 +53,7 @@ class BoundedArray {
         }
         if (!self::fits($result, $limit)) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped by callers when displayed.
-            throw new \RuntimeException(__('The analysis result could not be reduced to its storage limit.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The analysis result could not be reduced to its storage limit.', 'rrze-multisite-manager'));
         }
         return $result;
     }

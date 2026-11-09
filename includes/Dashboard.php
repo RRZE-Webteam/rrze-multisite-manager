@@ -31,6 +31,7 @@ use RRZE\MultisiteManager\Widgets\ThemeUsageWidget;
 use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
 
 class Dashboard {
+    protected const USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT = 'rrze_msm_users_without_membership_count';
     protected Plugin $plugin;
     protected Settings $settings;
     protected Config $config;
@@ -68,6 +69,37 @@ class Dashboard {
         $this->viewManager = new ViewManager();
     }
 
+    /**
+     * Cached count for the user page view link. The NOT EXISTS query over
+     * usermeta runs only after a membership change or after one hour.
+     */
+    protected function getUsersWithoutWebsiteMembershipCount(): int {
+        $cached = get_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT);
+
+        if (is_array($cached) && isset($cached['count'])) {
+            return max(0, (int)$cached['count']);
+        }
+
+        $count = NetworkUsersListTable::getUsersWithoutWebsiteMembershipCount();
+        set_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT, ['count' => $count], HOUR_IN_SECONDS);
+
+        return $count;
+    }
+
+    public function flushUsersWithoutWebsiteMembershipCount(...$unused): void {
+        delete_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT);
+    }
+
+    /** @param mixed $metaIds */
+    public function flushUsersWithoutWebsiteMembershipCountOnMetaChange($metaIds, $userId, $metaKey): void {
+        global $wpdb;
+        $metaKey = (string)$metaKey;
+
+        if (str_starts_with($metaKey, $wpdb->base_prefix) && str_ends_with($metaKey, 'capabilities')) {
+            $this->flushUsersWithoutWebsiteMembershipCount();
+        }
+    }
+
     public function onLoaded(): void {
         // These Core hooks also run for changes made outside the MSM screens,
         // for example from Network Admin, WP-CLI, or another plugin.
@@ -75,6 +107,14 @@ class Dashboard {
         add_action('unarchive_blog', [$this, 'clearArchivedSiteTimestamp']);
         add_action('make_delete_blog', [$this, 'recordDeletedSiteTimestamp']);
         add_action('make_undelete_blog', [$this, 'clearDeletedSiteTimestamp']);
+        // Website membership is defined by <prefix><id>_capabilities user
+        // meta. These hooks also fire for user deletion and for changes
+        // outside the MSM screens.
+        add_action('user_register', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
+        add_action('wpmu_delete_user', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
+        add_action('deleted_user', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
+        add_action('added_user_meta', [$this, 'flushUsersWithoutWebsiteMembershipCountOnMetaChange'], 10, 3);
+        add_action('deleted_user_meta', [$this, 'flushUsersWithoutWebsiteMembershipCountOnMetaChange'], 10, 3);
 
         if (!is_admin()) {
             return;
@@ -109,6 +149,9 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_network_users_bulk', [$this, 'handleNetworkUsersBulkAction']);
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('admin_post_rrze_multisite_manager_deactivate_site_plugin', [$this, 'handleSitePluginDeactivate']);
+        add_action('admin_post_rrze_multisite_manager_activate_site_theme', [$this, 'handleSiteThemeActivate']);
+        add_action('admin_post_rrze_multisite_manager_response_sampling', [$this, 'handleResponseSampling']);
+        add_action('admin_post_rrze_multisite_manager_environment_export', [$this, 'handleEnvironmentExport']);
         add_action('admin_post_rrze_multisite_manager_toggle_network_audit_plugin', [$this, 'handleNetworkAuditPluginToggle']);
         add_action('admin_action_rrze_multisite_manager_enable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
         add_action('admin_action_rrze_multisite_manager_disable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
@@ -358,8 +401,8 @@ class Dashboard {
 
             $this->pageHooks[] = add_submenu_page(
                 null,
-                __('Delete Users', 'default'),
-                __('Delete Users', 'default'),
+                __('Delete Users', 'rrze-multisite-manager'),
+                __('Delete Users', 'rrze-multisite-manager'),
                 $capability,
                 $networkUsersDeleteSlug,
                 [$this, 'renderNetworkUsersDeleteConfirmationPage']
@@ -647,7 +690,7 @@ class Dashboard {
         ], $baseUrl);
         $allUsersCount = (int)get_user_count();
         $superAdminCount = count(get_super_admins());
-        $withoutMembershipCount = NetworkUsersListTable::getUsersWithoutWebsiteMembershipCount();
+        $withoutMembershipCount = $this->getUsersWithoutWebsiteMembershipCount();
         $table = new NetworkUsersListTable($filter === 'without-site-membership');
 
         $table->prepare_items();
@@ -1168,11 +1211,78 @@ class Dashboard {
             'environment-overview-page',
             [
                 'environment_overview' => $environmentOverview,
+                'response_sampling' => Support\ResponseTimeSampler::getState(),
+                'response_sampling_durations' => Support\ResponseTimeSampler::DURATIONS,
+                'response_sampling_action' => admin_url('admin-post.php'),
+                'response_sampling_notice' => isset($_GET['response_sampling']) ? sanitize_key((string)wp_unslash($_GET['response_sampling'])) : '',
+                'environment_export_url' => wp_nonce_url(
+                    add_query_arg(['action' => 'rrze_multisite_manager_environment_export'], admin_url('admin-post.php')),
+                    'rrze_multisite_manager_environment_export'
+                ),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
                 'mode_toggle_label' => $this->getModeToggleLabel(),
             ],
             $this
         );
+    }
+
+    /** Starts, stops or resets the response-time sampling (Environment page). */
+    public function handleResponseSampling(): void {
+        $command = isset($_POST['sampling_command']) ? sanitize_key((string)wp_unslash($_POST['sampling_command'])) : '';
+        $days = isset($_POST['sampling_days']) ? absint(wp_unslash($_POST['sampling_days'])) : 1;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_response_sampling');
+
+        if ($command === 'start') {
+            Support\ResponseTimeSampler::start($days);
+        } elseif ($command === 'stop') {
+            Support\ResponseTimeSampler::stop();
+        } elseif ($command === 'reset') {
+            Support\ResponseTimeSampler::reset();
+        } else {
+            $command = '';
+        }
+
+        wp_safe_redirect(add_query_arg(['response_sampling' => $command], $this->getEnvironmentOverviewUrl()) . '#rrze-msm-response-sampling');
+        exit;
+    }
+
+    /**
+     * Downloads all Environment diagnostics as JSON for later analysis. The
+     * per-process PHP-FPM list (request URIs) is not included.
+     */
+    public function handleEnvironmentExport(): void {
+        $overview = [];
+        $payload = [];
+        $json = '';
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_environment_export');
+        $overview = $this->metrics->getEnvironmentOverview();
+        $payload = [
+            'generated_at' => gmdate('c'),
+            'network' => network_home_url('/'),
+            'plugin_version' => $this->plugin->getVersion(),
+            'php_sapi_of_export' => PHP_SAPI,
+            'warnings' => (array)($overview['warnings'] ?? []),
+            'sections' => (array)($overview['sections'] ?? []),
+            'raw' => (new Metrics\RuntimeDiagnosticsService($this->config))->collectRaw(),
+        ];
+        $json = (string)wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        nocache_headers();
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="rrze-msm-environment-' . gmdate('Ymd-His') . '.json"');
+        header('X-Content-Type-Options: nosniff');
+        echo $json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON download.
+        exit;
     }
 
     public function renderSiteDetailsPage(): void {
@@ -1344,6 +1454,8 @@ class Dashboard {
                 'site_actions' => !empty($siteDetails) ? $siteWidget->renderActionsForSite($siteDetails, 'text') : '',
                 'site_plugin_widget' => $sitePluginWidget,
                 'site_plugin_deactivated' => !empty($_GET['plugin_deactivated']),
+                'site_theme_activated' => !empty($_GET['theme_activated']),
+                'can_activate_site_themes' => $this->currentUserCanUseNetworkAdminFeatures(),
                 'site_plugins_url' => $siteId > 0 ? get_admin_url($siteId, 'plugins.php') : '',
                 'site_themes_url' => $siteId > 0 ? get_admin_url($siteId, 'themes.php') : '',
                 'site_storage_analysis_url' => $siteId > 0 ? $this->getSiteStorageAnalysisUrl($siteId) : '',
@@ -1572,8 +1684,8 @@ class Dashboard {
             (array)($analysisResult[$tab] ?? []),
             (int)($analysisResult['total'] ?? 0),
             (int)($analysisResult['per_page'] ?? 50),
-            is_super_admin(),
-            $this->getPluginDetailsUrl()
+            $this->config,
+            is_super_admin() ? $this->getPluginDetailsUrl() : ''
         );
         $analysisListTable->prepare_items();
 
@@ -1599,8 +1711,6 @@ class Dashboard {
                 'analysis_base_url' => $isLocalPage ? $this->getCurrentShortcodeBlockAnalysisUrl() : $this->getShortcodeBlockAnalysisUrl(),
                 'request_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_request_shortcode_block_analysis'),
                 'can_request_analysis' => $this->currentUserCanRequestSiteAnalysis(),
-                'plugin_details_base_url' => $this->getPluginDetailsUrl(),
-                'can_view_plugin_details' => is_super_admin(),
                 'network_administrator_email' => $this->getNetworkAdministratorEmail(),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
                 'mode_class' => 'rrze-msm-mode-' . $this->getColorMode(),
@@ -1937,14 +2047,13 @@ class Dashboard {
     }
 
     public function renderPluginDetailsPage(): void {
-        $pluginFile = isset($_GET['plugin']) ? sanitize_text_field((string)wp_unslash($_GET['plugin'])) : '';
-        $sourceAnalysisRequested = $pluginFile !== '' && $this->isSourceAnalysisRequested('plugin', $pluginFile);
-        $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile, $sourceAnalysisRequested) : [];
-        $siteOverviewWidget = new SiteOverviewWidget($this->plugin, $this->config);
-
         if (!$this->currentUserCanAccessManager()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
         }
+
+        $pluginFile = isset($_GET['plugin']) ? sanitize_text_field((string)wp_unslash($_GET['plugin'])) : '';
+        $pluginDetails = $pluginFile !== '' ? $this->metrics->getPluginDetails($pluginFile) : [];
+        $siteOverviewWidget = new SiteOverviewWidget($this->plugin, $this->config);
 
         echo $this->template->render(
             'plugin-details-page',
@@ -1964,8 +2073,6 @@ class Dashboard {
                 'plugin_readme_html' => !empty($pluginDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$pluginDetails['readme_markdown'])
                     : '',
-                'source_analysis_requested' => !empty($pluginDetails['source_analysis_completed']),
-                'source_analysis_url' => $pluginFile !== '' ? $this->getSourceAnalysisUrl('plugin', $pluginFile) : '',
             ],
             $this
         );
@@ -2098,8 +2205,7 @@ class Dashboard {
 
     public function renderThemeDetailsPage(): void {
         $stylesheet = isset($_GET['theme']) ? sanitize_text_field((string)wp_unslash($_GET['theme'])) : '';
-        $sourceAnalysisRequested = $stylesheet !== '' && $this->isSourceAnalysisRequested('theme', $stylesheet);
-        $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet, $sourceAnalysisRequested) : [];
+        $themeDetails = $stylesheet !== '' ? $this->metrics->getThemeDetails($stylesheet) : [];
         $themeWidget = new ThemeOverviewWidget($this->plugin, $this->config);
         $siteOverviewWidget = new SiteOverviewWidget($this->plugin, $this->config);
 
@@ -2122,30 +2228,11 @@ class Dashboard {
                 'theme_readme_html' => !empty($themeDetails['readme_markdown'])
                     ? $this->renderSimpleMarkdown((string)$themeDetails['readme_markdown'])
                     : '',
-                'source_analysis_requested' => !empty($themeDetails['source_analysis_completed']),
-                'source_analysis_url' => $stylesheet !== '' ? $this->getSourceAnalysisUrl('theme', $stylesheet) : '',
             ],
             $this
         );
     }
 
-    protected function isSourceAnalysisRequested(string $type, string $identifier): bool {
-        $requested = isset($_GET['source_analysis']) && sanitize_key((string)wp_unslash($_GET['source_analysis'])) === '1';
-        $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field((string)wp_unslash($_GET['_wpnonce'])) : '';
-
-        return $requested && wp_verify_nonce($nonce, 'rrze_msm_source_analysis_' . $type . '_' . $identifier);
-    }
-
-    protected function getSourceAnalysisUrl(string $type, string $identifier): string {
-        $url = add_query_arg(
-            [
-                'source_analysis' => '1',
-            ],
-            $type === 'plugin' ? $this->getPluginDetailsUrl($identifier) : $this->getThemeDetailsUrl($identifier)
-        );
-
-        return wp_nonce_url($url, 'rrze_msm_source_analysis_' . $type . '_' . $identifier);
-    }
 
     protected function isNetworkPlugin(array $plugin): bool {
         return !empty($plugin['network_active']);
@@ -3101,6 +3188,100 @@ class Dashboard {
         exit;
     }
 
+    /**
+     * Activates a theme that is allowed for the website, like Appearance >
+     * Themes > Activate on that website. switch_theme() runs in the website's
+     * context; the theme's own after_switch_theme handling follows on that
+     * website's next request (check_theme_switched()).
+     */
+    public function handleSiteThemeActivate(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $stylesheet = isset($_REQUEST['stylesheet']) ? sanitize_text_field((string)wp_unslash($_REQUEST['stylesheet'])) : '';
+        $site = $siteId > 0 ? get_site($siteId) : null;
+        $theme = null;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to activate themes for websites.', 'rrze-multisite-manager'));
+        }
+
+        if (!$site instanceof \WP_Site || $stylesheet === '') {
+            wp_die(esc_html__('Invalid website or theme.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_activate_site_theme_' . $siteId . '_' . $stylesheet);
+        $theme = wp_get_theme($stylesheet);
+
+        if (!$theme->exists() || $theme->errors()) {
+            wp_die(esc_html__('The selected theme is not installed or is broken.', 'rrze-multisite-manager'));
+        }
+
+        if (!$theme->is_allowed('both', $siteId)) {
+            wp_die(esc_html__('The selected theme is not allowed for this website.', 'rrze-multisite-manager'));
+        }
+
+        switch_to_blog($siteId);
+        try {
+            if (get_stylesheet() !== $stylesheet) {
+                switch_theme($stylesheet);
+            }
+        } finally {
+            restore_current_blog();
+        }
+
+        $this->metrics->clearCache();
+        wp_safe_redirect(
+            add_query_arg(
+                [
+                    'site_id' => $siteId,
+                    'section' => 'theme',
+                    'theme_activated' => 1,
+                ],
+                $this->getSiteDetailsUrl()
+            ) . '#rrze-msm-site-theme'
+        );
+        exit;
+    }
+
+    public function getSiteThemeActivateUrl(int $siteId, string $stylesheet): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'rrze_multisite_manager_activate_site_theme',
+                    'site_id' => $siteId,
+                    'stylesheet' => $stylesheet,
+                ],
+                admin_url('admin-post.php')
+            ),
+            'rrze_multisite_manager_activate_site_theme_' . $siteId . '_' . $stylesheet
+        );
+    }
+
+    /**
+     * Live preview in the website's own dashboard, as on Appearance > Themes:
+     * block themes open the Site Editor preview, classic themes the Customizer.
+     */
+    public function getSiteThemePreviewUrl(int $siteId, string $stylesheet, bool $isBlockTheme): string {
+        $return = get_admin_url($siteId, 'themes.php');
+
+        if ($isBlockTheme) {
+            return add_query_arg(
+                [
+                    'wp_theme_preview' => $stylesheet,
+                    'return' => rawurlencode($return),
+                ],
+                get_admin_url($siteId, 'site-editor.php')
+            );
+        }
+
+        return add_query_arg(
+            [
+                'theme' => $stylesheet,
+                'return' => rawurlencode($return),
+            ],
+            get_admin_url($siteId, 'customize.php')
+        );
+    }
+
     public function maybeRefreshMetricsCache(): bool {
         $nonce = isset($_POST['rrze_msm_refresh_nonce']) ? sanitize_text_field((string)wp_unslash($_POST['rrze_msm_refresh_nonce'])) : '';
         $refresh = isset($_POST['rrze_msm_refresh']) ? sanitize_text_field((string)wp_unslash($_POST['rrze_msm_refresh'])) : '';
@@ -3311,8 +3492,14 @@ class Dashboard {
         return in_array($optionName, $this->getSuperAdminOnlySiteOptions(), true);
     }
 
+    /**
+     * The manager pages are registered only in the main site's dashboard
+     * (registerMenu()); the network admin registers just a redirect page.
+     * Links and redirects therefore always target the main site, also when
+     * they are built on another website, e.g. on its local Tools pages.
+     */
     protected function getAdminPageBaseUrl(): string {
-        return admin_url('admin.php');
+        return get_admin_url(get_main_site_id(), 'admin.php');
     }
 
     protected function getAdminPostActionUrl(string $action): string {
@@ -3459,7 +3646,7 @@ class Dashboard {
             $args['site_id'] = $siteId;
         }
 
-        return add_query_arg($args, network_admin_url('admin.php'));
+        return add_query_arg($args, $this->getAdminPageBaseUrl());
     }
 
     public function getSiteStorageAnalysisUrl(int $siteId = 0): string {

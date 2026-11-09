@@ -10,15 +10,15 @@ class ContentAnalysisListTable extends \WP_List_Table {
     private array $findings;
     private int $total;
     private int $perPage;
-    private bool $canViewPluginDetails;
+    private ?Config $config;
     private string $pluginDetailsBaseUrl;
 
-    public function __construct(string $kind, array $findings, int $total, int $perPage, bool $canViewPluginDetails, string $pluginDetailsBaseUrl) {
+    public function __construct(string $kind, array $findings, int $total, int $perPage, ?Config $config = null, string $pluginDetailsBaseUrl = '') {
         $this->kind = $kind === 'blocks' ? 'blocks' : 'shortcodes';
         $this->findings = $findings;
         $this->total = max(0, $total);
         $this->perPage = max(1, $perPage);
-        $this->canViewPluginDetails = $canViewPluginDetails;
+        $this->config = $config;
         $this->pluginDetailsBaseUrl = $pluginDetailsBaseUrl;
 
         parent::__construct([
@@ -33,28 +33,29 @@ class ContentAnalysisListTable extends \WP_List_Table {
             return [
                 'name' => _x('Block', 'Block editor content', 'rrze-multisite-manager'),
                 'category' => __('Category', 'rrze-multisite-manager'),
-                'origin' => __('Origin', 'rrze-multisite-manager'),
                 'description' => __('Description', 'rrze-multisite-manager'),
                 'locations' => __('Location(s)', 'rrze-multisite-manager'),
             ];
         }
 
-        return [
+        $columns = [
             'name' => __('Shortcode', 'rrze-multisite-manager'),
-            'registered' => __('Registered', 'rrze-multisite-manager'),
-            'provider' => __('Provider', 'rrze-multisite-manager'),
-            'locations' => __('Location(s)', 'rrze-multisite-manager'),
-            'raw_shortcodes' => __('Raw shortcode', 'rrze-multisite-manager'),
         ];
+
+        if (Config::SHOW_SHORTCODE_PROVIDER_COLUMN) {
+            $columns['provider'] = __('Plugin', 'rrze-multisite-manager');
+        }
+
+        $columns['locations'] = __('Location(s)', 'rrze-multisite-manager');
+        $columns['raw_shortcodes'] = __('Raw shortcode', 'rrze-multisite-manager');
+
+        return $columns;
     }
 
     protected function get_sortable_columns() {
         return [
             'name' => ['name', false],
-            'registered' => ['registered', false],
-            'provider' => ['provider', false],
             'category' => ['category', false],
-            'origin' => ['origin', false],
             'description' => ['description', false],
         ];
     }
@@ -80,23 +81,18 @@ class ContentAnalysisListTable extends \WP_List_Table {
         return '<strong>' . esc_html((string)$item['name']) . '</strong>';
     }
 
-    protected function column_registered(array $item): string {
-        if (!empty($item['registered'])) {
-            return esc_html__('Yes', 'rrze-multisite-manager');
-        }
-
-        return '<span class="rrze-msm-shortcode-unregistered"><span class="dashicons dashicons-no" aria-hidden="true"></span>' . esc_html__('No', 'rrze-multisite-manager') . '</span>';
-    }
-
     protected function column_provider(array $item): string {
-        $provider = (string)($item['provider'] ?? __('Unknown', 'rrze-multisite-manager'));
-        $pluginFile = (string)($item['provider_plugin_file'] ?? '');
+        $known = $this->config instanceof Config ? $this->config->getKnownShortcode((string)$item['name']) : [];
 
-        if ($this->canViewPluginDetails && $pluginFile !== '') {
-            return '<a href="' . esc_url(add_query_arg('plugin', $pluginFile, $this->pluginDetailsBaseUrl)) . '">' . esc_html($provider) . '</a>';
+        if (empty($known)) {
+            return '<span class="description">' . esc_html__('Unknown', 'rrze-multisite-manager') . '</span>';
         }
 
-        return esc_html($provider);
+        if ($known['file'] !== '' && $this->pluginDetailsBaseUrl !== '' && file_exists(trailingslashit(WP_PLUGIN_DIR) . $known['file'])) {
+            return '<a href="' . esc_url(add_query_arg('plugin', $known['file'], $this->pluginDetailsBaseUrl)) . '">' . esc_html($known['plugin']) . '</a>';
+        }
+
+        return esc_html($known['plugin']);
     }
 
     protected function column_locations(array $item): string {
@@ -157,9 +153,6 @@ class ContentAnalysisListTable extends \WP_List_Table {
             if (!isset($groups[$key])) {
                 $groups[$key] = $finding + ['name' => $name, 'locations' => [], 'raw_shortcodes' => []];
                 $groups[$key]['name'] = $name;
-                if ($this->kind === 'shortcodes' && empty($groups[$key]['provider'])) {
-                    $groups[$key]['provider'] = __('Unknown', 'rrze-multisite-manager');
-                }
             }
 
             if ($this->kind === 'shortcodes') {
@@ -213,7 +206,11 @@ class ContentAnalysisListTable extends \WP_List_Table {
         }
         $metaKeys = array_values((array)($location['meta_keys'] ?? []));
         if ($metaKeys) {
-            $output .= ' <span class="description">' . esc_html(sprintf(__('Meta fields: %s', 'rrze-multisite-manager'), implode(', ', $metaKeys))) . '</span>';
+            $output .= ' <span class="description">' . esc_html(sprintf(
+                /* translators: %s: comma-separated post meta field names. */
+                __('Meta fields: %s', 'rrze-multisite-manager'),
+                implode(', ', $metaKeys)
+            )) . '</span>';
         }
         return $output . '</li>';
     }

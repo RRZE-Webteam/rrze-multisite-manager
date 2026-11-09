@@ -1107,6 +1107,11 @@ function onSiteTableClick(event) {
             nextDirection = requestedDirection;
         }
 
+        if (wrapper.classList.contains('rrze-msm-server-sorted')) {
+            navigateToServerSortedSiteTable(wrapper, sortButton.getAttribute('data-sort-key') || 'name', nextDirection);
+            return;
+        }
+
         wrapper.setAttribute('data-sort-key', sortButton.getAttribute('data-sort-key') || 'name');
         wrapper.setAttribute('data-sort-direction', nextDirection);
         wrapper.setAttribute('data-current-page', '1');
@@ -1122,6 +1127,24 @@ function onSiteTableClick(event) {
         wrapper.setAttribute('data-current-page', pageButton.getAttribute('data-page') || '1');
         renderSiteTable(wrapper);
     }
+}
+
+// Server-paginated site tables are sorted on the server across all pages;
+// sorting only the rows of the current page would show a wrong order.
+function navigateToServerSortedSiteTable(wrapper, sortKey, sortDirection) {
+    var tableId = wrapper.getAttribute('data-table-id') || '';
+    var url = null;
+
+    if (tableId === '') {
+        return;
+    }
+
+    url = new window.URL(window.location.href);
+    url.searchParams.set('rrze_msm_' + tableId + '_sort', sortKey);
+    url.searchParams.set('rrze_msm_' + tableId + '_order', sortDirection);
+    url.searchParams.delete('rrze_msm_' + tableId + '_page');
+    url.hash = 'rrze-msm-site-table-' + tableId;
+    window.location.assign(url.toString());
 }
 
 function onSiteTablePerPageChange(event) {

@@ -11,8 +11,8 @@ $canViewPluginDetails = !empty($can_view_plugin_details);
 $shortcodeUrl = add_query_arg(['site_id' => (int)$site_id, 'analysis_tab' => 'shortcodes'], $analysis_base_url);
 $blockUrl = add_query_arg(['site_id' => (int)$site_id, 'analysis_tab' => 'blocks'], $analysis_base_url);
 $sortColumns = $analysisTab === 'shortcodes'
-    ? ['shortcode', 'registered', 'provider']
-    : ['block', 'category', 'origin', 'description'];
+    ? ['shortcode']
+    : ['block', 'category', 'description'];
 $sortBy = isset($_GET['analysis_sort']) ? sanitize_key((string)wp_unslash($_GET['analysis_sort'])) : $entryNameKey;
 $sortBy = in_array($sortBy, $sortColumns, true) ? $sortBy : $entryNameKey;
 $sortOrder = isset($_GET['analysis_order']) ? sanitize_key((string)wp_unslash($_GET['analysis_order'])) : 'asc';
@@ -21,7 +21,6 @@ $analysisGeneratedAt = (string)($analysis_result['generated_at'] ?? '');
 $analysisNextRunTimestamp = (int)$analysis_next_run_timestamp;
 $foundShortcodeCount = (int)($analysis_result['shortcodes_distinct'] ?? 0);
 $foundBlockCount = (int)($analysis_result['blocks_distinct'] ?? 0);
-$unregisteredShortcodeCount = (int)($analysis_result['unregistered_shortcodes'] ?? 0);
 $analysisTruncated = !empty($analysis_result[$analysisTab . '_truncated']);
 $omittedSourceCount = (int)($analysis_result[$analysisTab . '_omitted_count'] ?? 0);
 $omittedSources = array_values(array_filter((array)($analysis_result[$analysisTab . '_omitted_sources'] ?? []), 'is_array'));
@@ -92,10 +91,6 @@ foreach ($entries as $entry) {
     $groupKey = strtolower($entryName);
 
     if (!isset($groupedEntries[$groupKey])) {
-        if ($analysisTab === 'shortcodes' && empty($entry['provider'])) {
-            $entry['provider'] = __('Unknown', 'rrze-multisite-manager');
-        }
-
         $entry['locations'] = [];
         $entry['raw_shortcodes'] = [];
         $entry['location_sort'] = '';
@@ -139,11 +134,10 @@ foreach ($entries as &$entry) {
 }
 unset($entry);
 
-$showBlockOrigin = $analysisTab === 'blocks' && (bool)array_filter($entries, static fn ($entry): bool => trim((string)($entry['origin'] ?? '')) !== '');
 $showBlockDescription = $analysisTab === 'blocks' && (bool)array_filter($entries, static fn ($entry): bool => trim((string)($entry['description'] ?? '')) !== '');
 $columnCount = $analysisTab === 'shortcodes'
-    ? 5
-    : 3 + (int)$showBlockOrigin + (int)$showBlockDescription;
+    ? 3
+    : 3 + (int)$showBlockDescription;
 
 ?>
 <div class="wrap rrze-multisite-manager-admin <?php echo esc_attr($mode_class); ?>">
@@ -187,6 +181,15 @@ $columnCount = $analysisTab === 'shortcodes'
                     echo esc_html(sprintf(__('No shortcode and block analysis is currently configured for this website. To request one, please email %s.', 'rrze-multisite-manager'), (string)$network_administrator_email));
                     ?></p></div>
                 <?php } ?>
+                <div class="notice notice-info inline rrze-msm-analysis-scope">
+                    <p><strong><?php echo esc_html__('Scope of the analysis', 'rrze-multisite-manager'); ?></strong></p>
+                    <ul>
+                        <li><?php echo esc_html__('Searched is only the content of posts and pages (all statuses except automatic drafts, revisions and the trash).', 'rrze-multisite-manager'); ?></li>
+                        <li><?php echo esc_html__('Not included: post metadata (for example custom fields or page builder data), other content types, widgets, menus and settings of themes and plugins. Shortcodes or blocks used only there are not listed.', 'rrze-multisite-manager'); ?></li>
+                        <li><?php echo esc_html__('Every text in square brackets that has the form of a shortcode is listed, for example also [PDF]. A listed shortcode is therefore not necessarily provided by a plugin.', 'rrze-multisite-manager'); ?></li>
+                        <li><?php echo esc_html__('Content above the configured input size and findings beyond the result limit are not evaluated; such results are marked as incomplete.', 'rrze-multisite-manager'); ?></li>
+                    </ul>
+                </div>
                 <ul>
                     <li>
                         <?php
@@ -213,22 +216,6 @@ $columnCount = $analysisTab === 'shortcodes'
                     echo esc_html(sprintf(__('Found shortcodes: %d', 'rrze-multisite-manager'), $foundShortcodeCount));
                     ?></li>
                 </ul>
-                <?php if ($unregisteredShortcodeCount > 0) { ?>
-                    <div class="notice notice-warning inline"><p><?php
-                    echo esc_html(
-                        sprintf(
-                            /* translators: %d: number of unregistered shortcodes found. */
-                            _n(
-                                'Notice: %d unregistered shortcode was found. It is not executed and is therefore output without interpretation.',
-                                'Notice: %d unregistered shortcodes were found. They are not executed and are therefore output without interpretation.',
-                                $unregisteredShortcodeCount,
-                                'rrze-multisite-manager'
-                            ),
-                            $unregisteredShortcodeCount
-                        )
-                    );
-                    ?></p></div>
-                <?php } ?>
                 <?php if (!empty($can_request_analysis) && ($analysis_assignment_mode ?? 'unassigned') !== 'batch') { ?>
                     <form method="post" action="<?php echo esc_url($request_action); ?>">
                         <input type="hidden" name="site_id" value="<?php echo esc_attr((string)$site_id); ?>">
@@ -360,12 +347,8 @@ $columnCount = $analysisTab === 'shortcodes'
                 <table class="widefat striped rrze-msm-table rrze-msm-shortcode-analysis-table">
                     <thead><tr>
                         <?php echo $renderSortHeader($entryNameKey, $analysisTab === 'blocks' ? _x('Block', 'Block editor content', 'rrze-multisite-manager') : __('Shortcode', 'rrze-multisite-manager')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Header helper escapes URL and label. ?>
-                        <?php if ($analysisTab === 'shortcodes') { ?>
-                            <?php echo $renderSortHeader('registered', __('Registered', 'rrze-multisite-manager')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Header helper escapes URL and label. ?>
-                            <?php echo $renderSortHeader('provider', __('Provider', 'rrze-multisite-manager')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Header helper escapes URL and label. ?>
-                        <?php } else { ?>
+                        <?php if ($analysisTab === 'blocks') { ?>
                             <?php echo $renderSortHeader('category', __('Category', 'rrze-multisite-manager')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Header helper escapes URL and label. ?>
-                            <?php if ($showBlockOrigin) { ?><?php echo $renderSortHeader('origin', __('Origin', 'rrze-multisite-manager')); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Header helper escapes URL and label. ?><?php } ?>
                         <?php } ?>
                         <th><?php echo esc_html__('Location(s)', 'rrze-multisite-manager'); ?></th>
                         <?php if ($analysisTab === 'shortcodes') { ?><th><?php echo esc_html__('Raw shortcode', 'rrze-multisite-manager'); ?></th><?php } ?>
@@ -377,30 +360,8 @@ $columnCount = $analysisTab === 'shortcodes'
                         <?php } else { foreach ($entries as $entry) { ?>
                             <tr>
                                 <td><strong><?php echo esc_html((string)($entry[$analysisTab === 'blocks' ? 'block_title' : $entryNameKey] ?? ($entry[$entryNameKey] ?? ''))); ?></strong><?php if ($analysisTab === 'blocks') { ?><br><code><?php echo esc_html((string)($entry['block'] ?? '')); ?></code><?php } ?></td>
-                                <?php if ($analysisTab === 'shortcodes') { ?>
-                                    <td>
-                                        <?php if (!empty($entry['registered'])) { ?>
-                                            <?php echo esc_html__('Yes', 'rrze-multisite-manager'); ?>
-                                        <?php } else { ?>
-                                            <span class="rrze-msm-shortcode-unregistered"><span class="dashicons dashicons-no" aria-hidden="true"></span><?php echo esc_html__('No', 'rrze-multisite-manager'); ?></span>
-                                        <?php } ?>
-                                    </td>
-                                    <td>
-                                        <?php
-                                        $providerName = (string)($entry['provider'] ?? __('Unknown', 'rrze-multisite-manager'));
-                                        $providerPluginFile = (string)($entry['provider_plugin_file'] ?? '');
-
-                                        if ($canViewPluginDetails && $providerPluginFile !== '') {
-                                            $providerUrl = add_query_arg('plugin', $providerPluginFile, $plugin_details_base_url);
-                                            echo '<a href="' . esc_url($providerUrl) . '">' . esc_html($providerName) . '</a>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Link URL and label are escaped above.
-                                        } else {
-                                            echo esc_html($providerName);
-                                        }
-                                        ?>
-                                    </td>
-                                <?php } else { ?>
+                                <?php if ($analysisTab === 'blocks') { ?>
                                     <td><?php echo esc_html((string)($entry['category'] ?? '')); ?></td>
-                                    <?php if ($showBlockOrigin) { ?><td><?php echo esc_html((string)($entry['origin'] ?? '')); ?></td><?php } ?>
                                 <?php } ?>
                                 <td>
                                     <?php $locations = (array)($entry['locations'] ?? []); ?>

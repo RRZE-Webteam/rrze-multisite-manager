@@ -30,6 +30,11 @@ class LoggingService {
         do_action('rrze.log.error', 'RRZE-MSM: Fehler bei der Speicherplatzanalyse', $context);
     }
 
+    /** Errors are always logged via rrze-log, independently of the debugging options. */
+    public static function error(string $message, array $context = []): void {
+        do_action('rrze.log.error', $message, $context);
+    }
+
     public static function warning(string $message, array $context = []): void {
         do_action('rrze.log.warning', $message, $context);
     }

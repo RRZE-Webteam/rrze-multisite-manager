@@ -49,6 +49,8 @@ Hook bedeuten verschiedene Callbacks mit unterschiedlichen Aufgaben.
 | `admin_bar_menu` | Action | `Dashboard::addAdminBarMenu()` | 35 / 1 | Ergänzt das MSM-Menü in der Admin-Bar. |
 | `admin_body_class` | Filter | `Dashboard::filterAdminBodyClass()` | 10 / 1 | Ergänzt eine CSS-Klasse für Plugin-Adminseiten. |
 | `user_has_cap` | Filter | `Dashboard::filterUserHasCap()` | 20 / 4 | Passt die Capability-Prüfung für die vorgesehenen Verwaltungsansichten an. |
+| `rest_post_dispatch` | Filter | `ResponseTimeSampler::captureRestRequest()` | 10 / 3 | Merkt sich, ob eine REST-Anfrage ein Speichern, automatisches Speichern oder einen Medienupload von Beiträgen/Seiten betrifft. Antwort unverändert. |
+| `shutdown` | Action | `ResponseTimeSampler::recordCurrentRequest()` | 1 / 1 | Nur bei aktiver Messung (Seite Umgebung) und nur für Editor-, Speicher- und Upload-Anfragen: speichert Antwortzeit und Lastangaben. |
 | `load-<Seiten-Hook>` | Action | `Dashboard::configureNetworkUsersScreen()` | 10 / 1 | Registriert beim Laden der Benutzerseite die Spalten-Filter für die Netzwerk-Benutzerliste. |
 | `manage_<Screen-ID>_columns` | Filter | `Dashboard::getNetworkUsersScreenColumns()` | 10 / 1 | Liefert die Spalten der Netzwerk-Benutzerliste (nur Benutzerseite). |
 | `default_hidden_columns` | Filter | `Dashboard::filterNetworkUsersDefaultHiddenColumns()` | 10 / 2 | Blendet nach der Einstellung `users_default_visible_columns` Spalten standardmäßig aus (nur Benutzerseite). |

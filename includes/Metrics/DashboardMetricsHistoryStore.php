@@ -78,9 +78,10 @@ class DashboardMetricsHistoryStore {
             ]);
             unset($formats);
 
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
             $result = $wpdb->query($wpdb->prepare($sql, ...$values));
             if ($result === false || $wpdb->last_error) {
-                throw new \RuntimeException(__('Dashboard metric snapshots could not be saved.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Dashboard metric snapshots could not be saved.', 'rrze-multisite-manager'));
             }
         }
     }
@@ -92,17 +93,19 @@ class DashboardMetricsHistoryStore {
         $intervalSeconds = max(DAY_IN_SECONDS, $intervalSeconds);
         $table = $this->store->table('dashboard_metrics');
         $networkId = get_current_network_id();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
         $currentRows = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM $table WHERE network_id = %d AND snapshot_status = 'current' ORDER BY blog_id ASC",
             $networkId
         ), ARRAY_A);
 
         if ($wpdb->last_error) {
-            throw new \RuntimeException(__('Dashboard metric snapshots could not be read.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Dashboard metric snapshots could not be read.', 'rrze-multisite-manager'));
         }
 
         $created = 0;
         foreach ((array)$currentRows as $row) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
             $lastStatisticAt = (int)$wpdb->get_var($wpdb->prepare(
                 "SELECT MAX(recorded_at) FROM $table WHERE network_id = %d AND blog_id = %d AND snapshot_status = 'statistic'",
                 $networkId,
@@ -113,6 +116,7 @@ class DashboardMetricsHistoryStore {
             }
 
             $entryKey = 'statistic-' . (int)$row['recorded_at'] . '-' . (int)$row['blog_id'];
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
             $insert = $wpdb->query($wpdb->prepare(
                 "INSERT IGNORE INTO $table (network_id,blog_id,entry_key,snapshot_status,recorded_at,site_status,websites_total,websites_active,websites_archived,websites_blocked,websites_deleted,media_bytes,database_bytes,plugin_count,theme_count,user_count,page_count,post_count,media_count,custom_post_type_count)
                 SELECT network_id,blog_id,%s,'statistic',recorded_at,site_status,websites_total,websites_active,websites_archived,websites_blocked,websites_deleted,media_bytes,database_bytes,plugin_count,theme_count,user_count,page_count,post_count,media_count,custom_post_type_count
@@ -122,7 +126,7 @@ class DashboardMetricsHistoryStore {
                 (int)$row['blog_id']
             ));
             if ($insert === false || $wpdb->last_error) {
-                throw new \RuntimeException(__('Dashboard metric statistics could not be compacted.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Dashboard metric statistics could not be compacted.', 'rrze-multisite-manager'));
             }
             $created += (int)$insert;
         }
@@ -134,6 +138,7 @@ class DashboardMetricsHistoryStore {
         global $wpdb;
 
         $table = $this->store->table('dashboard_metrics');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
         $timestamp = $wpdb->get_var($wpdb->prepare(
             "SELECT MAX(recorded_at) FROM $table WHERE network_id = %d AND blog_id = 0 AND snapshot_status = 'statistic'",
             get_current_network_id()
@@ -147,13 +152,14 @@ class DashboardMetricsHistoryStore {
         global $wpdb;
 
         $table = $this->store->table('dashboard_metrics');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
         $count = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM $table WHERE network_id = %d AND entry_key = 'current' AND snapshot_status = 'current'",
             get_current_network_id()
         ));
 
         if ($wpdb->last_error) {
-            throw new \RuntimeException(__('Dashboard metric snapshots could not be read.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Dashboard metric snapshots could not be read.', 'rrze-multisite-manager'));
         }
 
         return is_numeric($count) ? max(0, (int)$count) : 0;
@@ -170,13 +176,14 @@ class DashboardMetricsHistoryStore {
         global $wpdb;
 
         $table = $this->store->table('dashboard_metrics');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM $table WHERE network_id = %d AND entry_key = 'current' AND snapshot_status = 'current' ORDER BY blog_id ASC",
             get_current_network_id()
         ), ARRAY_A);
 
         if ($wpdb->last_error) {
-            throw new \RuntimeException(__('Dashboard metric snapshots could not be read.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Dashboard metric snapshots could not be read.', 'rrze-multisite-manager'));
         }
 
         $snapshots = [];
@@ -204,6 +211,7 @@ class DashboardMetricsHistoryStore {
         $table = $this->store->table('dashboard_metrics');
         $networkId = get_current_network_id();
         $timestamp = max(1, $timestamp);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT snapshot.* FROM $table snapshot
             INNER JOIN (
@@ -220,7 +228,7 @@ class DashboardMetricsHistoryStore {
         ), ARRAY_A);
 
         if ($wpdb->last_error) {
-            throw new \RuntimeException(__('Dashboard metric statistics could not be read.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Dashboard metric statistics could not be read.', 'rrze-multisite-manager'));
         }
 
         $snapshots = [];
@@ -238,12 +246,13 @@ class DashboardMetricsHistoryStore {
         global $wpdb;
 
         $table = $this->store->table('dashboard_metrics');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
         $deleted = $wpdb->query($wpdb->prepare(
             "DELETE FROM $table WHERE network_id = %d AND snapshot_status = 'statistic'",
             get_current_network_id()
         ));
         if ($deleted === false || $wpdb->last_error) {
-            throw new \RuntimeException(__('Dashboard metric statistics could not be removed.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Dashboard metric statistics could not be removed.', 'rrze-multisite-manager'));
         }
 
         return max(0, (int)$deleted);
@@ -254,9 +263,10 @@ class DashboardMetricsHistoryStore {
         global $wpdb;
 
         $table = $this->store->table('dashboard_metrics');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central metrics table; table name from the AnalysisStore::table() allowlist, values are prepared.
         $deleted = $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE network_id = %d LIMIT %d", get_current_network_id(), max(1, $limit)));
         if ($deleted === false || $wpdb->last_error) {
-            throw new \RuntimeException(__('Dashboard metric snapshots could not be removed.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Dashboard metric snapshots could not be removed.', 'rrze-multisite-manager'));
         }
 
         return (int)$deleted >= max(1, $limit);

@@ -16,13 +16,13 @@ class AnalysisLifecycle {
         if ((int)get_site_option('rrze_msm_analysis_schema', 0) !== AnalysisStore::SCHEMA_VERSION) {
             global $wpdb;
             $lock = 'rrze_msm_schema_' . md5($wpdb->base_prefix);
-            if ((int)$wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 0)', $lock)) !== 1) {
-                throw new \RuntimeException(__('Analysis storage is being updated. Retry shortly.', 'rrze-multisite-manager'));
+            if ((int)\RRZE\MultisiteManager\Support\AtomicLock::query('SELECT GET_LOCK(%s, 0)', $lock) !== 1) {
+                throw new \RuntimeException(esc_html__('Analysis storage is being updated. Retry shortly.', 'rrze-multisite-manager'));
             }
             try {
                 (new AnalysisStore())->install();
             } finally {
-                $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+                \RRZE\MultisiteManager\Support\AtomicLock::query('SELECT RELEASE_LOCK(%s)', $lock);
             }
         }
         // The maintenance event lives in the main site's Cron table. Checking it
@@ -67,8 +67,8 @@ class AnalysisLifecycle {
         }
         global $wpdb;
         $lock = 'rrze_msm_upgrade_' . md5($wpdb->base_prefix . ':' . $siteId);
-        if ((int)$wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 0)', $lock)) !== 1) {
-            throw new \RuntimeException(__('Analysis storage is being updated. Retry shortly.', 'rrze-multisite-manager'));
+        if ((int)\RRZE\MultisiteManager\Support\AtomicLock::query('SELECT GET_LOCK(%s, 0)', $lock) !== 1) {
+            throw new \RuntimeException(esc_html__('Analysis storage is being updated. Retry shortly.', 'rrze-multisite-manager'));
         }
         switch_to_blog($siteId);
         try {
@@ -84,9 +84,10 @@ class AnalysisLifecycle {
                 '_transient_timeout_rrze_msm_shortcode_block_analysis_state',
             ];
             $placeholders = implode(',', array_fill(0, count($names), '%s'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             $existing = $wpdb->get_col($wpdb->prepare("SELECT option_name FROM {$wpdb->options} WHERE option_name IN ($placeholders)", ...$names));
             if ($wpdb->last_error) {
-                throw new \RuntimeException(__('Old analysis data could not be removed.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Old analysis data could not be removed.', 'rrze-multisite-manager'));
             }
             $flags = (array)get_option('rrze_msm_analysis_reanalysis', []);
             foreach ($existing as $name) {
@@ -103,6 +104,7 @@ class AnalysisLifecycle {
             if ($flags) {
                 self::saveOption('rrze_msm_analysis_reanalysis', $flags);
             }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             (new AnalysisStore())->check($wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name IN ($placeholders)", ...$names)));
             foreach ($names as $name) {
                 wp_cache_delete($name, 'options');
@@ -124,7 +126,7 @@ class AnalysisLifecycle {
             self::saveOption(self::SITE_VERSION, AnalysisStore::DATA_VERSION);
         } finally {
             restore_current_blog();
-            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+            \RRZE\MultisiteManager\Support\AtomicLock::query('SELECT RELEASE_LOCK(%s)', $lock);
         }
     }
 
@@ -151,6 +153,7 @@ class AnalysisLifecycle {
     public function deleteSite(\WP_Site $site): void {
         global $wpdb;
         $table = (new AnalysisStore())->table('runs');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
         (new AnalysisStore())->check($wpdb->query($wpdb->prepare("UPDATE $table SET status = 'obsolete', slot = run_id, expires_at = %d WHERE network_id = %d AND blog_id = %d", time(), (int)$site->site_id, (int)$site->blog_id)));
     }
 
@@ -173,9 +176,10 @@ class AnalysisLifecycle {
         $store = new AnalysisStore();
         $cursor = (int)get_site_option(self::CURSOR, 0);
         if ($cursor >= 0) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             $ids = $wpdb->get_col($wpdb->prepare("SELECT blog_id FROM {$wpdb->blogs} WHERE site_id = %d AND blog_id > %d ORDER BY blog_id LIMIT 10", get_current_network_id(), $cursor));
             if ($wpdb->last_error) {
-                throw new \RuntimeException(__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
             }
             foreach ($ids as $id) {
                 self::prepareSite((int)$id);
@@ -194,11 +198,13 @@ class AnalysisLifecycle {
             }
         }
         $where = implode(' OR ', $patterns);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
         $rows = $wpdb->get_results($wpdb->prepare("SELECT meta_id, meta_key FROM {$wpdb->sitemeta} WHERE site_id = %d AND ($where) ORDER BY meta_id LIMIT 250", get_current_network_id()));
         if ($wpdb->last_error) {
-            throw new \RuntimeException(__('Old analysis data could not be removed.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Old analysis data could not be removed.', 'rrze-multisite-manager'));
         }
         foreach ($rows as $row) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             $store->check($wpdb->delete($wpdb->sitemeta, ['meta_id' => (int)$row->meta_id, 'site_id' => get_current_network_id()]));
             wp_cache_delete(get_current_network_id() . ':' . $row->meta_key, 'site-options');
             $key = preg_replace('/^_site_transient_(?:timeout_)?/', '', $row->meta_key);
@@ -215,14 +221,17 @@ class AnalysisLifecycle {
         global $wpdb;
         $store = new AnalysisStore();
         $runs = $store->table('runs');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
         $expired = $wpdb->get_results($wpdb->prepare("SELECT id, blog_id, run_id FROM $runs WHERE network_id = %d AND expires_at > 0 AND expires_at <= %d ORDER BY expires_at, id LIMIT 10", get_current_network_id(), time()));
         if ($wpdb->last_error) {
-            throw new \RuntimeException(__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
         }
         foreach ($expired as $run) {
             // Claim expired runs before deleting children. Completed publications cannot be selected.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             $claimed = $wpdb->query($wpdb->prepare("UPDATE $runs SET status = 'obsolete', slot = run_id WHERE id = %d AND network_id = %d AND expires_at > 0 AND expires_at <= %d", $run->id, get_current_network_id(), time()));
             $store->check($claimed);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             $status = $wpdb->get_var($wpdb->prepare("SELECT status FROM $runs WHERE id = %d AND network_id = %d", $run->id, get_current_network_id()));
             if ($status !== 'obsolete') {
                 continue;
@@ -231,14 +240,17 @@ class AnalysisLifecycle {
             foreach (['shortcodes', 'blocks', 'mediaindex'] as $kind) {
                 $table = $store->table($kind);
                 $scope = $wpdb->prepare('network_id = %d AND blog_id = %d AND run_id = %s', get_current_network_id(), $run->blog_id, $run->run_id);
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
                 $store->check($wpdb->query("DELETE FROM $table WHERE $scope LIMIT 250"));
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
                 $exists = $wpdb->get_var("SELECT 1 FROM $table WHERE $scope LIMIT 1");
                 if ($wpdb->last_error) {
-                    throw new \RuntimeException(__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
+                    throw new \RuntimeException(esc_html__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
                 }
                 $remaining = $remaining || (bool)$exists;
             }
             if (!$remaining) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
                 $store->check($wpdb->delete($runs, ['id' => (int)$run->id, 'network_id' => get_current_network_id(), 'status' => 'obsolete']));
             }
         }
@@ -250,12 +262,14 @@ class AnalysisLifecycle {
         global $wpdb;
         $store = new AnalysisStore();
         $remaining = false;
-        foreach (['plugin_source_metrics_staging', 'theme_source_metrics_staging', 'plugin_metrics_staging', 'theme_metrics_staging', 'plugin_source_metrics', 'theme_source_metrics', 'plugin_metrics', 'theme_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
+        foreach (['plugin_metrics_staging', 'theme_metrics_staging', 'plugin_metrics', 'theme_metrics', 'shortcodes', 'blocks', 'mediaindex', 'runs'] as $kind) {
             $table = $store->table($kind);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             $store->check($wpdb->query($wpdb->prepare("DELETE FROM $table WHERE network_id = %d LIMIT 250", get_current_network_id())));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table or schema marker; table names come from the AnalysisStore::table() allowlist, values are prepared.
             $exists = $wpdb->get_var($wpdb->prepare("SELECT 1 FROM $table WHERE network_id = %d LIMIT 1", get_current_network_id()));
             if ($wpdb->last_error) {
-                throw new \RuntimeException(__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('Analysis data could not be read or saved. Retry the analysis.', 'rrze-multisite-manager'));
             }
             $remaining = $remaining || (bool)$exists;
             if ($kind !== 'runs' && $remaining) {

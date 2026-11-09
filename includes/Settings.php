@@ -1468,6 +1468,11 @@ class Settings {
     }
 
     protected function normalizeOptions(array $options): array {
+        unset(
+            $options['monitoring_source_analysis_enabled'],
+            $options['monitoring_source_analysis_max_depth'],
+            $options['monitoring_source_analysis_max_php_files']
+        );
         $sectionFields = [];
         $field = [];
         $compoundName = '';
@@ -1658,11 +1663,8 @@ class Settings {
             __('Plugin and theme usage index', 'rrze-multisite-manager'),
             [
                 'plugin_theme_usage_frequency',
-                'source_analysis_enabled',
-                'source_analysis_max_depth',
-                'source_analysis_max_php_files',
             ],
-            __('Records which websites use each plugin and theme and statically analyses their source code for shortcodes, blocks and other registrations. Changed limits take effect with the next run; every plugin and theme is then analysed again.', 'rrze-multisite-manager')
+            __('Records which websites use each plugin and theme.', 'rrze-multisite-manager')
         );
         $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
             'monitoring_frequency',

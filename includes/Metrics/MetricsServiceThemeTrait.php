@@ -6,13 +6,12 @@ defined('ABSPATH') || exit;
 
 trait MetricsServiceThemeTrait {
 
-    public function getThemeDetails(string $stylesheet, bool $includeSourceAnalysis = false): array {
+    public function getThemeDetails(string $stylesheet): array {
         $themes = $this->getThemes();
         $cacheKey = '';
         $cached = null;
         $themeItem = [];
         $supplementary = [];
-        $analysis = [];
         $installTimestamp = 0;
         $modifiedTimestamp = 0;
         $activeSites = [];
@@ -29,11 +28,16 @@ trait MetricsServiceThemeTrait {
 
         $themeItem = $this->hydrateThemeRuntimeState($themeItem);
 
-        $cacheKey = $this->getThemeDetailsCacheKey($stylesheet, $includeSourceAnalysis);
+        $cacheKey = $this->getThemeDetailsCacheKey($stylesheet);
         $cached = get_site_transient($cacheKey);
 
         if (is_array($cached) && !empty($cached)) {
-            return $this->hydrateThemeRuntimeState($cached);
+            $activeSites = $this->getActiveSitesForTheme($stylesheet);
+
+            return $this->hydrateThemeRuntimeState(array_merge($cached, [
+                'active_sites' => $activeSites,
+                'site_count' => count($activeSites),
+            ]));
         }
 
         // Dashboard theme rows contain only a preview of the websites using a
@@ -41,8 +45,6 @@ trait MetricsServiceThemeTrait {
         $activeSites = $this->getActiveSitesForTheme($stylesheet);
 
         $supplementary = $this->getThemeSupplementaryData($stylesheet);
-        $analysis = $this->pluginThemeUsageMetrics->getThemeSourceAnalysis($stylesheet);
-        $sourceAnalysisCompleted = $this->pluginThemeUsageMetrics->hasThemeSourceAnalysis($stylesheet);
         $installTimestamp = $this->getThemeInstallTimestamp($stylesheet);
         $modifiedTimestamp = $this->getThemeModifiedTimestamp($stylesheet);
 
@@ -68,18 +70,10 @@ trait MetricsServiceThemeTrait {
                 'repository' => (array)($supplementary['repository'] ?? []),
                 'metadata_sources' => (array)($supplementary['sources'] ?? []),
                 'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
-                'translation_languages' => $this->getTranslationLanguages(
+                'translation_languages' => $this->getThemeTranslationLanguages(
                     $stylesheet,
-                    (string)($themeItem['text_domain'] ?? ''),
-                    'theme'
+                    (string)($themeItem['text_domain'] ?? '')
                 ),
-                'source_analysis_completed' => $sourceAnalysisCompleted,
-                'source_analysis_truncated' => !empty($analysis['truncated']),
-                'shortcodes' => (array)($analysis['shortcodes'] ?? []),
-                'blocks' => (array)($analysis['blocks'] ?? []),
-                'block_patterns' => (array)($analysis['block_patterns'] ?? []),
-                'image_sizes' => (array)($analysis['image_sizes'] ?? []),
-                'provided_hooks' => (array)($analysis['provided_hooks'] ?? []),
                 'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Not available.', 'rrze-multisite-manager'),
                 'main_file_path' => $this->getThemeMainFilePath($stylesheet),
@@ -91,7 +85,8 @@ trait MetricsServiceThemeTrait {
             ]
         );
 
-        set_site_transient($cacheKey, $themeItem, $this->getDetailCacheTtl());
+        // Website rows are rebuilt per request and kept out of the cache.
+        $this->storeDetailCacheWithoutSiteRows($cacheKey, $themeItem);
 
         return $themeItem;
     }

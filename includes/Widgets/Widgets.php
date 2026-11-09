@@ -10,6 +10,8 @@ use RRZE\MultisiteManager\Template;
 defined('ABSPATH') || exit;
 
 abstract class Widgets {
+    protected string $siteRowSortKey = 'name';
+    protected bool $siteRowSortDescending = false;
     protected Plugin $plugin;
     protected Config $config;
 
@@ -303,9 +305,11 @@ abstract class Widgets {
         $topControlsHtml = (string)($args['top_controls_html'] ?? '');
         $showArchivedAt = !empty($args['show_archived_at']);
         $showDeletedAt = !empty($args['show_deleted_at']);
-        $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage);
+        $serverPagination = $this->getServerPaginatedSiteRows($sites, $tableId, $defaultPerPage, $sortKey, $sortDirection);
         $sites = $serverPagination['sites'];
         $perPage = $serverPagination['per_page'];
+        $sortKey = $serverPagination['sort_key'];
+        $sortDirection = $serverPagination['sort_direction'];
 
         if (empty($sites)) {
             return ($topControlsHtml !== '' ? '<div class="tablenav top rrze-msm-site-table-controls">' . $topControlsHtml . '</div>' : '')
@@ -313,7 +317,7 @@ abstract class Widgets {
         }
 
         ob_start();
-        echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-site-overview-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
+        echo '<div id="rrze-msm-site-table-' . esc_attr($tableId) . '" class="rrze-msm-site-table-wrap rrze-msm-server-paginated rrze-msm-server-sorted rrze-msm-site-overview-wrap" data-table-id="' . esc_attr($tableId) . '" data-default-per-page="' . esc_attr((string)$defaultPerPage) . '" data-current-page="1" data-sort-key="' . esc_attr($sortKey) . '" data-sort-direction="' . esc_attr($sortDirection) . '" tabindex="-1">';
         echo '<div class="tablenav top rrze-msm-site-table-controls">';
         echo $topControlsHtml;
         echo $this->renderSiteTablePerPageControl($tableId, 'rrze-msm-overview-per-page-' . $tableId, $defaultPerPage, $perPage);
@@ -735,8 +739,25 @@ abstract class Widgets {
     }
 
     /** @return array{sites: array<int, array<string, mixed>>, html: string, per_page: int} */
-    protected function getServerPaginatedSiteRows(array $sites, string $tableId, int $perPage): array {
+    /**
+     * Sorts (optionally) and slices the rows of a server-paginated table.
+     * With a sort key, the requested order (URL parameters
+     * rrze_msm_<table>_sort and rrze_msm_<table>_order) applies to all rows
+     * before slicing, so every page continues the same order. Without it,
+     * the caller's row order is kept.
+     */
+    protected function getServerPaginatedSiteRows(array $sites, string $tableId, int $perPage, string $sortKey = '', string $sortDirection = 'asc'): array {
         $pageKey = 'rrze_msm_' . $tableId . '_page';
+        $sortParameter = 'rrze_msm_' . $tableId . '_sort';
+        $orderParameter = 'rrze_msm_' . $tableId . '_order';
+
+        if ($sortKey !== '') {
+            $sortKey = isset($_GET[$sortParameter]) ? $this->normalizeSiteTableSortKey((string)wp_unslash($_GET[$sortParameter])) : $this->normalizeSiteTableSortKey($sortKey);
+            $sortDirection = isset($_GET[$orderParameter]) ? (string)wp_unslash($_GET[$orderParameter]) : $sortDirection;
+            $sortDirection = strtolower($sortDirection) === 'desc' ? 'desc' : 'asc';
+            $sites = $this->sortSiteOverviewRows($sites, $sortKey, $sortDirection);
+        }
+
         $perPageKey = 'rrze_msm_' . $tableId . '_per_page';
         $page = isset($_GET[$pageKey]) ? max(1, absint(wp_unslash($_GET[$pageKey]))) : 1;
         $defaultPerPage = max(1, $perPage);
@@ -799,7 +820,55 @@ abstract class Widgets {
             'sites' => array_slice($sites, ($page - 1) * $perPage, $perPage),
             'html' => $html,
             'per_page' => $perPage,
+            'sort_key' => $sortKey,
+            'sort_direction' => $sortDirection,
         ];
+    }
+
+    /** Site-overview row order on the server; ties are ordered by name. */
+    protected function sortSiteOverviewRows(array $sites, string $sortKey, string $sortDirection): array {
+        $this->siteRowSortKey = $sortKey;
+        $this->siteRowSortDescending = $sortDirection === 'desc';
+        usort($sites, [$this, 'compareSiteOverviewRows']);
+
+        return $sites;
+    }
+
+    protected function compareSiteOverviewRows(array $left, array $right): int {
+        $comparison = 0;
+
+        if ($this->siteRowSortKey === 'name' || $this->siteRowSortKey === 'admin-email') {
+            $comparison = strnatcasecmp($this->getSiteOverviewRowSortText($left, $this->siteRowSortKey), $this->getSiteOverviewRowSortText($right, $this->siteRowSortKey));
+        } else {
+            $comparison = $this->getSiteOverviewRowSortNumber($left) <=> $this->getSiteOverviewRowSortNumber($right);
+        }
+
+        if ($comparison === 0) {
+            $comparison = strnatcasecmp($this->getSiteOverviewRowSortText($left, 'name'), $this->getSiteOverviewRowSortText($right, 'name'));
+        }
+
+        return $this->siteRowSortDescending ? -$comparison : $comparison;
+    }
+
+    /** Same values as the data-sort-* attributes of renderSiteOverviewTable(). */
+    protected function getSiteOverviewRowSortText(array $site, string $sortKey): string {
+        if ($sortKey === 'admin-email') {
+            return (string)($site['admin_email_sort'] ?? strtolower((string)($site['admin_email'] ?? '')));
+        }
+
+        return (string)($site['name_sort'] ?? strtolower((string)($site['name'] ?? '')));
+    }
+
+    protected function getSiteOverviewRowSortNumber(array $site): float {
+        if ($this->siteRowSortKey === 'registered') {
+            return (float)($site['registered_timestamp'] ?? 0);
+        }
+
+        if ($this->siteRowSortKey === 'last-updated') {
+            return (float)($site['last_updated_timestamp'] ?? 0);
+        }
+
+        return (float)($site['storage']['used_bytes'] ?? 0);
     }
 
     abstract public function getId(): string;

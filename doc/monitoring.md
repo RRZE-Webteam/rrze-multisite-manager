@@ -8,7 +8,7 @@ The **Monitoring** page is the central operations interface for dashboard metric
 
 ### Network-wide
 
-Displays dashboard metrics, plugin/theme usage indexing and site availability monitoring. The usage index is a separate bounded process, runs twice weekly by default, and is the only source for website lists on plugin and theme detail pages. Once it has completed, local plugin activation/deactivation and theme changes update the affected website's rows immediately. The processes can be scheduled, started, reset, or removed. A running usage-index pass can additionally be cancelled (**Cancel**, **Cancel and restart**); the last completely published index remains in use. The optional static source analysis of plugins and themes is part of this pass only when it is enabled under **Settings > Monitoring > Plugin and theme usage index** (disabled by default). Status pills consistently mean:
+Displays dashboard metrics, plugin/theme usage indexing and site availability monitoring. The usage index is a separate bounded process, runs twice weekly by default, and is the only source for website lists on plugin and theme detail pages. Once it has completed, local plugin activation/deactivation and theme changes update the affected website's rows immediately. The processes can be scheduled, started, reset, or removed. A running usage-index pass can additionally be cancelled (**Cancel**, **Cancel and restart**); the last completely published index remains in use. Status pills consistently mean:
 
 * **Not scheduled** in grey: no next run, regardless of whether a result already exists.
 * **Scheduled** in yellow/orange: no result yet, but a future run is scheduled.

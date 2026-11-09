@@ -22,12 +22,8 @@ class AnalysisDatabase {
         self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_dashboard_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, blog_id INTEGER, entry_key TEXT, snapshot_status TEXT, recorded_at INTEGER, site_status TEXT DEFAULT '', websites_total INTEGER DEFAULT 0, websites_active INTEGER DEFAULT 0, websites_archived INTEGER DEFAULT 0, websites_blocked INTEGER DEFAULT 0, websites_deleted INTEGER DEFAULT 0, media_bytes INTEGER NULL, database_bytes INTEGER NULL, plugin_count INTEGER DEFAULT 0, theme_count INTEGER DEFAULT 0, user_count INTEGER DEFAULT 0, page_count INTEGER DEFAULT 0, post_count INTEGER DEFAULT 0, media_count INTEGER DEFAULT 0, custom_post_type_count INTEGER DEFAULT 0, UNIQUE(network_id,blog_id,entry_key))");
         self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_plugin_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, blog_id INTEGER, plugin_file TEXT, recorded_at INTEGER, UNIQUE(network_id,blog_id,plugin_file))");
         self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_theme_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, blog_id INTEGER, stylesheet TEXT, recorded_at INTEGER, UNIQUE(network_id,blog_id,stylesheet))");
-        self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_plugin_source_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, plugin_file TEXT, fingerprint TEXT, analysis_status TEXT, payload TEXT, payload_bytes INTEGER, recorded_at INTEGER, UNIQUE(network_id,plugin_file))");
-        self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_theme_source_metrics (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, stylesheet TEXT, fingerprint TEXT, analysis_status TEXT, payload TEXT, payload_bytes INTEGER, recorded_at INTEGER, UNIQUE(network_id,stylesheet))");
         self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_plugin_metrics_staging (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, blog_id INTEGER, plugin_file TEXT, recorded_at INTEGER, UNIQUE(network_id,blog_id,plugin_file))");
         self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_theme_metrics_staging (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, blog_id INTEGER, stylesheet TEXT, recorded_at INTEGER, UNIQUE(network_id,blog_id,stylesheet))");
-        self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_plugin_source_metrics_staging (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, plugin_file TEXT, fingerprint TEXT, analysis_status TEXT, payload TEXT, payload_bytes INTEGER, recorded_at INTEGER, UNIQUE(network_id,plugin_file))");
-        self::$database->exec("CREATE TABLE wp_rrze_msm_analysis_theme_source_metrics_staging (id INTEGER PRIMARY KEY AUTOINCREMENT, network_id INTEGER, stylesheet TEXT, fingerprint TEXT, analysis_status TEXT, payload TEXT, payload_bytes INTEGER, recorded_at INTEGER, UNIQUE(network_id,stylesheet))");
     }
 
     public function &__get(string $key): mixed { return $this->delegate->$key; }
@@ -46,6 +42,7 @@ class AnalysisDatabase {
     public function esc_like(string $value): string { return addcslashes($value, '_%'); }
     private function sql(string $sql): string {
         $sql = str_replace(['START TRANSACTION', ' FOR UPDATE'], ['BEGIN TRANSACTION', ''], $sql);
+        $sql = str_replace(' ON DUPLICATE KEY UPDATE id = id', ' ON CONFLICT(network_id,name) DO NOTHING', $sql);
         $sql = str_replace(' ON DUPLICATE KEY UPDATE ', ' ON CONFLICT(network_id,blog_id,run_id,entry_key) DO UPDATE SET ', $sql);
         $sql = preg_replace('/VALUES\((\w+)\)/', 'excluded.$1', $sql);
         // SQLite builds need not support DELETE LIMIT.
@@ -59,7 +56,11 @@ class AnalysisDatabase {
             return false;
         }
         try { return self::$database->query($this->sql($sql)); }
-        catch (Throwable $error) { $this->last_error = $error->getMessage(); throw new RuntimeException($this->last_error . ' SQL: ' . $sql); }
+        catch (Throwable $error) {
+            $this->last_error = $error->getMessage();
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Test double; the message is only shown in CLI test output.
+            throw new RuntimeException($this->last_error . ' SQL: ' . $sql);
+        }
     }
     public function query(string $sql): int|false {
         if (!$this->central($sql) && $this->delegate) { return $this->delegate->query($sql); }

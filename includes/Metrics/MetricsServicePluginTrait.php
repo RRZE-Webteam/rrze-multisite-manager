@@ -6,7 +6,7 @@ defined('ABSPATH') || exit;
 
 trait MetricsServicePluginTrait {
 
-    public function getPluginDetails(string $pluginFile, bool $includeSourceAnalysis = false): array {
+    public function getPluginDetails(string $pluginFile): array {
         $availablePlugins = [];
         $cacheKey = '';
         $cached = null;
@@ -15,12 +15,7 @@ trait MetricsServicePluginTrait {
         $pluginUsage = [];
         $pluginUsageItem = [];
         $updateItem = null;
-        $analysis = [];
         $status = [];
-        $supplementary = [];
-        $installTimestamp = 0;
-        $modifiedTimestamp = 0;
-        $translationLanguages = [];
 
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
@@ -30,11 +25,11 @@ trait MetricsServicePluginTrait {
             return [];
         }
 
-        $cacheKey = $this->getPluginDetailsCacheKey($pluginFile, $includeSourceAnalysis);
+        $cacheKey = $this->getPluginDetailsCacheKey($pluginFile);
         $cached = get_site_transient($cacheKey);
 
         if (is_array($cached) && !empty($cached)) {
-            return $cached;
+            return array_merge($cached, $this->getPluginUsageSiteRows($pluginFile), $this->getLivePluginRegistrations($pluginFile));
         }
 
         $pluginData = $availablePlugins[$pluginFile];
@@ -42,18 +37,6 @@ trait MetricsServicePluginTrait {
         $pluginUsage = is_array($dashboardData['plugin_usage']['plugins'] ?? null) ? $dashboardData['plugin_usage']['plugins'] : [];
         $pluginUsageItem = $this->findPluginUsageItem($pluginUsage, $pluginFile);
         $updateItem = $this->getPluginUpdateItem($pluginFile);
-        $analysis = $this->pluginThemeUsageMetrics->getPluginSourceAnalysis($pluginFile);
-        $sourceAnalysisCompleted = $this->pluginThemeUsageMetrics->hasPluginSourceAnalysis($pluginFile);
-        $supplementary = $this->getPluginSupplementaryData($pluginFile);
-        $installTimestamp = $this->getPluginInstallTimestamp($pluginFile);
-        $modifiedTimestamp = $this->getPluginModifiedTimestamp($pluginFile);
-        $translationLanguages = $this->getTranslationLanguages(
-            $pluginFile,
-            !empty($pluginData['TextDomain']) && is_string($pluginData['TextDomain']) ? (string)$pluginData['TextDomain'] : '',
-            'plugin'
-        );
-        $status = $this->getPluginStatus($pluginUsageItem);
-
         if (empty($pluginUsageItem)) {
             $pluginUsageItem = [
                 'file' => $pluginFile,
@@ -90,57 +73,96 @@ trait MetricsServicePluginTrait {
 
         // Detail pages read the central relation index. They never iterate
         // over all websites or read every site's active_plugins option.
-        $pluginUsageItem['active_sites'] = $this->getActiveSitesForPlugin($pluginFile);
-        $pluginUsageItem['site_count'] = count($pluginUsageItem['active_sites']);
-        $pluginUsageItem['active_sites_truncated'] = false;
+        $pluginUsageItem = array_merge($pluginUsageItem, $this->getPluginUsageSiteRows($pluginFile));
         $pluginUsageItem['usage_data_available'] = $this->pluginThemeUsageMetrics->hasCompletedSnapshot();
         $pluginUsageItem['usage_monitoring_url'] = admin_url('admin.php?page=rrze-multisite-manager-monitoring&monitoring_tab=network');
         $status = $this->getPluginStatus($pluginUsageItem);
 
-        if ((string)($pluginUsageItem['author'] ?? '') === '' && !empty($supplementary['author']['name'])) {
-            $pluginUsageItem['author'] = (string)$supplementary['author']['name'];
-        }
-
-        if ((string)($pluginUsageItem['author_url'] ?? '') === '' && !empty($supplementary['author']['url'])) {
-            $pluginUsageItem['author_url'] = (string)$supplementary['author']['url'];
-        }
-
-        if ((string)($pluginUsageItem['description'] ?? '') === '' && !empty($supplementary['description'])) {
-            $pluginUsageItem['description'] = (string)$supplementary['description'];
-        }
-
+        // Cached with the detail page; the files are read again only after
+        // the detail cache expired or was invalidated.
         $pluginData = array_merge(
             $pluginUsageItem,
-            [
-                'status' => $status,
-                'author_email' => (string)($supplementary['author']['email'] ?? ''),
-                'compatibility' => (array)($supplementary['compatibility'] ?? []),
-                'supports' => (array)($supplementary['supports'] ?? []),
-                'translation_languages' => $translationLanguages,
-                'license' => (array)($supplementary['license'] ?? []),
-                'tags' => (array)($supplementary['tags'] ?? []),
-                'repository' => (array)($supplementary['repository'] ?? []),
-                'extended_description' => (string)($supplementary['description'] ?? ''),
-                'metadata_sources' => (array)($supplementary['sources'] ?? []),
-                'readme_markdown' => (string)($supplementary['readme_markdown'] ?? ''),
-                'source_analysis_completed' => $sourceAnalysisCompleted,
-                'source_analysis_truncated' => !empty($analysis['truncated']),
-                'shortcodes' => (array)($analysis['shortcodes'] ?? []),
-                'blocks' => (array)($analysis['blocks'] ?? []),
-                'block_patterns' => (array)($analysis['block_patterns'] ?? []),
-                'custom_post_types' => (array)($analysis['custom_post_types'] ?? []),
-                'taxonomies' => (array)($analysis['taxonomies'] ?? []),
-                'image_sizes' => (array)($analysis['image_sizes'] ?? []),
-                'provided_hooks' => (array)($analysis['provided_hooks'] ?? []),
-                'installation_date_label' => $installTimestamp > 0 ? $this->formatTimestamp($installTimestamp) : __('Not available.', 'rrze-multisite-manager'),
-                'last_release_date_label' => $modifiedTimestamp > 0 ? $this->formatTimestamp($modifiedTimestamp) : __('Not available.', 'rrze-multisite-manager'),
-                'main_file_path' => $this->getPluginAbsolutePath($pluginFile),
-            ]
+            $this->getPluginSupplementaryData($pluginFile, $availablePlugins[$pluginFile])
         );
+        $pluginData['status'] = $status;
 
-        set_site_transient($cacheKey, $pluginData, $this->getDetailCacheTtl());
+        $this->storeDetailCacheWithoutSiteRows($cacheKey, $pluginData);
 
-        return $pluginData;
+        return array_merge($pluginData, $this->getLivePluginRegistrations($pluginFile));
+    }
+
+    /**
+     * Website rows of the detail page. They are built on every request from
+     * the indexed site IDs and the stored dashboard rows (no per-site
+     * metrics) and are not part of the detail cache, so a network-active
+     * plugin does not put hundreds of rows into one site transient.
+     */
+    protected function getPluginUsageSiteRows(string $pluginFile): array {
+        $rows = $this->getActiveSitesForPlugin($pluginFile);
+
+        return [
+            'active_sites' => $rows,
+            'site_count' => count($rows),
+            'active_sites_truncated' => false,
+        ];
+    }
+
+    /** Stores a detail payload without its website rows. */
+    protected function storeDetailCacheWithoutSiteRows(string $cacheKey, array $details): void {
+        unset($details['active_sites']);
+        set_site_transient($cacheKey, $details, $this->getDetailCacheTtl());
+    }
+
+    /** Only attribute registrations whose loaded callback belongs to this plugin. */
+    protected function getLivePluginRegistrations(string $pluginFile): array {
+        global $shortcode_tags, $wp_filter;
+        $directory = dirname($pluginFile);
+        $belongsToPlugin = static function ($callback) use ($pluginFile, $directory): bool {
+            $class = is_array($callback) ? ($callback[0] ?? null) : null;
+            if (is_string($callback) && str_contains($callback, '::')) {
+                $class = strstr($callback, '::', true);
+            }
+            if ((is_string($class) && !class_exists($class, false)) || !is_callable($callback)) {
+                return false;
+            }
+            try {
+                $reflection = new \ReflectionFunction(\Closure::fromCallable($callback));
+            } catch (\TypeError $error) {
+                return false;
+            }
+            $filename = $reflection->getFileName();
+            if (!$filename) {
+                return false;
+            }
+            $file = plugin_basename($filename);
+            return $file === $pluginFile || ($directory !== '.' && str_starts_with($file, $directory . '/'));
+        };
+
+        $result = ['shortcodes' => [], 'blocks' => [], 'hooks' => []];
+        foreach ((array)$shortcode_tags as $tag => $callback) {
+            if ($belongsToPlugin($callback)) {
+                $result['shortcodes'][] = (string)$tag;
+            }
+        }
+        foreach (\WP_Block_Type_Registry::get_instance()->get_all_registered() as $name => $block) {
+            if ($belongsToPlugin($block->render_callback)) {
+                $result['blocks'][] = $name;
+            }
+        }
+        foreach ((array)$wp_filter as $name => $hook) {
+            foreach ($hook->callbacks as $callbacks) {
+                foreach ($callbacks as $registration) {
+                    if ($belongsToPlugin($registration['function'])) {
+                        $result['hooks'][] = $name;
+                        continue 3;
+                    }
+                }
+            }
+        }
+        foreach ($result as &$names) {
+            sort($names, SORT_NATURAL | SORT_FLAG_CASE);
+        }
+        return $result;
     }
 
     protected function getPluginUsage(): array {

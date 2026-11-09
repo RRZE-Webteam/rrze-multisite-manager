@@ -24,7 +24,7 @@ Multiple-choice settings (for example **Ignore websites** for availability check
 The tab configures:
 
 * intervals for dashboard metrics, their historical statistics (daily, weekly, monthly, or disabled while retaining existing data; weekly by default), and availability checks
-* the plugin and theme usage index: cycle (twice weekly by default), optional static source analysis (disabled by default), subdirectory depth (default 3) and maximum PHP files per plugin or theme (default 100)
+* the plugin and theme usage index: cycle (twice weekly by default)
 * batch size for network-wide processes
 * grace period for new sites and DNS/HTTP failure thresholds
 * intervals, execution limits, and assignment criteria for storage analyses
@@ -36,8 +36,6 @@ The tab configures:
 Larger batches shorten the entire run but increase the load and execution time of an individual Cron request. Values should therefore match PHP limits, the Cron cadence, and network size.
 
 Shortcode/block scheduling initially classifies a website by its combined post and page count. Defaults are small up to 100, medium up to 1,000, large up to 5,000, and individual above that. After a successful complete run, the higher class from content count and active runtime is used: defaults are small up to 3 seconds, medium up to 15 seconds, large up to 60 seconds, and individual above that. Saving changed thresholds starts a bounded rescheduling pass; it does not synchronously scan the complete network.
-
-Shortcode and block providers of plugins and themes that are not loaded in the analysing process are taken from the static source analysis of the plugin and theme usage index. The former setting for a separate plugin-source scan in the shortcode/block analysis was removed in 1.3.36-4; a stored value is ignored.
 
 ## Views
 

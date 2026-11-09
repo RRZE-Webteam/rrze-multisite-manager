@@ -48,6 +48,7 @@ $GLOBALS['test_write_failure'] = '';
 $GLOBALS['test_forbidden_reads'] = [];
 $GLOBALS['test_forbidden_option_reads'] = [];
 function __($message, $domain = '') { return $message; }
+function esc_html__($message, $domain = '') { return htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8'); }
 function _n($one, $many, $count, $domain = '') { return $count === 1 ? $one : $many; }
 function esc_html($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UTF-8'); }
 function wp_normalize_path($path) { return str_replace('\\', '/', $path); }

@@ -48,11 +48,11 @@ class SiteDetailMetricsService {
         switch_to_blog($siteId);
 
         try {
-            if ($loadTheme || $loadImageSizes) {
+            if ($loadTheme) {
                 $result['theme'] = $providers['theme']();
             }
 
-            if ($loadPlugins || $loadImageSizes) {
+            if ($loadPlugins) {
                 $result['plugins'] = $providers['plugins']();
             }
 
@@ -61,7 +61,7 @@ class SiteDetailMetricsService {
             }
 
             if ($loadImageSizes) {
-                $result['image_sizes'] = $providers['image_sizes']($result['theme'], $result['plugins']);
+                $result['image_sizes'] = $providers['image_sizes']();
             }
 
             if (!empty($load['content'])) {

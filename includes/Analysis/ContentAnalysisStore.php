@@ -21,7 +21,7 @@ class ContentAnalysisStore {
         foreach (['shortcodes', 'blocks'] as $kind) {
             $checkpoint = $this->store->readEntry($kind, $siteId, $run->run_id, 'checkpoint');
             if ($checkpoint === null && !empty($state['site_id'])) {
-                throw new \RuntimeException(__('An analysis checkpoint is missing. Start a new analysis.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('An analysis checkpoint is missing. Start a new analysis.', 'rrze-multisite-manager'));
             }
             $state = array_replace($state, $checkpoint ?? []);
         }
@@ -36,13 +36,15 @@ class ContentAnalysisStore {
         global $wpdb;
         $run = $this->store->ensureRun($siteId, 'content', 'content');
         if (!empty($state['run_id']) && $state['run_id'] !== $run->run_id) {
-            throw new \RuntimeException(__('The analysis checkpoint expired. Start a new analysis.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The analysis checkpoint expired. Start a new analysis.', 'rrze-multisite-manager'));
         }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
         $this->store->check($wpdb->query('START TRANSACTION'));
         try {
             $runs = $this->store->table('runs');
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             if (!$wpdb->get_var($wpdb->prepare("SELECT id FROM $runs WHERE network_id = %d AND blog_id = %d AND run_id = %s AND status = 'running' AND expires_at > %d FOR UPDATE", get_current_network_id(), $siteId, $run->run_id, time()))) {
-                throw new \RuntimeException(__('The analysis checkpoint expired. Start a new analysis.', 'rrze-multisite-manager'));
+                throw new \RuntimeException(esc_html__('The analysis checkpoint expired. Start a new analysis.', 'rrze-multisite-manager'));
             }
             foreach (['shortcodes' => 'shortcode_', 'blocks' => 'block_'] as $kind => $prefix) {
                 foreach ((array)($state[$kind] ?? []) as $entry) {
@@ -60,8 +62,10 @@ class ContentAnalysisStore {
                 $this->store->writeEntry($kind, $siteId, $run->run_id, 'checkpoint', $checkpoint);
             }
             $this->store->saveCheckpoint($siteId, 'content', 'content', $state);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $this->store->check($wpdb->query('COMMIT'));
         } catch (\Throwable $error) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
             $wpdb->query('ROLLBACK');
             throw $error;
         }
@@ -71,7 +75,7 @@ class ContentAnalysisStore {
         global $wpdb;
         $run = $this->store->active($siteId, 'content');
         if (!$run || (!empty($state['run_id']) && $state['run_id'] !== $run->run_id)) {
-            throw new \RuntimeException(__('The analysis checkpoint expired. Start a new analysis.', 'rrze-multisite-manager'));
+            throw new \RuntimeException(esc_html__('The analysis checkpoint expired. Start a new analysis.', 'rrze-multisite-manager'));
         }
         $summary = [
             'generated_at' => current_time('mysql', true),
@@ -81,15 +85,13 @@ class ContentAnalysisStore {
         ];
         foreach (['shortcodes', 'blocks'] as $kind) {
             $table = $this->store->table($kind);
-            $counts = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS entries, COUNT(DISTINCT name) AS names, COUNT(DISTINCT CASE WHEN registered = 0 THEN name END) AS unregistered FROM $table WHERE network_id = %d AND blog_id = %d AND run_id = %s AND post_id > 0", get_current_network_id(), $siteId, $run->run_id));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Plugin-owned central analysis table; table names come from the AnalysisStore::table() allowlist, values are prepared, results must not be object-cached.
+            $counts = $wpdb->get_row($wpdb->prepare("SELECT COUNT(*) AS entries, COUNT(DISTINCT name) AS names FROM $table WHERE network_id = %d AND blog_id = %d AND run_id = %s AND post_id > 0", get_current_network_id(), $siteId, $run->run_id));
             if (!$counts || $wpdb->last_error) {
                 AnalysisStorageException::raise($kind . '-counts', $siteId);
             }
             $summary[$kind . '_count'] = (int)$counts->entries;
             $summary[$kind . '_distinct'] = (int)$counts->names;
-            if ($kind === 'shortcodes') {
-                $summary['unregistered_shortcodes'] = (int)$counts->unregistered;
-            }
             $checkpoint = $this->store->readEntry($kind, $siteId, $run->run_id, 'checkpoint') ?? [];
             $prefix = $kind === 'blocks' ? 'block_' : 'shortcode_';
             $summary[$kind . '_truncated'] = !empty($checkpoint[$prefix . 'truncated']);

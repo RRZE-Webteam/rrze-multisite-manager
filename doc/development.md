@@ -68,7 +68,7 @@ For new or renamed menu pages, create or update a file in `doc/` and link it fro
 
 ### Central analysis schema changes
 
-The thirteen central analysis tables are specified in [Runtime state and scheduler](runtime-state.md#central-analysis-tables). They use `$wpdb->base_prefix`, not a website prefix; every database operation must therefore constrain `network_id`, `blog_id`, and the relevant `run_id`.
+The nine central analysis tables are specified in [Runtime state and scheduler](runtime-state.md#central-analysis-tables). They use `$wpdb->base_prefix`, not a website prefix; every database operation must therefore constrain `network_id`, `blog_id`, and the relevant `run_id`.
 
 When changing this schema:
 

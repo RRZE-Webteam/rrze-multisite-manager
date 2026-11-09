@@ -10,10 +10,22 @@ class Config {
     // typical PHP-FPM pool and max_connections sizes.
     public const DEFAULT_MAX_CONCURRENT_WORKERS = 3;
     public const MAX_CONCURRENT_WORKERS_LIMIT = 16;
-    // Static plugin/theme source analysis scope.
-    public const DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH = 3;
-    public const DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES = 100;
     public const STORAGE_ANALYSIS_MAX_CONCURRENT_RUNS = 8;
+    // The "Plugin" column of the shortcode results is hidden while
+    // KNOWN_SHORTCODES only lists WordPress Core and cannot be edited.
+    public const SHOW_SHORTCODE_PROVIDER_COLUMN = false;
+    // Shortcodes whose provider is known. Shortcode analysis results show the
+    // plugin for these names; every other name is shown as unknown. "file" is
+    // the plugin file relative to the plugin directory (empty for WordPress Core).
+    public const KNOWN_SHORTCODES = [
+        'audio' => ['plugin' => 'WordPress', 'file' => ''],
+        'caption' => ['plugin' => 'WordPress', 'file' => ''],
+        'embed' => ['plugin' => 'WordPress', 'file' => ''],
+        'gallery' => ['plugin' => 'WordPress', 'file' => ''],
+        'playlist' => ['plugin' => 'WordPress', 'file' => ''],
+        'video' => ['plugin' => 'WordPress', 'file' => ''],
+        'wp_caption' => ['plugin' => 'WordPress', 'file' => ''],
+    ];
 
     private array $config = [];
 
@@ -274,31 +286,6 @@ class Config {
                         'type' => 'select',
                         'default' => 'twiceweekly',
                         'choices' => $schedulerFrequencyChoices,
-                    ],
-                    [
-                        'name' => 'source_analysis_enabled',
-                        'label' => __('Static source analysis', 'rrze-multisite-manager'),
-                        'desc' => __('Disabled by default. When enabled, each run of the usage index additionally analyses the source code of every installed plugin and theme for shortcodes, blocks and other registrations, one plugin or theme per Cron step. Detail pages and the shortcode and block analysis then show providers that are not loaded in the current process. When disabled, only plugin and theme usage is collected and previously stored findings remain unchanged.', 'rrze-multisite-manager'),
-                        'type' => 'checkbox',
-                        'default' => false,
-                    ],
-                    [
-                        'name' => 'source_analysis_max_depth',
-                        'label' => __('Source analysis: subdirectory depth', 'rrze-multisite-manager'),
-                        'desc' => __('How many subdirectory levels below a plugin or theme directory the static source analysis reads. 0 reads only the main directory, 1 also its direct subdirectories. Registrations in deeper directories are not found; the default of 3 still covers block metadata in build/blocks/*/block.json. Default: 3. Allowed values: 0 to 10.', 'rrze-multisite-manager'),
-                        'type' => 'number',
-                        'default' => self::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH,
-                        'min' => 0,
-                        'max' => 10,
-                    ],
-                    [
-                        'name' => 'source_analysis_max_php_files',
-                        'label' => __('Source analysis: maximum PHP files', 'rrze-multisite-manager'),
-                        'desc' => __('Maximum number of PHP files read per plugin or theme. Files in the main directory are read first, then each subdirectory level in alphabetical order. A plugin or theme with more PHP files within the configured depth is marked as incompletely analysed. Default: 100. Allowed values: 10 to 5000.', 'rrze-multisite-manager'),
-                        'type' => 'number',
-                        'default' => self::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES,
-                        'min' => 10,
-                        'max' => 5000,
                     ],
                     [
                         'name' => 'batch_size',
@@ -643,8 +630,8 @@ class Config {
                     ],
                     [
                         'name' => 'shortcode_block_analysis_value_max_kilobytes',
-                        'label' => __('Maximum input size per post content or metadata value (KiB)', 'rrze-multisite-manager'),
-                        'desc' => __('This limit applies separately to each post or page content field and to each individual post-meta value. It is not a cumulative limit for an entire website analysis.', 'rrze-multisite-manager'),
+                        'label' => __('Maximum input size per post content (KiB)', 'rrze-multisite-manager'),
+                        'desc' => __('This limit applies separately to the content of each post or page. It is not a cumulative limit for an entire website analysis.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 256,
                         'min' => 64,
@@ -971,31 +958,22 @@ class Config {
         return max(25, min(250, (int)($this->config['constants']['network_cron_cleanup_batch_size'] ?? 100)));
     }
 
-    /** Whether the plugin and theme usage index also runs the static source analysis. */
-    public function isSourceAnalysisEnabled(): bool {
-        $options = get_site_option($this->getOptionName(), []);
+    /**
+     * Provider of a known shortcode, or an empty array for unknown names.
+     *
+     * @return array{plugin: string, file: string}|array{}
+     */
+    public function getKnownShortcode(string $shortcode): array {
+        $entry = self::KNOWN_SHORTCODES[$shortcode] ?? (self::KNOWN_SHORTCODES[strtolower($shortcode)] ?? null);
 
-        return is_array($options) && !empty($options['monitoring_source_analysis_enabled']);
-    }
+        if (!is_array($entry) || trim((string)($entry['plugin'] ?? '')) === '') {
+            return [];
+        }
 
-    /** Subdirectory levels below a plugin or theme directory read by the source analysis. */
-    public function getSourceAnalysisMaxDepth(): int {
-        $options = get_site_option($this->getOptionName(), []);
-        $depth = is_array($options)
-            ? (int)($options['monitoring_source_analysis_max_depth'] ?? self::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH)
-            : self::DEFAULT_SOURCE_ANALYSIS_MAX_DEPTH;
-
-        return max(0, min(10, $depth));
-    }
-
-    /** PHP files read per plugin or theme by the source analysis. */
-    public function getSourceAnalysisMaxPhpFiles(): int {
-        $options = get_site_option($this->getOptionName(), []);
-        $files = is_array($options)
-            ? (int)($options['monitoring_source_analysis_max_php_files'] ?? self::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES)
-            : self::DEFAULT_SOURCE_ANALYSIS_MAX_PHP_FILES;
-
-        return max(10, min(5000, $files));
+        return [
+            'plugin' => (string)$entry['plugin'],
+            'file' => (string)($entry['file'] ?? ''),
+        ];
     }
 
     public function getShortcodeBlockResultEntryLimit(): int {
