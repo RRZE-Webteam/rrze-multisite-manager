@@ -5,6 +5,7 @@ namespace RRZE\MultisiteManager\Metrics;
 use RRZE\MultisiteManager\Config;
 use RRZE\MultisiteManager\Support\AtomicLock;
 use RRZE\MultisiteManager\Support\ResponseTimeSampler;
+use RRZE\MultisiteManager\Support\SiteHealthLinks;
 use RRZE\MultisiteManager\Support\WorkerBudget;
 use RRZE\MultisiteManager\Support\WorkerRuntimeStats;
 
@@ -176,6 +177,10 @@ class RuntimeDiagnosticsService {
                         : __('Not available', 'rrze-multisite-manager'),
                 ],
             ],
+            'site_health_links' => SiteHealthLinks::getLinks([
+                'wp-database' => __('Database', 'rrze-multisite-manager'),
+                'wp-dropins' => __('Drop-ins', 'rrze-multisite-manager'),
+            ]),
         ];
     }
 

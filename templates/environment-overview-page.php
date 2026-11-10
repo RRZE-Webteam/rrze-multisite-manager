@@ -79,6 +79,14 @@ defined('ABSPATH') || exit;
                     <section class="rrze-msm-widget rrze-msm-widget-span-12">
                         <header class="rrze-msm-widget-header">
                             <h2><?php echo esc_html((string)($section['title'] ?? '')); ?></h2>
+                            <?php if (!empty($section['site_health_links']) && is_array($section['site_health_links'])) { ?>
+                                <p class="rrze-msm-environment-site-health">
+                                    <?php echo esc_html__('More in Site Health of the main site:', 'rrze-multisite-manager'); ?>
+                                    <?php foreach (array_values($section['site_health_links']) as $linkIndex => $siteHealthLink) { ?>
+                                        <?php echo $linkIndex > 0 ? ' &middot; ' : ' '; ?><a href="<?php echo esc_url((string)($siteHealthLink['url'] ?? '')); ?>"><?php echo esc_html((string)($siteHealthLink['label'] ?? '')); ?></a>
+                                    <?php } ?>
+                                </p>
+                            <?php } ?>
                         </header>
                         <div class="rrze-msm-environment-table-wrap">
                             <table class="striped rrze-msm-datatable">

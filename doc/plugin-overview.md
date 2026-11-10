@@ -18,6 +18,10 @@ When the optional plugin enablement is available (RRZE Netzwerk-Audit network-ac
 
 Hover actions link to plugin details and, if available, to plugin settings. If the Plugin Check Plugin is active, an additional link to its individual test is available for a plugin.
 
+## No longer installed plugins
+
+The table **No longer installed plugins in active database entries** lists plugin files that are still listed in `active_plugins` of at least one website but are not installed any more. The dashboard payload only stores their counts. When the page is rendered, `MetricsService::addMissingPluginSites()` adds the websites from the plugin-usage index (`getPluginSiteIds()`) and the stored dashboard rows, so the **Websites** column lists them (the first 20 per plugin, with a note when there are more). Before the first completed index run only the stored counts are shown.
+
 ## Notes
 
 The page uses aggregated dashboard data for site usage. Plugin actions themselves use WordPress network actions and their nonces.

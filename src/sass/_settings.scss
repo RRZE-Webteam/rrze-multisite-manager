@@ -113,3 +113,118 @@ body.rrze-msm-mode-dark {
 .rrze-msm-settings-group-content {
     padding: 1rem 1.5rem;
 }
+
+/*
+ * Second navigation level of the settings: a quiet text bar with an
+ * underline for the active section instead of the button tabs used on the
+ * detail pages. The extra selector weight overrides the button styles from
+ * widgets/_widget-base.scss and the active rule in rrze-multisite-manager.scss.
+ * Labels sit at the bottom, next to the underline.
+ */
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0 1.5rem;
+    margin: 12px 0 0;
+    padding: 0 .25rem;
+    border-bottom: 1px solid var(--rrze-msm-border);
+}
+
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:visited {
+    display: inline-flex;
+    align-items: flex-end;
+    margin: 0 0 -1px;
+    padding: 10px 0 7px;
+    border: 0 !important;
+    border-bottom: 3px solid transparent !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none;
+    color: var(--rrze-msm-muted) !important;
+    line-height: 1.4;
+}
+
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:hover,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:focus {
+    border-bottom-color: var(--rrze-msm-border) !important;
+    color: var(--rrze-msm-text) !important;
+}
+
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:focus-visible {
+    outline: 2px solid var(--rrze-msm-link);
+    outline-offset: 2px;
+}
+
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button),
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):visited,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):hover,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):focus,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):active {
+    background: transparent !important;
+    border-bottom-color: var(--rrze-msm-link) !important;
+    color: var(--rrze-msm-link) !important;
+    font-weight: 600;
+}
+
+.rrze-msm-settings-section-intro {
+    margin: 1.25rem 0 1rem;
+}
+
+.rrze-msm-settings-section-intro h2 {
+    margin: 0 0 .25rem;
+}
+
+.rrze-msm-settings-section-intro .description {
+    margin: 0;
+}
+
+.rrze-msm-settings-matrix-wrap {
+    margin: 0 1.5rem 1rem;
+    overflow-x: auto;
+}
+
+.rrze-msm-settings-matrix th[scope="row"] {
+    white-space: nowrap;
+}
+
+.rrze-msm-settings-matrix td {
+    vertical-align: middle;
+}
+
+.rrze-msm-settings-matrix .small-text {
+    width: 7em;
+}
+
+.rrze-msm-settings-matrix-range {
+    display: block;
+    font-size: 12px;
+}
+
+.rrze-msm-settings-matrix-help {
+    margin: 0 1.5rem 1rem;
+}
+
+.rrze-msm-settings-matrix-help dt {
+    font-weight: 600;
+    margin-top: .5rem;
+}
+
+.rrze-msm-settings-matrix-help dd {
+    margin: 0 0 0 1rem;
+}
+
+.rrze-msm-settings-group .notice.inline {
+    margin: 0 1.5rem 1rem;
+}
+
+.rrze-msm-settings-advanced {
+    margin: 1.5rem 0;
+}
+
+.rrze-msm-settings-advanced > summary {
+    cursor: pointer;
+    font-size: 1.1em;
+    font-weight: 600;
+}

@@ -1868,6 +1868,7 @@ class Dashboard {
         $pluginUsage = is_array($dashboardData['plugin_usage'] ?? null) ? $dashboardData['plugin_usage'] : [];
         $allPlugins = is_array($pluginUsage['plugins'] ?? null) ? $pluginUsage['plugins'] : [];
         $missingPlugins = is_array($pluginUsage['missing_plugins'] ?? null) ? $pluginUsage['missing_plugins'] : [];
+        $missingPlugins = $this->metrics->addMissingPluginSites($missingPlugins);
         $widget = new PluginUsageWidget($this->plugin, $this->config);
         $allPlugins = $widget->hydrateRuntimeState($allPlugins);
         $networkPlugins = array_values(
@@ -1956,11 +1957,16 @@ class Dashboard {
             ],
         ];
 
+        // $allPlugins is already hydrated with all installed plugins. Each
+        // table must show exactly the plugins passed to it; without
+        // only_provided_plugins renderTable() would add every installed
+        // plugin again and the filtered tabs would list all plugins.
         $tables = [
             'all' => $widget->renderTable(
                 $allPlugins,
                 [
                     'table_id' => 'plugin-overview-all',
+                    'only_provided_plugins' => true,
                     'default_per_page' => 30,
                     'sort_key' => 'name',
                     'sort_direction' => 'asc',
@@ -1976,6 +1982,7 @@ class Dashboard {
                 $networkPlugins,
                 [
                     'table_id' => 'plugin-overview-network',
+                    'only_provided_plugins' => true,
                     'default_per_page' => 30,
                     'sort_key' => 'name',
                     'sort_direction' => 'asc',
@@ -1991,6 +1998,7 @@ class Dashboard {
                 $activePlugins,
                 [
                     'table_id' => 'plugin-overview-active',
+                    'only_provided_plugins' => true,
                     'default_per_page' => 30,
                     'sort_key' => 'name',
                     'sort_direction' => 'asc',
@@ -2006,6 +2014,7 @@ class Dashboard {
                 $inactivePlugins,
                 [
                     'table_id' => 'plugin-overview-inactive',
+                    'only_provided_plugins' => true,
                     'default_per_page' => 30,
                     'sort_key' => 'name',
                     'sort_direction' => 'asc',

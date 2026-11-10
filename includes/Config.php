@@ -289,8 +289,8 @@ class Config {
                     ],
                     [
                         'name' => 'batch_size',
-                        'label' => __('Dashboard metrics batch size', 'rrze-multisite-manager'),
-                        'desc' => __('Number of websites processed in each dashboard-metrics batch. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
+                        'label' => __('Websites per step (dashboard metrics and usage index)', 'rrze-multisite-manager'),
+                        'desc' => __('Number of websites processed in each step of the dashboard metrics and of the plugin and theme usage index. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 25,
                         'min' => 5,
