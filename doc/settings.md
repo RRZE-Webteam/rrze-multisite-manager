@@ -8,6 +8,11 @@ The **Settings** page configures Multisite Manager. It is visible only to super 
 
 This tab maintains defaults for dashboard tables, inactivity marking, and optional logging of background processes. The settings do not control WordPress core options outside Multisite Manager.
 
+### Users
+
+* **Default visible columns in the user list** (`users_default_visible_columns`).
+* **Orphaned accounts: minimum account age** (`users_orphaned_minimum_age_months`, default 12 months) and **months since last login** (`users_orphaned_inactive_months`, default 12 months) define the filter **Orphaned accounts** on the Users page. The filter is offered only while Wordfence is active; see [Users](network-users.md).
+
 ### Logging
 
 The **Debugging** section has two independent switches, both disabled by default:

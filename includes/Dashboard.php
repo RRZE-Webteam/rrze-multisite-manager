@@ -32,6 +32,8 @@ use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
 
 class Dashboard {
     protected const USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT = 'rrze_msm_users_without_membership_count';
+    protected const USERS_ORPHANED_COUNT_TRANSIENT = 'rrze_msm_users_orphaned_count';
+    protected const WORDFENCE_PLUGIN_FILE = 'wordfence/wordfence.php';
     protected Plugin $plugin;
     protected Settings $settings;
     protected Config $config;
@@ -71,23 +73,81 @@ class Dashboard {
 
     /**
      * Cached count for the user page view link. The NOT EXISTS query over
-     * usermeta runs only after a membership change or after one hour.
+     * usermeta runs only after a membership change or after one hour. The
+     * time of the count is shown as "Stand" on the page.
+     *
+     * @return array{count: int, time: int}
      */
-    protected function getUsersWithoutWebsiteMembershipCount(): int {
+    protected function getUsersWithoutWebsiteMembershipCountData(): array {
         $cached = get_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT);
+        $data = [];
 
-        if (is_array($cached) && isset($cached['count'])) {
+        if (is_array($cached) && isset($cached['count'], $cached['time'])) {
+            return ['count' => max(0, (int)$cached['count']), 'time' => (int)$cached['time']];
+        }
+
+        $data = ['count' => NetworkUsersListTable::getUsersWithoutWebsiteMembershipCount(), 'time' => time()];
+        set_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT, $data, HOUR_IN_SECONDS);
+
+        return $data;
+    }
+
+    protected function getUsersWithoutWebsiteMembershipCount(): int {
+        return $this->getUsersWithoutWebsiteMembershipCountData()['count'];
+    }
+
+    /**
+     * Cached count of orphaned accounts. The cache key contains both
+     * settings, so a changed setting is counted again immediately. Logins do
+     * not clear the cache; the count can be up to one hour old.
+     *
+     * @param array{login: int, registered: string, key: string} $cutoffs
+     */
+    protected function getOrphanedUsersCount(array $cutoffs): int {
+        $cached = get_site_transient(self::USERS_ORPHANED_COUNT_TRANSIENT);
+        $count = 0;
+
+        if (is_array($cached) && ($cached['key'] ?? '') === $cutoffs['key'] && isset($cached['count'])) {
             return max(0, (int)$cached['count']);
         }
 
-        $count = NetworkUsersListTable::getUsersWithoutWebsiteMembershipCount();
-        set_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT, ['count' => $count], HOUR_IN_SECONDS);
+        $count = NetworkUsersListTable::getOrphanedUsersCount($cutoffs['login'], $cutoffs['registered']);
+        set_site_transient(self::USERS_ORPHANED_COUNT_TRANSIENT, ['count' => $count, 'key' => $cutoffs['key']], HOUR_IN_SECONDS);
 
         return $count;
     }
 
+    /**
+     * Cut-off dates for orphaned accounts from Settings > General > Users.
+     * The key changes once per day, so the cut-offs move with the calendar.
+     *
+     * @return array{login: int, registered: string, key: string}
+     */
+    protected function getOrphanedUserCutoffs(): array {
+        $inactiveMonths = max(1, (int)$this->settings->getOption('users', 'orphaned_inactive_months', 12));
+        $minimumAgeMonths = max(1, (int)$this->settings->getOption('users', 'orphaned_minimum_age_months', 12));
+        $loginCutoff = (int)strtotime('-' . $inactiveMonths . ' months');
+        $registeredCutoff = gmdate('Y-m-d H:i:s', (int)strtotime('-' . $minimumAgeMonths . ' months'));
+
+        return [
+            'login' => $loginCutoff,
+            'registered' => $registeredCutoff,
+            'key' => $inactiveMonths . '|' . $minimumAgeMonths . '|' . gmdate('Y-m-d'),
+        ];
+    }
+
+    /** Wordfence records the last login used for orphaned accounts. */
+    protected function isWordfenceActive(): bool {
+        if (!function_exists('is_plugin_active_for_network')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        return is_plugin_active_for_network(self::WORDFENCE_PLUGIN_FILE) || is_plugin_active(self::WORDFENCE_PLUGIN_FILE);
+    }
+
     public function flushUsersWithoutWebsiteMembershipCount(...$unused): void {
         delete_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT);
+        delete_site_transient(self::USERS_ORPHANED_COUNT_TRANSIENT);
     }
 
     /** @param mixed $metaIds */
@@ -152,6 +212,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_activate_site_theme', [$this, 'handleSiteThemeActivate']);
         add_action('admin_post_rrze_multisite_manager_response_sampling', [$this, 'handleResponseSampling']);
         add_action('admin_post_rrze_multisite_manager_environment_export', [$this, 'handleEnvironmentExport']);
+        add_action('admin_post_rrze_multisite_manager_database_latency', [$this, 'handleDatabaseLatencyProbe']);
         add_action('admin_post_rrze_multisite_manager_toggle_network_audit_plugin', [$this, 'handleNetworkAuditPluginToggle']);
         add_action('admin_action_rrze_multisite_manager_enable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
         add_action('admin_action_rrze_multisite_manager_disable_selected_network_audit_plugins', [$this, 'handleNetworkAuditPluginBulkToggle']);
@@ -664,7 +725,11 @@ class Dashboard {
         exit;
     }
 
-    /** Renders the Core multisite user table with MSM-specific views. */
+    /**
+     * Renders the Core multisite user table with MSM-specific views. The
+     * layout follows the website and plugin overviews: title and "Stand"
+     * on the page background, filter buttons and table in a content panel.
+     */
     public function renderNetworkUsersPage(): void {
         if (!$this->currentUserCanUseNetworkAdminFeatures()) {
             wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
@@ -674,61 +739,109 @@ class Dashboard {
             require_once ABSPATH . 'wp-admin/includes/class-wp-ms-users-list-table.php';
         }
 
+        $wordfenceActive = $this->isWordfenceActive();
         $filter = isset($_GET['rrze_msm_user_filter'])
             ? sanitize_key((string)wp_unslash($_GET['rrze_msm_user_filter']))
-            : 'all';
-        $filter = $filter === 'without-site-membership' ? $filter : 'all';
-        $role = isset($_GET['role']) ? sanitize_key((string)wp_unslash($_GET['role'])) : '';
-        $role = $filter === 'all' && $role === 'super' ? 'super' : '';
-        $baseUrl = $this->getNetworkUsersUrl();
-        $allUrl = remove_query_arg(['rrze_msm_user_filter', 'role', 'paged'], $baseUrl);
-        $superAdminUrl = add_query_arg([
-            'role' => 'super',
-        ], $baseUrl);
-        $withoutMembershipUrl = add_query_arg([
-            'rrze_msm_user_filter' => 'without-site-membership',
-        ], $baseUrl);
-        $allUsersCount = (int)get_user_count();
-        $superAdminCount = count(get_super_admins());
-        $withoutMembershipCount = $this->getUsersWithoutWebsiteMembershipCount();
-        $table = new NetworkUsersListTable($filter === 'without-site-membership');
+            : NetworkUsersListTable::FILTER_ALL;
+        $allowedFilters = [NetworkUsersListTable::FILTER_WITHOUT_MEMBERSHIP];
 
+        if ($wordfenceActive) {
+            $allowedFilters[] = NetworkUsersListTable::FILTER_ORPHANED;
+        }
+
+        $filter = in_array($filter, $allowedFilters, true) ? $filter : NetworkUsersListTable::FILTER_ALL;
+        $role = isset($_GET['role']) ? sanitize_key((string)wp_unslash($_GET['role'])) : '';
+        $role = $filter === NetworkUsersListTable::FILTER_ALL && $role === 'super' ? 'super' : '';
+        $currentView = $role === 'super' ? 'super' : $filter;
+        $baseUrl = remove_query_arg(['rrze_msm_user_filter', 'role', 'paged', 's'], $this->getNetworkUsersUrl());
+        $withoutMembership = $this->getUsersWithoutWebsiteMembershipCountData();
+        $cutoffs = $this->getOrphanedUserCutoffs();
+        $views = [
+            [
+                'slug' => NetworkUsersListTable::FILTER_ALL,
+                'label' => __('All users', 'rrze-multisite-manager'),
+                'count' => (int)get_user_count(),
+                'class' => 'rrze-msm-tab-all',
+                'url' => $baseUrl,
+            ],
+            [
+                'slug' => 'super',
+                'label' => __('Super administrators', 'rrze-multisite-manager'),
+                'count' => count(get_super_admins()),
+                'class' => '',
+                'url' => add_query_arg(['role' => 'super'], $baseUrl),
+            ],
+            [
+                'slug' => NetworkUsersListTable::FILTER_WITHOUT_MEMBERSHIP,
+                'label' => __('Without website assignment', 'rrze-multisite-manager'),
+                'count' => $withoutMembership['count'],
+                'class' => 'rrze-msm-status-archive',
+                'url' => add_query_arg(['rrze_msm_user_filter' => NetworkUsersListTable::FILTER_WITHOUT_MEMBERSHIP], $baseUrl),
+            ],
+        ];
+        $view = [];
+        $table = null;
+
+        if ($wordfenceActive) {
+            $views[] = [
+                'slug' => NetworkUsersListTable::FILTER_ORPHANED,
+                'label' => __('Orphaned accounts', 'rrze-multisite-manager'),
+                'count' => $this->getOrphanedUsersCount($cutoffs),
+                'class' => 'rrze-msm-status-blocked',
+                'url' => add_query_arg(['rrze_msm_user_filter' => NetworkUsersListTable::FILTER_ORPHANED], $baseUrl),
+            ];
+        }
+
+        $table = new NetworkUsersListTable($filter, $cutoffs['login'], $cutoffs['registered']);
         $table->prepare_items();
 
         echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
-        if (isset($_GET['rrze_msm_users_deleted']) && $_GET['rrze_msm_users_deleted'] === '1') {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The selected users have been deleted.', 'rrze-multisite-manager') . '</p></div>';
-        }
         echo '<div class="rrze-msm-page-shell">';
         echo '<div class="rrze-msm-page-header"><div>';
         echo '<h1>' . esc_html__('Users', 'rrze-multisite-manager') . '</h1>';
-        echo '<p>' . esc_html__('Network-wide user list based on the WordPress Network Administration.', 'rrze-multisite-manager') . '</p>';
+        echo '</div><div class="rrze-msm-header-controls">';
+        echo '<button type="button" class="button button-secondary rrze-msm-mode-toggle" data-next-mode="' . esc_attr($this->getColorMode() === 'dark' ? 'light' : 'dark') . '">' . esc_html($this->getModeToggleLabel()) . '</button>';
         echo '</div></div>';
-        echo '<ul class="subsubsub rrze-msm-user-views">';
-        echo '<li><a href="' . esc_url($allUrl) . '"' . ($filter === 'all' && $role !== 'super' ? ' class="current" aria-current="page"' : '') . '>' . esc_html(sprintf(
-            /* translators: %s: number of users. */
-            __('All users (%s)', 'rrze-multisite-manager'),
-            number_format_i18n($allUsersCount)
-        )) . '</a> | </li>';
-        echo '<li><a href="' . esc_url($superAdminUrl) . '"' . ($role === 'super' ? ' class="current" aria-current="page"' : '') . '>' . esc_html(sprintf(
-            /* translators: %s: number of super administrators. */
-            __('Super administrators (%s)', 'rrze-multisite-manager'),
-            number_format_i18n($superAdminCount)
-        )) . '</a> | </li>';
-        echo '<li><a href="' . esc_url($withoutMembershipUrl) . '"' . ($filter === 'without-site-membership' ? ' class="current" aria-current="page"' : '') . '>' . esc_html(sprintf(
-            /* translators: %s: number of users without website assignment. */
-            __('Users without website assignment (%s)', 'rrze-multisite-manager'),
-            number_format_i18n($withoutMembershipCount)
-        )) . '</a></li>';
-        echo '</ul>';
+        echo '<p class="rrze-msm-metrics-status">' . esc_html__('Stand:', 'rrze-multisite-manager') . ' ' . esc_html(wp_date('d.m.Y H:i', $withoutMembership['time'])) . '</p>';
+
+        if (isset($_GET['rrze_msm_users_deleted']) && $_GET['rrze_msm_users_deleted'] === '1') {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The selected users have been deleted.', 'rrze-multisite-manager') . '</p></div>';
+        }
+
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-site-overview-page-section rrze-msm-network-users-section">';
+        echo '<nav class="rrze-msm-overview-tabs" aria-label="' . esc_attr__('User filter', 'rrze-multisite-manager') . '">';
+
+        foreach ($views as $view) {
+            echo '<a class="' . esc_attr(trim('rrze-msm-overview-tab ' . $view['class'] . ($currentView === $view['slug'] ? ' is-active' : ''))) . '"'
+                . ($currentView === $view['slug'] ? ' aria-current="page"' : '')
+                . ' href="' . esc_url($view['url']) . '">';
+            echo '<span>' . esc_html($view['label']) . '</span>';
+            echo '<strong>(' . esc_html(number_format_i18n($view['count'])) . ')</strong>';
+            echo '</a>';
+        }
+
+        echo '</nav>';
+
+        if ($filter === NetworkUsersListTable::FILTER_ORPHANED) {
+            echo '<p class="description">' . esc_html(sprintf(
+                /* translators: 1: number of months since registration, 2: number of months since the last login. */
+                __('Users without website assignment who registered more than %1$d months ago and whose last login recorded by Wordfence is more than %2$d months ago or was never recorded. The periods are set under Settings > General > Users. The count is updated at least once per hour.', 'rrze-multisite-manager'),
+                max(1, (int)$this->settings->getOption('users', 'orphaned_minimum_age_months', 12)),
+                max(1, (int)$this->settings->getOption('users', 'orphaned_inactive_months', 12))
+            )) . '</p>';
+        }
+
         echo '<form method="get" class="search-form">';
         echo '<input type="hidden" name="page" value="rrze-multisite-manager-users">';
+
         if ($role === 'super') {
             echo '<input type="hidden" name="role" value="super">';
         }
-        if ($filter === 'without-site-membership') {
-            echo '<input type="hidden" name="rrze_msm_user_filter" value="without-site-membership">';
+
+        if ($filter !== NetworkUsersListTable::FILTER_ALL) {
+            echo '<input type="hidden" name="rrze_msm_user_filter" value="' . esc_attr($filter) . '">';
         }
+
         $table->search_box(__('Search users', 'rrze-multisite-manager'), 'rrze-msm-network-users');
         echo '</form>';
         echo '<form id="rrze-msm-network-user-list" action="' . esc_url(admin_url('admin-post.php')) . '" method="post">';
@@ -736,6 +849,7 @@ class Dashboard {
         wp_nonce_field('rrze_multisite_manager_network_users_bulk', 'rrze_msm_network_users_bulk_nonce');
         $table->display();
         echo '</form>';
+        echo '</section>';
         echo '</div></div>';
     }
 
@@ -1215,6 +1329,8 @@ class Dashboard {
                 'response_sampling_durations' => Support\ResponseTimeSampler::DURATIONS,
                 'response_sampling_action' => admin_url('admin-post.php'),
                 'response_sampling_notice' => isset($_GET['response_sampling']) ? sanitize_key((string)wp_unslash($_GET['response_sampling'])) : '',
+                'database_latency_notice' => isset($_GET['database_latency']) ? sanitize_key((string)wp_unslash($_GET['database_latency'])) : '',
+                'database_latency_queries' => Support\DatabaseLatencyProbe::QUERIES,
                 'environment_export_url' => wp_nonce_url(
                     add_query_arg(['action' => 'rrze_multisite_manager_environment_export'], admin_url('admin-post.php')),
                     'rrze_multisite_manager_environment_export'
@@ -1248,6 +1364,31 @@ class Dashboard {
         }
 
         wp_safe_redirect(add_query_arg(['response_sampling' => $command], $this->getEnvironmentOverviewUrl()) . '#rrze-msm-response-sampling');
+        exit;
+    }
+
+    /**
+     * Runs or deletes the manual database round-trip measurement
+     * (Environment page). Runs only on an explicit click.
+     */
+    public function handleDatabaseLatencyProbe(): void {
+        $command = isset($_POST['latency_command']) ? sanitize_key((string)wp_unslash($_POST['latency_command'])) : '';
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to view this page.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_database_latency');
+
+        if ($command === 'run') {
+            Support\DatabaseLatencyProbe::run();
+        } elseif ($command === 'reset') {
+            Support\DatabaseLatencyProbe::reset();
+        } else {
+            $command = '';
+        }
+
+        wp_safe_redirect(add_query_arg(['database_latency' => $command], $this->getEnvironmentOverviewUrl()) . '#rrze-msm-database-latency');
         exit;
     }
 

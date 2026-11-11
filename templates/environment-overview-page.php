@@ -71,6 +71,37 @@ defined('ABSPATH') || exit;
                 </form>
                 <a class="button button-secondary" href="<?php echo esc_url($environment_export_url); ?>"><?php echo esc_html__('Download all values (JSON)', 'rrze-multisite-manager'); ?></a>
             </div>
+            <div id="rrze-msm-database-latency">
+                <h3><?php echo esc_html__('Database round trip', 'rrze-multisite-manager'); ?></h3>
+                <p class="description"><?php echo esc_html(sprintf(
+                    /* translators: %d: number of queries. */
+                    __('Sends %d times "SELECT 1" through the WordPress database connection from the web node that answers this request and records the time of each query. The statement reads no table, so the result is essentially the round trip between web node and database server. Within one data centre a round trip usually stays well below 1 ms; repeat the measurement a few times, because the load balancer may send each click to another web node. The result appears in the section "Database round trip (SELECT 1)".', 'rrze-multisite-manager'),
+                    (int)$database_latency_queries
+                )); ?></p>
+                <?php if (($database_latency_notice ?? '') === 'run') { ?>
+                    <div class="notice notice-success inline"><p><?php echo esc_html__('The database round trip has been measured.', 'rrze-multisite-manager'); ?></p></div>
+                <?php } elseif (($database_latency_notice ?? '') === 'reset') { ?>
+                    <div class="notice notice-success inline"><p><?php echo esc_html__('The round-trip measurements have been deleted.', 'rrze-multisite-manager'); ?></p></div>
+                <?php } ?>
+                <div class="rrze-msm-site-theme-links">
+                    <form method="post" action="<?php echo esc_url($response_sampling_action); ?>">
+                        <input type="hidden" name="action" value="rrze_multisite_manager_database_latency">
+                        <input type="hidden" name="latency_command" value="run">
+                        <?php wp_nonce_field('rrze_multisite_manager_database_latency'); ?>
+                        <button type="submit" class="button button-primary"><?php echo esc_html(sprintf(
+                            /* translators: %d: number of queries. */
+                            __('Measure database round trip (%d × SELECT 1)', 'rrze-multisite-manager'),
+                            (int)$database_latency_queries
+                        )); ?></button>
+                    </form>
+                    <form method="post" action="<?php echo esc_url($response_sampling_action); ?>">
+                        <input type="hidden" name="action" value="rrze_multisite_manager_database_latency">
+                        <input type="hidden" name="latency_command" value="reset">
+                        <?php wp_nonce_field('rrze_multisite_manager_database_latency'); ?>
+                        <button type="submit" class="button button-secondary"><?php echo esc_html__('Delete round-trip measurements', 'rrze-multisite-manager'); ?></button>
+                    </form>
+                </div>
+            </div>
         </section>
 
         <div class="rrze-msm-grid">

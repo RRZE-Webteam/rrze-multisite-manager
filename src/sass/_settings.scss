@@ -228,3 +228,17 @@ body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a
     font-size: 1.1em;
     font-weight: 600;
 }
+
+/* Users page: Core list table inside the MSM content panel. */
+.rrze-msm-network-users-section .search-form {
+    overflow: hidden;
+    margin: 0 0 4px;
+}
+
+.rrze-msm-network-users-section > .description {
+    margin: 0 0 12px;
+}
+
+.rrze-msm-network-users-section .wp-list-table {
+    margin-top: 4px;
+}
