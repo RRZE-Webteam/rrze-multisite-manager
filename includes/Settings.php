@@ -419,6 +419,14 @@ class Settings {
             admin_url('admin.php')
         );
 
+        if ($settingsTab === 'monitoring') {
+            $redirectUrl = add_query_arg(
+                'monitoring_section',
+                $this->getMonitoringSettingsSection(isset($_POST['monitoring_section']) ? (string)wp_unslash($_POST['monitoring_section']) : 'general'),
+                $redirectUrl
+            );
+        }
+
         wp_safe_redirect($redirectUrl);
         exit;
     }
@@ -1636,36 +1644,138 @@ class Settings {
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="general">';
         $this->renderFields(['dashboard', 'users', 'debugging']);
+        // Access setting for local administrators; stored with the
+        // monitoring options (monitoring_show_local_analysis_request_notice).
+        $this->renderMonitoringFieldGroup(__('Local administrator access', 'rrze-multisite-manager'), [
+            'show_local_analysis_request_notice',
+        ]);
         submit_button();
         echo '</form>';
         $this->renderMonitoringManagementNotice();
     }
 
+    /** @return array<string, string> Sub-sections of the Monitoring settings tab. */
+    protected function getMonitoringSettingsSections(): array {
+        return [
+            'general' => __('General', 'rrze-multisite-manager'),
+            'metrics' => __('Dashboard metrics', 'rrze-multisite-manager'),
+            'availability' => __('Availability', 'rrze-multisite-manager'),
+            'usage' => __('Plugins & themes', 'rrze-multisite-manager'),
+            'storage' => __('Storage analysis', 'rrze-multisite-manager'),
+            'content' => __('Shortcodes & blocks', 'rrze-multisite-manager'),
+        ];
+    }
+
+    /** @return array<string, string> */
+    protected function getMonitoringSettingsSectionDescriptions(): array {
+        return [
+            'general' => __('Shared limits for all background processes and the size of the logs.', 'rrze-multisite-manager'),
+            'metrics' => __('Schedule of the dashboard metrics and their history.', 'rrze-multisite-manager'),
+            'availability' => __('Checks whether websites can be reached through DNS and HTTP.', 'rrze-multisite-manager'),
+            'usage' => __('Schedule of the index that records which websites use which plugins and themes.', 'rrze-multisite-manager'),
+            'storage' => __('Batch tiers, thresholds and limits of the storage analysis.', 'rrze-multisite-manager'),
+            'content' => __('Batch tiers, thresholds and limits of the shortcode and block analysis.', 'rrze-multisite-manager'),
+        ];
+    }
+
+    protected function getMonitoringSettingsSection(string $requested = ''): string {
+        $section = $requested !== ''
+            ? sanitize_key($requested)
+            : (isset($_GET['monitoring_section']) ? sanitize_key((string)wp_unslash($_GET['monitoring_section'])) : 'general');
+
+        return array_key_exists($section, $this->getMonitoringSettingsSections()) ? $section : 'general';
+    }
+
+    /**
+     * Each sub-section is its own form with its own save button. Only the
+     * fields of that section are submitted; sanitizeOptions() merges them
+     * with the stored values, so the other sections stay unchanged.
+     */
     protected function renderMonitoringTab(): void {
+        $currentSection = $this->getMonitoringSettingsSection();
+        $baseUrl = add_query_arg(['page' => $this->getSettingsSlug(), 'tab' => 'monitoring'], admin_url('admin.php'));
+        $sectionKey = '';
+        $sectionLabel = '';
+
+        echo '<nav class="rrze-msm-subtabs rrze-msm-underline-tabs" aria-label="' . esc_attr__('Sections of the monitoring settings', 'rrze-multisite-manager') . '">';
+
+        foreach ($this->getMonitoringSettingsSections() as $sectionKey => $sectionLabel) {
+            echo '<a class="rrze-msm-subtab' . ($sectionKey === $currentSection ? ' is-active' : '') . '"'
+                . ($sectionKey === $currentSection ? ' aria-current="page"' : '')
+                . ' href="' . esc_url(add_query_arg(['monitoring_section' => $sectionKey], $baseUrl)) . '">'
+                . esc_html($sectionLabel) . '</a>';
+        }
+
+        echo '</nav>';
+        $this->renderMonitoringSectionIntro($currentSection);
         echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl($this->optionName)) . '" autocomplete="off">';
         wp_nonce_field($this->optionName . '_save');
         echo '<input type="hidden" name="settings_tab" value="monitoring">';
+        echo '<input type="hidden" name="monitoring_section" value="' . esc_attr($currentSection) . '">';
+
+        if ($currentSection === 'metrics') {
+            $this->renderMonitoringMetricsSection();
+        } elseif ($currentSection === 'availability') {
+            $this->renderMonitoringAvailabilitySection();
+        } elseif ($currentSection === 'usage') {
+            $this->renderMonitoringUsageSection();
+        } elseif ($currentSection === 'storage') {
+            $this->renderMonitoringStorageSection();
+        } elseif ($currentSection === 'content') {
+            $this->renderMonitoringContentSection();
+        } else {
+            $this->renderMonitoringGeneralSection();
+        }
+
+        submit_button();
+        echo '</form>';
+        $this->renderMonitoringManagementNotice();
+    }
+
+    protected function renderMonitoringSectionIntro(string $section): void {
+        $labels = $this->getMonitoringSettingsSections();
+        $descriptions = $this->getMonitoringSettingsSectionDescriptions();
+
+        echo '<div class="rrze-msm-settings-section-intro">';
+        echo '<h2>' . esc_html($labels[$section] ?? '') . '</h2>';
+
+        if (($descriptions[$section] ?? '') !== '') {
+            echo '<p class="description">' . esc_html($descriptions[$section]) . '</p>';
+        }
+
+        echo '</div>';
+    }
+
+    protected function renderMonitoringGeneralSection(): void {
         $this->renderMonitoringFieldGroup(
-            __('Network-wide', 'rrze-multisite-manager'),
+            __('Background processes', 'rrze-multisite-manager'),
             [
-            'metrics_frequency',
-            'dashboard_metrics_history_frequency',
-            'batch_size',
-            'run_log_entries',
-            'recent_event_entries',
+                'max_concurrent_workers',
+                'batch_size',
             ],
-            __('Central settings for dashboard metrics and network-wide monitoring data.', 'rrze-multisite-manager')
+            __('Shared limits for all heavy background processes.', 'rrze-multisite-manager')
         );
-        $this->renderMonitoringFieldGroup(__('Background process capacity', 'rrze-multisite-manager'), [
-            'max_concurrent_workers',
-        ]);
         $this->renderMonitoringFieldGroup(
-            __('Plugin and theme usage index', 'rrze-multisite-manager'),
+            __('Logs', 'rrze-multisite-manager'),
             [
-                'plugin_theme_usage_frequency',
-            ],
-            __('Records which websites use each plugin and theme.', 'rrze-multisite-manager')
+                'run_log_entries',
+                'recent_event_entries',
+            ]
         );
+    }
+
+    protected function renderMonitoringMetricsSection(): void {
+        $this->renderMonitoringFieldGroup(
+            __('Dashboard metrics', 'rrze-multisite-manager'),
+            [
+                'metrics_frequency',
+                'dashboard_metrics_history_frequency',
+            ],
+            __('The number of websites per step is set under General.', 'rrze-multisite-manager')
+        );
+    }
+
+    protected function renderMonitoringAvailabilitySection(): void {
         $this->renderMonitoringFieldGroup(__('Website availability', 'rrze-multisite-manager'), [
             'monitoring_frequency',
             'availability_batch_size',
@@ -1674,64 +1784,241 @@ class Settings {
             'dns_failure_threshold',
             'http_failure_threshold',
         ]);
-        $this->renderMonitoringFieldGroup(__('Storage analyses', 'rrze-multisite-manager'), [
-        ]);
-        $this->renderMonitoringFieldGroup(__('Small storage-analysis batches', 'rrze-multisite-manager'), [
-            'storage_analysis_small_batch_frequency',
-            'storage_analysis_small_batch_media_threshold',
-            'storage_analysis_small_batch_runtime_threshold_seconds',
-            'storage_analysis_small_batch_timeout_minutes',
-            'storage_analysis_shared_attachment_index_batch_size',
-            'storage_analysis_shared_index_write_batch_size',
-        ]);
-        $this->renderMonitoringFieldGroup(__('Medium storage-analysis batches', 'rrze-multisite-manager'), [
-            'storage_analysis_medium_batch_frequency',
-            'storage_analysis_medium_batch_media_threshold',
-            'storage_analysis_medium_batch_runtime_threshold_seconds',
-            'storage_analysis_medium_batch_timeout_minutes',
-            'storage_analysis_medium_attachment_index_batch_size',
-            'storage_analysis_medium_index_write_batch_size',
-        ]);
-        $this->renderMonitoringFieldGroup(__('Large storage-analysis batches', 'rrze-multisite-manager'), [
-            'storage_analysis_large_batch_frequency',
-            'storage_analysis_large_batch_media_threshold',
-            'storage_analysis_large_batch_runtime_threshold_seconds',
-            'storage_analysis_large_batch_timeout_minutes',
-            'storage_analysis_large_attachment_index_batch_size',
-            'storage_analysis_large_index_write_batch_size',
-        ]);
-        $this->renderMonitoringFieldGroup(__('Individual storage-analysis tasks', 'rrze-multisite-manager'), [
-            'storage_analysis_individual_frequency',
-            'storage_analysis_individual_timeout_minutes',
-            'storage_analysis_individual_attachment_index_batch_size',
-            'storage_analysis_individual_index_write_batch_size',
-        ]);
-        $this->renderMonitoringFieldGroup(__('Storage-analysis capacity and display', 'rrze-multisite-manager'), [
-            'storage_analysis_max_concurrent_runs',
+    }
+
+    protected function renderMonitoringUsageSection(): void {
+        $this->renderMonitoringFieldGroup(
+            __('Plugin and theme usage index', 'rrze-multisite-manager'),
+            [
+                'plugin_theme_usage_frequency',
+            ],
+            __('Records which websites use each plugin and theme. The number of websites per step is set under General.', 'rrze-multisite-manager')
+        );
+    }
+
+    protected function renderMonitoringStorageSection(): void {
+        $tiers = $this->getMonitoringBatchTierLabels();
+
+        $this->renderMonitoringMatrix(
+            __('Storage-analysis batches', 'rrze-multisite-manager'),
+            __('Websites are assigned to a batch by their number of media files; after a complete run, a website whose active runtime exceeds the threshold moves to the next larger batch. Websites above the large batch get an individual task.', 'rrze-multisite-manager'),
+            [
+                'frequency' => __('Cycle', 'rrze-multisite-manager'),
+                'threshold' => __('Up to media files', 'rrze-multisite-manager'),
+                'runtime' => __('Runtime threshold (s)', 'rrze-multisite-manager'),
+                'timeout' => __('Maximum active runtime (min)', 'rrze-multisite-manager'),
+            ],
+            [
+                $tiers['small'] => ['frequency' => 'storage_analysis_small_batch_frequency', 'threshold' => 'storage_analysis_small_batch_media_threshold', 'runtime' => 'storage_analysis_small_batch_runtime_threshold_seconds', 'timeout' => 'storage_analysis_small_batch_timeout_minutes'],
+                $tiers['medium'] => ['frequency' => 'storage_analysis_medium_batch_frequency', 'threshold' => 'storage_analysis_medium_batch_media_threshold', 'runtime' => 'storage_analysis_medium_batch_runtime_threshold_seconds', 'timeout' => 'storage_analysis_medium_batch_timeout_minutes'],
+                $tiers['large'] => ['frequency' => 'storage_analysis_large_batch_frequency', 'threshold' => 'storage_analysis_large_batch_media_threshold', 'runtime' => 'storage_analysis_large_batch_runtime_threshold_seconds', 'timeout' => 'storage_analysis_large_batch_timeout_minutes'],
+                $tiers['individual'] => ['frequency' => 'storage_analysis_individual_frequency', 'threshold' => null, 'runtime' => null, 'timeout' => 'storage_analysis_individual_timeout_minutes'],
+            ],
+            [
+                ['storage_analysis_small_batch_media_threshold', 'storage_analysis_medium_batch_media_threshold', 'storage_analysis_large_batch_media_threshold'],
+                ['storage_analysis_small_batch_runtime_threshold_seconds', 'storage_analysis_medium_batch_runtime_threshold_seconds', 'storage_analysis_large_batch_runtime_threshold_seconds'],
+            ]
+        );
+        $this->renderMonitoringFieldGroup(__('Results', 'rrze-multisite-manager'), [
             'storage_analysis_orphan_files_limit',
+        ]);
+
+        echo '<details class="rrze-msm-settings-advanced">';
+        echo '<summary>' . esc_html__('Advanced settings', 'rrze-multisite-manager') . '</summary>';
+        echo '<p class="description">' . esc_html__('Rarely changed values for step sizes, capacity and browser analysis. The defaults suit most networks.', 'rrze-multisite-manager') . '</p>';
+        $this->renderMonitoringMatrix(
+            __('Index step sizes', 'rrze-multisite-manager'),
+            __('Larger steps need fewer Cron continuations but make each request longer.', 'rrze-multisite-manager'),
+            [
+                'attachments' => __('Media files per index step', 'rrze-multisite-manager'),
+                'segments' => __('Index segments written per step', 'rrze-multisite-manager'),
+            ],
+            [
+                $tiers['small'] => ['attachments' => 'storage_analysis_shared_attachment_index_batch_size', 'segments' => 'storage_analysis_shared_index_write_batch_size'],
+                $tiers['medium'] => ['attachments' => 'storage_analysis_medium_attachment_index_batch_size', 'segments' => 'storage_analysis_medium_index_write_batch_size'],
+                $tiers['large'] => ['attachments' => 'storage_analysis_large_attachment_index_batch_size', 'segments' => 'storage_analysis_large_index_write_batch_size'],
+                $tiers['individual'] => ['attachments' => 'storage_analysis_individual_attachment_index_batch_size', 'segments' => 'storage_analysis_individual_index_write_batch_size'],
+            ]
+        );
+        $this->renderMonitoringFieldGroup(__('Capacity and browser analysis', 'rrze-multisite-manager'), [
+            'storage_analysis_max_concurrent_runs',
             'storage_analysis_browser_max_megabytes',
         ]);
-        $this->renderMonitoringFieldGroup(__('Local administrator access', 'rrze-multisite-manager'), [
-            'show_local_analysis_request_notice',
-        ]);
-        $this->renderMonitoringFieldGroup(__('Shortcode and block analysis batches', 'rrze-multisite-manager'), [
-            'shortcode_block_analysis_small_batch_frequency',
-            'shortcode_block_analysis_medium_batch_frequency',
-            'shortcode_block_analysis_large_batch_frequency',
-            'shortcode_block_analysis_individual_frequency',
-            'shortcode_block_analysis_small_batch_post_threshold',
-            'shortcode_block_analysis_medium_batch_post_threshold',
-            'shortcode_block_analysis_large_batch_post_threshold',
-            'shortcode_block_analysis_small_batch_runtime_threshold_seconds',
-            'shortcode_block_analysis_medium_batch_runtime_threshold_seconds',
-            'shortcode_block_analysis_large_batch_runtime_threshold_seconds',
+        echo '</details>';
+    }
+
+    protected function renderMonitoringContentSection(): void {
+        $tiers = $this->getMonitoringBatchTierLabels();
+
+        $this->renderMonitoringMatrix(
+            __('Shortcode and block analysis batches', 'rrze-multisite-manager'),
+            __('Websites are assigned to a batch by their combined number of posts and pages; after a complete run, a website whose active runtime exceeds the threshold moves to the next larger batch. Websites above the large batch get an individual schedule.', 'rrze-multisite-manager'),
+            [
+                'frequency' => __('Cycle', 'rrze-multisite-manager'),
+                'threshold' => __('Up to posts and pages', 'rrze-multisite-manager'),
+                'runtime' => __('Runtime threshold (s)', 'rrze-multisite-manager'),
+            ],
+            [
+                $tiers['small'] => ['frequency' => 'shortcode_block_analysis_small_batch_frequency', 'threshold' => 'shortcode_block_analysis_small_batch_post_threshold', 'runtime' => 'shortcode_block_analysis_small_batch_runtime_threshold_seconds'],
+                $tiers['medium'] => ['frequency' => 'shortcode_block_analysis_medium_batch_frequency', 'threshold' => 'shortcode_block_analysis_medium_batch_post_threshold', 'runtime' => 'shortcode_block_analysis_medium_batch_runtime_threshold_seconds'],
+                $tiers['large'] => ['frequency' => 'shortcode_block_analysis_large_batch_frequency', 'threshold' => 'shortcode_block_analysis_large_batch_post_threshold', 'runtime' => 'shortcode_block_analysis_large_batch_runtime_threshold_seconds'],
+                $tiers['individual'] => ['frequency' => 'shortcode_block_analysis_individual_frequency', 'threshold' => null, 'runtime' => null],
+            ],
+            [
+                ['shortcode_block_analysis_small_batch_post_threshold', 'shortcode_block_analysis_medium_batch_post_threshold', 'shortcode_block_analysis_large_batch_post_threshold'],
+                ['shortcode_block_analysis_small_batch_runtime_threshold_seconds', 'shortcode_block_analysis_medium_batch_runtime_threshold_seconds', 'shortcode_block_analysis_large_batch_runtime_threshold_seconds'],
+            ]
+        );
+        $this->renderMonitoringFieldGroup(__('Limits', 'rrze-multisite-manager'), [
             'shortcode_block_analysis_timeout_minutes',
             'shortcode_block_analysis_value_max_kilobytes',
             'shortcode_block_result_entry_limit',
         ]);
-        submit_button();
-        echo '</form>';
-        $this->renderMonitoringManagementNotice();
+    }
+
+    /** @return array<string, string> */
+    protected function getMonitoringBatchTierLabels(): array {
+        return [
+            'small' => __('Small batch', 'rrze-multisite-manager'),
+            'medium' => __('Medium batch', 'rrze-multisite-manager'),
+            'large' => __('Large batch', 'rrze-multisite-manager'),
+            'individual' => __('Individual task', 'rrze-multisite-manager'),
+        ];
+    }
+
+    /** @return array<string, array<string, mixed>> Monitoring fields keyed by name. */
+    protected function getMonitoringFieldsByName(): array {
+        $fieldsByName = [];
+        $field = [];
+
+        foreach ((array)($this->settingsFields['monitoring'] ?? []) as $field) {
+            if (is_array($field) && !empty($field['name'])) {
+                $fieldsByName[(string)$field['name']] = $field;
+            }
+        }
+
+        return $fieldsByName;
+    }
+
+    /**
+     * Renders related fields as a table: one row per batch tier, one column
+     * per setting. Each input keeps its own option name and receives a
+     * screen-reader label "row – column". Threshold columns listed in
+     * $ascendingGroups are checked for increasing values.
+     *
+     * @param array<string, string> $columns
+     * @param array<string, array<string, string|null>> $rows
+     * @param array<int, array<int, string>> $ascendingGroups
+     */
+    protected function renderMonitoringMatrix(string $title, string $description, array $columns, array $rows, array $ascendingGroups = []): void {
+        $fieldsByName = $this->getMonitoringFieldsByName();
+        $columnKey = '';
+        $columnLabel = '';
+        $rowLabel = '';
+        $cells = [];
+        $fieldName = null;
+        $field = [];
+        $optionName = '';
+        $fieldId = '';
+        $descriptions = [];
+        $descriptionText = '';
+
+        echo '<section class="rrze-msm-settings-group">';
+        echo '<header class="rrze-msm-settings-group-header"><h2>' . esc_html($title) . '</h2></header>';
+
+        if ($description !== '') {
+            echo '<p class="rrze-msm-settings-group-content">' . esc_html($description) . '</p>';
+        }
+
+        $this->renderMonitoringAscendingNotice($ascendingGroups, $fieldsByName);
+        echo '<div class="rrze-msm-settings-matrix-wrap">';
+        echo '<table class="widefat striped rrze-msm-settings-matrix">';
+        echo '<thead><tr><td></td>';
+
+        foreach ($columns as $columnLabel) {
+            echo '<th scope="col">' . esc_html($columnLabel) . '</th>';
+        }
+
+        echo '</tr></thead><tbody>';
+
+        foreach ($rows as $rowLabel => $cells) {
+            echo '<tr><th scope="row">' . esc_html((string)$rowLabel) . '</th>';
+
+            foreach ($columns as $columnKey => $columnLabel) {
+                $fieldName = $cells[$columnKey] ?? null;
+                echo '<td>';
+
+                if ($fieldName === null || !isset($fieldsByName[$fieldName])) {
+                    echo '<span aria-hidden="true">–</span><span class="screen-reader-text">' . esc_html__('Not applicable', 'rrze-multisite-manager') . '</span>';
+                    echo '</td>';
+                    continue;
+                }
+
+                $field = $fieldsByName[$fieldName];
+                $optionName = 'monitoring_' . $fieldName;
+                $fieldId = $this->settingsPrefix . $optionName;
+                echo '<label class="screen-reader-text" for="' . esc_attr($fieldId) . '">' . esc_html((string)$rowLabel . ' – ' . $columnLabel) . '</label>';
+                $this->renderFieldInput($fieldId, $optionName, $field, $this->options[$optionName] ?? ($field['default'] ?? ''));
+
+                if (isset($field['min'], $field['max']) && ($field['type'] ?? '') === 'number') {
+                    echo '<span class="description rrze-msm-settings-matrix-range">' . esc_html(number_format_i18n((int)$field['min']) . '–' . number_format_i18n((int)$field['max'])) . '</span>';
+                }
+
+                if (!empty($field['desc'])) {
+                    $descriptions[(string)$rowLabel . ' – ' . $columnLabel] = (string)$field['desc'];
+                }
+
+                echo '</td>';
+            }
+
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+        echo '</div>';
+
+        if (!empty($descriptions)) {
+            echo '<details class="rrze-msm-settings-matrix-help">';
+            echo '<summary>' . esc_html__('Explanation of the values', 'rrze-multisite-manager') . '</summary>';
+            echo '<dl>';
+
+            foreach ($descriptions as $rowLabel => $descriptionText) {
+                echo '<dt>' . esc_html((string)$rowLabel) . '</dt><dd>' . esc_html($descriptionText) . '</dd>';
+            }
+
+            echo '</dl>';
+            echo '</details>';
+        }
+
+        echo '</section>';
+    }
+
+    /**
+     * Thresholds of the small, medium and large batch must increase.
+     *
+     * @param array<int, array<int, string>> $ascendingGroups
+     * @param array<string, array<string, mixed>> $fieldsByName
+     */
+    protected function renderMonitoringAscendingNotice(array $ascendingGroups, array $fieldsByName): void {
+        $group = [];
+        $previous = null;
+        $fieldName = '';
+        $value = 0;
+
+        foreach ($ascendingGroups as $group) {
+            $previous = null;
+
+            foreach ($group as $fieldName) {
+                $value = (int)($this->options['monitoring_' . $fieldName] ?? ($fieldsByName[$fieldName]['default'] ?? 0));
+
+                if ($previous !== null && $value <= $previous) {
+                    echo '<div class="notice notice-warning inline"><p>' . esc_html__('The thresholds do not increase from the small to the large batch. Websites can then not be assigned as intended.', 'rrze-multisite-manager') . '</p></div>';
+                    return;
+                }
+
+                $previous = $value;
+            }
+        }
     }
 
     protected function renderReportingTab(): void {
@@ -1745,15 +2032,7 @@ class Settings {
 
     /** @param array<int, string> $fieldNames */
     protected function renderMonitoringFieldGroup(string $title, array $fieldNames, string $description = ''): void {
-        $availableFields = $this->settingsFields['monitoring'] ?? [];
-        $fieldsByName = [];
-
-        foreach ($availableFields as $field) {
-            if (is_array($field) && !empty($field['name'])) {
-                $fieldsByName[(string)$field['name']] = $field;
-            }
-        }
-
+        $fieldsByName = $this->getMonitoringFieldsByName();
         $fields = [];
 
         foreach ($fieldNames as $fieldName) {
@@ -1850,7 +2129,7 @@ class Settings {
         echo '<a class="nav-tab' . ($currentTab === 'network' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'network'], $baseUrl)) . '">' . esc_html__('Network-wide', 'rrze-multisite-manager') . '</a>';
         echo '<a class="nav-tab' . ($currentTab === 'storage' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'storage'], $baseUrl)) . '">' . esc_html__('Storage analyses', 'rrze-multisite-manager') . '</a>';
         echo '<a class="nav-tab' . ($currentTab === 'shortcode-block' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'shortcode-block'], $baseUrl)) . '">' . esc_html__('Shortcodes and Blocks', 'rrze-multisite-manager') . '</a>';
-        echo '<a class="nav-tab' . ($currentTab === 'database-usage' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'database-usage'], $baseUrl)) . '">' . esc_html__('Database usage', 'rrze-multisite-manager') . '</a>';
+        echo '<a class="nav-tab' . ($currentTab === 'database-usage' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'database-usage'], $baseUrl)) . '">' . esc_html__('MSM storage usage', 'rrze-multisite-manager') . '</a>';
         echo '<a class="nav-tab' . ($currentTab === 'tools' ? ' nav-tab-active' : '') . '" href="' . esc_url(add_query_arg(['monitoring_tab' => 'tools'], $baseUrl)) . '">' . esc_html__('Tools', 'rrze-multisite-manager') . '</a>';
         echo '</nav>';
 

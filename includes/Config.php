@@ -199,6 +199,24 @@ class Config {
                             'blogs' => __('Websites', 'rrze-multisite-manager'),
                         ],
                     ],
+                    [
+                        'name' => 'orphaned_minimum_age_months',
+                        'label' => __('Orphaned accounts: minimum account age (months)', 'rrze-multisite-manager'),
+                        'desc' => __('Only users without website assignment who registered at least this many months ago count as orphaned. The filter is offered while Wordfence is active.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 12,
+                        'min' => 1,
+                        'max' => 240,
+                    ],
+                    [
+                        'name' => 'orphaned_inactive_months',
+                        'label' => __('Orphaned accounts: months since last login', 'rrze-multisite-manager'),
+                        'desc' => __('Users whose last login recorded by Wordfence is longer ago than this, or was never recorded, count as orphaned.', 'rrze-multisite-manager'),
+                        'type' => 'number',
+                        'default' => 12,
+                        'min' => 1,
+                        'max' => 240,
+                    ],
                 ],
                 'reporting' => [
                     [
@@ -289,8 +307,8 @@ class Config {
                     ],
                     [
                         'name' => 'batch_size',
-                        'label' => __('Dashboard metrics batch size', 'rrze-multisite-manager'),
-                        'desc' => __('Number of websites processed in each dashboard-metrics batch. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
+                        'label' => __('Websites per step (dashboard metrics and usage index)', 'rrze-multisite-manager'),
+                        'desc' => __('Number of websites processed in each step of the dashboard metrics and of the plugin and theme usage index. Larger values complete a network pass faster but increase load per Cron request.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 25,
                         'min' => 5,

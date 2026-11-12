@@ -20,4 +20,5 @@ foreach (['potential_shortcodes', 'runs', 'shortcodes', 'blocks', 'mediaindex', 
 delete_site_option('rrze_msm_analysis_schema');
 delete_site_option('rrze_msm_response_sampling');
 delete_site_option('rrze_msm_response_time_stats');
+delete_site_option('rrze_msm_db_latency_probes');
 

@@ -100,20 +100,18 @@ defined('ABSPATH') || exit;
                 </div>
             </section>
 
-            <div class="rrze-msm-grid">
-                <section class="rrze-msm-widget rrze-msm-widget-span-12">
-                    <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Sections of website details', 'rrze-multisite-manager'); ?>">
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'overview' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'overview'], $site_details_base_url)); ?>"><?php echo esc_html__('Overview', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'users' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'users'], $site_details_base_url)); ?>"><?php echo esc_html__('Users', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'theme' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'theme'], $site_details_base_url)); ?>"><?php echo esc_html__('Theme', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'plugins' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'plugins'], $site_details_base_url)); ?>"><?php echo esc_html__('Plugins', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'image-sizes' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'image-sizes'], $site_details_base_url)); ?>"><?php echo esc_html__('Image sizes', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'content' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Content types', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'options' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'options'], $site_details_base_url) . '#rrze-msm-site-options'); ?>"><?php echo esc_html__('Options', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_detail_current_section === 'process' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Process data', 'rrze-multisite-manager'); ?></a>
-                    </nav>
-                </section>
+            <nav class="nav-tab-wrapper rrze-msm-page-tabs" aria-label="<?php echo esc_attr__('Sections of website details', 'rrze-multisite-manager'); ?>">
+                <a class="nav-tab<?php echo $site_detail_current_section === 'overview' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'overview' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'overview'], $site_details_base_url)); ?>"><?php echo esc_html__('Overview', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $site_detail_current_section === 'users' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'users' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'users'], $site_details_base_url)); ?>"><?php echo esc_html__('Users', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $site_detail_current_section === 'theme' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'theme' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'theme'], $site_details_base_url)); ?>"><?php echo esc_html__('Theme', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $site_detail_current_section === 'plugins' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'plugins' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'plugins'], $site_details_base_url)); ?>"><?php echo esc_html__('Plugins', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $site_detail_current_section === 'image-sizes' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'image-sizes' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'image-sizes'], $site_details_base_url)); ?>"><?php echo esc_html__('Image sizes', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $site_detail_current_section === 'content' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'content' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Content types', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $site_detail_current_section === 'options' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'options' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'options'], $site_details_base_url) . '#rrze-msm-site-options'); ?>"><?php echo esc_html__('Options', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $site_detail_current_section === 'process' ? ' nav-tab-active' : ''; ?>"<?php echo $site_detail_current_section === 'process' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Process data', 'rrze-multisite-manager'); ?></a>
+            </nav>
 
+            <div class="rrze-msm-grid">
                 <?php if ($site_detail_current_section === 'overview') { ?>
                 <section class="rrze-msm-widget rrze-msm-widget-span-12">
                     <header class="rrze-msm-widget-header">
@@ -367,6 +365,58 @@ defined('ABSPATH') || exit;
                         </div>
                     <?php } ?>
                 </section>
+
+                <section id="rrze-msm-site-unallowed-themes" class="rrze-msm-widget rrze-msm-widget-span-12">
+                    <header class="rrze-msm-widget-header">
+                        <h2><?php echo esc_html__('Themes available in the network but not enabled', 'rrze-multisite-manager'); ?></h2>
+                        <p><?php echo esc_html__('Installed themes that are neither enabled network-wide nor for this website. Enabling applies only to this website and does not activate the theme.', 'rrze-multisite-manager'); ?></p>
+                    </header>
+                    <?php if (!empty($site_theme_enabled)) { ?>
+                        <div class="notice notice-success inline"><p><?php echo esc_html__('The theme was enabled for this website. It is now listed under "Further allowed themes".', 'rrze-multisite-manager'); ?></p></div>
+                    <?php } ?>
+                    <?php $unallowedSiteThemes = is_array($site_details['theme']['unallowed_themes'] ?? null) ? $site_details['theme']['unallowed_themes'] : []; ?>
+                    <?php if (empty($unallowedSiteThemes)) { ?>
+                        <p><?php echo esc_html__('All installed themes are already enabled for this website.', 'rrze-multisite-manager'); ?></p>
+                    <?php } else { ?>
+                        <div class="rrze-msm-site-allowed-themes">
+                            <?php foreach ($unallowedSiteThemes as $unallowedSiteTheme) { ?>
+                                <?php $unallowedThemeStylesheet = (string)($unallowedSiteTheme['stylesheet'] ?? ''); ?>
+                                <?php $unallowedThemeName = (string)($unallowedSiteTheme['name'] ?? $unallowedThemeStylesheet); ?>
+                                <div class="rrze-msm-site-allowed-theme">
+                                    <div class="rrze-msm-site-allowed-theme-screenshot">
+                                        <?php if (!empty($unallowedSiteTheme['screenshot'])) { ?>
+                                            <img src="<?php echo esc_url((string)$unallowedSiteTheme['screenshot']); ?>" alt="" loading="lazy">
+                                        <?php } else { ?>
+                                            <span class="rrze-msm-site-branding-empty"><?php echo esc_html__('No screenshot available', 'rrze-multisite-manager'); ?></span>
+                                        <?php } ?>
+                                    </div>
+                                    <h3><a href="<?php echo esc_url($this->getThemeDetailsUrl($unallowedThemeStylesheet)); ?>"><?php echo esc_html($unallowedThemeName); ?></a></h3>
+                                    <p class="rrze-msm-site-allowed-theme-meta">
+                                        <?php if (!empty($unallowedSiteTheme['version'])) { ?>
+                                            <?php echo esc_html__('Version:', 'rrze-multisite-manager'); ?> <?php echo esc_html((string)$unallowedSiteTheme['version']); ?>
+                                        <?php } ?>
+                                        <?php if (!empty($unallowedSiteTheme['parent_name'])) { ?>
+                                            <br><?php echo esc_html(sprintf(
+                                                /* translators: %s: parent theme name. */
+                                                __('Child theme of %s', 'rrze-multisite-manager'),
+                                                (string)$unallowedSiteTheme['parent_name']
+                                            )); ?>
+                                        <?php } ?>
+                                    </p>
+                                    <?php if (!empty($can_activate_site_themes)) { ?>
+                                        <div class="rrze-msm-site-theme-links">
+                                            <a class="button button-secondary" href="<?php echo esc_url($this->getSiteThemeEnableUrl((int)$site_id, $unallowedThemeStylesheet)); ?>" aria-label="<?php echo esc_attr(sprintf(
+                                                /* translators: %s: theme name. */
+                                                __('Enable %s for this website', 'rrze-multisite-manager'),
+                                                $unallowedThemeName
+                                            )); ?>"><?php echo esc_html__('Enable for this website', 'rrze-multisite-manager'); ?></a>
+                                        </div>
+                                    <?php } ?>
+                                </div>
+                            <?php } ?>
+                        </div>
+                    <?php } ?>
+                </section>
                 <?php } ?>
 
                 <?php if ($site_detail_current_section === 'plugins') { ?>
@@ -444,14 +494,14 @@ defined('ABSPATH') || exit;
                     $customPages = is_array($site_custom_pages ?? null) ? $site_custom_pages : [];
                     $blockTemplateTypes = is_array($site_details['block_template_types'] ?? null) ? $site_details['block_template_types'] : [];
                     ?>
-                    <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Content types', 'rrze-multisite-manager'); ?>">
-                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'overview' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'overview'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Overview', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-post-types' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'custom-post-types'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom post types', 'rrze-multisite-manager'); ?></a>
+                    <nav class="rrze-msm-subtabs rrze-msm-underline-tabs" aria-label="<?php echo esc_attr__('Content types', 'rrze-multisite-manager'); ?>">
+                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'overview' ? ' is-active' : ''; ?>"<?php echo $site_content_current_tab === 'overview' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'overview'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Overview', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-post-types' ? ' is-active' : ''; ?>"<?php echo $site_content_current_tab === 'custom-post-types' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'custom-post-types'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom post types', 'rrze-multisite-manager'); ?></a>
                         <?php if (!empty($customPages)) { ?>
-                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-pages' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'custom-pages'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom pages', 'rrze-multisite-manager'); ?></a>
+                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'custom-pages' ? ' is-active' : ''; ?>"<?php echo $site_content_current_tab === 'custom-pages' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'custom-pages'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Custom pages', 'rrze-multisite-manager'); ?></a>
                         <?php } ?>
                         <?php if (!empty($blockTemplateTypes)) { ?>
-                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'block-templates' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'block-templates'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Block patterns', 'rrze-multisite-manager'); ?></a>
+                            <a class="rrze-msm-subtab<?php echo $site_content_current_tab === 'block-templates' ? ' is-active' : ''; ?>"<?php echo $site_content_current_tab === 'block-templates' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'content', 'content_tab' => 'block-templates'], $site_details_base_url) . '#rrze-msm-site-content'); ?>"><?php echo esc_html__('Block patterns', 'rrze-multisite-manager'); ?></a>
                         <?php } ?>
                     </nav>
 
@@ -746,10 +796,10 @@ defined('ABSPATH') || exit;
                     <header class="rrze-msm-widget-header">
                         <h2><?php echo esc_html__('Process data', 'rrze-multisite-manager'); ?></h2>
                     </header>
-                    <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Process data', 'rrze-multisite-manager'); ?>">
-                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'stats' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'stats'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Stats', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'transients' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'transients'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Transients', 'rrze-multisite-manager'); ?></a>
-                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'scheduler' ? ' is-active' : ''; ?>" href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'scheduler'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Scheduler', 'rrze-multisite-manager'); ?></a>
+                    <nav class="rrze-msm-subtabs rrze-msm-underline-tabs" aria-label="<?php echo esc_attr__('Process data', 'rrze-multisite-manager'); ?>">
+                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'stats' ? ' is-active' : ''; ?>"<?php echo $site_process_current_tab === 'stats' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'stats'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Stats', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'transients' ? ' is-active' : ''; ?>"<?php echo $site_process_current_tab === 'transients' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'transients'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Transients', 'rrze-multisite-manager'); ?></a>
+                        <a class="rrze-msm-subtab<?php echo $site_process_current_tab === 'scheduler' ? ' is-active' : ''; ?>"<?php echo $site_process_current_tab === 'scheduler' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url(add_query_arg(['site_id' => (int)$site_id, 'section' => 'process', 'process_tab' => 'scheduler'], $site_details_base_url) . '#rrze-msm-site-process'); ?>"><?php echo esc_html__('Scheduler', 'rrze-multisite-manager'); ?></a>
                     </nav>
                     <?php if ($site_process_current_tab === 'stats') { ?>
                         <ul class="rrze-msm-inline-stats">

@@ -4,7 +4,9 @@ namespace RRZE\MultisiteManager\Metrics;
 
 use RRZE\MultisiteManager\Config;
 use RRZE\MultisiteManager\Support\AtomicLock;
+use RRZE\MultisiteManager\Support\DatabaseLatencyProbe;
 use RRZE\MultisiteManager\Support\ResponseTimeSampler;
+use RRZE\MultisiteManager\Support\SiteHealthLinks;
 use RRZE\MultisiteManager\Support\WorkerBudget;
 use RRZE\MultisiteManager\Support\WorkerRuntimeStats;
 
@@ -40,6 +42,7 @@ class RuntimeDiagnosticsService {
             $this->getBackgroundSection($warnings),
             $this->getFpmSection($warnings),
             $this->getResponseTimeSection(),
+            $this->getDatabaseLatencySection(),
             $this->getCronSection($warnings),
         ];
 
@@ -176,6 +179,10 @@ class RuntimeDiagnosticsService {
                         : __('Not available', 'rrze-multisite-manager'),
                 ],
             ],
+            'site_health_links' => SiteHealthLinks::getLinks([
+                'wp-database' => __('Database', 'rrze-multisite-manager'),
+                'wp-dropins' => __('Drop-ins', 'rrze-multisite-manager'),
+            ]),
         ];
     }
 
@@ -426,6 +433,7 @@ class RuntimeDiagnosticsService {
             'dropin_servers' => $this->getDropinServerSummary(),
             'response_sampling' => ResponseTimeSampler::getState(),
             'response_time_stats' => ResponseTimeSampler::getStats(),
+            'database_latency_probes' => DatabaseLatencyProbe::getRuns(),
         ];
     }
 
@@ -578,6 +586,51 @@ class RuntimeDiagnosticsService {
         unset($status['procs']);
 
         return $status;
+    }
+
+    /**
+     * Results of the manual round-trip measurement, newest first. Each row
+     * names the web node that answered, so nodes can be compared.
+     *
+     * @return array<string, mixed>
+     */
+    protected function getDatabaseLatencySection(): array {
+        $rows = [];
+        $run = [];
+
+        foreach (DatabaseLatencyProbe::getRuns() as $run) {
+            $rows[] = [
+                'label' => sprintf(
+                    /* translators: 1: date and time, 2: host name of the web node, 3: PHP SAPI. */
+                    __('%1$s, %2$s (%3$s)', 'rrze-multisite-manager'),
+                    wp_date('d.m.Y H:i:s', (int)($run['t'] ?? 0)),
+                    (string)($run['host'] ?? ''),
+                    (string)($run['sapi'] ?? '')
+                ),
+                'value' => sprintf(
+                    /* translators: 1: median, 2: mean, 3: minimum, 4: maximum (all in milliseconds), 5: number of successful queries, 6: number of failed queries. */
+                    __('Median %1$s ms, mean %2$s ms, minimum %3$s ms, maximum %4$s ms (%5$d queries, %6$d failed)', 'rrze-multisite-manager'),
+                    number_format_i18n((float)($run['median_ms'] ?? 0), 2),
+                    number_format_i18n((float)($run['avg_ms'] ?? 0), 2),
+                    number_format_i18n((float)($run['min_ms'] ?? 0), 2),
+                    number_format_i18n((float)($run['max_ms'] ?? 0), 2),
+                    (int)($run['count'] ?? 0),
+                    (int)($run['failed'] ?? 0)
+                ),
+            ];
+        }
+
+        if (empty($rows)) {
+            $rows[] = [
+                'label' => __('Measurements', 'rrze-multisite-manager'),
+                'value' => __('No measurement yet. Start one with the button under "Measurement during operation".', 'rrze-multisite-manager'),
+            ];
+        }
+
+        return [
+            'title' => __('Database round trip (SELECT 1)', 'rrze-multisite-manager'),
+            'rows' => $rows,
+        ];
     }
 
     /** @return array<string, mixed> */

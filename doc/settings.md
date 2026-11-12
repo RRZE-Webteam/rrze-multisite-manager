@@ -8,6 +8,11 @@ The **Settings** page configures Multisite Manager. It is visible only to super 
 
 This tab maintains defaults for dashboard tables, inactivity marking, and optional logging of background processes. The settings do not control WordPress core options outside Multisite Manager.
 
+### Users
+
+* **Default visible columns in the user list** (`users_default_visible_columns`).
+* **Orphaned accounts: minimum account age** (`users_orphaned_minimum_age_months`, default 12 months) and **months since last login** (`users_orphaned_inactive_months`, default 12 months) define the filter **Orphaned accounts** on the Users page. The filter is offered only while Wordfence is active; see [Users](network-users.md).
+
 ### Logging
 
 The **Debugging** section has two independent switches, both disabled by default:
@@ -21,17 +26,20 @@ Multiple-choice settings (for example **Ignore websites** for availability check
 
 ## Monitoring
 
-The tab configures:
+The tab is divided into sub-sections (URL parameter `monitoring_section`). Each sub-section is its own form with its own **Save** button; only its fields are submitted, and `Settings::sanitizeOptions()` merges them with the stored values, so the other sub-sections stay unchanged. After saving, the same sub-section is shown again. Option names are unchanged.
 
-* intervals for dashboard metrics, their historical statistics (daily, weekly, monthly, or disabled while retaining existing data; weekly by default), and availability checks
-* the plugin and theme usage index: cycle (twice weekly by default)
-* batch size for network-wide processes
-* grace period for new sites and DNS/HTTP failure thresholds
-* intervals, execution limits, and assignment criteria for storage analyses
-* separate cycles and assignment thresholds for small, medium, and large shortcode/block batches plus individual tasks
-* the maximum number of stored shortcode/block findings per website and type (default 1,000, range 100–5,000; a block finding is one block type per post)
-* a shared network-wide background process limit (default 3, range 1–16) for storage/content analyses, dashboard metrics/statistics and plugin/theme usage indexing; availability checks are not counted
-* number of retained monitoring runs (applied immediately to the stored log) and visible anomaly entries
+| Sub-section | Contents |
+| --- | --- |
+| General | Shared background process limit (default 3, range 1–16; availability checks are not counted), websites per step for dashboard metrics and the plugin/theme usage index (`monitoring_batch_size`), retained monitoring runs and visible anomaly entries |
+| Dashboard metrics | Cycle of the dashboard metrics and of their historical statistics (daily, weekly, monthly, or disabled while retaining existing data; weekly by default) |
+| Availability | Cycle, batch size, ignored website states, grace period for new websites and DNS/HTTP failure thresholds |
+| Plugins & themes | Cycle of the plugin and theme usage index (twice weekly by default) |
+| Storage analysis | Table of the batch tiers (small, medium, large, individual) with cycle, media threshold, runtime threshold and maximum active runtime; limit of checked orphaned files; collapsed **Advanced settings** with the index step sizes per tier, the per-type capacity and the browser-analysis size limit |
+| Shortcodes & blocks | Table of the batch tiers with cycle, post/page threshold and runtime threshold; maximum runtime, input size and stored findings per website and type (default 1,000, range 100–5,000; a block finding is one block type per post) |
+
+In the tier tables each input keeps its option name and has a screen-reader label "tier – column". The allowed range is shown below each number field; the original field descriptions are available under **Explanation of the values**. A warning appears when the media, post/page or runtime thresholds do not increase from the small to the large batch.
+
+The setting **Show analysis request notice to local administrators** (`monitoring_show_local_analysis_request_notice`) is an access setting and is shown on the **General** tab.
 
 Larger batches shorten the entire run but increase the load and execution time of an individual Cron request. Values should therefore match PHP limits, the Cron cadence, and network size.
 

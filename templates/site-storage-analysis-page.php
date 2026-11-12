@@ -160,10 +160,10 @@ defined('ABSPATH') || exit;
                 </div>
             </section>
 
-            <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Storage analysis sections', 'rrze-multisite-manager'); ?>">
-                <a class="rrze-msm-subtab<?php echo $storageTab === 'analysis' ? ' is-active' : ''; ?>" href="<?php echo esc_url($analysisTabUrl); ?>"><?php echo esc_html__('Analysis', 'rrze-multisite-manager'); ?></a>
-                <a class="rrze-msm-subtab<?php echo $storageTab === 'missing-metadata' ? ' is-active' : ''; ?>" href="<?php echo esc_url($missingMetadataTabUrl); ?>"><?php echo esc_html__('Missing metadata', 'rrze-multisite-manager'); ?></a>
-                <a class="rrze-msm-subtab<?php echo $storageTab === 'debug' ? ' is-active' : ''; ?>" href="<?php echo esc_url($debugTabUrl); ?>"><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></a>
+            <nav class="nav-tab-wrapper rrze-msm-page-tabs" aria-label="<?php echo esc_attr__('Storage analysis sections', 'rrze-multisite-manager'); ?>">
+                <a class="nav-tab<?php echo $storageTab === 'analysis' ? ' nav-tab-active' : ''; ?>"<?php echo $storageTab === 'analysis' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url($analysisTabUrl); ?>"><?php echo esc_html__('Analysis', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $storageTab === 'missing-metadata' ? ' nav-tab-active' : ''; ?>"<?php echo $storageTab === 'missing-metadata' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url($missingMetadataTabUrl); ?>"><?php echo esc_html__('Missing metadata', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $storageTab === 'debug' ? ' nav-tab-active' : ''; ?>"<?php echo $storageTab === 'debug' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url($debugTabUrl); ?>"><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></a>
             </nav>
 
             <?php if ($storageTab === 'debug') { ?>

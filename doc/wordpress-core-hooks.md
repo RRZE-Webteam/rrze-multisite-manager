@@ -46,6 +46,7 @@ Hook bedeuten verschiedene Callbacks mit unterschiedlichen Aufgaben.
 | `network_admin_menu` | Action | `Dashboard::registerNetworkMenu()` | 999 / 1 | Registriert die Netzwerk-Menüs des Plugins. |
 | `admin_enqueue_scripts` | Action | `Dashboard::enqueueAssets()` | 10 / 1 | Lädt CSS und JavaScript der Plugin-Administration. |
 | `admin_enqueue_scripts` | Action | `Dashboard::enqueueAdminBarStyles()` | 10 / 1 | Lädt zusätzliche Styles für die Admin-Bar. |
+| `admin_enqueue_scripts` | Action | `SiteHealthLinks::enqueueSectionOpener()` | 10 / 1 | Nur auf `site-health.php` mit gültigem Parameter `rrze-msm-section`: kleines Inline-Skript, das den verlinkten Abschnitt im Reiter „Bericht“ aufklappt und dorthin springt. |
 | `admin_bar_menu` | Action | `Dashboard::addAdminBarMenu()` | 35 / 1 | Ergänzt das MSM-Menü in der Admin-Bar. |
 | `admin_body_class` | Filter | `Dashboard::filterAdminBodyClass()` | 10 / 1 | Ergänzt eine CSS-Klasse für Plugin-Adminseiten. |
 | `user_has_cap` | Filter | `Dashboard::filterUserHasCap()` | 20 / 4 | Passt die Capability-Prüfung für die vorgesehenen Verwaltungsansichten an. |

@@ -62,6 +62,8 @@ class Main {
         // Inactive unless started on the Environment page; then only
         // editorial requests read the sampling state.
         Support\ResponseTimeSampler::register();
+        // Opens a requested section on the Site Health Info tab.
+        Support\SiteHealthLinks::register();
         $this->monitoring = $monitoring;
     }
 }

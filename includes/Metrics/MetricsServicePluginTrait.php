@@ -187,6 +187,38 @@ trait MetricsServicePluginTrait {
     }
 
     /**
+     * Adds the websites to the rows of plugins that are still active in the
+     * database but no longer installed. The dashboard payload only stores
+     * their counts; the websites come from the central plugin-usage index
+     * and the stored dashboard rows, without per-site metrics.
+     *
+     * @param array<int, array<string, mixed>> $missingPlugins
+     * @return array<int, array<string, mixed>>
+     */
+    public function addMissingPluginSites(array $missingPlugins): array {
+        $plugin = [];
+        $rows = [];
+
+        if (!$this->pluginThemeUsageMetrics->hasCompletedSnapshot()) {
+            return $missingPlugins;
+        }
+
+        foreach ($missingPlugins as &$plugin) {
+            if (!is_array($plugin) || (string)($plugin['file'] ?? '') === '') {
+                continue;
+            }
+
+            $rows = $this->getActiveSitesForPlugin((string)$plugin['file']);
+            $plugin['active_sites'] = $rows;
+            $plugin['site_count'] = count($rows);
+            $plugin['active_sites_truncated'] = false;
+        }
+        unset($plugin);
+
+        return $missingPlugins;
+    }
+
+    /**
      * Returns the complete current list of websites using a plugin.
      *
      * This is intentionally used only for a detail view. Embedding a complete

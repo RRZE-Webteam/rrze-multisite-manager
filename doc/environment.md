@@ -6,17 +6,21 @@ The **Environment** page provides a technical inventory of the central WordPress
 
 ## Contents
 
-The output groups configuration values from WordPress, PHP, and the network, including:
+The page shows only what WordPress Site Health does not already list, or what only exists at network level:
 
-* WordPress, PHP, and database information
-* active plugins, themes, and must-use plugins
-* PHP limits for memory, uploads, and execution time
-* network configuration such as registration, user creation, and allowed plugin activation
-* storage per site and maximum upload file size
-* scheduler and Cron information
-* operational diagnostics for database locks, background processing and Cron (see below)
+* **Overview:** network name, URL and ID, WordPress and PHP version, total database size and the upload base directory of the main site. Site Health omits the database size and paths in multisite, so these stay here.
+* **Network configuration:** installation type, registration, storage quota per website, upload check, maximum upload size, allowed plugin activation, user creation, forced admin SSL, file editing and file modifications.
+* **Update and maintenance status:** available core, plugin and theme updates, `DISABLE_WP_CRON`, `AUTOMATIC_UPDATER_DISABLED`.
+* **Plugin and theme inventory** and **network metrics**.
+* Operational diagnostics for database locks, background processing and Cron, and the measurement during operation (see below).
+
+Server and PHP limits, locale, time zone, `WP_DEBUG` and the other WordPress constants, paths, media handling and file-system permissions are no longer repeated. The **Overview** and **Database and locking** sections link to the matching section of the Info tab of Site Health on the main site instead.
 
 The page is read-only. It changes no settings and starts no analysis.
+
+## Direct links into Site Health
+
+Site Health renders the sections of its Info tab as collapsed accordions without an anchor that opens them. `Support/SiteHealthLinks` therefore builds links to `site-health.php?tab=debug&rrze-msm-section=<key>` on the main site. On that screen it adds a small inline script that, on window load, opens exactly that section, scrolls to it and moves the focus to its heading button. Valid keys are those of `WP_Debug_Data::debug_data()` that exist in multisite (`wp-core`, `wp-dropins`, `wp-active-theme`, `wp-mu-plugins`, `wp-plugins-active`, `wp-media`, `wp-server`, `wp-database`, `wp-constants`, `wp-filesystem`); other values are ignored. The links are shown only to users with `view_site_health_checks`, which core grants only to super admins in multisite. If core changes the accordion markup, the link still opens the Info tab, just without expanding the section.
 
 ## Operational diagnostics
 
@@ -42,7 +46,9 @@ The following sections support the measurement of the effect of background analy
 
 **Response times of editorial requests** (`Support/ResponseTimeSampler`): off by default, started on this page for 1, 3 or 7 days and stopped automatically (`rrze_msm_response_sampling`). While active, the following requests of posts and pages are measured on `shutdown` from `REQUEST_TIME_FLOAT`: opening the editor (`post.php`/`post-new.php`), saving (REST `POST/PUT/PATCH /wp/v2/posts|pages[/<id>]`, classic `post.php` POST), autosaving (`…/autosaves`) and media uploads (REST `POST /wp/v2/media`, `async-upload.php`, `media-new.php`). Each sample records the duration, the number of database queries, peak memory, the occupied analysis execution slots, the PHP-FPM pool state and `Threads_running`. Aggregation in `rrze_msm_response_time_stats` is split by request type and by whether at least one analysis slot was occupied: count, average, maximum, average queries and a histogram (bounds 250/500/1,000/2,000/5,000 ms) from which the 95 % bound is shown; the last 100 samples are kept for the download. The duration is measured before the additional diagnostic queries. Other requests do not read the sampling state. Writing uses a non-blocking lock and drops a sample instead of waiting.
 
-**Download all values (JSON)** exports every section of the page, the warnings and the raw values (database status and variables, PHP-FPM status without process list, worker statistics, occupied slots, sampling state and response-time statistics) for later analysis.
+**Database round trip** (`Support/DatabaseLatencyProbe`): runs only when the button is clicked. The request sends 20 × `SELECT 1` through `$wpdb`, i.e. the same path as all WordPress queries including a database drop-in, and stores median, mean, minimum, maximum and failed queries together with the host name of the answering web node, its PHP SAPI and version and `DB_HOST` in the network option `rrze_msm_db_latency_probes` (last 20 runs, newest first). Because the statement reads no table, the values are essentially the round trip between web node and database server plus the overhead of `$wpdb`. Behind a load balancer each click may land on another node; repeat the measurement to compare nodes. Comparing the result with the wall time per query of the response-time sampling shows whether slow editorial requests are caused by the round trip.
+
+**Download all values (JSON)** exports every section of the page, the warnings and the raw values (database status and variables, PHP-FPM status without process list, worker statistics, occupied slots, sampling state, response-time statistics and the round-trip measurements) for later analysis.
 
 ## Implementation
 

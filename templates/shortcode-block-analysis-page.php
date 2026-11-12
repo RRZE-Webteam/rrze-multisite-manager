@@ -226,9 +226,9 @@ $columnCount = $analysisTab === 'shortcodes'
                 <?php } ?>
             </section>
 
-            <nav class="rrze-msm-subtabs" aria-label="<?php echo esc_attr__('Analysis result types', 'rrze-multisite-manager'); ?>">
-                <a class="rrze-msm-subtab<?php echo $analysisTab === 'shortcodes' ? ' is-active' : ''; ?>" href="<?php echo esc_url($shortcodeUrl); ?>"><?php echo esc_html__('Shortcodes', 'rrze-multisite-manager'); ?></a>
-                <a class="rrze-msm-subtab<?php echo $analysisTab === 'blocks' ? ' is-active' : ''; ?>" href="<?php echo esc_url($blockUrl); ?>"><?php echo esc_html__('Blocks', 'rrze-multisite-manager'); ?></a>
+            <nav class="nav-tab-wrapper rrze-msm-page-tabs" aria-label="<?php echo esc_attr__('Analysis result types', 'rrze-multisite-manager'); ?>">
+                <a class="nav-tab<?php echo $analysisTab === 'shortcodes' ? ' nav-tab-active' : ''; ?>"<?php echo $analysisTab === 'shortcodes' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url($shortcodeUrl); ?>"><?php echo esc_html__('Shortcodes', 'rrze-multisite-manager'); ?></a>
+                <a class="nav-tab<?php echo $analysisTab === 'blocks' ? ' nav-tab-active' : ''; ?>"<?php echo $analysisTab === 'blocks' ? ' aria-current="page"' : ''; ?> href="<?php echo esc_url($blockUrl); ?>"><?php echo esc_html__('Blocks', 'rrze-multisite-manager'); ?></a>
             </nav>
 
             <section class="rrze-msm-widget rrze-msm-widget-span-12">

@@ -2,11 +2,13 @@
 
 namespace RRZE\MultisiteManager\Metrics;
 
+use RRZE\MultisiteManager\Support\SiteHealthLinks;
+
 defined('ABSPATH') || exit;
 
 trait MetricsServiceEnvironmentTrait {
     public function getEnvironmentOverview(): array {
-        global $wpdb, $wp_version;
+        global $wp_version;
 
         $dashboardData = $this->getDashboardData();
         $summary = is_array($dashboardData['summary'] ?? null) ? $dashboardData['summary'] : [];
@@ -52,60 +54,35 @@ trait MetricsServiceEnvironmentTrait {
             }
         }
 
+        // Values that Site Health already lists (server, PHP limits, paths,
+        // constants, locale) are not repeated here; the overview links to the
+        // matching Site Health section instead. Database size and upload
+        // directory stay because Site Health omits them in multisite.
         $sections[] = [
-            'title' => __('System foundation', 'rrze-multisite-manager'),
+            'title' => __('Overview', 'rrze-multisite-manager'),
             'rows' => [
-                ['label' => __('WordPress version', 'rrze-multisite-manager'), 'value' => (string)$wp_version],
-                ['label' => __('Multisite', 'rrze-multisite-manager'), 'value' => __('Yes', 'rrze-multisite-manager')],
-                ['label' => __('Network ID', 'rrze-multisite-manager'), 'value' => (string)get_current_network_id()],
                 ['label' => __('Network name', 'rrze-multisite-manager'), 'value' => $network instanceof \WP_Network ? (string)$network->site_name : ''],
                 ['label' => __('Network URL', 'rrze-multisite-manager'), 'value' => network_home_url('/')],
-                ['label' => __('WordPress environment', 'rrze-multisite-manager'), 'value' => function_exists('wp_get_environment_type') ? wp_get_environment_type() : ''],
+                ['label' => __('Network ID', 'rrze-multisite-manager'), 'value' => (string)get_current_network_id()],
+                ['label' => __('WordPress version', 'rrze-multisite-manager'), 'value' => (string)$wp_version],
                 ['label' => __('PHP version', 'rrze-multisite-manager'), 'value' => PHP_VERSION],
-                ['label' => __('Database server', 'rrze-multisite-manager'), 'value' => method_exists($wpdb, 'db_server_info') ? (string)$wpdb->db_server_info() : ''],
                 [
                     'label' => __('Database size (data and indexes)', 'rrze-multisite-manager'),
                     'value' => $databaseSizeBytes !== null
                         ? size_format($databaseSizeBytes, 2)
                         : __('Not available', 'rrze-multisite-manager'),
                 ],
-                ['label' => __('Webserver', 'rrze-multisite-manager'), 'value' => isset($_SERVER['SERVER_SOFTWARE']) ? (string)$_SERVER['SERVER_SOFTWARE'] : ''],
-                ['label' => __('Locale', 'rrze-multisite-manager'), 'value' => get_locale()],
-                ['label' => __('Timezone', 'rrze-multisite-manager'), 'value' => wp_timezone_string()],
-            ],
-        ];
-
-        $sections[] = [
-            'title' => __('Paths and infrastructure', 'rrze-multisite-manager'),
-            'rows' => [
-                ['label' => 'ABSPATH', 'value' => ABSPATH, 'code' => true],
-                ['label' => 'WP_CONTENT_DIR', 'value' => defined('WP_CONTENT_DIR') ? WP_CONTENT_DIR : '', 'code' => true],
-                ['label' => 'WP_PLUGIN_DIR', 'value' => defined('WP_PLUGIN_DIR') ? WP_PLUGIN_DIR : '', 'code' => true],
                 ['label' => __('Upload base directory', 'rrze-multisite-manager'), 'value' => (string)($uploadDir['basedir'] ?? ''), 'code' => true],
-                ['label' => __('Upload base URL', 'rrze-multisite-manager'), 'value' => (string)($uploadDir['baseurl'] ?? '')],
             ],
-        ];
-
-        $sections[] = [
-            'title' => __('Size and runtime limits', 'rrze-multisite-manager'),
-            'rows' => [
-                ['label' => 'memory_limit', 'value' => (string)ini_get('memory_limit')],
-                ['label' => 'max_execution_time', 'value' => (string)ini_get('max_execution_time')],
-                ['label' => 'upload_max_filesize', 'value' => (string)ini_get('upload_max_filesize')],
-                ['label' => 'post_max_size', 'value' => (string)ini_get('post_max_size')],
-                ['label' => 'max_input_vars', 'value' => (string)ini_get('max_input_vars')],
-                [
-                    'label' => __('Default quota per site', 'rrze-multisite-manager'),
-                    'value' => $defaultSiteQuota > 0
-                        ? sprintf(
-                            /* translators: %d: default site quota in megabytes. */
-                            __('%d MB', 'rrze-multisite-manager'),
-                            $defaultSiteQuota
-                        )
-                        : __('Not set', 'rrze-multisite-manager'),
-                ],
-                ['label' => __('Upload check disabled', 'rrze-multisite-manager'), 'value' => defined('UPLOADS') ? __('Configured via constant', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
-            ],
+            'site_health_links' => SiteHealthLinks::getLinks([
+                'wp-core' => __('WordPress', 'rrze-multisite-manager'),
+                'wp-server' => __('Server and PHP limits', 'rrze-multisite-manager'),
+                'wp-database' => __('Database', 'rrze-multisite-manager'),
+                'wp-constants' => __('WordPress constants and paths', 'rrze-multisite-manager'),
+                'wp-media' => __('Media handling', 'rrze-multisite-manager'),
+                'wp-filesystem' => __('Filesystem permissions', 'rrze-multisite-manager'),
+                'wp-dropins' => __('Drop-ins', 'rrze-multisite-manager'),
+            ]),
         ];
 
         $sections[] = [
@@ -129,6 +106,7 @@ trait MetricsServiceEnvironmentTrait {
                         ? size_format($maximumUploadSizeKb * KB_IN_BYTES, 2)
                         : __('Not set', 'rrze-multisite-manager'),
                 ],
+                ['label' => __('Upload check disabled', 'rrze-multisite-manager'), 'value' => !empty(get_site_option('upload_space_check_disabled')) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
                 ['label' => __('Plugin activation allowed', 'rrze-multisite-manager'), 'value' => $pluginActivationAllowed ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
                 ['label' => __('Adding new users allowed', 'rrze-multisite-manager'), 'value' => !empty(get_site_option('add_new_users')) ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
                 ['label' => __('Forced admin SSL', 'rrze-multisite-manager'), 'value' => force_ssl_admin() ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
@@ -145,9 +123,6 @@ trait MetricsServiceEnvironmentTrait {
                 ['label' => __('Theme updates available', 'rrze-multisite-manager'), 'value' => (string)$availableThemeUpdates, 'numeric' => true],
                 ['label' => __('WP-Cron disabled', 'rrze-multisite-manager'), 'value' => defined('DISABLE_WP_CRON') && DISABLE_WP_CRON ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
                 ['label' => __('Automatic updates globally disabled', 'rrze-multisite-manager'), 'value' => defined('AUTOMATIC_UPDATER_DISABLED') && AUTOMATIC_UPDATER_DISABLED ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
-                ['label' => __('WP_DEBUG', 'rrze-multisite-manager'), 'value' => defined('WP_DEBUG') && WP_DEBUG ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
-                ['label' => __('WP_DEBUG_LOG', 'rrze-multisite-manager'), 'value' => defined('WP_DEBUG_LOG') && WP_DEBUG_LOG ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
-                ['label' => __('SCRIPT_DEBUG', 'rrze-multisite-manager'), 'value' => defined('SCRIPT_DEBUG') && SCRIPT_DEBUG ? __('Yes', 'rrze-multisite-manager') : __('No', 'rrze-multisite-manager')],
             ],
         ];
 
