@@ -1697,7 +1697,7 @@ class Settings {
         $sectionKey = '';
         $sectionLabel = '';
 
-        echo '<nav class="rrze-msm-subtabs rrze-msm-settings-subtabs" aria-label="' . esc_attr__('Sections of the monitoring settings', 'rrze-multisite-manager') . '">';
+        echo '<nav class="rrze-msm-subtabs rrze-msm-underline-tabs" aria-label="' . esc_attr__('Sections of the monitoring settings', 'rrze-multisite-manager') . '">';
 
         foreach ($this->getMonitoringSettingsSections() as $sectionKey => $sectionLabel) {
             echo '<a class="rrze-msm-subtab' . ($sectionKey === $currentSection ? ' is-active' : '') . '"'

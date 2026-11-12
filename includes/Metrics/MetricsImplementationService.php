@@ -60,7 +60,7 @@ class MetricsImplementationService {
     protected const DETAIL_CACHE_TTL = 900;
     protected const DETAIL_SECTION_MAX_ROWS = 250;
     protected const DETAIL_OPTION_VALUE_MAX_BYTES = 16384;
-    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 8;
+    protected const DETAIL_SECTION_CACHE_FORMAT_VERSION = 9;
     protected const STORAGE_LARGEST_FILES_LIMIT = 200;
     protected const STORAGE_ANALYSIS_BATCH_SIZE = 250;
     protected const STORAGE_ANALYSIS_DIRECTORY_ENTRY_BATCH_SIZE = 250;
@@ -3489,6 +3489,7 @@ class MetricsImplementationService {
             'author_url' => $theme instanceof \WP_Theme ? (string)$theme->get('AuthorURI') : '',
             'tags' => is_array($tags) ? $this->normalizeStringList($tags) : [],
             'allowed_themes' => $this->getCurrentSiteAllowedThemes($theme instanceof \WP_Theme ? (string)$theme->get_stylesheet() : ''),
+            'unallowed_themes' => $this->getCurrentSiteUnallowedThemes(),
         ];
 
         $this->setCachedCurrentSiteDetailSection('theme', $result);
@@ -3506,29 +3507,55 @@ class MetricsImplementationService {
         $results = [];
         $stylesheet = '';
         $theme = null;
-        $screenshot = '';
-        $parent = null;
 
         foreach ($themes as $stylesheet => $theme) {
             if (!$theme instanceof \WP_Theme || (string)$stylesheet === $activeStylesheet) {
                 continue;
             }
 
-            $screenshot = $theme->get_screenshot();
-            $parent = $theme->parent();
-            $results[] = [
-                'name' => (string)$theme->get('Name') ?: (string)$stylesheet,
-                'stylesheet' => (string)$stylesheet,
-                'version' => (string)$theme->get('Version'),
-                'screenshot' => is_string($screenshot) ? $screenshot : '',
-                'is_block_theme' => method_exists($theme, 'is_block_theme') && (bool)$theme->is_block_theme(),
-                'parent_name' => $parent instanceof \WP_Theme ? (string)$parent->get('Name') : '',
-            ];
+            $results[] = $this->buildSiteThemeRow((string)$stylesheet, $theme);
         }
 
         usort($results, [self::class, 'compareThemeRowsByName']);
 
         return $results;
+    }
+
+    /**
+     * Installed themes without errors that are neither enabled network-wide
+     * nor for the current website. With allowed=false, wp_get_themes()
+     * returns exactly the themes outside both allow lists.
+     */
+    protected function getCurrentSiteUnallowedThemes(): array {
+        $themes = wp_get_themes(['errors' => false, 'allowed' => false, 'blog_id' => get_current_blog_id()]);
+        $results = [];
+        $stylesheet = '';
+        $theme = null;
+
+        foreach ($themes as $stylesheet => $theme) {
+            if ($theme instanceof \WP_Theme) {
+                $results[] = $this->buildSiteThemeRow((string)$stylesheet, $theme);
+            }
+        }
+
+        usort($results, [self::class, 'compareThemeRowsByName']);
+
+        return $results;
+    }
+
+    /** @return array<string, mixed> */
+    protected function buildSiteThemeRow(string $stylesheet, \WP_Theme $theme): array {
+        $screenshot = $theme->get_screenshot();
+        $parent = $theme->parent();
+
+        return [
+            'name' => (string)$theme->get('Name') ?: $stylesheet,
+            'stylesheet' => $stylesheet,
+            'version' => (string)$theme->get('Version'),
+            'screenshot' => is_string($screenshot) ? $screenshot : '',
+            'is_block_theme' => method_exists($theme, 'is_block_theme') && (bool)$theme->is_block_theme(),
+            'parent_name' => $parent instanceof \WP_Theme ? (string)$parent->get('Name') : '',
+        ];
     }
 
     protected static function compareThemeRowsByName(array $left, array $right): int {

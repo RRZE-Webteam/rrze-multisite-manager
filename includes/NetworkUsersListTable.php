@@ -74,7 +74,7 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
         }
 
         $this->membershipFilterApplied = true;
-        $query->query_where .= ' AND ' . self::getWithoutMembershipCondition("{$wpdb->users}.ID");
+        $query->query_where .= ' AND ' . self::getWithoutMembershipCondition("{$wpdb->users}.ID", "{$wpdb->users}.user_login");
 
         if ($this->filter === self::FILTER_ORPHANED) {
             $query->query_where .= ' AND ' . self::getOrphanedCondition("{$wpdb->users}.ID", "{$wpdb->users}.user_registered", $this->loginCutoff, $this->registeredCutoff);
@@ -87,7 +87,7 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
 
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The condition is built with $wpdb->prepare(); table names are trusted identifiers.
         $count = $wpdb->get_var(
-            "SELECT COUNT(1) FROM {$wpdb->users} AS rrze_msm_users WHERE " . self::getWithoutMembershipCondition('rrze_msm_users.ID')
+            "SELECT COUNT(1) FROM {$wpdb->users} AS rrze_msm_users WHERE " . self::getWithoutMembershipCondition('rrze_msm_users.ID', 'rrze_msm_users.user_login')
         );
 
         return absint($count);
@@ -100,22 +100,36 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The conditions are built with $wpdb->prepare(); table names are trusted identifiers.
         $count = $wpdb->get_var(
             "SELECT COUNT(1) FROM {$wpdb->users} AS rrze_msm_users WHERE "
-            . self::getWithoutMembershipCondition('rrze_msm_users.ID')
+            . self::getWithoutMembershipCondition('rrze_msm_users.ID', 'rrze_msm_users.user_login')
             . ' AND ' . self::getOrphanedCondition('rrze_msm_users.ID', 'rrze_msm_users.user_registered', $loginCutoff, $registeredCutoff)
         );
 
         return absint($count);
     }
 
-    /** SQL condition: the user has no capabilities entry on any website. */
-    protected static function getWithoutMembershipCondition(string $userIdColumn): string {
+    /**
+     * SQL condition: the user has no capabilities entry on any website and
+     * is not a super admin. Super admins manage the network without a
+     * website role and must not appear as unassigned or orphaned.
+     */
+    protected static function getWithoutMembershipCondition(string $userIdColumn, string $loginColumn): string {
         global $wpdb;
-
+        $superAdmins = function_exists('get_super_admins') ? array_values(array_filter(array_map('strval', (array)get_super_admins()))) : [];
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Column and table names are trusted identifiers.
-        return $wpdb->prepare(
+        $condition = $wpdb->prepare(
             "NOT EXISTS (SELECT 1 FROM {$wpdb->usermeta} AS rrze_msm_site_membership WHERE rrze_msm_site_membership.user_id = {$userIdColumn} AND rrze_msm_site_membership.meta_key LIKE %s)",
             $wpdb->esc_like($wpdb->base_prefix) . '%capabilities'
         );
+
+        if (!empty($superAdmins)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Column name is a trusted identifier; one placeholder per super admin login.
+            $condition .= $wpdb->prepare(
+                " AND {$loginColumn} NOT IN (" . implode(', ', array_fill(0, count($superAdmins), '%s')) . ')',
+                $superAdmins
+            );
+        }
+
+        return $condition;
     }
 
     /**

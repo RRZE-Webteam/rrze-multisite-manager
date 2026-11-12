@@ -115,13 +115,13 @@ body.rrze-msm-mode-dark {
 }
 
 /*
- * Second navigation level of the settings: a quiet text bar with an
- * underline for the active section instead of the button tabs used on the
- * detail pages. The extra selector weight overrides the button styles from
+ * Second navigation level (settings, website details): a quiet text bar
+ * with an underline for the active section. The first level uses the
+ * WordPress nav-tab style. The extra selector weight overrides the button styles from
  * widgets/_widget-base.scss and the active rule in rrze-multisite-manager.scss.
  * Labels sit at the bottom, next to the underline.
  */
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs {
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
@@ -131,8 +131,8 @@ body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs {
     border-bottom: 1px solid var(--rrze-msm-border);
 }
 
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab,
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:visited {
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab:visited {
     display: inline-flex;
     align-items: flex-end;
     margin: 0 0 -1px;
@@ -146,22 +146,22 @@ body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a
     line-height: 1.4;
 }
 
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:hover,
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:focus {
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab:hover,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab:focus {
     border-bottom-color: var(--rrze-msm-border) !important;
     color: var(--rrze-msm-text) !important;
 }
 
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab:focus-visible {
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab:focus-visible {
     outline: 2px solid var(--rrze-msm-link);
     outline-offset: 2px;
 }
 
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button),
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):visited,
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):hover,
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):focus,
-body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a.rrze-msm-subtab.is-active:not(.button):active {
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab.is-active:not(.button),
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab.is-active:not(.button):visited,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab.is-active:not(.button):hover,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab.is-active:not(.button):focus,
+body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-underline-tabs a.rrze-msm-subtab.is-active:not(.button):active {
     background: transparent !important;
     border-bottom-color: var(--rrze-msm-link) !important;
     color: var(--rrze-msm-link) !important;
@@ -241,4 +241,9 @@ body .rrze-multisite-manager-admin .rrze-msm-subtabs.rrze-msm-settings-subtabs a
 
 .rrze-msm-network-users-section .wp-list-table {
     margin-top: 4px;
+}
+
+/* First navigation level on detail pages: WordPress nav tabs as in the settings. */
+.rrze-multisite-manager-admin .nav-tab-wrapper.rrze-msm-page-tabs {
+    margin: 0 0 20px;
 }

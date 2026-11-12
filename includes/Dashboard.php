@@ -173,6 +173,8 @@ class Dashboard {
         add_action('user_register', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
         add_action('wpmu_delete_user', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
         add_action('deleted_user', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
+        add_action('granted_super_admin', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
+        add_action('revoked_super_admin', [$this, 'flushUsersWithoutWebsiteMembershipCount']);
         add_action('added_user_meta', [$this, 'flushUsersWithoutWebsiteMembershipCountOnMetaChange'], 10, 3);
         add_action('deleted_user_meta', [$this, 'flushUsersWithoutWebsiteMembershipCountOnMetaChange'], 10, 3);
 
@@ -210,6 +212,7 @@ class Dashboard {
         add_action('admin_post_rrze_multisite_manager_delete_post_type_entries', [$this, 'handlePostTypeDelete']);
         add_action('admin_post_rrze_multisite_manager_deactivate_site_plugin', [$this, 'handleSitePluginDeactivate']);
         add_action('admin_post_rrze_multisite_manager_activate_site_theme', [$this, 'handleSiteThemeActivate']);
+        add_action('admin_post_rrze_multisite_manager_enable_site_theme', [$this, 'handleSiteThemeEnable']);
         add_action('admin_post_rrze_multisite_manager_response_sampling', [$this, 'handleResponseSampling']);
         add_action('admin_post_rrze_multisite_manager_environment_export', [$this, 'handleEnvironmentExport']);
         add_action('admin_post_rrze_multisite_manager_database_latency', [$this, 'handleDatabaseLatencyProbe']);
@@ -1596,6 +1599,7 @@ class Dashboard {
                 'site_plugin_widget' => $sitePluginWidget,
                 'site_plugin_deactivated' => !empty($_GET['plugin_deactivated']),
                 'site_theme_activated' => !empty($_GET['theme_activated']),
+                'site_theme_enabled' => !empty($_GET['theme_enabled']),
                 'can_activate_site_themes' => $this->currentUserCanUseNetworkAdminFeatures(),
                 'site_plugins_url' => $siteId > 0 ? get_admin_url($siteId, 'plugins.php') : '',
                 'site_themes_url' => $siteId > 0 ? get_admin_url($siteId, 'themes.php') : '',
@@ -3390,6 +3394,81 @@ class Dashboard {
             ) . '#rrze-msm-site-theme'
         );
         exit;
+    }
+
+    /**
+     * Enables an installed theme for one website, as Network Admin > Sites >
+     * Edit > Themes does. The network-wide allow list is not changed.
+     */
+    public function handleSiteThemeEnable(): void {
+        $siteId = isset($_REQUEST['site_id']) ? absint(wp_unslash($_REQUEST['site_id'])) : 0;
+        $stylesheet = isset($_REQUEST['stylesheet']) ? sanitize_text_field((string)wp_unslash($_REQUEST['stylesheet'])) : '';
+        $site = $siteId > 0 ? get_site($siteId) : null;
+        $theme = null;
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to enable themes for websites.', 'rrze-multisite-manager'));
+        }
+
+        if (!$site instanceof \WP_Site || $stylesheet === '') {
+            wp_die(esc_html__('Invalid website or theme.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_enable_site_theme_' . $siteId . '_' . $stylesheet);
+        $theme = wp_get_theme($stylesheet);
+
+        if (!$theme->exists() || $theme->errors()) {
+            wp_die(esc_html__('The selected theme is not installed or is broken.', 'rrze-multisite-manager'));
+        }
+
+        if (!$theme->is_allowed('both', $siteId)) {
+            $this->enableThemeForSite($siteId, $stylesheet);
+        }
+
+        $this->metrics->clearCache();
+        wp_safe_redirect(
+            add_query_arg(
+                [
+                    'site_id' => $siteId,
+                    'section' => 'theme',
+                    'theme_enabled' => 1,
+                ],
+                $this->getSiteDetailsUrl()
+            ) . '#rrze-msm-site-unallowed-themes'
+        );
+        exit;
+    }
+
+    /**
+     * Same steps as wp-admin/network/site-themes.php (action "enable"): add
+     * the stylesheet to the website option allowedthemes, not autoloaded.
+     */
+    protected function enableThemeForSite(int $siteId, string $stylesheet): void {
+        $allowedThemes = [];
+
+        switch_to_blog($siteId);
+        try {
+            $allowedThemes = get_option('allowedthemes');
+            $allowedThemes = is_array($allowedThemes) ? $allowedThemes : [];
+            $allowedThemes[$stylesheet] = true;
+            update_option('allowedthemes', $allowedThemes, false);
+        } finally {
+            restore_current_blog();
+        }
+    }
+
+    public function getSiteThemeEnableUrl(int $siteId, string $stylesheet): string {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'rrze_multisite_manager_enable_site_theme',
+                    'site_id' => $siteId,
+                    'stylesheet' => $stylesheet,
+                ],
+                admin_url('admin-post.php')
+            ),
+            'rrze_multisite_manager_enable_site_theme_' . $siteId . '_' . $stylesheet
+        );
     }
 
     public function getSiteThemeActivateUrl(int $siteId, string $stylesheet): string {
