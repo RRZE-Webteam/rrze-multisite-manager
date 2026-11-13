@@ -4204,6 +4204,10 @@ class Settings {
             return __('Aborted', 'rrze-multisite-manager');
         }
 
+        if (($process['status_key'] ?? '') === 'stopped' || ($process['batch_run_state'] ?? '') === 'stopped') {
+            return __('Stopped', 'rrze-multisite-manager');
+        }
+
         if ((int)($process['next_run_timestamp'] ?? 0) <= 0) {
             return __('Not scheduled', 'rrze-multisite-manager');
         }

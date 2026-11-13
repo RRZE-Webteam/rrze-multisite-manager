@@ -4,7 +4,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-11-13T14:28:22+00:00\n"
+"POT-Creation-Date: 2026-11-13T14:49:23+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -1124,7 +1124,7 @@ msgid "Shortcode"
 msgstr "Shortcode"
 
 #: includes/ContentAnalysisListTable.php:46
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1842
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1845
 #: includes/Widgets/PluginUsageWidget.php:217
 msgid "Plugin"
 msgstr "Plugin"
@@ -1156,8 +1156,8 @@ msgstr "Es liegen noch keine Ergebnisse vor."
 #: includes/Metrics/MetricsImplementationService.php:8094
 #: includes/Metrics/StorageUsageService.php:44
 #: includes/Presentation/StatusFormatter.php:41
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1742
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1823
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1745
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1826
 #: includes/Widgets/NetworkStorageUsageWidget.php:111
 #: includes/Widgets/Widgets.php:1085 includes/Widgets/Widgets.php:1349
 #: includes/Widgets/Widgets.php:1372 includes/Widgets/Widgets.php:1613
@@ -1313,7 +1313,7 @@ msgstr "Die Mediathek konnte nicht durchsucht werden."
 msgid "The storage analysis is complete. The page is being reloaded."
 msgstr "Die Speicheranalyse ist abgeschlossen. Die Seite wird neu geladen."
 
-#: includes/Dashboard.php:632 includes/StorageAnalysisSchedulerService.php:2312
+#: includes/Dashboard.php:632 includes/StorageAnalysisSchedulerService.php:2318
 msgid "The storage analysis could not be completed."
 msgstr "Die Speicheranalyse konnte nicht abgeschlossen werden."
 
@@ -1346,12 +1346,12 @@ msgid "Start orphan check"
 msgstr "Verwaist-Prüfung starten"
 
 #. translators: 1: processed websites, 2: total websites.
-#: includes/Dashboard.php:640 includes/Settings.php:4557
+#: includes/Dashboard.php:640 includes/Settings.php:4561
 msgid "Websites processed: %1$s of %2$s"
 msgstr "Verarbeitete Websites: %1$s von %2$s"
 
 #. translators: 1: transient value rows, 2: timeout rows, 3: website options.
-#: includes/Dashboard.php:641 includes/Settings.php:4569
+#: includes/Dashboard.php:641 includes/Settings.php:4573
 msgid ""
 "Deleted so far: %1$s transient values, %2$s timeout rows, %3$s website "
 "options."
@@ -1523,7 +1523,7 @@ msgstr "Einrichtungsphase"
 #: includes/Metrics/MetricsImplementationService.php:1155
 #: includes/Metrics/MetricsServiceSiteTrait.php:258
 #: includes/Presentation/StatusFormatter.php:15 includes/Settings.php:3833
-#: includes/Settings.php:4783 includes/WebsiteStatusReportService.php:503
+#: includes/Settings.php:4787 includes/WebsiteStatusReportService.php:503
 #: includes/Widgets/OperationalStatusWidget.php:83
 #: includes/Widgets/WebsiteStatusWidget.php:51
 msgid "DNS missing"
@@ -2037,7 +2037,7 @@ msgstr "Nicht gesetzt / automatisch"
 #: includes/Dashboard.php:4444
 #: includes/Metrics/MetricsImplementationService.php:1153
 #: includes/Metrics/MetricsServiceSiteTrait.php:244
-#: includes/Presentation/StatusFormatter.php:14 includes/Settings.php:4775
+#: includes/Presentation/StatusFormatter.php:14 includes/Settings.php:4779
 #: includes/WebsiteStatusReportService.php:502
 #: includes/Widgets/OperationalStatusWidget.php:67
 #: includes/Widgets/WebsiteStatusWidget.php:50
@@ -2109,7 +2109,7 @@ msgid "Cleanup is running."
 msgstr "Bereinigung läuft."
 
 #: includes/Metrics/MetricsImplementationService.php:545
-#: includes/Settings.php:4544
+#: includes/Settings.php:4548
 msgid ""
 "Cleanup completed. Storage, shortcode and block analyses, and dashboard "
 "metrics can now be started manually again."
@@ -2322,7 +2322,7 @@ msgstr "Beitragsbild"
 
 #: includes/Metrics/MetricsImplementationService.php:2526
 #: includes/Metrics/MetricsImplementationService.php:8796
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1741
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1744
 msgid "WordPress Core"
 msgstr "WordPress Core"
 
@@ -3505,36 +3505,36 @@ msgstr "%1$s offen, %2$s gerade aktiv, Höchststand seit Start %3$s von %4$s"
 #: includes/Metrics/RuntimeDiagnosticsService.php:493
 #: includes/Metrics/RuntimeDiagnosticsService.php:498
 msgid "Visible database processes"
-msgstr ""
+msgstr "Sichtbare Datenbankprozesse"
 
 #: includes/Metrics/RuntimeDiagnosticsService.php:494
 msgid ""
 "Not available. The database account does not permit reading the process list."
-msgstr ""
+msgstr "Nicht verfügbar. Das Datenbankkonto darf die Prozessliste nicht lesen."
 
 #: includes/Metrics/RuntimeDiagnosticsService.php:499
 msgid "No database processes are visible."
-msgstr ""
+msgstr "Keine Datenbankprozesse sichtbar."
 
 #. translators: %d: database process ID.
 #: includes/Metrics/RuntimeDiagnosticsService.php:506
 msgid "Database process #%d"
-msgstr ""
+msgstr "Datenbankprozess Nr. %d"
 
 #. translators: 1: database user, 2: client host, 3: database name, 4: command, 5: state, 6: elapsed seconds.
 #: includes/Metrics/RuntimeDiagnosticsService.php:511
 msgid "User %1$s from %2$s; database %3$s; %4$s, %5$s for %6$s s"
-msgstr ""
+msgstr "Benutzer %1$s von %2$s; Datenbank %3$s; %4$s, %5$s seit %6$s s"
 
 #: includes/Metrics/RuntimeDiagnosticsService.php:523
 msgid "Plugin attribution of database connections"
-msgstr ""
+msgstr "Plugin-Zuordnung von Datenbankverbindungen"
 
 #: includes/Metrics/RuntimeDiagnosticsService.php:524
 msgid ""
 "Not available: MySQL/MariaDB process lists do not identify the WordPress "
 "plugin that opened a connection."
-msgstr ""
+msgstr "Nicht verfügbar: MySQL-/MariaDB-Prozesslisten zeigen nicht, welches WordPress-Plugin eine Verbindung geöffnet hat."
 
 #: includes/Metrics/RuntimeDiagnosticsService.php:527
 msgid "Temporary tables on disk / refused connections"
@@ -3552,7 +3552,7 @@ msgstr "Datenbanklast (Zähler seit Serverstart)"
 
 #: includes/Metrics/RuntimeDiagnosticsService.php:585
 msgid "not set"
-msgstr ""
+msgstr "nicht gesetzt"
 
 #: includes/Metrics/RuntimeDiagnosticsService.php:603
 #: includes/Metrics/RuntimeDiagnosticsService.php:626
@@ -3923,7 +3923,7 @@ msgid "HTTP check skipped because DNS resolution failed."
 msgstr "HTTP-Prüfung übersprungen, weil die DNS-Auflösung fehlgeschlagen ist."
 
 #. translators: %d: site ID.
-#: includes/MonitoringService.php:1047 includes/Settings.php:4715
+#: includes/MonitoringService.php:1047 includes/Settings.php:4719
 msgid "Site %d"
 msgstr "Site %d"
 
@@ -4006,8 +4006,8 @@ msgid "Missing"
 msgstr "Fehlt"
 
 #: includes/Presentation/StatusFormatter.php:39 includes/Settings.php:4200
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1020
-#: includes/StorageAnalysisSchedulerService.php:3104
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1022
+#: includes/StorageAnalysisSchedulerService.php:3110
 msgid "Error"
 msgstr "Fehler"
 
@@ -4162,7 +4162,7 @@ msgstr "Sie sind nicht berechtigt, den Website-Statusbericht zu versenden."
 
 #: includes/Settings.php:825
 msgid "Invalid monitoring process."
-msgstr ""
+msgstr "Ungültiger Monitoring-Prozess."
 
 #: includes/Settings.php:971 includes/Settings.php:1006
 msgid "The requested analysis type is invalid."
@@ -4613,27 +4613,27 @@ msgstr "Der Sammelbatch für Speicheranalysen konnte nicht gestoppt werden."
 msgid ""
 "The shared shortcode and block analysis batch was stopped and will not "
 "restart automatically."
-msgstr ""
+msgstr "Der Sammelbatch für Shortcode- und Blockanalysen wurde gestoppt und startet nicht automatisch erneut."
 
 #: includes/Settings.php:2446
 msgid "The shared shortcode and block analysis batch could not be stopped."
-msgstr ""
+msgstr "Der Sammelbatch für Shortcode- und Blockanalysen konnte nicht gestoppt werden."
 
 #: includes/Settings.php:2453
 msgid ""
 "All network-wide monitoring processes were stopped and their Cron tasks were "
 "removed."
-msgstr ""
+msgstr "Alle netzwerkweiten Monitoring-Prozesse wurden gestoppt und ihre Cron-Aufgaben entfernt."
 
 #: includes/Settings.php:2454
 msgid ""
 "The network-wide monitoring process was stopped and its Cron tasks were "
 "removed."
-msgstr ""
+msgstr "Der netzwerkweite Monitoring-Prozess wurde gestoppt und seine Cron-Aufgaben entfernt."
 
 #: includes/Settings.php:2455
 msgid "The network-wide monitoring process could not be stopped."
-msgstr ""
+msgstr "Der netzwerkweite Monitoring-Prozess konnte nicht gestoppt werden."
 
 #. translators: 1: processed websites, 2: total websites, 3: created tasks.
 #: includes/Settings.php:2465
@@ -4816,7 +4816,7 @@ msgstr "Daten der Shortcode- und Blockanalyse"
 
 #: includes/Settings.php:2731
 msgid "Live MSM workers"
-msgstr ""
+msgstr "Live-MSM-Worker"
 
 #: includes/Settings.php:2732
 msgid ""
@@ -4824,11 +4824,11 @@ msgid ""
 "live MSM execution slot; stale records without their database lock are "
 "discarded. Other database connections require database process-list or audit "
 "privileges to identify."
-msgstr ""
+msgstr "Es werden nur aktuell laufende MSM-Hintergrund-Worker aufgeführt. Jede Zeile belegt einen aktiven MSM-Ausführungsplatz; veraltete Einträge ohne Datenbanksperre werden verworfen. Andere Datenbankverbindungen lassen sich nur mit Berechtigungen für Prozesslisten oder Datenbank-Auditing identifizieren."
 
 #: includes/Settings.php:2735
 msgid "No MSM worker is currently executing."
-msgstr ""
+msgstr "Derzeit läuft kein MSM-Worker."
 
 #: includes/Settings.php:2741 templates/site-details-page.php:849
 msgid "Hook"
@@ -4844,20 +4844,20 @@ msgstr "Start"
 
 #: includes/Settings.php:2744
 msgid "PHP host"
-msgstr ""
+msgstr "PHP-Host"
 
 #: includes/Settings.php:2745
 msgid "Execution slot"
-msgstr ""
+msgstr "Ausführungsplatz"
 
 #. translators: 1: site ID, 2: website URL.
 #: includes/Settings.php:2754
 msgid "%1$d – %2$s"
-msgstr ""
+msgstr "%1$d – %2$s"
 
 #: includes/Settings.php:2758
 msgid "Network-wide process"
-msgstr ""
+msgstr "Netzwerkweiter Prozess"
 
 #: includes/Settings.php:2782
 msgid "Network options and task state"
@@ -5031,15 +5031,15 @@ msgstr "Einzelauftrag"
 
 #: includes/Settings.php:3025 includes/Settings.php:3289
 #: includes/Settings.php:4097 includes/Settings.php:4177
-#: includes/Settings.php:4184 includes/Settings.php:4746
-#: includes/Settings.php:4766 includes/Settings.php:4770
-#: includes/Settings.php:4794
+#: includes/Settings.php:4184 includes/Settings.php:4750
+#: includes/Settings.php:4770 includes/Settings.php:4774
+#: includes/Settings.php:4798
 #: includes/Widgets/StorageAnalysisBatchPerformanceWidget.php:70
 msgid "-"
 msgstr "-"
 
 #: includes/Settings.php:3027 includes/Settings.php:4204
-#: includes/StorageAnalysisSchedulerService.php:3103
+#: includes/StorageAnalysisSchedulerService.php:3109
 msgid "Aborted"
 msgstr "Abgebrochen"
 
@@ -5054,12 +5054,16 @@ msgstr "Nächster Zyklus"
 #: includes/Settings.php:3043 includes/Settings.php:3071
 #: includes/Settings.php:3302 includes/Settings.php:4038
 #: includes/Settings.php:4196
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1019
-#: includes/StorageAnalysisSchedulerService.php:3100
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1021
+#: includes/StorageAnalysisSchedulerService.php:3106
 msgid "Running"
 msgstr "Läuft"
 
 #: includes/Settings.php:3045 includes/Settings.php:3295
+#: includes/Settings.php:4208
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1023
+#: includes/StorageAnalysisSchedulerService.php:2731
+#: includes/StorageAnalysisSchedulerService.php:3111
 msgid "Stopped"
 msgstr "Gestoppt"
 
@@ -5068,8 +5072,8 @@ msgid "Not planned"
 msgstr "Nicht geplant"
 
 #: includes/Settings.php:3051
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1021
-#: includes/StorageAnalysisSchedulerService.php:3102
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1024
+#: includes/StorageAnalysisSchedulerService.php:3108
 msgid "Waiting for cron"
 msgstr "Wartet auf Cron"
 
@@ -5103,9 +5107,9 @@ msgid "Expected execution"
 msgstr "Vrsl. Ausführung"
 
 #: includes/Settings.php:3166 includes/Settings.php:3391
-#: includes/Settings.php:4084 includes/Settings.php:4208
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1024
-#: includes/StorageAnalysisSchedulerService.php:3107
+#: includes/Settings.php:4084 includes/Settings.php:4212
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1027
+#: includes/StorageAnalysisSchedulerService.php:3114
 msgid "Not scheduled"
 msgstr "Nicht geplant"
 
@@ -5269,7 +5273,7 @@ msgstr "Ich habe verstanden, dass die geplanten Aufgaben entfernt werden."
 #: includes/Settings.php:3481 includes/Settings.php:3502
 #: includes/Settings.php:3515 includes/Settings.php:3528
 #: includes/Settings.php:3547 includes/Settings.php:3573
-#: includes/Settings.php:4364 includes/Settings.php:4484
+#: includes/Settings.php:4368 includes/Settings.php:4488
 #: templates/dashboard-page.php:67 templates/plugin-details-page.php:279
 #: templates/plugin-overview-page.php:66 templates/site-details-page.php:598
 #: templates/site-details-page.php:887 templates/site-overview-page.php:75
@@ -5354,7 +5358,7 @@ msgid ""
 "Stops the active website analysis, clears queued continuations, and removes "
 "this batch’s recurring Cron event. Website assignments remain available so "
 "you can start the batch again later."
-msgstr ""
+msgstr "Stoppt die aktive Website-Analyse, entfernt eingeplante Fortsetzungen und löscht das wiederkehrende Cron-Ereignis dieses Batches. Die Website-Zuordnungen bleiben erhalten, damit Sie den Batch später erneut starten können."
 
 #: includes/Settings.php:3537
 msgid "Setup in progress."
@@ -5530,7 +5534,7 @@ msgstr "Ende"
 
 #: includes/Settings.php:3782
 msgid "Stop all network-wide processes"
-msgstr ""
+msgstr "Alle netzwerkweiten Prozesse stoppen"
 
 #: includes/Settings.php:3785
 msgid "There are currently no monitoring processes registered."
@@ -5578,8 +5582,8 @@ msgstr "Auslöser"
 msgid "Sites checked"
 msgstr "Sites geprüft"
 
-#: includes/Settings.php:3830 includes/Settings.php:4609
-#: includes/Settings.php:4751 includes/WebsiteStatusReportService.php:481
+#: includes/Settings.php:3830 includes/Settings.php:4613
+#: includes/Settings.php:4755 includes/WebsiteStatusReportService.php:481
 msgid "Status change"
 msgstr "Statuswechsel"
 
@@ -5681,10 +5685,10 @@ msgstr "Nicht gestartet"
 msgid "Completed"
 msgstr "Abgeschlossen"
 
-#: includes/Settings.php:4042 includes/Settings.php:4213
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1023
-#: includes/StorageAnalysisSchedulerService.php:2725
-#: includes/StorageAnalysisSchedulerService.php:3106
+#: includes/Settings.php:4042 includes/Settings.php:4217
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1026
+#: includes/StorageAnalysisSchedulerService.php:2733
+#: includes/StorageAnalysisSchedulerService.php:3113
 msgid "Scheduled"
 msgstr "Eingeplant"
 
@@ -5737,97 +5741,97 @@ msgstr "%1$s / %2$s (%3$d%%)"
 msgid "Composition pending"
 msgstr "Zusammenführung ausstehend"
 
-#: includes/Settings.php:4212
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1022
-#: includes/StorageAnalysisSchedulerService.php:3105
+#: includes/Settings.php:4216
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1025
+#: includes/StorageAnalysisSchedulerService.php:3112
 msgid "Ok"
 msgstr "Ok"
 
 #. translators: %s: batch size.
-#: includes/Settings.php:4252
+#: includes/Settings.php:4256
 msgid "Batch size: %s"
 msgstr "Batch-Größe: %s"
 
 #. translators: %s: number of processed websites.
-#: includes/Settings.php:4260
+#: includes/Settings.php:4264
 msgid "Last processed: %s sites"
 msgstr "Zuletzt verarbeitet: %s Sites"
 
-#: includes/Settings.php:4272
+#: includes/Settings.php:4276
 msgid "View Cron event"
 msgstr "Cron-Ereignis anzeigen"
 
-#: includes/Settings.php:4355
+#: includes/Settings.php:4359
 msgid "Stop task"
-msgstr ""
+msgstr "Aufgabe stoppen"
 
-#: includes/Settings.php:4372
+#: includes/Settings.php:4376
 msgid "Cancel and restart"
 msgstr "Abbrechen und neu starten"
 
-#: includes/Settings.php:4387 includes/Settings.php:4430
+#: includes/Settings.php:4391 includes/Settings.php:4434
 msgid "Start early now"
 msgstr "Jetzt vorzeitig starten"
 
-#: includes/Settings.php:4388
+#: includes/Settings.php:4392
 msgid "Create task"
 msgstr "Auftrag anlegen"
 
-#: includes/Settings.php:4405 includes/Settings.php:4447
+#: includes/Settings.php:4409 includes/Settings.php:4451
 msgid "Reset"
 msgstr "Zurücksetzen"
 
-#: includes/Settings.php:4413 includes/Settings.php:4455
+#: includes/Settings.php:4417 includes/Settings.php:4459
 msgid "Reset and restart"
 msgstr "Zurücksetzen und neu starten"
 
-#: includes/Settings.php:4472
+#: includes/Settings.php:4476
 msgid ""
 "Stops all network-wide monitoring processes, removes their Cron tasks, and "
 "prevents automatic restarts until each process is started manually again."
-msgstr ""
+msgstr "Stoppt alle netzwerkweiten Monitoring-Prozesse, entfernt ihre Cron-Aufgaben und verhindert automatische Neustarts, bis jeder Prozess manuell erneut gestartet wird."
 
-#: includes/Settings.php:4474
+#: includes/Settings.php:4478
 msgid ""
 "Stops dashboard metrics and their statistics, removes their Cron tasks, and "
 "prevents automatic restart until dashboard metrics are started manually "
 "again."
-msgstr ""
+msgstr "Stoppt die Dashboard-Metriken und ihre Statistiken, entfernt ihre Cron-Aufgaben und verhindert einen automatischen Neustart, bis die Dashboard-Metriken manuell erneut gestartet werden."
 
-#: includes/Settings.php:4475
+#: includes/Settings.php:4479
 msgid ""
 "Stops this monitoring process, removes its Cron tasks, and prevents "
 "automatic restart until it is started manually again."
-msgstr ""
+msgstr "Stoppt diesen Monitoring-Prozess, entfernt seine Cron-Aufgaben und verhindert einen automatischen Neustart, bis er manuell erneut gestartet wird."
 
-#: includes/Settings.php:4483
+#: includes/Settings.php:4487
 msgid "I understand that the process will not restart automatically."
-msgstr ""
+msgstr "Ich verstehe, dass der Prozess nicht automatisch erneut startet."
 
-#: includes/Settings.php:4507
+#: includes/Settings.php:4511
 msgid ""
 "Dashboard metrics could not be assembled. Reset and restart the process."
 msgstr ""
 "Die Dashboard-Metriken konnten nicht zusammengeführt werden. Setze den "
 "Prozess zurück und starte ihn erneut."
 
-#: includes/Settings.php:4511
+#: includes/Settings.php:4515
 msgid "Run is taking unusually long"
 msgstr "Lauf dauert auffällig lange"
 
-#: includes/Settings.php:4515
+#: includes/Settings.php:4519
 msgid "Next run is overdue"
 msgstr "Nächster Lauf ist überfällig"
 
-#: includes/Settings.php:4519
+#: includes/Settings.php:4523
 msgid "No completed process data is available yet"
 msgstr "Es gibt noch keine fertigen Prozessdaten"
 
-#: includes/Settings.php:4549
+#: includes/Settings.php:4553
 msgid "Delete MSM analysis and metrics data"
 msgstr "MSM-Analyse- und Metrikdaten löschen"
 
-#: includes/Settings.php:4551
+#: includes/Settings.php:4555
 msgid ""
 "Deletes central shortcode, block, media-index and analysis-run data; current "
 "and historical dashboard metrics; and all MSM-owned website options and "
@@ -5840,16 +5844,16 @@ msgstr ""
 "Bereinigungsstatus bleiben erhalten. Dies kann nicht rückgängig gemacht "
 "werden."
 
-#: includes/Settings.php:4554
+#: includes/Settings.php:4558
 msgid "Status:"
 msgstr "Status:"
 
 #. translators: 1: transient row count, 2: data size.
-#: includes/Settings.php:4563
+#: includes/Settings.php:4567
 msgid "Transient rows found at start: %1$s (%2$s)"
 msgstr "Beim Start gefundene Transient-Zeilen: %1$s (%2$s)"
 
-#: includes/Settings.php:4580
+#: includes/Settings.php:4584
 msgid ""
 "I understand that all stored analyses, metrics, and MSM transient caches "
 "will be permanently deleted."
@@ -5857,15 +5861,15 @@ msgstr ""
 "Ich verstehe, dass alle gespeicherten Analysen, Metriken und MSM-Transient-"
 "Caches dauerhaft gelöscht werden."
 
-#: includes/Settings.php:4581
+#: includes/Settings.php:4585
 msgid "Start complete data cleanup"
 msgstr "Vollständige Datenbereinigung starten"
 
-#: includes/Settings.php:4590 includes/Settings.php:4595
+#: includes/Settings.php:4594 includes/Settings.php:4599
 msgid "Delete dashboard metric statistics"
 msgstr "Dashboard-Metrikstatistik löschen"
 
-#: includes/Settings.php:4591
+#: includes/Settings.php:4595
 msgid ""
 "Deletes only historical dashboard metric statistics. The current dashboard "
 "snapshot for every website remains available. If the statistics cycle is "
@@ -5877,7 +5881,7 @@ msgstr ""
 "erstellt ein späterer Zyklus aus den aktuellen Snapshots eine neue erste "
 "Statistik."
 
-#: includes/Settings.php:4596
+#: includes/Settings.php:4600
 msgid ""
 "This permanently deletes all historical dashboard metric statistics while "
 "retaining current snapshots."
@@ -5885,7 +5889,7 @@ msgstr ""
 "Dies löscht alle historischen Dashboard-Metrikstatistiken dauerhaft, während "
 "die aktuellen Snapshots erhalten bleiben."
 
-#: includes/Settings.php:4598
+#: includes/Settings.php:4602
 msgid ""
 "I understand that all historical dashboard metric statistics will be "
 "permanently deleted."
@@ -5893,72 +5897,72 @@ msgstr ""
 "Ich verstehe, dass alle historischen Dashboard-Metrikstatistiken dauerhaft "
 "gelöscht werden."
 
-#: includes/Settings.php:4613
+#: includes/Settings.php:4617
 msgid "Technical issues"
 msgstr "Technische Probleme"
 
-#: includes/Settings.php:4617
+#: includes/Settings.php:4621
 msgid "No notable issues have been logged."
 msgstr "Keine besonderen Auffälligkeiten protokolliert."
 
 #. translators: %s: DNS status.
-#: includes/Settings.php:4646
+#: includes/Settings.php:4650
 msgid "DNS: %s"
 msgstr "DNS: %s"
 
 #. translators: %s: HTTP status.
-#: includes/Settings.php:4657
+#: includes/Settings.php:4661
 msgid "HTTP: %s"
 msgstr "HTTP: %s"
 
 #. translators: 1: previous status, 2: current status.
-#: includes/Settings.php:4736
+#: includes/Settings.php:4740
 msgid "%1$s -> %2$s"
 msgstr "%1$s -> %2$s"
 
-#: includes/Settings.php:4755
+#: includes/Settings.php:4759
 msgid "DNS issue"
 msgstr "DNS-Problem"
 
-#: includes/Settings.php:4759
+#: includes/Settings.php:4763
 msgid "HTTP issue"
 msgstr "HTTP-Problem"
 
-#: includes/Settings.php:4762
+#: includes/Settings.php:4766
 msgid "Monitoring event"
 msgstr "Monitoring-Ereignis"
 
-#: includes/Settings.php:4779
+#: includes/Settings.php:4783
 msgid "Provisioning phase"
 msgstr "Einrichtungsphase"
 
-#: includes/Settings.php:4787
+#: includes/Settings.php:4791
 msgid "HTTP unreachable"
 msgstr "HTTP nicht erreichbar"
 
-#: includes/Settings.php:4791
+#: includes/Settings.php:4795
 msgid "Decommissioned"
 msgstr "Stillgelegt"
 
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:670
 msgid "The shared shortcode and block analysis batch was stopped."
-msgstr ""
+msgstr "Der Sammelbatch für Shortcode- und Blockanalysen wurde gestoppt."
 
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:708
 msgid "The shortcode and block analysis was stopped manually."
-msgstr ""
+msgstr "Die Shortcode- und Blockanalyse wurde manuell gestoppt."
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1018
-#: includes/StorageAnalysisSchedulerService.php:3101
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1020
+#: includes/StorageAnalysisSchedulerService.php:3107
 msgid "Inactive"
 msgstr "Deaktiv"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:1846
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:1849
 #: templates/site-details-page.php:106 templates/theme-details-page.php:38
 msgid "Theme"
 msgstr "Theme"
 
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:2014
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:2017
 msgid ""
 "The shortcode and block analysis was aborted because it exceeded the "
 "configured runtime limit."
@@ -5967,7 +5971,7 @@ msgstr ""
 "konfigurierte Laufzeitgrenze überschritten hat."
 
 #. translators: 1: analysis phase, 2: processed posts, 3: total posts.
-#: includes/ShortcodeBlockAnalysisSchedulerService.php:2682
+#: includes/ShortcodeBlockAnalysisSchedulerService.php:2685
 msgid ""
 "The analysis was interrupted in the %1$s phase after %2$d of %3$d posts. The "
 "last saved checkpoint is included in the error log."
@@ -5988,58 +5992,58 @@ msgstr "Die Speicheranalyse wurde manuell abgebrochen."
 msgid "The individual storage analysis was stopped manually."
 msgstr "Die einzelne Speicheranalyse wurde manuell abgebrochen."
 
-#: includes/StorageAnalysisSchedulerService.php:1183
-#: includes/StorageAnalysisSchedulerService.php:1293
+#: includes/StorageAnalysisSchedulerService.php:1189
+#: includes/StorageAnalysisSchedulerService.php:1299
 msgid "Storage analysis is paused while maintenance is running."
 msgstr "Die Speicheranalyse pausiert, während Wartungsarbeiten laufen."
 
-#: includes/StorageAnalysisSchedulerService.php:1227
+#: includes/StorageAnalysisSchedulerService.php:1233
 msgid "Another storage analysis request is already running for this website."
 msgstr "Für diese Website läuft bereits eine andere Speicheranalyse-Anfrage."
 
-#: includes/StorageAnalysisSchedulerService.php:1237
+#: includes/StorageAnalysisSchedulerService.php:1243
 msgid "All storage analysis execution slots are occupied."
 msgstr "Alle Ausführungsplätze für Speicheranalysen sind belegt."
 
-#: includes/StorageAnalysisSchedulerService.php:1378
+#: includes/StorageAnalysisSchedulerService.php:1384
 msgid "The analysis run has no run ID."
 msgstr "Der Analyselauf hat keine Lauf-ID."
 
-#: includes/StorageAnalysisSchedulerService.php:1383
+#: includes/StorageAnalysisSchedulerService.php:1389
 msgid "Storage-analysis tasks are currently being removed."
 msgstr "Speicheranalyse-Aufgaben werden derzeit entfernt."
 
-#: includes/StorageAnalysisSchedulerService.php:1388
+#: includes/StorageAnalysisSchedulerService.php:1394
 msgid "Scheduling for this website has been removed."
 msgstr "Die Planung für diese Website wurde entfernt."
 
 #. translators: %s: WordPress Cron scheduling error.
-#: includes/StorageAnalysisSchedulerService.php:1428
-#: includes/StorageAnalysisSchedulerService.php:1491
+#: includes/StorageAnalysisSchedulerService.php:1434
+#: includes/StorageAnalysisSchedulerService.php:1497
 msgid "WordPress could not create the continuation event: %s"
 msgstr "WordPress konnte das Fortsetzungsereignis nicht erstellen: %s"
 
-#: includes/StorageAnalysisSchedulerService.php:1432
+#: includes/StorageAnalysisSchedulerService.php:1438
 msgid "WordPress could not create the continuation event."
 msgstr "WordPress konnte das Fortsetzungsereignis nicht anlegen."
 
-#: includes/StorageAnalysisSchedulerService.php:1498
+#: includes/StorageAnalysisSchedulerService.php:1504
 msgid ""
 "WordPress could not create the continuation event for an unknown reason."
 msgstr ""
 "WordPress konnte das Fortsetzungsereignis aus unbekanntem Grund nicht "
 "erstellen."
 
-#: includes/StorageAnalysisSchedulerService.php:1510
+#: includes/StorageAnalysisSchedulerService.php:1516
 msgid "The storage analysis continuation could not be scheduled."
 msgstr "Die Fortsetzung der Speicherplatzanalyse konnte nicht geplant werden."
 
-#: includes/StorageAnalysisSchedulerService.php:2072
+#: includes/StorageAnalysisSchedulerService.php:2078
 msgid "Storage analysis continuation diagnostic."
 msgstr "Diagnose der Speicheranalyse-Fortsetzung."
 
-#: includes/StorageAnalysisSchedulerService.php:2259
-#: includes/StorageAnalysisSchedulerService.php:2280
+#: includes/StorageAnalysisSchedulerService.php:2265
+#: includes/StorageAnalysisSchedulerService.php:2286
 msgid ""
 "The storage analysis was aborted because it exceeded the configured runtime "
 "limit."
@@ -6047,13 +6051,13 @@ msgstr ""
 "Die Speicheranalyse wurde abgebrochen, weil sie die konfigurierte "
 "Laufzeitgrenze überschritten hat."
 
-#: includes/StorageAnalysisSchedulerService.php:2275
+#: includes/StorageAnalysisSchedulerService.php:2281
 msgid "Not enough PHP memory is available to start another analysis step."
 msgstr ""
 "Es ist nicht genügend PHP-Arbeitsspeicher verfügbar, um einen weiteren "
 "Analyseschritt zu starten."
 
-#: includes/StorageAnalysisSchedulerService.php:2284
+#: includes/StorageAnalysisSchedulerService.php:2290
 msgid ""
 "The storage analysis was stopped because its scheduled tasks are being "
 "removed."
@@ -6061,11 +6065,11 @@ msgstr ""
 "Die Speicheranalyse wurde gestoppt, weil ihre geplanten Aufgaben entfernt "
 "werden."
 
-#: includes/StorageAnalysisSchedulerService.php:2308
+#: includes/StorageAnalysisSchedulerService.php:2314
 msgid "Invalid storage analysis phase."
 msgstr "Ungültige Phase der Speicherplatzanalyse."
 
-#: includes/StorageAnalysisSchedulerService.php:2374
+#: includes/StorageAnalysisSchedulerService.php:2380
 msgid ""
 "Storage analysis remained blocked for more than 24 hours. Check the network-"
 "wide reservations before restarting it."
@@ -6074,30 +6078,30 @@ msgstr ""
 "netzwerkweiten Reservierungen vor einem Neustart."
 
 #. translators: %s: domain of the currently processed website.
-#: includes/StorageAnalysisSchedulerService.php:2750
+#: includes/StorageAnalysisSchedulerService.php:2756
 msgid "Waiting for completion of website %s."
 msgstr "Wartet auf Fertigstellung der Website %s."
 
 #. translators: %s: WordPress Cron scheduling error.
-#: includes/StorageAnalysisSchedulerService.php:3256
+#: includes/StorageAnalysisSchedulerService.php:3263
 msgid "WordPress could not create the individual retry event: %s"
 msgstr ""
 "WordPress konnte den Wiederholungsauftrag für die einzelne Website nicht "
 "anlegen: %s"
 
-#: includes/StorageAnalysisSchedulerService.php:3260
+#: includes/StorageAnalysisSchedulerService.php:3267
 msgid "WordPress could not create the individual retry event."
 msgstr ""
 "WordPress konnte den Wiederholungsauftrag für die einzelne Website nicht "
 "anlegen."
 
-#: includes/StorageAnalysisSchedulerService.php:3361
+#: includes/StorageAnalysisSchedulerService.php:3368
 msgid "The storage analysis was interrupted before it could finish."
 msgstr ""
 "Die Speicheranalyse wurde unterbrochen, bevor sie abgeschlossen werden "
 "konnte."
 
-#: includes/StorageAnalysisSchedulerService.php:3716
+#: includes/StorageAnalysisSchedulerService.php:3723
 msgid ""
 "The storage analysis completed, but its next scheduled run could not be "
 "created."

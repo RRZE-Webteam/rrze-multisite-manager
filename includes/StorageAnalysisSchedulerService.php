@@ -705,6 +705,12 @@ class StorageAnalysisSchedulerService {
         $total = count((array)($state['site_ids'] ?? []));
         $processed = min($total, max(0, (int)($state['processed'] ?? 0)));
 
+        $statusKey = $batchRunState === 'stopped'
+            ? 'stopped'
+            : ($isWaitingForCurrentBatch
+                ? 'scheduled'
+                : $this->getSiteProcessStatusKey($isEligible, $isDue, $analysisStatus, $scheduleStatus));
+
         return [
             'run_id' => (string)($state['run_id'] ?? ''),
             'initialized' => max(0, (int)($state['initialized'] ?? 0)),
@@ -2721,12 +2727,12 @@ class StorageAnalysisSchedulerService {
             'name' => (string)get_blog_option($siteId, 'blogname', ''),
             'url' => get_home_url($siteId, '/'),
             'website_status_key' => $this->getWebsiteStatusFilterKey($site),
-            'status' => $isWaitingForCurrentBatch
-                ? __('Scheduled', 'rrze-multisite-manager')
-                : $this->getSiteProcessStatus($isEligible, $isDue, $analysisStatus, $scheduleStatus),
-            'status_key' => $isWaitingForCurrentBatch
-                ? 'scheduled'
-                : $this->getSiteProcessStatusKey($isEligible, $isDue, $analysisStatus, $scheduleStatus),
+            'status' => $statusKey === 'stopped'
+                ? __('Stopped', 'rrze-multisite-manager')
+                : ($isWaitingForCurrentBatch
+                    ? __('Scheduled', 'rrze-multisite-manager')
+                    : $this->getSiteProcessStatus($isEligible, $isDue, $analysisStatus, $scheduleStatus)),
+            'status_key' => $statusKey,
             'is_running' => $isEligible && $this->isSiteRunRunning($siteId, $analysisStatus, $scheduleStatus),
             'is_eligible' => $isEligible,
             'schedule_mode' => $assignmentMode,
@@ -3102,6 +3108,7 @@ class StorageAnalysisSchedulerService {
             'waiting_for_cron' => __('Waiting for cron', 'rrze-multisite-manager'),
             'aborted' => __('Aborted', 'rrze-multisite-manager'),
             'error' => __('Error', 'rrze-multisite-manager'),
+            'stopped' => __('Stopped', 'rrze-multisite-manager'),
             'ok' => __('Ok', 'rrze-multisite-manager'),
             'scheduled' => __('Scheduled', 'rrze-multisite-manager'),
             'not_scheduled' => __('Not scheduled', 'rrze-multisite-manager'),

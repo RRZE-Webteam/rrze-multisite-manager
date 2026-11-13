@@ -963,7 +963,9 @@ class ShortcodeBlockAnalysisSchedulerService {
             $lastFinishedAt = (string)($status['last_finished_at'] ?? '');
         }
 
-        $statusKey = $this->getProcessStatusKey($isActive, $isRunning, $nextRun, $status, $lastFinishedAt);
+        $statusKey = $batchRunState === 'stopped'
+            ? 'stopped'
+            : $this->getProcessStatusKey($isActive, $isRunning, $nextRun, $status, $lastFinishedAt);
 
         return [
             'site_id' => $siteId,
@@ -1018,6 +1020,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             'inactive' => __('Inactive', 'rrze-multisite-manager'),
             'running' => __('Running', 'rrze-multisite-manager'),
             'error' => __('Error', 'rrze-multisite-manager'),
+            'stopped' => __('Stopped', 'rrze-multisite-manager'),
             'waiting_for_cron' => __('Waiting for cron', 'rrze-multisite-manager'),
             'ok' => __('Ok', 'rrze-multisite-manager'),
             'scheduled' => __('Scheduled', 'rrze-multisite-manager'),
