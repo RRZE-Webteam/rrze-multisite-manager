@@ -27,6 +27,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     protected const LARGE_BATCH_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_large_batch_site_ids';
     protected const LARGE_BATCH_OFFSET_OPTION = 'rrze_msm_shortcode_block_analysis_large_batch_offset';
     protected const LARGE_BATCH_LOCK_OPTION = 'rrze_msm_shortcode_block_analysis_large_batch_lock';
+    protected const STOPPED_BATCHES_OPTION = 'rrze_msm_shortcode_block_analysis_stopped_batches';
     protected const REMOVED_SITE_IDS_OPTION = 'rrze_msm_shortcode_block_analysis_removed_site_ids';
     protected const FREQUENCY_RESCHEDULE_HOOK = 'rrze_msm_reschedule_shortcode_block_analysis_frequency';
     protected const TASK_REMOVAL_HOOK = 'rrze_msm_remove_shortcode_block_analysis_tasks';
@@ -263,6 +264,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         delete_site_option(self::MEDIUM_BATCH_LOCK_OPTION);
         delete_site_option(self::LARGE_BATCH_OFFSET_OPTION);
         delete_site_option(self::LARGE_BATCH_LOCK_OPTION);
+        delete_site_option(self::STOPPED_BATCHES_OPTION);
         delete_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION);
         delete_site_option(self::TASK_REMOVAL_STATE_OPTION);
         // Removing tasks is an explicit administrator decision. Do not make the
@@ -333,6 +335,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         delete_site_option(self::MEDIUM_BATCH_LOCK_OPTION);
         delete_site_option(self::LARGE_BATCH_OFFSET_OPTION);
         delete_site_option(self::LARGE_BATCH_LOCK_OPTION);
+        delete_site_option(self::STOPPED_BATCHES_OPTION);
         delete_site_option(self::FREQUENCY_RESCHEDULE_STATE_OPTION);
         update_site_option(self::GLOBAL_INITIALIZATION_OPTION, 1);
         update_site_option(self::TASK_REMOVAL_OPTION, 1);
@@ -457,9 +460,13 @@ class ShortcodeBlockAnalysisSchedulerService {
             return;
         }
 
+        $mode = $this->getSiteAssignmentMode($siteId);
+        if ($this->isBatchMode($mode) && $this->isBatchStopped($mode)) {
+            return;
+        }
+
         $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
-        if (!$budget->acquire()) {
-            $mode = $this->getSiteAssignmentMode($siteId);
+        if (!$budget->acquire($siteId)) {
             if ($this->isBatchMode($mode)) {
                 $this->scheduleBatchContinuation(time() + MINUTE_IN_SECONDS, $mode);
             } else {
@@ -522,7 +529,10 @@ class ShortcodeBlockAnalysisSchedulerService {
             if ($completed) {
                 $this->reconcileSiteAssignmentAfterRun($siteId);
             } elseif (!$failed && $this->isBatchMode($this->getSiteAssignmentMode($siteId))) {
-                $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS, $this->getSiteAssignmentMode($siteId));
+                $mode = $this->getSiteAssignmentMode($siteId);
+                if (!$this->isBatchStopped($mode)) {
+                    $this->scheduleBatchContinuation(time() + self::CONTINUATION_DELAY_SECONDS, $mode);
+                }
             } elseif (!$failed) {
                 $this->scheduleIndividualContinuation($siteId);
             }
@@ -545,7 +555,7 @@ class ShortcodeBlockAnalysisSchedulerService {
             $mode = 'small-batch';
         }
         $mode = $this->normalizeBatchMode((string)$mode);
-        if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress()) {
+        if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress() || $this->isBatchStopped($mode)) {
             return;
         }
         $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
@@ -561,7 +571,7 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function runAdmittedBatchScheduledAnalysis(string $mode, bool $continuation): void {
-        if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress()) {
+        if (MetricsService::isFullDataCleanupInProgress() || $this->isTaskRemovalInProgress() || $this->isBatchStopped($mode)) {
             return;
         }
 
@@ -627,7 +637,7 @@ class ShortcodeBlockAnalysisSchedulerService {
         $mode = $this->normalizeBatchMode($mode);
         return !\RRZE\MultisiteManager\Support\AtomicLock::isLocked($this->getBatchLockOption($mode))
             && !empty($this->getActiveBatchSiteIds($mode))
-            && $this->getNextBatchScheduledTimestamp($mode) > 0;
+            && ($this->isBatchStopped($mode) || $this->getNextBatchScheduledTimestamp($mode) > 0);
     }
 
     public function startBatchNow(string $mode = 'small-batch'): bool {
@@ -641,10 +651,63 @@ class ShortcodeBlockAnalysisSchedulerService {
             $this->unscheduleBatchEvents($mode);
             $scheduled = (bool)wp_schedule_event(time(), $this->getScheduleKey($mode), $hook, $this->getBatchRecurringArgs($mode));
             if ($scheduled) {
+                $this->markBatchStopped($mode, false);
                 LoggingService::info($this->config, 'RRZE-MSM: Shared shortcode and block analysis batch started early.', ['cron_site_id' => $this->getBatchCronSiteId(), 'batch_mode' => $mode, 'batch_site_count' => count($this->getActiveBatchSiteIds($mode))]);
             }
             return $scheduled;
         });
+    }
+
+    /** Stops one shared batch, aborting its active website and retaining assignments. */
+    public function stopBatch(string $mode): bool {
+        if (!in_array($mode, self::BATCH_MODES, true)) {
+            return false;
+        }
+
+        foreach ($this->getActiveBatchSiteIds($mode) as $siteId) {
+            $siteId = (int)$siteId;
+            if ($siteId > 0 && $this->isRunning($siteId)) {
+                $this->abortBatchSiteAnalysis($siteId, __('The shared shortcode and block analysis batch was stopped.', 'rrze-multisite-manager'));
+            }
+        }
+
+        $this->unscheduleBatchEvents($mode);
+        $this->markBatchStopped($mode, true);
+
+        LoggingService::info($this->config, 'RRZE-MSM: Shared shortcode and block analysis batch stopped.', [
+            'cron_site_id' => $this->getBatchCronSiteId(),
+            'batch_mode' => $mode,
+        ]);
+
+        return true;
+    }
+
+    public function isBatchRunning(string $mode): bool {
+        $mode = $this->normalizeBatchMode($mode);
+
+        if ($this->isBatchStopped($mode)) {
+            return false;
+        }
+
+        foreach ($this->getActiveBatchSiteIds($mode) as $siteId) {
+            if ($this->isRunning((int)$siteId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Aborts the currently active website of a shared batch. */
+    public function abortBatchSiteAnalysis(int $siteId, string $message = ''): bool {
+        $mode = $this->getSiteAssignmentMode($siteId);
+        if (!$this->isBatchMode($mode) || !$this->isRunning($siteId)) {
+            return false;
+        }
+
+        $this->markAborted($siteId, $message !== '' ? $message : __('The shortcode and block analysis was stopped manually.', 'rrze-multisite-manager'));
+
+        return true;
     }
 
     public function getStatus(int $siteId): array {
@@ -847,9 +910,10 @@ class ShortcodeBlockAnalysisSchedulerService {
             // array. The monitoring screen runs in the network site's
             // context, so it must use the persisted assignment instead of
             // only inspecting the current Cron array.
-            if ($mode === 'site') {
-                $scheduledSiteIds[] = $siteId;
-            } elseif ($this->isBatchMode($mode) && $this->getNextBatchScheduledTimestamp($mode) > 0) {
+            if ($mode === 'site' || $this->isBatchMode($mode)) {
+                // A stopped shared batch deliberately has no Cron event. Its
+                // persisted assignment must nevertheless remain visible so
+                // it can be started again from the monitoring table.
                 $scheduledSiteIds[] = $siteId;
             }
         }
@@ -880,6 +944,8 @@ class ShortcodeBlockAnalysisSchedulerService {
         $status = $this->getStatus($siteId);
         $result = $this->getResult($siteId);
         $nextRun = $this->getNextRecurringScheduledTimestamp($siteId);
+        $assignmentMode = $this->getSiteAssignmentMode($siteId);
+        $batchRunState = $this->isBatchMode($assignmentMode) && $this->isBatchStopped($assignmentMode) ? 'stopped' : '';
 
         $this->recoverInterruptedAnalysis($siteId, $status);
         $status = $this->getStatus($siteId);
@@ -913,8 +979,9 @@ class ShortcodeBlockAnalysisSchedulerService {
             'last_finished_at' => $lastFinishedAt,
             'last_runtime_seconds' => isset($status['last_runtime_seconds']) ? (float)$status['last_runtime_seconds'] : null,
             'next_run_timestamp' => $nextRun,
-            'assignment_mode' => $this->getSiteAssignmentMode($siteId),
-            'cycle' => $isActive ? $this->getScheduleLabel($this->getSiteAssignmentMode($siteId)) : '',
+            'assignment_mode' => $assignmentMode,
+            'batch_run_state' => $batchRunState,
+            'cycle' => $isActive ? $this->getScheduleLabel($assignmentMode) : '',
             'processed_posts' => (int)($status['processed_posts'] ?? 0),
             'total_posts' => (int)($status['total_posts'] ?? 0),
             'last_error' => (string)($status['last_error'] ?? ''),
@@ -1234,6 +1301,9 @@ class ShortcodeBlockAnalysisSchedulerService {
         $state = $this->getAnalysisState($siteId);
         $processedBatches = 0;
         $assignmentMode = $this->getSiteAssignmentMode($siteId);
+        if ($this->isBatchMode($assignmentMode) && $this->isBatchStopped($assignmentMode)) {
+            return false;
+        }
         $requestBudgetSeconds = $this->isBatchMode($assignmentMode)
             ? self::BATCH_REQUEST_BUDGET_SECONDS
             : self::INDIVIDUAL_REQUEST_BUDGET_SECONDS;
@@ -1256,12 +1326,12 @@ class ShortcodeBlockAnalysisSchedulerService {
         switch_to_blog($siteId);
 
         try {
-            if ($this->isTaskRemovalInProgress()) {
+            if ($this->isTaskRemovalInProgress() || ($this->isBatchMode($assignmentMode) && $this->isBatchStopped($assignmentMode))) {
                 return false;
             }
 
             while ($processedBatches < $maxBatchesPerRequest && microtime(true) < $deadline) {
-                if ($this->isTaskRemovalInProgress()) {
+                if ($this->isTaskRemovalInProgress() || ($this->isBatchMode($assignmentMode) && $this->isBatchStopped($assignmentMode))) {
                     return false;
                 }
 
@@ -1280,6 +1350,9 @@ class ShortcodeBlockAnalysisSchedulerService {
                 $completed = $phase === self::SHORTCODE_PHASE
                     ? $this->runShortcodeBatch($state, $deadline)
                     : $this->runBlockBatch($state, $deadline);
+                if ($this->isBatchMode($assignmentMode) && $this->isBatchStopped($assignmentMode)) {
+                    return false;
+                }
                 $processedBatches++;
                 $state['updated_at'] = current_time('mysql', true);
                 $this->saveAnalysisState($siteId, $state);
@@ -1302,6 +1375,10 @@ class ShortcodeBlockAnalysisSchedulerService {
             }
         } finally {
             restore_current_blog();
+        }
+
+        if ($this->isBatchMode($assignmentMode) && $this->isBatchStopped($assignmentMode)) {
+            return false;
         }
 
         if ($completed) {
@@ -1909,6 +1986,28 @@ class ShortcodeBlockAnalysisSchedulerService {
         );
         update_blog_option($siteId, self::STATUS_OPTION, $status);
         $this->deleteAnalysisState($siteId);
+    }
+
+    /** Marks an interrupted analysis as an explicit administrative abort. */
+    protected function markAborted(int $siteId, string $message): void {
+        $status = $this->getStatus($siteId);
+        $phase = (string)($status['phase'] ?? self::SHORTCODE_PHASE);
+
+        $status['status'] = 'error';
+        $status['last_finished_at'] = current_time('mysql', true);
+        $status['last_error'] = $message;
+        $status['phases'] = is_array($status['phases'] ?? null) ? $status['phases'] : $this->getDefaultPhaseStatuses();
+        $status['phases'][$phase] = array_merge(
+            (array)($status['phases'][$phase] ?? []),
+            [
+                'status' => 'aborted',
+                'finished_at' => current_time('mysql', true),
+            ]
+        );
+        update_blog_option($siteId, self::STATUS_OPTION, $status);
+        $this->deleteAnalysisState($siteId);
+        $this->releaseLock($siteId);
+        $this->logSiteInfo('Shortcode- und Blockanalyse abgebrochen', $siteId, 'unassigned', ['message' => $message]);
     }
 
     protected function markTimedOut(int $siteId): void {
@@ -2763,10 +2862,10 @@ class ShortcodeBlockAnalysisSchedulerService {
     }
 
     protected function scheduleBatchContinuation(int $timestamp, string $mode = 'small-batch'): bool {
-        if ($this->isTaskRemovalInProgress()) {
+        $mode = $this->normalizeBatchMode($mode);
+        if ($this->isTaskRemovalInProgress() || $this->isBatchStopped($mode)) {
             return false;
         }
-        $mode = $this->normalizeBatchMode($mode);
 
         return (bool)$this->inBatchCronContext(function () use ($timestamp, $mode): bool {
             $hook = $this->config->getShortcodeBlockAnalysisBatchHook();
@@ -2790,6 +2889,32 @@ class ShortcodeBlockAnalysisSchedulerService {
 
     protected function isBatchMode(string $mode): bool {
         return $mode === 'batch' || in_array($mode, self::BATCH_MODES, true);
+    }
+
+    protected function markBatchStopped(string $mode, bool $stopped): void {
+        $mode = $this->normalizeBatchMode($mode);
+        $stoppedModes = get_site_option(self::STOPPED_BATCHES_OPTION, []);
+        $stoppedModes = is_array($stoppedModes) ? $stoppedModes : [];
+
+        if ($stopped) {
+            $stoppedModes[$mode] = true;
+        } else {
+            unset($stoppedModes[$mode]);
+        }
+
+        if (empty($stoppedModes)) {
+            delete_site_option(self::STOPPED_BATCHES_OPTION);
+            return;
+        }
+
+        update_site_option(self::STOPPED_BATCHES_OPTION, $stoppedModes);
+    }
+
+    protected function isBatchStopped(string $mode): bool {
+        $mode = $this->normalizeBatchMode($mode);
+        $stoppedModes = get_site_option(self::STOPPED_BATCHES_OPTION, []);
+
+        return is_array($stoppedModes) && !empty($stoppedModes[$mode]);
     }
 
     protected function getBatchSiteIdsOption(string $mode): string {

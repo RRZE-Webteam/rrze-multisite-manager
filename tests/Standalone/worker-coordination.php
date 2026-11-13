@@ -118,12 +118,16 @@ foreach ([0 => 1, 1 => 1, 16 => 16, 100 => 16] as $input => $expected) {
 update_site_option('rrze-multisite-manager', ['monitoring_max_concurrent_workers' => 1]);
 $first = new WorkerBudget();
 $nested = new WorkerBudget();
-check($first->acquire() && $nested->acquire(), 'Nested storage phases consumed two slots.');
+check($first->acquire(42) && $nested->acquire(), 'Nested storage phases consumed two slots.');
 check(count($wpdb->owners) === 1, 'Nested calls increased the global worker count.');
+WorkerBudget::setCurrentSite(43);
+$liveWorkers = WorkerBudget::getActiveWorkers(1);
+check(count($liveWorkers) === 1 && $liveWorkers[0]['site_id'] === 43 && $liveWorkers[0]['slot'] === 'background_worker_0', 'Live worker diagnostics did not identify the slot and current website.');
 $nested->release();
 check(count($wpdb->owners) === 1, 'Nested call released the outer reservation.');
 $first->release();
 check($wpdb->owners === [], 'Last scope did not release its reservation.');
+check(WorkerBudget::getActiveWorkers(1) === [], 'Released workers remained in live diagnostics.');
 occupyBudget();
 check(!(new WorkerBudget())->acquire(), 'Full network budget admitted another worker.');
 $before = count($wpdb->owners);

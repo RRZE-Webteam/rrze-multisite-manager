@@ -1210,7 +1210,7 @@ class StorageAnalysisSchedulerService {
         }
 
         $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
-        if (!$budget->acquire()) {
+        if (!$budget->acquire($siteId)) {
             $this->scheduleSiteRetry($siteId);
             return;
         }

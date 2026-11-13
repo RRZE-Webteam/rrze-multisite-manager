@@ -202,7 +202,7 @@ class Config {
                     [
                         'name' => 'orphaned_minimum_age_months',
                         'label' => __('Orphaned accounts: minimum account age (months)', 'rrze-multisite-manager'),
-                        'desc' => __('Only users without website assignment who registered at least this many months ago count as orphaned. The filter is offered while Wordfence is active.', 'rrze-multisite-manager'),
+                        'desc' => __('Only users without website assignment who registered at least this many months ago count as orphaned. The filter is offered while Wordfence is active or activity records of the former rrze-netzwerk-audit plugin exist.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 12,
                         'min' => 1,
@@ -211,7 +211,7 @@ class Config {
                     [
                         'name' => 'orphaned_inactive_months',
                         'label' => __('Orphaned accounts: months since last login', 'rrze-multisite-manager'),
-                        'desc' => __('Users whose last login recorded by Wordfence is longer ago than this, or was never recorded, count as orphaned.', 'rrze-multisite-manager'),
+                        'desc' => __('Users whose last login recorded by Wordfence and whose last activity recorded by the former rrze-netzwerk-audit plugin are longer ago than this, or were never recorded, count as orphaned.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 12,
                         'min' => 1,
