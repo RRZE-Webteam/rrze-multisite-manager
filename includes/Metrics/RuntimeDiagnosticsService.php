@@ -429,11 +429,13 @@ class RuntimeDiagnosticsService {
             'php_fpm' => function_exists('fpm_get_status') ? $this->getFpmStatusWithoutProcesses() : null,
             'worker_runtime_stats' => WorkerRuntimeStats::get(),
             'occupied_execution_slots' => WorkerBudget::countOccupiedSlots($this->config->getMaxConcurrentWorkers()),
+            'active_msm_workers' => WorkerBudget::getActiveWorkers($this->config->getMaxConcurrentWorkers()),
             'lock_primary_routing' => AtomicLock::supportsPrimaryRouting(),
             'dropin_servers' => $this->getDropinServerSummary(),
             'response_sampling' => ResponseTimeSampler::getState(),
             'response_time_stats' => ResponseTimeSampler::getStats(),
             'database_latency_probes' => DatabaseLatencyProbe::getRuns(),
+            'database_processes' => $this->getDatabaseProcesses(),
         ];
     }
 
@@ -485,6 +487,42 @@ class RuntimeDiagnosticsService {
                 number_format_i18n((int)($variables['max_connections'] ?? 0))
             ),
         ];
+        $processes = $this->getDatabaseProcesses();
+        if (!$processes['available']) {
+            $rows[] = [
+                'label' => __('Visible database processes', 'rrze-multisite-manager'),
+                'value' => __('Not available. The database account does not permit reading the process list.', 'rrze-multisite-manager'),
+            ];
+        } elseif (empty($processes['connections'])) {
+            $rows[] = [
+                'label' => __('Visible database processes', 'rrze-multisite-manager'),
+                'value' => __('No database processes are visible.', 'rrze-multisite-manager'),
+            ];
+        } else {
+            foreach ($processes['connections'] as $process) {
+                $rows[] = [
+                    'label' => sprintf(
+                        /* translators: %d: database process ID. */
+                        __('Database process #%d', 'rrze-multisite-manager'),
+                        (int)$process['id']
+                    ),
+                    'value' => sprintf(
+                        /* translators: 1: database user, 2: client host, 3: database name, 4: command, 5: state, 6: elapsed seconds. */
+                        __('User %1$s from %2$s; database %3$s; %4$s, %5$s for %6$s s', 'rrze-multisite-manager'),
+                        (string)$process['user'],
+                        (string)$process['host'],
+                        (string)$process['database'],
+                        (string)$process['command'],
+                        (string)$process['state'],
+                        number_format_i18n((int)$process['time'])
+                    ),
+                ];
+            }
+        }
+        $rows[] = [
+            'label' => __('Plugin attribution of database connections', 'rrze-multisite-manager'),
+            'value' => __('Not available: MySQL/MariaDB process lists do not identify the WordPress plugin that opened a connection.', 'rrze-multisite-manager'),
+        ];
         $rows[] = [
             'label' => __('Temporary tables on disk / refused connections', 'rrze-multisite-manager'),
             'value' => sprintf(
@@ -499,6 +537,55 @@ class RuntimeDiagnosticsService {
             'title' => __('Database load (counters since server start)', 'rrze-multisite-manager'),
             'rows' => $rows,
         ];
+    }
+
+    /**
+     * Returns a bounded, query-free view of database processes. MySQL may
+     * restrict this to the current database account without PROCESS privilege.
+     *
+     * @return array{available: bool, connections: array<int, array<string, mixed>>}
+     */
+    protected function getDatabaseProcesses(): array {
+        global $wpdb;
+
+        $suppressed = $wpdb->suppress_errors(true);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Live, read-only diagnostic for super admins; query text is deliberately not collected or displayed.
+        $result = $wpdb->get_results('SHOW FULL PROCESSLIST', ARRAY_A);
+        $error = (string)$wpdb->last_error;
+        $wpdb->suppress_errors($suppressed);
+
+        if ($result === null || $result === false || $error !== '') {
+            return ['available' => false, 'connections' => []];
+        }
+
+        $connections = [];
+        foreach (array_slice((array)$result, 0, 20) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $connections[] = [
+                'id' => max(0, (int)($row['Id'] ?? 0)),
+                'user' => $this->truncateDiagnosticValue((string)($row['User'] ?? ''), 100),
+                'host' => $this->truncateDiagnosticValue((string)($row['Host'] ?? ''), 100),
+                'database' => $this->truncateDiagnosticValue((string)($row['db'] ?? ''), 100),
+                'command' => $this->truncateDiagnosticValue((string)($row['Command'] ?? ''), 40),
+                'time' => max(0, (int)($row['Time'] ?? 0)),
+                'state' => $this->truncateDiagnosticValue((string)($row['State'] ?? ''), 100),
+            ];
+        }
+
+        return ['available' => true, 'connections' => $connections];
+    }
+
+    protected function truncateDiagnosticValue(string $value, int $length): string {
+        $value = trim($value);
+
+        if ($value === '') {
+            return __('not set', 'rrze-multisite-manager');
+        }
+
+        return function_exists('mb_substr') ? mb_substr($value, 0, $length) : substr($value, 0, $length);
     }
 
     /**

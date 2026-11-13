@@ -33,6 +33,7 @@ use RRZE\MultisiteManager\Widgets\WebsiteStatusWidget;
 class Dashboard {
     protected const USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT = 'rrze_msm_users_without_membership_count';
     protected const USERS_ORPHANED_COUNT_TRANSIENT = 'rrze_msm_users_orphaned_count';
+    protected const USERS_LEGACY_ACTIVITY_TRANSIENT = 'rrze_msm_users_legacy_activity';
     protected const WORDFENCE_PLUGIN_FILE = 'wordfence/wordfence.php';
     protected Plugin $plugin;
     protected Settings $settings;
@@ -136,6 +137,29 @@ class Dashboard {
         ];
     }
 
+    /**
+     * Cached summary of the legacy rrze-netzwerk-audit activity records
+     * (number of users, newest timestamp), kept for one hour.
+     *
+     * @return array{count: int, latest: int}
+     */
+    protected function getLegacyUserActivityInfo(): array {
+        $cached = get_site_transient(self::USERS_LEGACY_ACTIVITY_TRANSIENT);
+        $info = [];
+
+        if (is_array($cached) && isset($cached['count'], $cached['latest'])) {
+            return [
+                'count' => max(0, (int)$cached['count']),
+                'latest' => max(0, (int)$cached['latest']),
+            ];
+        }
+
+        $info = NetworkUsersListTable::getLegacyActivityInfo();
+        set_site_transient(self::USERS_LEGACY_ACTIVITY_TRANSIENT, $info, HOUR_IN_SECONDS);
+
+        return $info;
+    }
+
     /** Wordfence records the last login used for orphaned accounts. */
     protected function isWordfenceActive(): bool {
         if (!function_exists('is_plugin_active_for_network')) {
@@ -148,6 +172,7 @@ class Dashboard {
     public function flushUsersWithoutWebsiteMembershipCount(...$unused): void {
         delete_site_transient(self::USERS_WITHOUT_MEMBERSHIP_COUNT_TRANSIENT);
         delete_site_transient(self::USERS_ORPHANED_COUNT_TRANSIENT);
+        delete_site_transient(self::USERS_LEGACY_ACTIVITY_TRANSIENT);
     }
 
     /** @param mixed $metaIds */
@@ -743,12 +768,15 @@ class Dashboard {
         }
 
         $wordfenceActive = $this->isWordfenceActive();
+        $legacyActivity = $this->getLegacyUserActivityInfo();
+        $orphanedFilterAvailable = $wordfenceActive || $legacyActivity['count'] > 0;
+        $orphanedSources = [];
         $filter = isset($_GET['rrze_msm_user_filter'])
             ? sanitize_key((string)wp_unslash($_GET['rrze_msm_user_filter']))
             : NetworkUsersListTable::FILTER_ALL;
         $allowedFilters = [NetworkUsersListTable::FILTER_WITHOUT_MEMBERSHIP];
 
-        if ($wordfenceActive) {
+        if ($orphanedFilterAvailable) {
             $allowedFilters[] = NetworkUsersListTable::FILTER_ORPHANED;
         }
 
@@ -785,7 +813,7 @@ class Dashboard {
         $view = [];
         $table = null;
 
-        if ($wordfenceActive) {
+        if ($orphanedFilterAvailable) {
             $views[] = [
                 'slug' => NetworkUsersListTable::FILTER_ORPHANED,
                 'label' => __('Orphaned accounts', 'rrze-multisite-manager'),
@@ -826,12 +854,34 @@ class Dashboard {
         echo '</nav>';
 
         if ($filter === NetworkUsersListTable::FILTER_ORPHANED) {
+            if ($wordfenceActive) {
+                $orphanedSources[] = __('Wordfence login records', 'rrze-multisite-manager');
+            }
+
+            if ($legacyActivity['count'] > 0) {
+                $orphanedSources[] = sprintf(
+                    /* translators: %s: date of the newest recorded activity. */
+                    __('activity log of the former rrze-netzwerk-audit plugin (recorded until %s)', 'rrze-multisite-manager'),
+                    wp_date((string)get_option('date_format'), $legacyActivity['latest'])
+                );
+            }
+
             echo '<p class="description">' . esc_html(sprintf(
-                /* translators: 1: number of months since registration, 2: number of months since the last login. */
-                __('Users without website assignment who registered more than %1$d months ago and whose last login recorded by Wordfence is more than %2$d months ago or was never recorded. The periods are set under Settings > General > Users. The count is updated at least once per hour.', 'rrze-multisite-manager'),
+                /* translators: 1: number of months since registration, 2: number of months since the last login or activity, 3: list of data sources. */
+                __('Users without website assignment who registered more than %1$d months ago and whose last recorded login or activity is more than %2$d months ago or was never recorded. Sources: %3$s. The periods are set under Settings > General > Users. The count is updated at least once per hour.', 'rrze-multisite-manager'),
                 max(1, (int)$this->settings->getOption('users', 'orphaned_minimum_age_months', 12)),
-                max(1, (int)$this->settings->getOption('users', 'orphaned_inactive_months', 12))
+                max(1, (int)$this->settings->getOption('users', 'orphaned_inactive_months', 12)),
+                wp_sprintf('%l', $orphanedSources)
             )) . '</p>';
+
+            if ($legacyActivity['count'] > 0 && $legacyActivity['latest'] < $cutoffs['login']) {
+                echo '<div class="notice notice-warning inline"><p>' . esc_html(sprintf(
+                    /* translators: 1: date of the newest legacy activity record, 2: inactivity cut-off date. */
+                    __('The activity log of rrze-netzwerk-audit ends on %1$s, before the inactivity cut-off of %2$s. It therefore no longer keeps any account out of this list.', 'rrze-multisite-manager'),
+                    wp_date((string)get_option('date_format'), $legacyActivity['latest']),
+                    wp_date((string)get_option('date_format'), $cutoffs['login'])
+                )) . '</p></div>';
+            }
         }
 
         echo '<form method="get" class="search-form">';

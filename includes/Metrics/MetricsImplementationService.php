@@ -214,6 +214,10 @@ class MetricsImplementationService {
         return $this->pluginThemeUsageMetrics->cancelRun();
     }
 
+    public function stopPluginThemeUsageScheduling(): bool {
+        return $this->pluginThemeUsageMetrics->stopScheduling();
+    }
+
     public function ensureDetailCacheMaintenance(): void {
         if (!$this->isCentralNetworkCronSite() || wp_next_scheduled(self::DETAIL_CACHE_MAINTENANCE_HOOK)) {
             return;

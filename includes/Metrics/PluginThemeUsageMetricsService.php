@@ -22,6 +22,7 @@ class PluginThemeUsageMetricsService {
     public const HOOK = 'rrze_msm_collect_plugin_theme_usage_metrics';
     public const SCHEDULE = 'rrze_msm_plugin_theme_usage_metrics_cycle';
     protected const STATE_OPTION = 'rrze_msm_plugin_theme_usage_metrics_state';
+    protected const STOPPED_OPTION = 'rrze_msm_plugin_theme_usage_metrics_stopped';
     protected const LOCK_OPTION = 'rrze_msm_plugin_theme_usage_metrics_lock';
     protected const CONTINUATION_ARGS = ['rrze_msm_plugin_theme_usage_metrics_batch' => true];
     protected Config $config;
@@ -121,15 +122,36 @@ class PluginThemeUsageMetricsService {
     }
 
     public function startRunFromNow(): string {
-        if (!$this->isCentralNetworkCronSite() || !$this->isEnabled()) {
+        if (!$this->isCentralNetworkCronSite() || $this->getFrequency() === 'disabled') {
             return 'unavailable';
         }
         if ($this->isRunning()) {
             return 'running';
         }
 
+        delete_site_option(self::STOPPED_OPTION);
         $this->startRun();
         return 'started';
+    }
+
+    /** Stops the current run and prevents its Cron schedule from returning. */
+    public function stopScheduling(): bool {
+        if (!$this->isCentralNetworkCronSite()) {
+            return false;
+        }
+
+        $state = $this->readFreshState();
+        if ((string)($state['status'] ?? '') === 'running') {
+            $state['status'] = 'cancelled';
+            $state['cancelled_at'] = time();
+            update_site_option(self::STATE_OPTION, $state);
+        }
+
+        $this->clearEvents();
+        WorkerBudget::clearRetries(self::HOOK);
+        update_site_option(self::STOPPED_OPTION, 1);
+
+        return true;
     }
 
     /**
@@ -628,7 +650,7 @@ class PluginThemeUsageMetricsService {
     }
 
     protected function isEnabled(): bool {
-        return $this->getFrequency() !== 'disabled';
+        return $this->getFrequency() !== 'disabled' && !get_site_option(self::STOPPED_OPTION, false);
     }
 
     protected function getIntervalSeconds(): int {

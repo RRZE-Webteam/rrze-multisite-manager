@@ -4,6 +4,7 @@
 namespace RRZE\MultisiteManager;
 
 use RRZE\MultisiteManager\Support\ScheduleFrequency;
+use RRZE\MultisiteManager\Support\WorkerBudget;
 use RRZE\MultisiteManager\Presentation\StatusFormatter;
 defined('ABSPATH') || exit;
 
@@ -95,6 +96,8 @@ class Settings {
             add_action('admin_post_rrze_multisite_manager_abort_batch_site_storage_analysis', [$this, 'abortBatchSiteStorageAnalysis']);
             add_action('admin_post_rrze_multisite_manager_abort_individual_site_storage_analysis', [$this, 'abortIndividualSiteStorageAnalysis']);
             add_action('admin_post_rrze_multisite_manager_stop_storage_analysis_batch', [$this, 'stopStorageAnalysisBatch']);
+            add_action('admin_post_rrze_multisite_manager_stop_shortcode_block_analysis_batch', [$this, 'stopShortcodeBlockAnalysisBatch']);
+            add_action('admin_post_rrze_multisite_manager_stop_network_monitoring_process', [$this, 'stopNetworkMonitoringProcess']);
             add_action('wp_ajax_rrze_msm_start_analysis_schedule_initialization', [$this, 'ajaxStartAnalysisScheduleInitialization']);
             add_action('wp_ajax_rrze_msm_run_analysis_schedule_initialization_batch', [$this, 'ajaxRunAnalysisScheduleInitializationBatch']);
             add_action('wp_ajax_rrze_msm_start_analysis_task_removal', [$this, 'ajaxStartAnalysisTaskRemoval']);
@@ -126,6 +129,8 @@ class Settings {
             add_action('network_admin_edit_rrze_multisite_manager_abort_batch_site_storage_analysis', [$this, 'abortBatchSiteStorageAnalysis']);
             add_action('network_admin_edit_rrze_multisite_manager_abort_individual_site_storage_analysis', [$this, 'abortIndividualSiteStorageAnalysis']);
             add_action('network_admin_edit_rrze_multisite_manager_stop_storage_analysis_batch', [$this, 'stopStorageAnalysisBatch']);
+            add_action('network_admin_edit_rrze_multisite_manager_stop_shortcode_block_analysis_batch', [$this, 'stopShortcodeBlockAnalysisBatch']);
+            add_action('network_admin_edit_rrze_multisite_manager_stop_network_monitoring_process', [$this, 'stopNetworkMonitoringProcess']);
         }
     }
 
@@ -785,6 +790,71 @@ class Settings {
             'monitoring_tab' => 'storage',
             'storage-batch-stopped' => $stopped ? $batchMode : 'false',
         ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function stopShortcodeBlockAnalysisBatch(): void {
+        $batchMode = isset($_POST['batch_mode']) ? sanitize_key((string)wp_unslash($_POST['batch_mode'])) : '';
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_stop_shortcode_block_analysis_batch_' . $batchMode);
+        $stopped = !empty($_POST['confirm_stop_shortcode_block_batch'])
+            && (new ShortcodeBlockAnalysisSchedulerService($this->config))->stopBatch($batchMode);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => $this->getMonitoringSlug(),
+            'monitoring_tab' => 'shortcode-block',
+            'shortcode-block-batch-stopped' => $stopped ? $batchMode : 'false',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    /** Stops one or all network-wide background processes and their Cron tasks. */
+    public function stopNetworkMonitoringProcess(): void {
+        $processId = isset($_POST['process_id']) ? sanitize_key((string)wp_unslash($_POST['process_id'])) : '';
+        $redirectTo = isset($_POST['redirect_to']) ? esc_url_raw((string)wp_unslash($_POST['redirect_to'])) : '';
+        $allowedProcessIds = ['site-availability', 'dashboard-metrics', 'dashboard-metrics-history', 'plugin-theme-usage', 'all'];
+
+        if (!$this->currentUserCanUseNetworkAdminFeatures()) {
+            wp_die(esc_html__('You are not allowed to manage these settings.', 'rrze-multisite-manager'));
+        }
+
+        if (!in_array($processId, $allowedProcessIds, true)) {
+            wp_die(esc_html__('Invalid monitoring process.', 'rrze-multisite-manager'));
+        }
+
+        check_admin_referer('rrze_multisite_manager_stop_network_monitoring_process_' . $processId);
+
+        if (empty($_POST['confirm_stop_network_monitoring_process'])) {
+            wp_safe_redirect(add_query_arg(
+                'network-monitoring-process-stopped',
+                'false',
+                $redirectTo !== '' ? $redirectTo : add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => 'network'], admin_url('admin.php'))
+            ));
+            exit;
+        }
+
+        $metrics = new MetricsService($this, $this->config);
+        $monitoring = new MonitoringService($this->plugin, $this->config);
+        $stopped = false;
+
+        if (in_array($processId, ['site-availability', 'all'], true)) {
+            $monitoring->disableMonitoringScheduling();
+            $stopped = true;
+        }
+        if (in_array($processId, ['dashboard-metrics', 'dashboard-metrics-history', 'all'], true)) {
+            $metrics->disableDashboardScheduling();
+            $stopped = true;
+        }
+        if (in_array($processId, ['plugin-theme-usage', 'all'], true)) {
+            $stopped = $metrics->stopPluginThemeUsageScheduling() || $stopped;
+        }
+
+        $defaultRedirect = add_query_arg(['page' => $this->getMonitoringSlug(), 'monitoring_tab' => 'network'], admin_url('admin.php'));
+        $redirectUrl = $redirectTo !== '' ? wp_validate_redirect($redirectTo, $defaultRedirect) : $defaultRedirect;
+        wp_safe_redirect(add_query_arg('network-monitoring-process-stopped', $stopped ? $processId : 'false', $redirectUrl));
         exit;
     }
 
@@ -2369,6 +2439,22 @@ class Settings {
                 : __('The shared storage-analysis batch could not be stopped.', 'rrze-multisite-manager')) . '</p></div>';
         }
 
+        if (isset($_GET['shortcode-block-batch-stopped'])) {
+            $stopped = sanitize_key((string)wp_unslash($_GET['shortcode-block-batch-stopped']));
+            echo '<div class="notice ' . ($stopped !== 'false' ? 'notice-success' : 'notice-warning') . ' is-dismissible"><p>' . esc_html($stopped !== 'false'
+                ? __('The shared shortcode and block analysis batch was stopped and will not restart automatically.', 'rrze-multisite-manager')
+                : __('The shared shortcode and block analysis batch could not be stopped.', 'rrze-multisite-manager')) . '</p></div>';
+        }
+
+        if (isset($_GET['network-monitoring-process-stopped'])) {
+            $stopped = sanitize_key((string)wp_unslash($_GET['network-monitoring-process-stopped']));
+            echo '<div class="notice ' . ($stopped !== 'false' ? 'notice-success' : 'notice-warning') . ' is-dismissible"><p>' . esc_html($stopped !== 'false'
+                ? ($stopped === 'all'
+                    ? __('All network-wide monitoring processes were stopped and their Cron tasks were removed.', 'rrze-multisite-manager')
+                    : __('The network-wide monitoring process was stopped and its Cron tasks were removed.', 'rrze-multisite-manager'))
+                : __('The network-wide monitoring process could not be stopped.', 'rrze-multisite-manager')) . '</p></div>';
+        }
+
         if (isset($_GET['site-storage-schedules-initialized'])) {
             $processed = isset($_GET['site-storage-schedules-processed']) ? absint(wp_unslash($_GET['site-storage-schedules-processed'])) : 0;
             $total = isset($_GET['site-storage-schedules-total']) ? absint(wp_unslash($_GET['site-storage-schedules-total'])) : 0;
@@ -2620,6 +2706,7 @@ class Settings {
     /** Displays the central table footprint grouped by its three monitoring areas. */
     protected function renderDatabaseUsageMonitoringTab(): void {
         echo '<div class="rrze-msm-widget-grid">';
+        $this->renderLiveMsmWorkerDiagnostics();
         $this->renderAnalysisTableStorage(
             ['dashboard_metrics'],
             __('Dashboard metric data', 'rrze-multisite-manager')
@@ -2634,6 +2721,54 @@ class Settings {
         );
         $this->renderMsmOptionAndTransientStorage();
         echo '</div>';
+    }
+
+    /** Displays the live MSM workers independently from database process-list privileges. */
+    protected function renderLiveMsmWorkerDiagnostics(): void {
+        $workers = WorkerBudget::getActiveWorkers($this->config->getMaxConcurrentWorkers());
+
+        echo '<section class="rrze-msm-widget rrze-msm-widget-span-12 rrze-msm-analysis-table-storage">';
+        echo '<header class="rrze-msm-widget-header"><h2>' . esc_html__('Live MSM workers', 'rrze-multisite-manager') . '</h2></header>';
+        echo '<p class="description">' . esc_html__('Only currently executing MSM background workers are listed. Every row has a live MSM execution slot; stale records without their database lock are discarded. Other database connections require database process-list or audit privileges to identify.', 'rrze-multisite-manager') . '</p>';
+
+        if (empty($workers)) {
+            echo '<p>' . esc_html__('No MSM worker is currently executing.', 'rrze-multisite-manager') . '</p>';
+            echo '</section>';
+            return;
+        }
+
+        echo '<table class="striped rrze-msm-datatable"><thead><tr>';
+        echo '<th>' . esc_html__('Hook', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Website', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Started', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('PHP host', 'rrze-multisite-manager') . '</th>';
+        echo '<th>' . esc_html__('Execution slot', 'rrze-multisite-manager') . '</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ($workers as $worker) {
+            $siteId = (int)($worker['site_id'] ?? 0);
+            $site = $siteId > 0 ? get_site($siteId) : null;
+            $siteLabel = $site instanceof \WP_Site
+                ? sprintf(
+                    /* translators: 1: site ID, 2: website URL. */
+                    __('%1$d – %2$s', 'rrze-multisite-manager'),
+                    $siteId,
+                    get_home_url($siteId, '/')
+                )
+                : __('Network-wide process', 'rrze-multisite-manager');
+            $startedAt = max(0, (int)($worker['started_at'] ?? 0));
+
+            echo '<tr>';
+            echo '<td><code>' . esc_html((string)($worker['hook'] ?? '')) . '</code></td>';
+            echo '<td>' . esc_html($siteLabel) . '</td>';
+            echo '<td>' . esc_html($startedAt > 0 ? wp_date(get_option('date_format') . ' ' . get_option('time_format'), $startedAt) : '-') . '</td>';
+            echo '<td><code>' . esc_html((string)($worker['host'] ?? '')) . '</code></td>';
+            echo '<td><code>' . esc_html((string)($worker['slot'] ?? '')) . '</code></td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+        echo '</section>';
     }
 
     /**
@@ -3155,7 +3290,10 @@ class Settings {
                     : ((float)$runtimeSeconds < 1 ? __('<1 sec.', 'rrze-multisite-manager') : $this->formatProcessDuration((int)$runtimeSeconds));
                 echo '<td>' . esc_html($runtimeLabel) . '</td>';
                 echo '<td>' . esc_html($this->formatProcessTimestamp((string)($process['last_finished_at'] ?? ''))) . '</td>';
-                echo '<td>' . esc_html($this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
+                $batchRunState = (string)($process['batch_run_state'] ?? '');
+                echo '<td>' . esc_html($batchRunState === 'stopped'
+                    ? __('Stopped', 'rrze-multisite-manager')
+                    : $this->formatScheduledTimestamp((int)($process['next_run_timestamp'] ?? 0))) . '</td>';
                 echo '<td class="rrze-msm-col-actions">';
 
                 if (empty($process['is_active'])) {
@@ -3197,7 +3335,9 @@ class Settings {
             echo '</div>';
             echo '<div class="rrze-msm-site-actions">';
             foreach (['small-batch', 'medium-batch', 'large-batch'] as $batchMode) {
-                if ($scheduler->canStartBatchNow($batchMode)) {
+                if ($scheduler->isBatchRunning($batchMode)) {
+                    $this->renderStopShortcodeBlockAnalysisBatchForm($batchMode);
+                } elseif ($scheduler->canStartBatchNow($batchMode)) {
                     $this->renderStartSharedBatchForm('shortcode-block', $batchMode);
                 }
             }
@@ -3372,6 +3512,19 @@ class Settings {
         echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_stop_storage_analysis_batch')) . '"><input type="hidden" name="batch_mode" value="' . esc_attr($batchMode) . '">';
         wp_nonce_field('rrze_multisite_manager_stop_storage_analysis_batch_' . $batchMode);
         echo '<label class="rrze-msm-modal-checkbox"><input type="checkbox" name="confirm_stop_storage_batch" value="1" required><span>' . esc_html__('I understand that this shared batch will not restart automatically.', 'rrze-multisite-manager') . '</span></label>';
+        echo '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="submit" class="button button-secondary rrze-msm-button-danger">' . esc_html($label) . '</button></div></form></dialog>';
+    }
+
+    protected function renderStopShortcodeBlockAnalysisBatchForm(string $batchMode): void {
+        $label = $batchMode === 'large-batch'
+            ? __('Stop large shared batch', 'rrze-multisite-manager')
+            : ($batchMode === 'medium-batch' ? __('Stop medium shared batch', 'rrze-multisite-manager') : __('Stop small shared batch', 'rrze-multisite-manager'));
+        $modalId = wp_unique_id('rrze-msm-stop-shortcode-block-batch-');
+        echo '<button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').showModal();") . '">' . esc_html($label) . '</button>';
+        echo '<dialog class="rrze-msm-task-removal-dialog" id="' . esc_attr($modalId) . '"><h3>' . esc_html($label) . '</h3><p class="rrze-msm-modal-text">' . esc_html__('Stops the active website analysis, clears queued continuations, and removes this batch’s recurring Cron event. Website assignments remain available so you can start the batch again later.', 'rrze-multisite-manager') . '</p>';
+        echo '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_stop_shortcode_block_analysis_batch')) . '"><input type="hidden" name="batch_mode" value="' . esc_attr($batchMode) . '">';
+        wp_nonce_field('rrze_multisite_manager_stop_shortcode_block_analysis_batch_' . $batchMode);
+        echo '<label class="rrze-msm-modal-checkbox"><input type="checkbox" name="confirm_stop_shortcode_block_batch" value="1" required><span>' . esc_html__('I understand that this shared batch will not restart automatically.', 'rrze-multisite-manager') . '</span></label>';
         echo '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="submit" class="button button-secondary rrze-msm-button-danger">' . esc_html($label) . '</button></div></form></dialog>';
     }
 
@@ -3625,6 +3778,9 @@ class Settings {
             }
 
             echo '</tbody></table>';
+            echo '<div class="rrze-msm-site-actions">';
+            $this->renderStopNetworkMonitoringProcessForm('all', __('Stop all network-wide processes', 'rrze-multisite-manager'));
+            echo '</div>';
         } else {
             echo '<p>' . esc_html__('There are currently no monitoring processes registered.', 'rrze-multisite-manager') . '</p>';
         }
@@ -4048,6 +4204,10 @@ class Settings {
             return __('Aborted', 'rrze-multisite-manager');
         }
 
+        if (($process['status_key'] ?? '') === 'stopped' || ($process['batch_run_state'] ?? '') === 'stopped') {
+            return __('Stopped', 'rrze-multisite-manager');
+        }
+
         if ((int)($process['next_run_timestamp'] ?? 0) <= 0) {
             return __('Not scheduled', 'rrze-multisite-manager');
         }
@@ -4195,6 +4355,10 @@ class Settings {
         $scheduleActionState = (string)($process['schedule_action_state'] ?? 'create');
         $html = '<div class="rrze-msm-process-actions">';
 
+        if (in_array($processId, ['site-availability', 'dashboard-metrics', 'dashboard-metrics-history', 'plugin-theme-usage'], true)) {
+            $html .= $this->getStopNetworkMonitoringProcessFormHtml($processId, __('Stop task', 'rrze-multisite-manager'), $redirectTo);
+        }
+
         if ($processId === 'plugin-theme-usage' && (!empty($process['is_running']) || $scheduleActionState === 'running')) {
             $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_cancel_plugin_theme_usage')) . '">';
             if ($redirectTo !== '') {
@@ -4298,6 +4462,30 @@ class Settings {
         }
 
         $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderStopNetworkMonitoringProcessForm(string $processId, string $label): void {
+        echo $this->getStopNetworkMonitoringProcessFormHtml($processId, $label, $this->getMonitoringPageUrl());
+    }
+
+    protected function getStopNetworkMonitoringProcessFormHtml(string $processId, string $label, string $redirectTo = ''): string {
+        $modalId = wp_unique_id('rrze-msm-stop-network-process-');
+        $warning = $processId === 'all'
+            ? __('Stops all network-wide monitoring processes, removes their Cron tasks, and prevents automatic restarts until each process is started manually again.', 'rrze-multisite-manager')
+            : ($processId === 'dashboard-metrics-history'
+                ? __('Stops dashboard metrics and their statistics, removes their Cron tasks, and prevents automatic restart until dashboard metrics are started manually again.', 'rrze-multisite-manager')
+                : __('Stops this monitoring process, removes its Cron tasks, and prevents automatic restart until it is started manually again.', 'rrze-multisite-manager'));
+        $html = '<button type="button" class="button button-secondary rrze-msm-button-danger" onclick="' . esc_attr("document.getElementById('{$modalId}').showModal();") . '">' . esc_html($label) . '</button>';
+        $html .= '<dialog class="rrze-msm-task-removal-dialog" id="' . esc_attr($modalId) . '"><h3>' . esc_html($label) . '</h3><p class="rrze-msm-modal-text">' . esc_html($warning) . '</p>';
+        $html .= '<form method="post" action="' . esc_url($this->getAdminPostActionUrl('rrze_multisite_manager_stop_network_monitoring_process')) . '"><input type="hidden" name="process_id" value="' . esc_attr($processId) . '">';
+        if ($redirectTo !== '') {
+            $html .= '<input type="hidden" name="redirect_to" value="' . esc_attr($redirectTo) . '">';
+        }
+        $html .= wp_nonce_field('rrze_multisite_manager_stop_network_monitoring_process_' . $processId, '_wpnonce', true, false);
+        $html .= '<label class="rrze-msm-modal-checkbox"><input type="checkbox" name="confirm_stop_network_monitoring_process" value="1" required><span>' . esc_html__('I understand that the process will not restart automatically.', 'rrze-multisite-manager') . '</span></label>';
+        $html .= '<div class="rrze-msm-modal-actions"><button type="button" class="button button-secondary" onclick="' . esc_attr("document.getElementById('{$modalId}').close();") . '">' . esc_html__('Cancel', 'rrze-multisite-manager') . '</button><button type="submit" class="button button-secondary rrze-msm-button-danger">' . esc_html($label) . '</button></div></form></dialog>';
 
         return $html;
     }

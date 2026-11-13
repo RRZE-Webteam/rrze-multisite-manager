@@ -130,7 +130,7 @@ class StorageAnalysisResourceService {
 
     public function run(int $siteId, callable $callback, string $assignmentMode = 'site'): mixed {
         $budget = new \RRZE\MultisiteManager\Support\WorkerBudget();
-        if (!$budget->acquire()) {
+        if (!$budget->acquire($siteId)) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Escaped when displayed.
             throw new StorageAnalysisBusyException(esc_html__('Background processes are busy. The analysis will be retried.', 'rrze-multisite-manager'));
         }

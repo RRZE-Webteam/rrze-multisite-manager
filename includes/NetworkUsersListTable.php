@@ -8,10 +8,12 @@ defined('ABSPATH') || exit;
  * Extends the WordPress network user table with a view of users without
  * website membership and a view of orphaned accounts.
  *
- * Orphaned accounts (only offered while Wordfence is active) have no website
- * membership, were registered before a cut-off date and have no Wordfence
- * login record after a second cut-off date. Users without any recorded login
- * count as orphaned once they are old enough.
+ * Orphaned accounts have no website membership, were registered before a
+ * cut-off date and have neither a Wordfence login record nor an activity
+ * record of the former rrze-netzwerk-audit plugin after a second cut-off
+ * date. Users without any recorded login or activity count as orphaned once
+ * they are old enough. The view is offered while Wordfence is active or
+ * legacy activity records exist.
  */
 class NetworkUsersListTable extends \WP_MS_Users_List_Table {
     public const FILTER_ALL = 'all';
@@ -23,6 +25,18 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
      * login. Both spellings are accepted; the most recent value counts.
      */
     public const LAST_LOGIN_META_KEYS = ['wfls_last_login', 'wfls-last-login'];
+
+    /**
+     * User meta key of the activity log of the former rrze-netzwerk-audit
+     * plugin (removed there in 2026). The value is a serialized array whose
+     * "timestamp" element holds the Unix time of the last admin screen view
+     * or logout. Recording ended when that feature was removed, so the value
+     * can only prove activity up to that point.
+     */
+    public const LEGACY_ACTIVITY_META_KEY = 'rrze_users_activity';
+
+    /** Serialized prefix of the "timestamp" element inside the legacy value. */
+    protected const LEGACY_ACTIVITY_TIMESTAMP_TOKEN = 's:9:"timestamp";i:';
 
     private string $filter;
     private int $loginCutoff;
@@ -108,6 +122,37 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
     }
 
     /**
+     * Number of users with a legacy rrze-netzwerk-audit activity record and
+     * the newest recorded timestamp. Both are 0 when no such data exists,
+     * e.g. after the legacy cleanup of rrze-netzwerk-audit has run.
+     *
+     * @return array{count: int, latest: int}
+     */
+    public static function getLegacyActivityInfo(): array {
+        global $wpdb;
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Table name is a trusted identifier; the caller caches the result.
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT COUNT(1) AS records, MAX(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(meta_value, %s, -1), ';', 1) AS UNSIGNED)) AS latest FROM {$wpdb->usermeta} WHERE meta_key = %s AND meta_value LIKE %s",
+                self::LEGACY_ACTIVITY_TIMESTAMP_TOKEN,
+                self::LEGACY_ACTIVITY_META_KEY,
+                '%' . $wpdb->esc_like(self::LEGACY_ACTIVITY_TIMESTAMP_TOKEN) . '%'
+            ),
+            ARRAY_A
+        );
+
+        if (!is_array($row)) {
+            return ['count' => 0, 'latest' => 0];
+        }
+
+        return [
+            'count' => absint($row['records'] ?? 0),
+            'latest' => absint($row['latest'] ?? 0),
+        ];
+    }
+
+    /**
      * SQL condition: the user has no capabilities entry on any website and
      * is not a super admin. Super admins manage the network without a
      * website role and must not appear as unassigned or orphaned.
@@ -133,16 +178,20 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
     }
 
     /**
-     * SQL condition: registered before the registration cut-off and no
-     * recorded login at or after the login cut-off. A login value is read as
-     * a Unix timestamp when it is numeric and as a date string otherwise.
+     * SQL condition: registered before the registration cut-off, no recorded
+     * Wordfence login and no legacy rrze-netzwerk-audit activity at or after
+     * the login cut-off. A Wordfence value is read as a Unix timestamp when
+     * it is numeric and as a date string otherwise; the legacy value is a
+     * serialized array whose "timestamp" element is extracted in SQL. Both
+     * sources are always checked: each can only keep an account active, so
+     * an additional source never adds accounts to the orphaned list.
      */
     protected static function getOrphanedCondition(string $userIdColumn, string $registeredColumn, int $loginCutoff, string $registeredCutoff): string {
         global $wpdb;
         $placeholders = implode(', ', array_fill(0, count(self::LAST_LOGIN_META_KEYS), '%s'));
 
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Column and table names are trusted identifiers; the placeholder list matches LAST_LOGIN_META_KEYS.
-        return $wpdb->prepare(
+        $condition = $wpdb->prepare(
             "{$registeredColumn} < %s AND NOT EXISTS (SELECT 1 FROM {$wpdb->usermeta} AS rrze_msm_last_login WHERE rrze_msm_last_login.user_id = {$userIdColumn} AND rrze_msm_last_login.meta_key IN ({$placeholders}) AND ((rrze_msm_last_login.meta_value REGEXP '^[0-9]+$' AND CAST(rrze_msm_last_login.meta_value AS UNSIGNED) >= %d) OR (rrze_msm_last_login.meta_value NOT REGEXP '^[0-9]+$' AND rrze_msm_last_login.meta_value >= %s)))",
             array_merge(
                 [$registeredCutoff],
@@ -150,6 +199,17 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
                 [$loginCutoff, gmdate('Y-m-d H:i:s', $loginCutoff)]
             )
         );
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Column and table names are trusted identifiers.
+        $condition .= $wpdb->prepare(
+            " AND NOT EXISTS (SELECT 1 FROM {$wpdb->usermeta} AS rrze_msm_legacy_activity WHERE rrze_msm_legacy_activity.user_id = {$userIdColumn} AND rrze_msm_legacy_activity.meta_key = %s AND rrze_msm_legacy_activity.meta_value LIKE %s AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(rrze_msm_legacy_activity.meta_value, %s, -1), ';', 1) AS UNSIGNED) >= %d)",
+            self::LEGACY_ACTIVITY_META_KEY,
+            '%' . $wpdb->esc_like(self::LEGACY_ACTIVITY_TIMESTAMP_TOKEN) . '%',
+            self::LEGACY_ACTIVITY_TIMESTAMP_TOKEN,
+            $loginCutoff
+        );
+
+        return $condition;
     }
 
     /** Adds the MSM table class so light and dark mode colours apply. */
