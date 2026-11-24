@@ -4,7 +4,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-11-24T10:33:53+00:00\n"
+"POT-Creation-Date: 2026-11-24T10:48:09+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -1985,6 +1985,9 @@ msgstr "Aktualisieren"
 #: templates/site-storage-analysis-page.php:716
 #: templates/site-storage-analysis-page.php:772
 #: templates/site-storage-analysis-page.php:789
+#: templates/site-storage-analysis-page.php:873
+#: templates/site-storage-analysis-page.php:910
+#: templates/site-storage-analysis-page.php:926
 msgid "Delete"
 msgstr "Löschen"
 
@@ -2600,8 +2603,8 @@ msgstr "Noch keine Verwaist-Prüfung vorhanden."
 #: templates/site-storage-analysis-page.php:634
 #: templates/site-storage-analysis-page.php:736
 #: templates/site-storage-analysis-page.php:819
-#: templates/site-storage-analysis-page.php:894
-#: templates/site-storage-analysis-page.php:980
+#: templates/site-storage-analysis-page.php:892
+#: templates/site-storage-analysis-page.php:968
 msgid "File"
 msgstr "Datei"
 
@@ -3974,6 +3977,8 @@ msgstr "Freigeben"
 #: includes/Widgets/PluginUsageWidget.php:143
 #: templates/site-storage-analysis-page.php:713
 #: templates/site-storage-analysis-page.php:786
+#: templates/site-storage-analysis-page.php:870
+#: templates/site-storage-analysis-page.php:923
 msgid "Select bulk action"
 msgstr "Auswahl"
 
@@ -3981,6 +3986,8 @@ msgstr "Auswahl"
 #: includes/Widgets/PluginUsageWidget.php:145
 #: templates/site-storage-analysis-page.php:715
 #: templates/site-storage-analysis-page.php:788
+#: templates/site-storage-analysis-page.php:872
+#: templates/site-storage-analysis-page.php:925
 msgid "Bulk actions"
 msgstr "Aktionen"
 
@@ -3988,6 +3995,8 @@ msgstr "Aktionen"
 #: includes/Widgets/PluginUsageWidget.php:164 includes/Widgets/Widgets.php:735
 #: templates/site-storage-analysis-page.php:718
 #: templates/site-storage-analysis-page.php:791
+#: templates/site-storage-analysis-page.php:875
+#: templates/site-storage-analysis-page.php:928
 msgid "Apply"
 msgstr "Übernehmen"
 
@@ -4739,8 +4748,8 @@ msgstr "Analyse starten"
 #: templates/site-storage-analysis-page.php:662
 #: templates/site-storage-analysis-page.php:793
 #: templates/site-storage-analysis-page.php:855
-#: templates/site-storage-analysis-page.php:932
-#: templates/site-storage-analysis-page.php:1018
+#: templates/site-storage-analysis-page.php:930
+#: templates/site-storage-analysis-page.php:1006
 #: templates/site-storage-missing-metadata.php:102
 msgid "Pagination"
 msgstr "Seitennavigation"
@@ -5303,7 +5312,7 @@ msgstr "Ich habe verstanden, dass die geplanten Aufgaben entfernt werden."
 #: templates/dashboard-page.php:67 templates/plugin-details-page.php:279
 #: templates/plugin-overview-page.php:66 templates/site-details-page.php:598
 #: templates/site-details-page.php:887 templates/site-overview-page.php:75
-#: templates/site-storage-analysis-page.php:1069
+#: templates/site-storage-analysis-page.php:1057
 #: templates/widgets/plugin-usage-widget.php:58
 msgid "Cancel"
 msgstr "Abbrechen"
@@ -6536,8 +6545,8 @@ msgstr "Plugins nach Namen filtern"
 #: templates/site-storage-analysis-page.php:621
 #: templates/site-storage-analysis-page.php:721
 #: templates/site-storage-analysis-page.php:805
-#: templates/site-storage-analysis-page.php:880
-#: templates/site-storage-analysis-page.php:966
+#: templates/site-storage-analysis-page.php:878
+#: templates/site-storage-analysis-page.php:954
 msgid "Show:"
 msgstr "Anzeigen:"
 
@@ -7252,8 +7261,7 @@ msgid "Status and actions"
 msgstr "Status und Aktionen"
 
 #: templates/plugin-details-page.php:60 templates/site-details-page.php:56
-#: templates/site-storage-analysis-page.php:899
-#: templates/site-storage-analysis-page.php:985
+#: templates/site-storage-analysis-page.php:973
 #: templates/theme-details-page.php:64
 msgid "Actions"
 msgstr "Aktionen"
@@ -8125,8 +8133,8 @@ msgstr "Nicht in der Mediathek registriert"
 
 #: templates/site-storage-analysis-page.php:34
 #: templates/site-storage-analysis-page.php:652
-#: templates/site-storage-analysis-page.php:914
-#: templates/site-storage-analysis-page.php:1000
+#: templates/site-storage-analysis-page.php:907
+#: templates/site-storage-analysis-page.php:988
 msgid "Open file"
 msgstr "Datei aufrufen"
 
@@ -8379,8 +8387,8 @@ msgstr "Erkannte Referenzen ohne Code"
 #: templates/site-storage-analysis-page.php:635
 #: templates/site-storage-analysis-page.php:737
 #: templates/site-storage-analysis-page.php:820
-#: templates/site-storage-analysis-page.php:895
-#: templates/site-storage-analysis-page.php:981
+#: templates/site-storage-analysis-page.php:893
+#: templates/site-storage-analysis-page.php:969
 #: templates/site-storage-attachment-debug.php:158
 msgid "Type"
 msgstr "Typ"
@@ -8416,8 +8424,8 @@ msgstr ""
 #: templates/site-storage-analysis-page.php:637
 #: templates/site-storage-analysis-page.php:739
 #: templates/site-storage-analysis-page.php:822
-#: templates/site-storage-analysis-page.php:897
-#: templates/site-storage-analysis-page.php:983
+#: templates/site-storage-analysis-page.php:895
+#: templates/site-storage-analysis-page.php:971
 msgid "Size"
 msgstr "Größe"
 
@@ -8458,8 +8466,8 @@ msgstr "Dateien im Uploads-Ordner mit dem größten Speicherplatzverbrauch."
 #: templates/site-storage-analysis-page.php:623
 #: templates/site-storage-analysis-page.php:723
 #: templates/site-storage-analysis-page.php:807
-#: templates/site-storage-analysis-page.php:882
-#: templates/site-storage-analysis-page.php:968
+#: templates/site-storage-analysis-page.php:880
+#: templates/site-storage-analysis-page.php:956
 msgid "Standard (20)"
 msgstr "Standard (20)"
 
@@ -8476,16 +8484,16 @@ msgstr "ID"
 #: templates/site-storage-analysis-page.php:636
 #: templates/site-storage-analysis-page.php:738
 #: templates/site-storage-analysis-page.php:821
-#: templates/site-storage-analysis-page.php:896
-#: templates/site-storage-analysis-page.php:982
+#: templates/site-storage-analysis-page.php:894
+#: templates/site-storage-analysis-page.php:970
 #: templates/site-storage-attachment-debug.php:73
 msgid "Uploaded by"
 msgstr "Hochgeladen von"
 
 #: templates/site-storage-analysis-page.php:445
 #: templates/site-storage-analysis-page.php:740
-#: templates/site-storage-analysis-page.php:898
-#: templates/site-storage-analysis-page.php:984
+#: templates/site-storage-analysis-page.php:896
+#: templates/site-storage-analysis-page.php:972
 #: templates/site-storage-missing-metadata.php:74
 msgid "Last modified"
 msgstr "Zuletzt geändert"
@@ -8493,8 +8501,8 @@ msgstr "Zuletzt geändert"
 #: templates/site-storage-analysis-page.php:470
 #: templates/site-storage-analysis-page.php:653
 #: templates/site-storage-analysis-page.php:773
-#: templates/site-storage-analysis-page.php:915
-#: templates/site-storage-analysis-page.php:1001
+#: templates/site-storage-analysis-page.php:908
+#: templates/site-storage-analysis-page.php:989
 msgid "Search on Google"
 msgstr "Bei Google suchen"
 
@@ -8670,14 +8678,11 @@ msgid "and %d more files."
 msgstr "sowie %d weitere Dateien."
 
 #: templates/site-storage-analysis-page.php:734
-#: templates/site-storage-analysis-page.php:871
-#: templates/site-storage-analysis-page.php:873
-#: templates/site-storage-analysis-page.php:939
-#: templates/site-storage-analysis-page.php:941
-#: templates/site-storage-analysis-page.php:957
-#: templates/site-storage-analysis-page.php:959
-#: templates/site-storage-analysis-page.php:1025
-#: templates/site-storage-analysis-page.php:1027
+#: templates/site-storage-analysis-page.php:891
+#: templates/site-storage-analysis-page.php:945
+#: templates/site-storage-analysis-page.php:947
+#: templates/site-storage-analysis-page.php:1013
+#: templates/site-storage-analysis-page.php:1015
 msgid "Select all"
 msgstr "Alle auswählen"
 
@@ -8703,31 +8708,25 @@ msgstr ""
 "in Inhalten, Blöcken, Templates, Widgets, geprüften Metafeldern oder "
 "Register-/Enqueue-Aufrufe im aktiven Code gefunden."
 
-#: templates/site-storage-analysis-page.php:872
-#: templates/site-storage-analysis-page.php:940
-#: templates/site-storage-analysis-page.php:958
-#: templates/site-storage-analysis-page.php:1026
+#: templates/site-storage-analysis-page.php:946
+#: templates/site-storage-analysis-page.php:1014
 msgid "Clear selection"
 msgstr "Auswahl aufheben"
 
-#: templates/site-storage-analysis-page.php:875
-#: templates/site-storage-analysis-page.php:943
-#: templates/site-storage-analysis-page.php:961
-#: templates/site-storage-analysis-page.php:1029
+#: templates/site-storage-analysis-page.php:949
+#: templates/site-storage-analysis-page.php:1017
 msgid "Delete selected files"
 msgstr "Selektierte Dateien löschen"
 
-#: templates/site-storage-analysis-page.php:893
-#: templates/site-storage-analysis-page.php:979
+#: templates/site-storage-analysis-page.php:967
 msgid "Selection"
 msgstr "Auswahl"
 
-#: templates/site-storage-analysis-page.php:922
-#: templates/site-storage-analysis-page.php:1008
+#: templates/site-storage-analysis-page.php:996
 msgid "Delete file"
 msgstr "Datei löschen"
 
-#: templates/site-storage-analysis-page.php:1035
+#: templates/site-storage-analysis-page.php:1023
 msgid ""
 "The base analysis has been completed. Start and complete the orphan check "
 "before a reliable statement about potentially orphaned files can be made."
@@ -8736,11 +8735,11 @@ msgstr ""
 "Prüfung ab, bevor eine verlässliche Aussage über potenziell verwaiste "
 "Dateien möglich ist."
 
-#: templates/site-storage-analysis-page.php:1038
+#: templates/site-storage-analysis-page.php:1026
 msgid "No potentially orphaned files were detected."
 msgstr "Es wurden keine potenziell verwaisten Dateien erkannt."
 
-#: templates/site-storage-analysis-page.php:1044
+#: templates/site-storage-analysis-page.php:1032
 msgid ""
 "There is no completed storage analysis for this website yet. Start the base "
 "analysis above. As soon as it finishes, the detail tables will appear here."
@@ -8749,12 +8748,12 @@ msgstr ""
 "Starte die Basisanalyse oben. Sobald sie fertig ist, erscheinen hier die "
 "Detailtabellen."
 
-#: templates/site-storage-analysis-page.php:1052
-#: templates/site-storage-analysis-page.php:1070
+#: templates/site-storage-analysis-page.php:1040
+#: templates/site-storage-analysis-page.php:1058
 msgid "Permanently delete file"
 msgstr "Datei endgültig löschen"
 
-#: templates/site-storage-analysis-page.php:1053
+#: templates/site-storage-analysis-page.php:1041
 msgid ""
 "This file will be removed directly from the uploads folder. This cannot be "
 "undone."
@@ -8762,11 +8761,11 @@ msgstr ""
 "Diese Datei wird direkt aus dem Uploads-Ordner entfernt. Das kann nicht "
 "rückgängig gemacht werden."
 
-#: templates/site-storage-analysis-page.php:1055
+#: templates/site-storage-analysis-page.php:1043
 msgid "File:"
 msgstr "Datei:"
 
-#: templates/site-storage-analysis-page.php:1066
+#: templates/site-storage-analysis-page.php:1054
 msgid "I understand that the file will be permanently deleted."
 msgstr "Ich verstehe, dass die Datei endgültig gelöscht wird."
 

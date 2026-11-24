@@ -224,6 +224,8 @@ function onOrphanFileDeleteButtonClick(event) {
     var nonceInput = document.querySelector('#rrze-msm-orphan-file-delete-nonce');
     var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
 
+    event.preventDefault();
+
     if (!button || !modal || !target || !pathInput || !pathsContainer || !siteInput || !nonceInput || !checkbox) {
         return;
     }
