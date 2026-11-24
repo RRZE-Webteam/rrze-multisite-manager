@@ -169,7 +169,7 @@ class Config {
                 'dashboard' => [
                     [
                         'name' => 'activity_site_limit',
-                        'label' => __('Default number of sites in table widgets', 'rrze-multisite-manager'),
+                        'label' => __('Default number of rows in output tables', 'rrze-multisite-manager'),
                         'desc' => __('Default value N for site tables in the dashboard. This value also appears in the selector above the table.', 'rrze-multisite-manager'),
                         'type' => 'number',
                         'default' => 10,

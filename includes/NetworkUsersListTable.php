@@ -19,6 +19,8 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
     public const FILTER_ALL = 'all';
     public const FILTER_WITHOUT_MEMBERSHIP = 'without-site-membership';
     public const FILTER_ORPHANED = 'orphaned';
+    public const PER_PAGE_PARAMETER = 'rrze_msm_users_per_page';
+    public const DEFAULT_PER_PAGE = 10;
 
     /**
      * User meta keys in which Wordfence Login Security may store the last
@@ -42,15 +44,19 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
     private int $loginCutoff;
     private string $registeredCutoff;
     private bool $membershipFilterApplied = false;
+    private int $perPage;
+    private int $defaultPerPage;
 
     /**
      * @param int $loginCutoff Unix timestamp; a login at or after it keeps an account active
      * @param string $registeredCutoff UTC date (Y-m-d H:i:s); only accounts registered before it can be orphaned
      */
-    public function __construct(string $filter = self::FILTER_ALL, int $loginCutoff = 0, string $registeredCutoff = '') {
+    public function __construct(string $filter = self::FILTER_ALL, int $loginCutoff = 0, string $registeredCutoff = '', int $defaultPerPage = self::DEFAULT_PER_PAGE) {
         $this->filter = in_array($filter, [self::FILTER_WITHOUT_MEMBERSHIP, self::FILTER_ORPHANED], true) ? $filter : self::FILTER_ALL;
         $this->loginCutoff = $loginCutoff;
         $this->registeredCutoff = $registeredCutoff;
+        $this->defaultPerPage = max(1, $defaultPerPage);
+        $this->perPage = $this->getRequestedPerPage();
 
         $screen = function_exists('get_current_screen') ? get_current_screen() : null;
 
@@ -59,9 +65,62 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
         ]);
     }
 
+    public function getPerPage(): int {
+        return $this->perPage;
+    }
+
+    public function get_items_per_page($option, $default = 20) {
+        if ($option === 'users_network_per_page') {
+            return $this->perPage;
+        }
+
+        return parent::get_items_per_page($option, $default);
+    }
+
+    protected function extra_tablenav($which) {
+        if ($which !== 'top') {
+            return;
+        }
+
+        echo '<div class="alignright actions rrze-msm-network-users-per-page">';
+        echo '<label class="screen-reader-text" for="rrze-msm-network-users-per-page">' . esc_html__('Show:', 'rrze-multisite-manager') . '</label>';
+        echo '<select class="rrze-msm-network-users-per-page" id="rrze-msm-network-users-per-page" name="' . esc_attr(self::PER_PAGE_PARAMETER) . '">';
+
+        foreach ($this->getPerPageOptions() as $option) {
+            echo '<option value="' . esc_attr((string)$option) . '"' . selected($option, $this->perPage, false) . '>';
+            echo $option === $this->defaultPerPage
+                ? esc_html(sprintf(__('Default (%d)', 'rrze-multisite-manager'), $option))
+                : esc_html((string)$option);
+            echo '</option>';
+        }
+
+        echo '</select>';
+        echo '<button type="button" class="button rrze-msm-network-users-per-page-apply">' . esc_html__('Apply', 'rrze-multisite-manager') . '</button>';
+        echo '</div>';
+    }
+
+    /** The list/grid switch does not apply to the network user table. */
+    public function view_switcher($currentMode) {
+        unset($currentMode);
+    }
+
+    private function getRequestedPerPage(): int {
+        $perPage = isset($_GET[self::PER_PAGE_PARAMETER])
+            ? absint(wp_unslash($_GET[self::PER_PAGE_PARAMETER]))
+            : $this->defaultPerPage;
+
+        return in_array($perPage, $this->getPerPageOptions(), true) ? $perPage : $this->defaultPerPage;
+    }
+
+    /** @return int[] */
+    private function getPerPageOptions(): array {
+        return array_values(array_unique([$this->defaultPerPage, 10, 30, 50, 100]));
+    }
+
     public function prepare_items() {
         if ($this->filter === self::FILTER_ALL) {
             parent::prepare_items();
+            $this->setVisibleColumnHeaders();
             return;
         }
 
@@ -72,6 +131,13 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
         } finally {
             remove_action('pre_user_query', [$this, 'restrictUserQuery']);
         }
+
+        $this->setVisibleColumnHeaders();
+    }
+
+    /** Ignore obsolete per-user column visibility settings for this table. */
+    private function setVisibleColumnHeaders(): void {
+        $this->_column_headers = [$this->get_columns(), [], $this->get_sortable_columns(), 'username'];
     }
 
     /**
@@ -263,11 +329,73 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
         $columns = apply_filters('manage_users_columns', $columns);
         $columns = apply_filters('manage_users-network_columns', $columns);
 
+        // This is an MSM-specific overview, not a copy of Network Admin's
+        // user table. Keep only the Core columns needed here and the single
+        // consolidated last-login column supplied by RRZE Settings.
+        $columns = array_intersect_key(
+            $columns,
+            array_flip(['cb', 'username', 'name', 'email', 'registered', 'rrze_last_login', 'blogs'])
+        );
+
+        if (isset($columns['registered'], $columns['rrze_last_login'])) {
+            $lastLoginColumn = $columns['rrze_last_login'];
+            unset($columns['rrze_last_login']);
+            $orderedColumns = [];
+
+            foreach ($columns as $columnKey => $columnLabel) {
+                $orderedColumns[$columnKey] = $columnLabel;
+
+                if ($columnKey === 'registered') {
+                    $orderedColumns['rrze_last_login'] = $lastLoginColumn;
+                }
+            }
+
+            $columns = $orderedColumns;
+        }
+
         if (!current_user_can('delete_users')) {
             unset($columns['cb']);
         }
 
         return $columns;
+    }
+
+    public function get_sortable_columns() {
+        $columns = parent::get_sortable_columns();
+        $visibleColumns = $this->get_columns();
+
+        if (isset($visibleColumns['rrze_last_login'])) {
+            $columns['rrze_last_login'] = ['rrze_last_login', true];
+        }
+
+        return $columns;
+    }
+
+    /** Renders the registration date in the compact MSM table format. */
+    public function column_registered($user) {
+        $registered = is_object($user) && isset($user->user_registered) ? (string)$user->user_registered : '';
+
+        if ($registered === '') {
+            echo '&mdash;';
+            return;
+        }
+
+        echo esc_html(mysql2date('d.m.Y', $registered, true));
+    }
+
+    /** Renders the consolidated RRZE Settings login timestamp without relative time. */
+    public function column_rrze_last_login($user) {
+        $userId = is_object($user) && isset($user->ID) ? (int)$user->ID : 0;
+        $timestamp = class_exists('\\RRZE\\Settings\\Users\\LastLogin')
+            ? \RRZE\Settings\Users\LastLogin::get($userId)
+            : 0;
+
+        if ($timestamp <= 0) {
+            echo '&mdash;';
+            return;
+        }
+
+        echo esc_html(wp_date('d.m.Y', $timestamp));
     }
 
     /** Adds the user's WordPress role directly to each website assignment. */
