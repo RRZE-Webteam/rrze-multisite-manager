@@ -118,21 +118,82 @@ class NetworkUsersListTable extends \WP_MS_Users_List_Table {
     }
 
     public function prepare_items() {
-        if ($this->filter === self::FILTER_ALL) {
-            parent::prepare_items();
-            $this->setVisibleColumnHeaders();
-            return;
-        }
+        add_action('pre_user_query', [$this, 'sortUserQuery'], PHP_INT_MAX);
 
-        add_action('pre_user_query', [$this, 'restrictUserQuery']);
+        if ($this->filter !== self::FILTER_ALL) {
+            add_action('pre_user_query', [$this, 'restrictUserQuery']);
+        }
 
         try {
             parent::prepare_items();
         } finally {
-            remove_action('pre_user_query', [$this, 'restrictUserQuery']);
+            remove_action('pre_user_query', [$this, 'sortUserQuery'], PHP_INT_MAX);
+
+            if ($this->filter !== self::FILTER_ALL) {
+                remove_action('pre_user_query', [$this, 'restrictUserQuery']);
+            }
         }
 
         $this->setVisibleColumnHeaders();
+    }
+
+    /** Sorts MSM user-table columns that differ from the Core query defaults. */
+    public function sortUserQuery(\WP_User_Query $query): void {
+        global $wpdb;
+
+        $orderby = isset($_GET['orderby'])
+            ? sanitize_key((string)wp_unslash($_GET['orderby']))
+            : (string)$query->get('orderby');
+        $requestedOrder = isset($_GET['order']) ? sanitize_key((string)wp_unslash($_GET['order'])) : '';
+        $order = $requestedOrder === 'desc' ? 'DESC' : 'ASC';
+
+        if (in_array($orderby, ['name', 'display_name'], true)) {
+            if (!str_contains($query->query_from, 'rrze_msm_first_name_meta')) {
+                $query->query_from .= $wpdb->prepare(
+                    " LEFT JOIN {$wpdb->usermeta} AS rrze_msm_first_name_meta ON (rrze_msm_first_name_meta.user_id = {$wpdb->users}.ID AND rrze_msm_first_name_meta.meta_key = %s) LEFT JOIN {$wpdb->usermeta} AS rrze_msm_last_name_meta ON (rrze_msm_last_name_meta.user_id = {$wpdb->users}.ID AND rrze_msm_last_name_meta.meta_key = %s)",
+                    'first_name',
+                    'last_name'
+                );
+            }
+
+            $nameSortValue = "CASE WHEN rrze_msm_first_name_meta.meta_value <> '' THEN rrze_msm_first_name_meta.meta_value WHEN rrze_msm_last_name_meta.meta_value <> '' THEN rrze_msm_last_name_meta.meta_value ELSE '-' END";
+            $query->query_orderby = "ORDER BY {$nameSortValue} {$order}, COALESCE(rrze_msm_last_name_meta.meta_value, '') {$order}, {$wpdb->users}.user_login ASC";
+            return;
+        }
+
+        if ($orderby !== 'rrze_last_login') {
+            return;
+        }
+
+        $alias = str_contains($query->query_from, 'rrze_last_login_meta')
+            ? 'rrze_last_login_meta'
+            : 'rrze_msm_last_login_meta';
+
+        if (!str_contains($query->query_from, $alias)) {
+            $query->query_from .= $wpdb->prepare(
+                " LEFT JOIN {$wpdb->usermeta} AS {$alias} ON ({$alias}.user_id = {$wpdb->users}.ID AND {$alias}.meta_key = %s)",
+                'rrze_last_login'
+            );
+        }
+
+        if (!str_contains($query->query_from, 'rrze_msm_legacy_login_meta')) {
+            $query->query_from .= $wpdb->prepare(
+                " LEFT JOIN {$wpdb->usermeta} AS rrze_msm_legacy_login_meta ON (rrze_msm_legacy_login_meta.user_id = {$wpdb->users}.ID AND rrze_msm_legacy_login_meta.meta_key = %s) LEFT JOIN {$wpdb->usermeta} AS rrze_msm_wordfence_login_meta ON (rrze_msm_wordfence_login_meta.user_id = {$wpdb->users}.ID AND rrze_msm_wordfence_login_meta.meta_key = %s) LEFT JOIN {$wpdb->usermeta} AS rrze_msm_wordfence_hyphen_login_meta ON (rrze_msm_wordfence_hyphen_login_meta.user_id = {$wpdb->users}.ID AND rrze_msm_wordfence_hyphen_login_meta.meta_key = %s) LEFT JOIN {$wpdb->usermeta} AS rrze_msm_wordfence_legacy_login_meta ON (rrze_msm_wordfence_legacy_login_meta.user_id = {$wpdb->users}.ID AND rrze_msm_wordfence_legacy_login_meta.meta_key = %s)",
+                self::LEGACY_ACTIVITY_META_KEY,
+                'wfls_last_login',
+                'wfls-last-login',
+                'wfls_lastlogin'
+            );
+        }
+
+        $wordfenceTimestamp = "CASE WHEN %1\$s.meta_value REGEXP '^[0-9]+$' THEN CAST(%1\$s.meta_value AS UNSIGNED) ELSE COALESCE(UNIX_TIMESTAMP(%1\$s.meta_value), 0) END";
+        $legacyTimestampToken = self::LEGACY_ACTIVITY_TIMESTAMP_TOKEN;
+        $loginTimestamp = "COALESCE(NULLIF(CAST({$alias}.meta_value AS UNSIGNED), 0), NULLIF(GREATEST(COALESCE(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(rrze_msm_legacy_login_meta.meta_value, '{$legacyTimestampToken}', -1), ';', 1) AS UNSIGNED), 0), "
+            . sprintf($wordfenceTimestamp, 'rrze_msm_wordfence_login_meta') . ', '
+            . sprintf($wordfenceTimestamp, 'rrze_msm_wordfence_hyphen_login_meta') . ', '
+            . sprintf($wordfenceTimestamp, 'rrze_msm_wordfence_legacy_login_meta')
+            . '), 0), 0)';
+        $query->query_orderby = "ORDER BY {$loginTimestamp} {$order}, {$wpdb->users}.user_login ASC";
     }
 
     /** Ignore obsolete per-user column visibility settings for this table. */

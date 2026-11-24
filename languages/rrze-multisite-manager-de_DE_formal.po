@@ -4,7 +4,7 @@ msgstr ""
 "Project-Id-Version: RRZE Multisite Manager\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-11-24T13:28:14+00:00\n"
+"POT-Creation-Date: 2026-11-24T16:58:41+00:00\n"
 "PO-Revision-Date: 2026-09-01 13:00+0200\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
@@ -1975,8 +1975,8 @@ msgstr "Aktualisieren"
 
 #: includes/Dashboard.php:4200
 #: includes/Metrics/MetricsImplementationService.php:9050
-#: includes/NetworkUsersListTable.php:296
-#: includes/NetworkUsersListTable.php:317
+#: includes/NetworkUsersListTable.php:357
+#: includes/NetworkUsersListTable.php:378
 #: includes/Widgets/PluginUsageWidget.php:149 includes/Widgets/Widgets.php:1445
 #: templates/site-details-page.php:566 templates/site-details-page.php:775
 #: templates/site-storage-analysis-page.php:716
@@ -3989,7 +3989,7 @@ msgstr "Anzeigen:"
 msgid "Default (%d)"
 msgstr "Standard (%d)"
 
-#: includes/NetworkUsersListTable.php:98 includes/NetworkUsersListTable.php:319
+#: includes/NetworkUsersListTable.php:98 includes/NetworkUsersListTable.php:380
 #: includes/Settings.php:2544 includes/Widgets/PluginUsageWidget.php:164
 #: includes/Widgets/Widgets.php:735
 #: templates/site-storage-analysis-page.php:718
@@ -3999,7 +3999,7 @@ msgstr "Standard (%d)"
 msgid "Apply"
 msgstr "Übernehmen"
 
-#: includes/NetworkUsersListTable.php:313 includes/Settings.php:2539
+#: includes/NetworkUsersListTable.php:374 includes/Settings.php:2539
 #: includes/Widgets/PluginUsageWidget.php:143
 #: templates/site-storage-analysis-page.php:713
 #: templates/site-storage-analysis-page.php:786
@@ -4008,7 +4008,7 @@ msgstr "Übernehmen"
 msgid "Select bulk action"
 msgstr "Auswahl"
 
-#: includes/NetworkUsersListTable.php:316 includes/Settings.php:2541
+#: includes/NetworkUsersListTable.php:377 includes/Settings.php:2541
 #: includes/Widgets/PluginUsageWidget.php:145
 #: templates/site-storage-analysis-page.php:715
 #: templates/site-storage-analysis-page.php:788
@@ -4017,7 +4017,7 @@ msgstr "Auswahl"
 msgid "Bulk actions"
 msgstr "Aktionen"
 
-#: includes/NetworkUsersListTable.php:424 includes/Widgets/Widgets.php:1116
+#: includes/NetworkUsersListTable.php:485 includes/Widgets/Widgets.php:1116
 #: includes/Widgets/Widgets.php:1208
 #: templates/site-storage-analysis-page.php:30
 #: templates/site-storage-attachment-debug.php:72
@@ -4026,7 +4026,7 @@ msgstr "Aktionen"
 msgid "Edit"
 msgstr "Bearbeiten"
 
-#: includes/NetworkUsersListTable.php:425
+#: includes/NetworkUsersListTable.php:486
 msgid "View"
 msgstr "Ansehen"
 
