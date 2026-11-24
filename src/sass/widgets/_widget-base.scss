@@ -497,6 +497,16 @@
     visibility: visible;
 }
 
+.rrze-msm-media-file-name .row-actions {
+    visibility: hidden;
+    margin-top: 4px;
+}
+
+.rrze-msm-table tbody tr:hover .rrze-msm-media-file-name .row-actions,
+.rrze-msm-table tbody tr:focus-within .rrze-msm-media-file-name .row-actions {
+    visibility: visible;
+}
+
 .rrze-msm-site-row-inactive th,
 .rrze-msm-site-row-inactive td,
 .rrze-msm-table.striped > tbody > .rrze-msm-site-row-inactive:nth-child(odd) th,
@@ -1115,6 +1125,41 @@ td.rrze-msm-plugin-col-active-sites {
 
 .rrze-msm-attachment-debug-form {
     align-items: flex-start;
+}
+
+.rrze-msm-attachment-debug-details-container {
+    container-type: inline-size;
+}
+
+.rrze-msm-attachment-debug-details {
+    display: grid;
+    gap: 20px;
+}
+
+.rrze-msm-attachment-debug-details > .rrze-msm-datatable {
+    width: 100%;
+}
+
+.rrze-msm-attachment-debug-preview {
+    margin: 0;
+}
+
+.rrze-msm-attachment-debug-preview img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+}
+
+@container (min-width: 1000px) {
+    .rrze-msm-attachment-debug-details {
+        grid-template-columns: minmax(0, 700px) minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .rrze-msm-attachment-debug-details > .rrze-msm-datatable {
+        max-width: 700px;
+    }
 }
 
 .rrze-msm-attachment-search,
