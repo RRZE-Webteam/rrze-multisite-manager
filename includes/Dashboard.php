@@ -1830,7 +1830,7 @@ class Dashboard {
                 'storage_analysis_scheduler_status' => $storageAnalysisSchedulerStatus,
                 'network_administrator_email' => $this->getNetworkAdministratorEmail(),
                 'top_consumers_pie_chart_html' => $this->renderStorageTopConsumersPieChart($storageAnalysis),
-                'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file'),
+                'orphan_file_delete_action' => $this->getAdminPostActionUrl('rrze_multisite_manager_delete_orphan_file', $siteId),
                 'site_search_placeholder' => __('Search website by title or URL', 'rrze-multisite-manager'),
                 'site_storage_analysis_base_url' => $isSiteMediaContext ? $this->getCurrentSiteStorageAnalysisUrl() : $this->getSiteStorageAnalysisUrl(),
                 'site_storage_analysis_is_site_context' => $isSiteMediaContext,
@@ -3781,12 +3781,12 @@ class Dashboard {
         return get_admin_url(get_main_site_id(), 'admin.php');
     }
 
-    protected function getAdminPostActionUrl(string $action): string {
+    protected function getAdminPostActionUrl(string $action, int $siteId = 0): string {
         return add_query_arg(
             [
                 'action' => $action,
             ],
-            admin_url('admin-post.php')
+            $siteId > 0 ? get_admin_url($siteId, 'admin-post.php') : admin_url('admin-post.php')
         );
     }
 

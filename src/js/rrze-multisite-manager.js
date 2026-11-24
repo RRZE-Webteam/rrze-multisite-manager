@@ -224,6 +224,8 @@ function onOrphanFileDeleteButtonClick(event) {
     var nonceInput = document.querySelector('#rrze-msm-orphan-file-delete-nonce');
     var checkbox = document.querySelector('#rrze-msm-orphan-file-delete-confirm');
 
+    event.preventDefault();
+
     if (!button || !modal || !target || !pathInput || !pathsContainer || !siteInput || !nonceInput || !checkbox) {
         return;
     }
@@ -252,9 +254,21 @@ function onOrphanFileBulkDeleteButtonClick(event) {
     var i = 0;
     var hiddenInput = null;
     var selectionName = '';
+    var bulkActionSelector = '';
+    var bulkAction = null;
 
     if (!button || !modal || !target || !pathInput || !pathsContainer || !siteInput || !nonceInput || !checkbox) {
         return;
+    }
+
+    bulkActionSelector = button.getAttribute('data-bulk-action-selector') || '';
+
+    if (bulkActionSelector !== '') {
+        bulkAction = document.querySelector(bulkActionSelector);
+
+        if (!bulkAction || bulkAction.value !== 'delete') {
+            return;
+        }
     }
 
     selectionName = button.getAttribute('data-selection-name') || 'relative_paths[]';

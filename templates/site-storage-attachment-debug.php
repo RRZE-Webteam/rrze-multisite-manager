@@ -3,8 +3,8 @@ defined('ABSPATH') || exit;
 ?>
 <section class="rrze-msm-widget rrze-msm-widget-span-12">
     <header class="rrze-msm-widget-header">
-        <h2><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></h2>
-        <p><?php echo esc_html__('Checks a specific media library file and shows how the storage analysis currently classifies it.', 'rrze-multisite-manager'); ?></p>
+        <h2><?php echo esc_html__('Search media library', 'rrze-multisite-manager'); ?></h2>
+        <p><?php echo esc_html__('Search for a media library file by title, file name, or attachment ID.', 'rrze-multisite-manager'); ?></p>
     </header>
     <form method="get" class="rrze-msm-site-actions rrze-msm-attachment-debug-form">
         <input type="hidden" name="page" value="<?php echo esc_attr(isset($_GET['page']) ? sanitize_key((string)wp_unslash($_GET['page'])) : ''); ?>">
@@ -25,9 +25,18 @@ defined('ABSPATH') || exit;
             <button type="submit" class="button button-secondary"><?php echo esc_html__('Open media details', 'rrze-multisite-manager'); ?></button>
         </div>
     </form>
-    <?php if (!empty($attachment_debug['error'])) { ?>
+</section>
+
+<?php if (!empty($attachment_debug['error'])) { ?>
+    <section class="rrze-msm-widget rrze-msm-widget-span-12">
         <div class="notice notice-error inline"><p><?php echo esc_html((string)$attachment_debug['error']); ?></p></div>
-    <?php } elseif (!empty($attachment_debug)) { ?>
+    </section>
+<?php } elseif (!empty($attachment_debug)) { ?>
+    <section class="rrze-msm-widget rrze-msm-widget-span-12">
+        <header class="rrze-msm-widget-header">
+            <h2><?php echo esc_html__('Media file details', 'rrze-multisite-manager'); ?></h2>
+            <p><?php echo esc_html__('Checks a specific media library file and shows how the storage analysis currently classifies it.', 'rrze-multisite-manager'); ?></p>
+        </header>
         <?php
         $attachmentId = absint($attachment_debug['attachment_id'] ?? 0);
         $mediaEditUrl = $attachmentId > 0 && $site_id > 0
@@ -40,6 +49,11 @@ defined('ABSPATH') || exit;
             )
             : '';
         $imageUrl = !empty($attachment_debug['is_image']) ? esc_url_raw((string)($attachment_debug['file_url'] ?? '')) : '';
+        $imageAlt = trim((string)($attachment_debug['metadata_fields']['alternative_text'] ?? ''));
+
+        if ($imageAlt === '') {
+            $imageAlt = (string)($attachment_debug['title'] ?? '');
+        }
         $reverseImageSearchUrl = $imageUrl !== ''
             ? add_query_arg('url', $imageUrl, 'https://tineye.com/search')
             : '';
@@ -51,8 +65,10 @@ defined('ABSPATH') || exit;
             (int)$site_id
         );
         ?>
-        <table class="striped rrze-msm-datatable">
-            <tbody>
+        <div class="rrze-msm-attachment-debug-details-container">
+            <div class="rrze-msm-attachment-debug-details">
+                <table class="striped rrze-msm-datatable">
+                <tbody>
                 <tr><th><?php echo esc_html__('Attachment ID', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)$attachmentId); ?><?php if ($mediaEditUrl !== '') { ?> <a class="button button-secondary button-small" href="<?php echo esc_url($mediaEditUrl); ?>"><?php echo esc_html__('Edit', 'rrze-multisite-manager'); ?></a><?php } ?></td></tr>
                 <tr><th><?php echo esc_html__('Uploaded by', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)($attachment_debug['upload_author']['label'] ?? __('No upload author', 'rrze-multisite-manager'))); ?></td></tr>
                 <tr><th><?php echo esc_html__('Media type', 'rrze-multisite-manager'); ?></th><td><code><?php echo esc_html((string)($attachment_debug['mime_type'] ?? '')); ?></code></td></tr>
@@ -86,8 +102,15 @@ defined('ABSPATH') || exit;
                 <tr><th><?php echo esc_html__('Cached generated at', 'rrze-multisite-manager'); ?></th><td><?php echo esc_html((string)($attachment_debug['cached_generated_at'] ?? '')); ?></td></tr>
                 <tr><th><?php echo esc_html__('Matches without code', 'rrze-multisite-manager'); ?></th><td class="rrze-msm-col-numeric"><?php echo esc_html((string)count((array)($attachment_debug['matches_without_code'] ?? []))); ?></td></tr>
                 <tr><th><?php echo esc_html__('Matches with code', 'rrze-multisite-manager'); ?></th><td class="rrze-msm-col-numeric"><?php echo esc_html((string)count((array)($attachment_debug['matches_with_code'] ?? []))); ?></td></tr>
-            </tbody>
-        </table>
+                    </tbody>
+                </table>
+                <?php if ($imageUrl !== '') { ?>
+                    <figure class="rrze-msm-attachment-debug-preview">
+                        <img src="<?php echo esc_url($imageUrl); ?>" alt="<?php echo esc_attr($imageAlt); ?>">
+                    </figure>
+                <?php } ?>
+            </div>
+        </div>
         <?php if ($mediaEditUrl !== '' || $reverseImageSearchUrl !== '') { ?>
             <p class="rrze-msm-site-actions">
                 <?php if ($mediaEditUrl !== '') { ?>
@@ -142,5 +165,5 @@ defined('ABSPATH') || exit;
         <?php } else { ?>
             <p><?php echo esc_html__('No references were detected in content, blocks, templates, widgets, or inspected meta fields.', 'rrze-multisite-manager'); ?></p>
         <?php } ?>
-    <?php } ?>
-</section>
+    </section>
+<?php } ?>
