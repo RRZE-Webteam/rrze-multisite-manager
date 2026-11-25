@@ -60,6 +60,23 @@ function initVisibleSiteSelection() {
     }
 }
 
+function initNetworkUsersPerPageSelection() {
+    var select = document.querySelector('.rrze-msm-network-users-per-page');
+    var applyButton = document.querySelector('.rrze-msm-network-users-per-page-apply');
+
+    if (!select || !applyButton) {
+        return;
+    }
+
+    applyButton.addEventListener('click', function () {
+        var url = new window.URL(window.location.href);
+
+        url.searchParams.set(select.name, select.value);
+        url.searchParams.delete('paged');
+        window.location.assign(url.toString());
+    });
+}
+
 function closeDeleteCptModal() {
     var modal = document.querySelector('#rrze-msm-delete-cpt-modal');
 
@@ -2777,6 +2794,7 @@ function initRrzeMultisiteManager() {
     initWidgetControls();
     initViewSelect();
     initVisibleSiteSelection();
+    initNetworkUsersPerPageSelection();
     initSortableWidgets();
     initSiteTables();
     restoreSiteTableAnchorFocus();

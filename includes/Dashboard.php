@@ -486,7 +486,6 @@ class Dashboard {
                 [$this, 'renderNetworkUsersPage']
             );
             $this->pageHooks[] = $this->networkUsersPageHook;
-            add_action('load-' . $this->networkUsersPageHook, [$this, 'configureNetworkUsersScreen']);
 
             $this->pageHooks[] = add_submenu_page(
                 null,
@@ -823,7 +822,12 @@ class Dashboard {
             ];
         }
 
-        $table = new NetworkUsersListTable($filter, $cutoffs['login'], $cutoffs['registered']);
+        $table = new NetworkUsersListTable(
+            $filter,
+            $cutoffs['login'],
+            $cutoffs['registered'],
+            max(1, (int)$this->settings->getOption('dashboard', 'activity_site_limit', 10))
+        );
         $table->prepare_items();
 
         echo '<div class="wrap rrze-multisite-manager-admin rrze-msm-mode-' . esc_attr($this->getColorMode()) . '">';
@@ -895,6 +899,8 @@ class Dashboard {
             echo '<input type="hidden" name="rrze_msm_user_filter" value="' . esc_attr($filter) . '">';
         }
 
+        echo '<input type="hidden" name="' . esc_attr(NetworkUsersListTable::PER_PAGE_PARAMETER) . '" value="' . esc_attr((string)$table->getPerPage()) . '">';
+
         $table->search_box(__('Search users', 'rrze-multisite-manager'), 'rrze-msm-network-users');
         echo '</form>';
         echo '<form id="rrze-msm-network-user-list" action="' . esc_url(admin_url('admin-post.php')) . '" method="post">';
@@ -914,9 +920,21 @@ class Dashboard {
 
         check_admin_referer('rrze_multisite_manager_network_users_bulk', 'rrze_msm_network_users_bulk_nonce');
 
-        $action = isset($_POST['rrze_msm_bulk_action'])
-            ? sanitize_key((string)wp_unslash($_POST['rrze_msm_bulk_action']))
-            : (isset($_POST['rrze_msm_bulk_action2']) ? sanitize_key((string)wp_unslash($_POST['rrze_msm_bulk_action2'])) : '');
+        $action = '';
+
+        foreach (['rrze_msm_bulk_action', 'rrze_msm_bulk_action2'] as $actionField) {
+            if (!isset($_POST[$actionField])) {
+                continue;
+            }
+
+            $selectedAction = sanitize_key((string)wp_unslash($_POST[$actionField]));
+
+            if ($selectedAction !== '' && $selectedAction !== '-1') {
+                $action = $selectedAction;
+                break;
+            }
+        }
+
         $userIds = isset($_POST['allusers']) && is_array($_POST['allusers'])
             ? array_values(array_unique(array_filter(array_map('absint', wp_unslash($_POST['allusers'])))))
             : [];
@@ -1015,59 +1033,6 @@ class Dashboard {
             ],
             $this->getNetworkUsersUrl()
         );
-    }
-
-    /** Registers native Screen Options for the MSM network user table. */
-    public function configureNetworkUsersScreen(): void {
-        $screen = get_current_screen();
-
-        if (!$screen instanceof \WP_Screen || $screen->id !== $this->networkUsersPageHook) {
-            return;
-        }
-
-        add_filter('manage_' . $screen->id . '_columns', [$this, 'getNetworkUsersScreenColumns']);
-        add_filter('default_hidden_columns', [$this, 'filterNetworkUsersDefaultHiddenColumns'], 10, 2);
-    }
-
-    /** @return array<string, string> */
-    public function getNetworkUsersScreenColumns(array $columns): array {
-        unset($columns);
-        $columns = [
-            'cb' => '<input type="checkbox" />',
-            'username' => __('Username', 'rrze-multisite-manager'),
-            'name' => __('Name', 'rrze-multisite-manager'),
-            'email' => __('Email', 'rrze-multisite-manager'),
-            'registered' => __('Registered', 'rrze-multisite-manager'),
-            'blogs' => __('Websites', 'rrze-multisite-manager'),
-        ];
-
-        // Plugins may use the standard Users or Network Users screen filter;
-        // Core uses the wpmu_users_columns filter for its list table.
-        $columns = apply_filters('manage_users_columns', $columns);
-        $columns = apply_filters('manage_users-network_columns', $columns);
-        $columns = apply_filters('wpmu_users_columns', $columns);
-
-        return $columns;
-    }
-
-    /** @param array<int, string> $hidden */
-    public function filterNetworkUsersDefaultHiddenColumns(array $hidden, \WP_Screen $screen): array {
-        if ($screen->id !== $this->networkUsersPageHook) {
-            return $hidden;
-        }
-
-        $availableColumnKeys = array_keys($this->getNetworkUsersScreenColumns([]));
-        // The selection column is required for Core bulk actions and must not
-        // be configurable or hidden through the user-column preferences.
-        $selectableColumnKeys = array_values(array_diff($availableColumnKeys, ['cb']));
-        $visibleColumns = $this->settings->getNetworkUsersVisibleColumns($selectableColumnKeys);
-
-        $hidden = array_values(array_diff($hidden, $availableColumnKeys));
-
-        return array_values(array_unique(array_merge(
-            $hidden,
-            array_diff($selectableColumnKeys, $visibleColumns)
-        )));
     }
 
     public function renderViewsPage(): void {
