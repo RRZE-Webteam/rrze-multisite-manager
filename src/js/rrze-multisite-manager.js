@@ -61,7 +61,7 @@ function initVisibleSiteSelection() {
 }
 
 function initNetworkUsersPerPageSelection() {
-    var select = document.querySelector('.rrze-msm-network-users-per-page');
+    var select = document.querySelector('select.rrze-msm-network-users-per-page');
     var applyButton = document.querySelector('.rrze-msm-network-users-per-page-apply');
 
     if (!select || !applyButton) {

@@ -7802,12 +7802,10 @@ class MetricsImplementationService {
     protected function deleteCurrentSiteOrphanFile(string $relativePath): array {
         $uploadDir = wp_get_upload_dir();
         $baseDir = is_array($uploadDir) && !empty($uploadDir['basedir']) ? (string)$uploadDir['basedir'] : '';
-        $baseUrl = is_array($uploadDir) && !empty($uploadDir['baseurl']) ? (string)$uploadDir['baseurl'] : '';
         $normalizedBaseDir = trailingslashit(wp_normalize_path($baseDir));
         $normalizedRelativePath = $this->normalizeRelativeUploadPath($relativePath);
         $targetPath = $normalizedBaseDir . ltrim($normalizedRelativePath, '/');
         $attachmentIndex = [];
-        $fileUrl = '';
         $sizeBytes = 0;
 
         if ($baseDir === '' || !is_dir($baseDir)) {
@@ -7847,19 +7845,17 @@ class MetricsImplementationService {
             ];
         }
 
-        $fileUrl = trailingslashit($baseUrl) . ltrim($normalizedRelativePath, '/');
-
-        if (!empty($this->searchCurrentSiteFileUsageMatches($fileUrl, $normalizedRelativePath))) {
+        if (!$this->isCurrentSiteOrphanFileClearedForDeletion($normalizedRelativePath)) {
             return [
                 'deleted' => false,
-                'message' => __('This file is still referenced in post or page content and is therefore not deleted.', 'rrze-multisite-manager'),
+                'message' => __('This file is not confirmed as unreferenced by the current storage analysis and is therefore not deleted.', 'rrze-multisite-manager'),
             ];
         }
 
-        if (!is_writable($targetPath)) {
+        if (!is_writable(dirname($targetPath))) {
             return [
                 'deleted' => false,
-                'message' => __('The file is not writable.', 'rrze-multisite-manager'),
+                'message' => __('The upload directory is not writable.', 'rrze-multisite-manager'),
             ];
         }
 
@@ -7879,6 +7875,42 @@ class MetricsImplementationService {
             'deleted' => true,
             'message' => __('The file has been deleted.', 'rrze-multisite-manager'),
         ];
+    }
+
+    /**
+     * Only files from the completed reference analysis may be deleted outside
+     * of WordPress's attachment deletion workflow. This avoids an expensive
+     * full content search for every selected file while keeping the request
+     * restricted to paths the analysis has already cleared.
+     */
+    protected function isCurrentSiteOrphanFileClearedForDeletion(string $relativePath): bool {
+        $analysis = $this->storageAnalysisResults->getCurrentResult();
+        $normalizedRelativePath = $this->normalizeRelativeUploadPath($relativePath);
+        $entries = [];
+        $entry = [];
+
+        if ($normalizedRelativePath === '' || !is_array($analysis)) {
+            return false;
+        }
+
+        foreach ([
+            'orphan_files_without_content_matches',
+            'unregistered_image_size_variants_without_content_matches',
+        ] as $analysisKey) {
+            $entries = (array)($analysis[$analysisKey] ?? []);
+
+            foreach ($entries as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+
+                if ($this->normalizeRelativeUploadPath((string)($entry['path'] ?? '')) === $normalizedRelativePath) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     protected function removeCurrentSiteOrphanFileFromAnalysis(string $relativePath, int $sizeBytes): void {

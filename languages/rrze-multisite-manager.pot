@@ -2,15 +2,15 @@
 # This file is distributed under the GNU General Public License v3.
 msgid ""
 msgstr ""
-"Project-Id-Version: RRZE Multisite Manager 1.4.0\n"
+"Project-Id-Version: RRZE Multisite Manager 1.4.2\n"
 "Report-Msgid-Bugs-To: https://github.com/RRZE-Webteam/rrze-multisite-manager/issues\n"
 "Last-Translator: RRZE-Webteam <webmaster@fau.de>\n"
 "Language-Team: RRZE-Webteam <webmaster@fau.de>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-11-24T17:08:41+00:00\n"
-"PO-Revision-Date: 2026-11-24 17:08+0000\n"
+"POT-Creation-Date: 2026-11-26T08:33:37+00:00\n"
+"PO-Revision-Date: 2026-11-26 08:33+0000\n"
 "X-Generator: WP-CLI 2.11.0\n"
 "X-Domain: rrze-multisite-manager\n"
 
@@ -732,7 +732,7 @@ msgstr ""
 #: includes/Dashboard.php:1546
 #: includes/Metrics/MetricsImplementationService.php:897
 #: includes/Metrics/MetricsImplementationService.php:1111
-#: includes/Metrics/MetricsImplementationService.php:9034
+#: includes/Metrics/MetricsImplementationService.php:9066
 #: includes/Metrics/MetricsServiceSiteTrait.php:202
 #: includes/Widgets/StatusWidget.php:75
 #: includes/Widgets/WebsiteStatusWidget.php:45
@@ -744,7 +744,7 @@ msgstr ""
 #: includes/Dashboard.php:1557
 #: includes/Metrics/MetricsImplementationService.php:898
 #: includes/Metrics/MetricsImplementationService.php:1112
-#: includes/Metrics/MetricsImplementationService.php:9042
+#: includes/Metrics/MetricsImplementationService.php:9074
 #: includes/Metrics/MetricsServiceSiteTrait.php:209
 #: includes/Widgets/WebsiteStatusWidget.php:48
 #: includes/Widgets/Widgets.php:1454
@@ -880,8 +880,8 @@ msgstr ""
 #: includes/Metrics/MetricsImplementationService.php:6365
 #: includes/Metrics/MetricsImplementationService.php:6373
 #: includes/Metrics/MetricsImplementationService.php:6434
-#: includes/Metrics/MetricsImplementationService.php:8092
-#: includes/Metrics/MetricsImplementationService.php:8094
+#: includes/Metrics/MetricsImplementationService.php:8124
+#: includes/Metrics/MetricsImplementationService.php:8126
 #: includes/Metrics/StorageUsageService.php:44
 #: includes/Presentation/StatusFormatter.php:41
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1745
@@ -1473,7 +1473,7 @@ msgid "No storage consumers could be determined."
 msgstr ""
 
 #: includes/Dashboard.php:1980
-#: includes/Metrics/MetricsImplementationService.php:8816
+#: includes/Metrics/MetricsImplementationService.php:8848
 #: includes/Widgets/Widgets.php:696
 msgid "Other"
 msgstr ""
@@ -1648,18 +1648,18 @@ msgstr ""
 
 #: includes/Dashboard.php:3144
 #: includes/Metrics/MetricsImplementationService.php:7415
-#: includes/Metrics/MetricsImplementationService.php:7823
+#: includes/Metrics/MetricsImplementationService.php:7821
 msgid "Invalid file."
 msgstr ""
 
 #: includes/Dashboard.php:3164
 #: includes/Dashboard.php:3194
-#: includes/Metrics/MetricsImplementationService.php:7871
+#: includes/Metrics/MetricsImplementationService.php:7867
 msgid "The file could not be deleted."
 msgstr ""
 
 #: includes/Dashboard.php:3184
-#: includes/Metrics/MetricsImplementationService.php:7934
+#: includes/Metrics/MetricsImplementationService.php:7966
 msgid "The media library entry could not be deleted."
 msgstr ""
 
@@ -1748,7 +1748,7 @@ msgid "Update"
 msgstr ""
 
 #: includes/Dashboard.php:4200
-#: includes/Metrics/MetricsImplementationService.php:9050
+#: includes/Metrics/MetricsImplementationService.php:9082
 #: includes/NetworkUsersListTable.php:357
 #: includes/NetworkUsersListTable.php:378
 #: includes/Widgets/PluginUsageWidget.php:149
@@ -2075,7 +2075,7 @@ msgid "Featured image"
 msgstr ""
 
 #: includes/Metrics/MetricsImplementationService.php:2526
-#: includes/Metrics/MetricsImplementationService.php:8796
+#: includes/Metrics/MetricsImplementationService.php:8828
 #: includes/ShortcodeBlockAnalysisSchedulerService.php:1744
 msgid "WordPress Core"
 msgstr ""
@@ -2085,12 +2085,12 @@ msgid "Not directly assigned"
 msgstr ""
 
 #: includes/Metrics/MetricsImplementationService.php:3041
-#: includes/Metrics/MetricsImplementationService.php:10634
+#: includes/Metrics/MetricsImplementationService.php:10666
 msgid "Classic Editor"
 msgstr ""
 
 #: includes/Metrics/MetricsImplementationService.php:3047
-#: includes/Metrics/MetricsImplementationService.php:10640
+#: includes/Metrics/MetricsImplementationService.php:10672
 msgid "Block Editor"
 msgstr ""
 
@@ -2104,7 +2104,7 @@ msgstr ""
 
 #: includes/Metrics/MetricsImplementationService.php:4247
 #: includes/Metrics/MetricsImplementationService.php:6389
-#: includes/Metrics/MetricsImplementationService.php:8076
+#: includes/Metrics/MetricsImplementationService.php:8108
 msgid "Images"
 msgstr ""
 
@@ -2186,7 +2186,7 @@ msgstr ""
 
 #: includes/Metrics/MetricsImplementationService.php:4809
 #: includes/Metrics/MetricsImplementationService.php:6393
-#: includes/Metrics/MetricsImplementationService.php:8081
+#: includes/Metrics/MetricsImplementationService.php:8113
 msgid "Generated image variants"
 msgstr ""
 
@@ -2301,12 +2301,12 @@ msgid "Media library usage is being checked."
 msgstr ""
 
 #: includes/Metrics/MetricsImplementationService.php:6389
-#: includes/Metrics/MetricsImplementationService.php:8077
+#: includes/Metrics/MetricsImplementationService.php:8109
 msgid "Original images"
 msgstr ""
 
 #: includes/Metrics/MetricsImplementationService.php:6393
-#: includes/Metrics/MetricsImplementationService.php:8082
+#: includes/Metrics/MetricsImplementationService.php:8114
 msgid "without original images"
 msgstr ""
 
@@ -2502,130 +2502,130 @@ msgstr ""
 msgid "Dimensions"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7816
+#: includes/Metrics/MetricsImplementationService.php:7814
 msgid "The uploads directory was not found."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7830
+#: includes/Metrics/MetricsImplementationService.php:7828
 msgid "The file path is invalid."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7837
+#: includes/Metrics/MetricsImplementationService.php:7835
 msgid "The file no longer exists."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7846
+#: includes/Metrics/MetricsImplementationService.php:7844
 msgid "This file is still registered as an attachment and must not be deleted here."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7855
-msgid "This file is still referenced in post or page content and is therefore not deleted."
+#: includes/Metrics/MetricsImplementationService.php:7851
+msgid "This file is not confirmed as unreferenced by the current storage analysis and is therefore not deleted."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7862
-msgid "The file is not writable."
+#: includes/Metrics/MetricsImplementationService.php:7858
+msgid "The upload directory is not writable."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7880
+#: includes/Metrics/MetricsImplementationService.php:7876
 msgid "The file has been deleted."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7916
+#: includes/Metrics/MetricsImplementationService.php:7948
 msgid "The media library entry no longer exists."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7927
+#: includes/Metrics/MetricsImplementationService.php:7959
 msgid "The media library entry has no valid upload file."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:7942
+#: includes/Metrics/MetricsImplementationService.php:7974
 msgid "The media library entry has been deleted."
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:8229
+#: includes/Metrics/MetricsImplementationService.php:8261
 msgid "Files in the root directory"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:8306
+#: includes/Metrics/MetricsImplementationService.php:8338
 msgid "All options"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:8808
+#: includes/Metrics/MetricsImplementationService.php:8840
 msgid "Theme mods"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:8812
+#: includes/Metrics/MetricsImplementationService.php:8844
 msgid "Widgets"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9002
+#: includes/Metrics/MetricsImplementationService.php:9034
 msgid "(unsafe serialized value)"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9022
+#: includes/Metrics/MetricsImplementationService.php:9054
 msgid "(empty)"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9058
+#: includes/Metrics/MetricsImplementationService.php:9090
 #: includes/Settings.php:1477
 #: includes/Widgets/Widgets.php:1463
 msgid "Active"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9066
+#: includes/Metrics/MetricsImplementationService.php:9098
 #: includes/Widgets/Widgets.php:1471
 msgid "Public"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9067
+#: includes/Metrics/MetricsImplementationService.php:9099
 #: includes/Widgets/Widgets.php:1478
 msgid "Not public"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9310
+#: includes/Metrics/MetricsImplementationService.php:9342
 msgid "Configured default theme"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9317
+#: includes/Metrics/MetricsImplementationService.php:9349
 msgid "Network-enabled"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9324
+#: includes/Metrics/MetricsImplementationService.php:9356
 #: includes/Metrics/MetricsServicePluginTrait.php:264
 msgid "Active on websites"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9329
+#: includes/Metrics/MetricsImplementationService.php:9361
 msgid "Not used"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9336
+#: includes/Metrics/MetricsImplementationService.php:9368
 msgid "Block theme"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9778
+#: includes/Metrics/MetricsImplementationService.php:9810
 msgid "Dashboard metric statistics disabled"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9779
+#: includes/Metrics/MetricsImplementationService.php:9811
 msgid "Daily dashboard metric statistics"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9780
+#: includes/Metrics/MetricsImplementationService.php:9812
 msgid "Monthly dashboard metric statistics"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:9781
+#: includes/Metrics/MetricsImplementationService.php:9813
 msgid "Weekly dashboard metric statistics"
 msgstr ""
 
-#: includes/Metrics/MetricsImplementationService.php:10579
+#: includes/Metrics/MetricsImplementationService.php:10611
 #: includes/Widgets/NetworkStorageUsageWidget.php:49
 msgid "Free storage"
 msgstr ""
 
 #. translators: %s: sum of measured storage sizes.
-#: includes/Metrics/MetricsImplementationService.php:10602
+#: includes/Metrics/MetricsImplementationService.php:10634
 msgid "At least %s"
 msgstr ""
 
